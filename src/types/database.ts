@@ -137,6 +137,7 @@ export interface CommunityStatement {
   rank: Rank;
   statement: string;
   upvotes: number;
+  downvotes: number;
   is_approved: boolean;
   created_at: string;
 }
@@ -440,7 +441,14 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      get_subordinate_chain: {
+        Args: { supervisor_uuid: string };
+        Returns: { subordinate_id: string; depth: number }[];
+      };
+      get_supervisor_chain: {
+        Args: { subordinate_uuid: string };
+        Returns: { supervisor_id: string; depth: number }[];
+      };
     };
     Enums: {
       user_rank: Rank;

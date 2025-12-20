@@ -57,8 +57,6 @@ import {
   Wand2,
   Search,
   ArrowRight,
-  Check,
-  AlertTriangle,
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, MajorGradedArea, RankVerbProgression } from "@/types/database";
 import { RANKS } from "@/lib/constants";
@@ -92,12 +90,8 @@ Example transformation:
 - INPUT: "Volunteered at USO for 4 hrs, served 200 Airmen"
 - OUTPUT: "Spearheaded USO volunteer initiative, dedicating 4 hrs to restore lounge facilities and replenish refreshment stations--directly boosted morale for 200 deploying Amn, reinforcing vital quality-of-life support that sustained mission focus during high-tempo ops"
 
-ACRONYM & ABBREVIATION POLICY:
-- Use standard AF acronyms to maximize character efficiency (Amn, NCO, SNCO, DoD, AF, sq, flt, hrs)
-- Spell out uncommon terms for clarity
-- Apply auto-abbreviations from the provided list
-
 RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
+Primary action verbs to use: {{primary_verbs}}
 {{rank_verb_guidance}}
 - AB–SrA: Individual execution with team impact
 - SSgt–TSgt: Supervisory scope with flight/squadron impact
@@ -123,7 +117,10 @@ ADDITIONAL STYLE GUIDANCE:
 Using the provided accomplishment entries, generate 2–3 HIGH-DENSITY statements for each MPA. Use your military expertise to EXPAND limited inputs into comprehensive statements that approach the character limit. Infer reasonable military context and standard AF outcomes.
 
 WORD ABBREVIATIONS (AUTO-APPLY):
-{{abbreviations_list}}`;
+{{abbreviations_list}}
+
+ACRONYMS REFERENCE:
+{{acronyms_list}}`;
 
 const DEFAULT_STYLE_GUIDELINES = `MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.`;
 
@@ -248,14 +245,10 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
         <Label className="text-xs text-muted-foreground">
           Placeholders (auto-replaced at generation time)
         </Label>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-green-600 dark:text-green-400">
-            ✓ {usedCount} used
-          </span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{usedCount} used</span>
           {missingCount > 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
-              ⚠ {missingCount} missing
-            </span>
+            <span>· {missingCount} not included</span>
           )}
         </div>
       </div>
@@ -264,23 +257,19 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
           <Tooltip key={p.key}>
             <TooltipTrigger asChild>
               <Badge
-                variant={p.isUsed ? "default" : "outline"}
+                variant={p.isUsed ? "secondary" : "outline"}
                 className={cn(
-                  "cursor-help transition-colors",
-                  p.isUsed
-                    ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
-                    : "border-amber-500 text-amber-600 dark:text-amber-400"
+                  "cursor-help font-mono text-xs",
+                  !p.isUsed && "opacity-50"
                 )}
               >
-                {p.isUsed && <Check className="size-3 mr-1" />}
-                {!p.isUsed && <AlertTriangle className="size-3 mr-1" />}
                 {p.key}
               </Badge>
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-medium">{p.description}</p>
               <p className="text-xs text-muted-foreground">
-                {p.isUsed ? "✓ Included in your prompt" : "⚠ Not included - add to use this feature"}
+                {p.isUsed ? "Included in your prompt" : "Not included — add to use this feature"}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -472,8 +461,8 @@ function AbbreviationEditor({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAbbreviations.map((abbrev) => (
-                <TableRow key={abbrev.word} className="group">
+              {filteredAbbreviations.map((abbrev, idx) => (
+                <TableRow key={`${abbrev.word}-${idx}`} className="group">
                   <TableCell className="font-medium">{abbrev.word}</TableCell>
                   <TableCell>
                     <ArrowRight className="size-4 text-muted-foreground" />
@@ -728,13 +717,13 @@ export default function LLMSettingsPage() {
       if (hasExistingSettings) {
         await supabase
           .from("user_llm_settings")
-          .update(settingsData)
+          .update(settingsData as never)
           .eq("user_id", profile.id);
       } else {
         await supabase.from("user_llm_settings").insert({
           user_id: profile.id,
           ...settingsData,
-        });
+        } as never);
         setHasExistingSettings(true);
       }
 

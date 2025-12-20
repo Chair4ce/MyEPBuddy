@@ -146,7 +146,7 @@ export default function LibraryPage() {
     
     await supabase
       .from("refined_statements")
-      .update({ is_favorite: newValue })
+      .update({ is_favorite: newValue } as never)
       .eq("id", statement.id);
 
     setRefinedStatements((prev) =>
@@ -169,7 +169,7 @@ export default function LibraryPage() {
     try {
       await supabase
         .from("refined_statements")
-        .update({ statement: editedText })
+        .update({ statement: editedText } as never)
         .eq("id", editingStatement.id);
 
       setRefinedStatements((prev) =>
@@ -196,7 +196,7 @@ export default function LibraryPage() {
         afsc: statement.afsc,
         rank: statement.rank,
         statement: statement.statement,
-      });
+      } as never);
 
       toast.success("Statement shared with community!");
     } catch (error) {
@@ -244,7 +244,7 @@ export default function LibraryPage() {
         // Change vote
         await supabase
           .from("statement_votes")
-          .update({ vote_type: voteType })
+          .update({ vote_type: voteType } as never)
           .eq("user_id", profile.id)
           .eq("statement_id", statementId);
 
@@ -271,7 +271,7 @@ export default function LibraryPage() {
           user_id: profile.id,
           statement_id: statementId,
           vote_type: voteType,
-        });
+        } as never);
 
         setUserVotes((prev) => ({ ...prev, [statementId]: voteType }));
 

@@ -142,7 +142,7 @@ async function fetchExampleStatements(
 
     if (personalData) {
       examples.push(
-        ...personalData.map((s) => ({
+        ...(personalData as { mpa: string; statement: string }[]).map((s) => ({
           mpa: s.mpa,
           statement: s.statement,
           source: "personal" as const,
@@ -164,7 +164,8 @@ async function fetchExampleStatements(
 
     if (communityData) {
       // Sort by net votes (upvotes - downvotes) and take top 20
-      const sortedByNetVotes = communityData
+      const typedData = communityData as { mpa: string; statement: string; upvotes: number; downvotes: number }[];
+      const sortedByNetVotes = typedData
         .map((s) => ({
           ...s,
           netVotes: s.upvotes - (s.downvotes || 0),
@@ -498,12 +499,12 @@ Format as JSON array only:
                 original_statement: statement,
                 model_used: model,
                 cycle_year: cycleYear,
-              })
+              } as never)
               .select("id")
               .single();
 
             if (historyData) {
-              historyIds.push(historyData.id);
+              historyIds.push((historyData as { id: string }).id);
             }
           }
 

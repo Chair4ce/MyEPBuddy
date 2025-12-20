@@ -190,7 +190,7 @@ export default function APIKeysPage() {
       </div>
 
       <Card className="border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20">
-        <CardContent className="pt-6">
+        <CardContent className="">
           <div className="flex gap-3">
             <Shield className="size-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
             <div className="space-y-1">

@@ -102,7 +102,7 @@ export default function TeamPage() {
         .eq("subordinate_id", profile.id);
 
       if (supervisorTeams && supervisorTeams.length > 0) {
-        const supervisorIds = supervisorTeams.map((t) => t.supervisor_id);
+        const supervisorIds = (supervisorTeams as { supervisor_id: string }[]).map((t) => t.supervisor_id);
         const { data: supervisorProfiles } = await supabase
           .from("profiles")
           .select("*")
@@ -149,9 +149,9 @@ export default function TeamPage() {
     if (!profile) return;
 
     // Get chain using the database function
-    const { data: chainData } = await supabase.rpc("get_subordinate_chain", {
+    const { data: chainData } = await (supabase.rpc as Function)("get_subordinate_chain", {
       supervisor_uuid: profile.id,
-    });
+    }) as { data: { subordinate_id: string; depth: number }[] | null };
 
     if (chainData && chainData.length > 0) {
       const subordinateIds = chainData.map((c: { subordinate_id: string }) => c.subordinate_id);
@@ -204,7 +204,7 @@ export default function TeamPage() {
         target_id: searchedProfile.id,
         request_type: inviteType,
         message: inviteMessage || null,
-      });
+      } as never);
 
       if (error) {
         if (error.code === "23505") {
@@ -239,7 +239,7 @@ export default function TeamPage() {
         .update({
           status: accept ? "accepted" : "declined",
           responded_at: new Date().toISOString(),
-        })
+        } as never)
         .eq("id", requestId);
 
       // If accepted, create the team relationship
@@ -254,7 +254,7 @@ export default function TeamPage() {
         const { error: teamError } = await supabase.from("teams").insert({
           supervisor_id: supervisorId,
           subordinate_id: subordinateId,
-        });
+        } as never);
 
         if (teamError) {
           console.error("Team insert error:", teamError);
@@ -426,7 +426,7 @@ export default function TeamPage() {
                     ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
                     : "bg-muted/50"
                 }`}>
-                  <CardContent className="pt-4">
+                  <CardContent className="">
                     <div className="flex items-center gap-3">
                       <Avatar>
                         <AvatarFallback>

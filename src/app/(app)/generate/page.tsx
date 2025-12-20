@@ -182,7 +182,7 @@ export default function GeneratePage() {
     
     await supabase
       .from("profiles")
-      .update({ writing_style: style })
+      .update({ writing_style: style } as never)
       .eq("id", profile.id);
   }
 
@@ -263,7 +263,7 @@ export default function GeneratePage() {
           afsc: rateeProfile.afsc || "UNKNOWN",
           rank: rateeProfile.rank || "AB",
           statement: editingStatement.refined,
-        })
+        } as never)
         .select()
         .single();
 
@@ -273,12 +273,12 @@ export default function GeneratePage() {
       if (addToCommunity && refinedData) {
         await supabase.from("community_statements").insert({
           contributor_id: profile.id,
-          refined_statement_id: refinedData.id,
+          refined_statement_id: (refinedData as { id: string }).id,
           mpa: editingStatement.mpa,
           afsc: rateeProfile.afsc || "UNKNOWN",
           rank: rateeProfile.rank || "AB",
           statement: editingStatement.refined,
-        });
+        } as never);
       }
 
       // Update local state

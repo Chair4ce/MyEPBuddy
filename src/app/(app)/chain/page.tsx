@@ -43,9 +43,9 @@ export default function ChainPage() {
 
     try {
       // Get all subordinates in my chain
-      const { data: chainData } = await supabase.rpc("get_subordinate_chain", {
+      const { data: chainData } = await (supabase.rpc as Function)("get_subordinate_chain", {
         supervisor_uuid: profile.id,
-      });
+      }) as { data: { subordinate_id: string; depth: number }[] | null };
 
       if (chainData && chainData.length > 0) {
         const subordinateIds = chainData.map((c: { subordinate_id: string }) => c.subordinate_id);
