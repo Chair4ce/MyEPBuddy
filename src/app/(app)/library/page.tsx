@@ -136,12 +136,17 @@ export default function LibraryPage() {
         legacyCommunity = (communityData as CommunityStatement[]) || [];
       }
 
-      // Source 2: Statements shared to community via sharing system
-      const { data: sharedCommunityData } = await supabase
-        .from("shared_statements_view")
-        .select("*")
-        .eq("share_type", "community")
-        .order("created_at", { ascending: false });
+      // Source 2: Statements shared to community via sharing system (filtered by AFSC)
+      let sharedCommunityData: SharedStatementView[] | null = null;
+      if (profile.afsc) {
+        const { data } = await supabase
+          .from("shared_statements_view")
+          .select("*")
+          .eq("share_type", "community")
+          .eq("afsc", profile.afsc)
+          .order("created_at", { ascending: false });
+        sharedCommunityData = data as SharedStatementView[];
+      }
 
       // Convert shared community statements to CommunityStatement format
       const sharedCommunity: CommunityStatement[] = ((sharedCommunityData as SharedStatementView[]) || []).map((s) => ({
@@ -588,14 +593,14 @@ export default function LibraryPage() {
               </div>
             ) : filteredCommunity.length === 0 ? (
               <div className="w-full py-12 text-center text-muted-foreground text-sm sm:text-base rounded-lg border bg-card px-4">
-                No community statements for {profile.afsc} yet. Be the first to contribute!
+                No crowdsourced statements for {profile.afsc} yet. Share your statements with the community to contribute!
               </div>
             ) : (
               <>
                 {/* Info banner */}
                 <div className="w-full flex items-start sm:items-center gap-2 p-2.5 sm:p-3 rounded-lg bg-muted/50 text-xs sm:text-sm text-muted-foreground">
                   <Trophy className="size-4 text-yellow-500 shrink-0 mt-0.5 sm:mt-0" />
-                  <span>Top 20 voted statements are used as examples when generating with Community style</span>
+                  <span>Crowdsourced statements for {profile.afsc} — Top 20 by votes are used as examples when generating</span>
                 </div>
 
                 {filteredCommunity.map((statement, index) => (

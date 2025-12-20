@@ -323,7 +323,7 @@ export function StatementCard(props: StatementCardProps) {
                 {isTopRated && rank !== undefined && (
                   <Badge className="gap-1 bg-yellow-500/80 hover:bg-yellow-500 text-yellow-950 text-xs">
                     <Trophy className="size-3" />
-                    Top {rank + 1}
+                    Top {rank + 1} - {statement.afsc}
                   </Badge>
                 )}
                 <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>
