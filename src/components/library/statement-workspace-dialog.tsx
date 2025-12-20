@@ -43,6 +43,8 @@ import {
   ChevronRight,
   Wand2,
   ArrowRight,
+  History,
+  Save,
 } from "lucide-react";
 import type { Rank, RefinedStatement, SharedStatementView, CommunityStatement } from "@/types/database";
 
@@ -64,6 +66,13 @@ interface SelectedSource {
 
 interface GeneratedSuggestion {
   statement: string;
+  copied: boolean;
+}
+
+interface DraftSnapshot {
+  id: string;
+  statement: string;
+  timestamp: Date;
   copied: boolean;
 }
 
@@ -99,6 +108,10 @@ export function StatementWorkspaceDialog({
   // Save state
   const [isSaving, setIsSaving] = useState(false);
 
+  // Snapshot history state
+  const [snapshots, setSnapshots] = useState<DraftSnapshot[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
   const defaultMaxChars = epbConfig?.max_characters_per_statement || MAX_STATEMENT_CHARACTERS;
   const selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
 
@@ -122,6 +135,56 @@ export function StatementWorkspaceDialog({
     setMaxCharLimit(defaultMaxChars);
     setSuggestions([]);
     setSearchQuery("");
+    setSnapshots([]);
+    setIsHistoryOpen(false);
+  }
+
+  // Save current draft as a snapshot
+  function saveSnapshot() {
+    if (!draftStatement.trim()) {
+      toast.error("Nothing to save - draft is empty");
+      return;
+    }
+    const newSnapshot: DraftSnapshot = {
+      id: crypto.randomUUID(),
+      statement: draftStatement,
+      timestamp: new Date(),
+      copied: false,
+    };
+    setSnapshots((prev) => [newSnapshot, ...prev]);
+    toast.success("Snapshot saved");
+  }
+
+  // Copy snapshot to clipboard
+  async function copySnapshot(id: string) {
+    const snapshot = snapshots.find((s) => s.id === id);
+    if (!snapshot) return;
+    
+    try {
+      await navigator.clipboard.writeText(snapshot.statement);
+      setSnapshots((prev) =>
+        prev.map((s) => ({ ...s, copied: s.id === id }))
+      );
+      setTimeout(() => {
+        setSnapshots((prev) =>
+          prev.map((s) => ({ ...s, copied: false }))
+        );
+      }, 2000);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }
+
+  // Delete a snapshot
+  function deleteSnapshot(id: string) {
+    setSnapshots((prev) => prev.filter((s) => s.id !== id));
+    toast.success("Snapshot deleted");
+  }
+
+  // Format timestamp for display
+  function formatTime(date: Date): string {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
   // Get MPA label
@@ -492,6 +555,30 @@ export function StatementWorkspaceDialog({
                       draftStatement.length > maxCharLimit && "[&>*]:bg-destructive"
                     )}
                   />
+                  {/* Snapshot buttons */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 gap-1.5 text-xs"
+                      onClick={saveSnapshot}
+                      disabled={!draftStatement.trim()}
+                    >
+                      <Save className="size-3" />
+                      Save Snapshot
+                    </Button>
+                    {snapshots.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 gap-1.5 text-xs"
+                        onClick={() => setIsHistoryOpen(true)}
+                      >
+                        <History className="size-3" />
+                        History ({snapshots.length})
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Generate Button */}
@@ -707,6 +794,90 @@ export function StatementWorkspaceDialog({
           </div>
         </div>
       </DialogContent>
+
+      {/* Snapshot History Modal */}
+      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="size-5" />
+              Draft History
+            </DialogTitle>
+            <DialogDescription>
+              Your saved snapshots. Click copy or select text to use in your workspace.
+            </DialogDescription>
+          </DialogHeader>
+
+          {snapshots.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No snapshots saved yet
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[400px]">
+              <div className="space-y-3 pr-3">
+                {snapshots.map((snapshot, idx) => (
+                  <div
+                    key={snapshot.id}
+                    className="p-3 rounded-lg border bg-card space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          #{snapshots.length - idx}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {formatTime(snapshot.timestamp)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          • {snapshot.statement.length} chars
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 gap-1"
+                          onClick={() => copySnapshot(snapshot.id)}
+                        >
+                          {snapshot.copied ? (
+                            <>
+                              <Check className="size-3 text-green-500" />
+                              <span className="text-xs">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="size-3" />
+                              <span className="text-xs">Copy</span>
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          onClick={() => deleteSnapshot(snapshot.id)}
+                          aria-label="Delete snapshot"
+                        >
+                          <X className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground select-text cursor-text">
+                      {snapshot.statement}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" onClick={() => setIsHistoryOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
