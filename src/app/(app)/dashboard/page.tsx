@@ -26,7 +26,7 @@ import {
   Target,
   Plus,
 } from "lucide-react";
-import { STANDARD_MGAS } from "@/lib/constants";
+import { ENTRY_MGAS } from "@/lib/constants";
 
 export default function DashboardPage() {
   const { profile, subordinates, epbConfig } = useUserStore();
@@ -84,8 +84,8 @@ export default function DashboardPage() {
     loadAccomplishments();
   }, [profile, cycleYear, supabase, setAccomplishments, setIsLoading]);
 
-  // Use standard MPAs for all users (AFI 36-2406)
-  const mgas = STANDARD_MGAS;
+  // Use entry MPAs for tracking (excludes HLR which is Commander's assessment)
+  const mgas = ENTRY_MGAS;
   const maxEntriesPerMPA = 10;
 
   if (isLoading) {

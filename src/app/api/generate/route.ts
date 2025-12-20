@@ -26,6 +26,7 @@ interface GenerateRequest {
   model: string;
   writingStyle: WritingStyle;
   accomplishments: AccomplishmentData[];
+  selectedMPAs?: string[]; // Optional - if not provided, generate for all MPAs with entries
 }
 
 interface ExampleStatement {
@@ -293,7 +294,7 @@ export async function POST(request: Request) {
     }
 
     const body: GenerateRequest = await request.json();
-    const { rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, accomplishments } = body;
+    const { rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, accomplishments, selectedMPAs } = body;
 
     if (!rateeRank || !accomplishments || accomplishments.length === 0) {
       return NextResponse.json(
@@ -353,8 +354,13 @@ export async function POST(request: Request) {
     const maxChars = settings.max_characters_per_statement || 350;
     const results: { mpa: string; statements: string[]; historyIds: string[] }[] = [];
 
-    // Generate statements for each MPA (using standard MPAs for all users)
-    for (const mpa of STANDARD_MGAS) {
+    // Determine which MPAs to generate for
+    const mpasToGenerate = selectedMPAs && selectedMPAs.length > 0 
+      ? STANDARD_MGAS.filter(mpa => selectedMPAs.includes(mpa.key))
+      : STANDARD_MGAS;
+
+    // Generate statements for each selected MPA
+    for (const mpa of mpasToGenerate) {
       // Special handling for HLR Assessment - uses ALL accomplishments
       const isHLR = mpa.key === "hlr_assessment";
       const mpaAccomplishments = isHLR ? accomplishments : (accomplishmentsByMPA[mpa.key] || []);

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
+import { UpdatePrompt } from "@/components/layout/update-prompt";
 import type { Profile, EPBConfig } from "@/types/database";
 
 interface AppInitializerProps {
@@ -39,6 +40,7 @@ export function AppInitializer({
 
   return (
     <>
+      <UpdatePrompt />
       {showTermsDialog && currentProfile && (
         <TermsAgreementDialog
           open={true}

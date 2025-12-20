@@ -124,6 +124,7 @@ export interface RefinedStatement {
   afsc: string;
   rank: Rank;
   statement: string;
+  cycle_year: number;
   is_favorite: boolean;
   created_at: string;
   updated_at: string;
@@ -141,6 +142,35 @@ export interface CommunityStatement {
   downvotes: number;
   is_approved: boolean;
   created_at: string;
+}
+
+export type ShareType = "user" | "team" | "community";
+
+export interface StatementShare {
+  id: string;
+  statement_id: string;
+  owner_id: string;
+  share_type: ShareType;
+  shared_with_id: string | null;
+  created_at: string;
+}
+
+export interface SharedStatementView {
+  id: string;
+  owner_id: string;
+  mpa: string;
+  afsc: string;
+  rank: Rank;
+  statement: string;
+  cycle_year: number;
+  is_favorite: boolean;
+  created_at: string;
+  updated_at: string;
+  share_type: ShareType;
+  shared_with_id: string | null;
+  share_id: string;
+  owner_name: string | null;
+  owner_rank: Rank | null;
 }
 
 export interface Acronym {
@@ -439,6 +469,24 @@ export interface Database {
         Update: {
           vote_type?: "up" | "down";
         };
+      };
+      statement_shares: {
+        Row: {
+          id: string;
+          statement_id: string;
+          owner_id: string;
+          share_type: "user" | "team" | "community";
+          shared_with_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          statement_id: string;
+          owner_id: string;
+          share_type: "user" | "team" | "community";
+          shared_with_id?: string | null;
+        };
+        Update: never;
       };
     };
     Views: {

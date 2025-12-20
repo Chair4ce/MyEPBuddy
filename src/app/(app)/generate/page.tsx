@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,7 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
-import { AI_MODELS, MAX_STATEMENT_CHARACTERS, STANDARD_MGAS } from "@/lib/constants";
+import { AI_MODELS, MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, ENTRY_MGAS } from "@/lib/constants";
 import { getCharacterCountColor, cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -45,7 +46,7 @@ import {
   AlertCircle,
   Key,
   Pencil,
-  Save,
+  BookmarkPlus,
   Users,
   User,
   Star,
@@ -72,6 +73,10 @@ export default function GeneratePage() {
   const [writingStyle, setWritingStyle] = useState<WritingStyle>("personal");
   const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   
+  // MPA selection state - default to all MPAs selected
+  const [selectedMPAs, setSelectedMPAs] = useState<string[]>(STANDARD_MGAS.map(m => m.key));
+  const [includeHLR, setIncludeHLR] = useState(true);
+  
   // Refinement state
   const [editingStatement, setEditingStatement] = useState<{
     mpa: string;
@@ -81,6 +86,7 @@ export default function GeneratePage() {
     historyId?: string;
   } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingStatementId, setSavingStatementId] = useState<string | null>(null);
 
   const supabase = createClient();
   const cycleYear = userSettings?.current_cycle_year || new Date().getFullYear();
@@ -191,6 +197,17 @@ export default function GeneratePage() {
       return;
     }
 
+    // Build the list of MPAs to generate for
+    const mpasToGenerate = [...selectedMPAs.filter(m => m !== "hlr_assessment")];
+    if (includeHLR) {
+      mpasToGenerate.push("hlr_assessment");
+    }
+
+    if (mpasToGenerate.length === 0) {
+      toast.error("Please select at least one MPA to generate statements for");
+      return;
+    }
+
     setIsGenerating(true);
     setGeneratedStatements([]);
 
@@ -205,6 +222,7 @@ export default function GeneratePage() {
           cycleYear,
           model: selectedModel,
           writingStyle,
+          selectedMPAs: mpasToGenerate,
           accomplishments: accomplishments.map((a) => ({
             mpa: a.mpa,
             action_verb: a.action_verb,
@@ -241,14 +259,45 @@ export default function GeneratePage() {
     });
   }
 
-  async function saveRefinedStatement(addToCommunity: boolean = false) {
+  // Quick save without opening the edit dialog
+  async function quickSaveStatement(mpa: string, index: number, statement: string, historyId?: string) {
+    if (!profile || !rateeProfile) return;
+    
+    const statementKey = `${mpa}-${index}`;
+    setSavingStatementId(statementKey);
+    
+    try {
+      const { error } = await supabase
+        .from("refined_statements")
+        .insert({
+          user_id: profile.id,
+          history_id: historyId || null,
+          mpa: mpa,
+          afsc: rateeProfile.afsc || "UNKNOWN",
+          rank: rateeProfile.rank || "AB",
+          statement: statement,
+          cycle_year: new Date().getFullYear(),
+        } as never);
+
+      if (error) throw error;
+
+      toast.success("Statement saved to your library!");
+    } catch (error) {
+      console.error("Save error:", error);
+      toast.error("Failed to save statement");
+    } finally {
+      setSavingStatementId(null);
+    }
+  }
+
+  async function saveRefinedStatement() {
     if (!editingStatement || !profile || !rateeProfile) return;
     
     setIsSaving(true);
     
     try {
       // Save to refined_statements
-      const { data: refinedData, error: refinedError } = await supabase
+      const { error: refinedError } = await supabase
         .from("refined_statements")
         .insert({
           user_id: profile.id,
@@ -257,23 +306,10 @@ export default function GeneratePage() {
           afsc: rateeProfile.afsc || "UNKNOWN",
           rank: rateeProfile.rank || "AB",
           statement: editingStatement.refined,
-        } as never)
-        .select()
-        .single();
+          cycle_year: new Date().getFullYear(),
+        } as never);
 
       if (refinedError) throw refinedError;
-
-      // Optionally add to community pool
-      if (addToCommunity && refinedData) {
-        await supabase.from("community_statements").insert({
-          contributor_id: profile.id,
-          refined_statement_id: (refinedData as { id: string }).id,
-          mpa: editingStatement.mpa,
-          afsc: rateeProfile.afsc || "UNKNOWN",
-          rank: rateeProfile.rank || "AB",
-          statement: editingStatement.refined,
-        } as never);
-      }
 
       // Update local state
       setGeneratedStatements((prev) =>
@@ -287,11 +323,7 @@ export default function GeneratePage() {
         })
       );
 
-      toast.success(
-        addToCommunity 
-          ? "Statement saved and shared with community!" 
-          : "Statement saved to your library!"
-      );
+      toast.success("Statement saved to your library!");
       setEditingStatement(null);
     } catch (error) {
       console.error("Save error:", error);
@@ -465,6 +497,92 @@ export default function GeneratePage() {
             )}
           </div>
 
+          <Separator />
+
+          {/* MPA Selection */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Generate Statements For</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  const allSelected = ENTRY_MGAS.every(m => selectedMPAs.includes(m.key));
+                  if (allSelected) {
+                    setSelectedMPAs([]);
+                  } else {
+                    setSelectedMPAs(ENTRY_MGAS.map(m => m.key));
+                  }
+                }}
+              >
+                {ENTRY_MGAS.every(m => selectedMPAs.includes(m.key)) ? "Deselect All" : "Select All"}
+              </Button>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {ENTRY_MGAS.map((mpa) => {
+                const count = accomplishments.filter(a => a.mpa === mpa.key).length;
+                const isSelected = selectedMPAs.includes(mpa.key);
+                
+                return (
+                  <label
+                    key={mpa.key}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                      isSelected ? "bg-primary/5 border-primary/30" : "bg-card hover:bg-muted/50",
+                      count === 0 && "opacity-50"
+                    )}
+                  >
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedMPAs([...selectedMPAs, mpa.key]);
+                        } else {
+                          setSelectedMPAs(selectedMPAs.filter(m => m !== mpa.key));
+                        }
+                      }}
+                      aria-label={`Generate for ${mpa.label}`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium truncate block">{mpa.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {count} {count === 1 ? "entry" : "entries"}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* HLR Toggle - separate from entry MPAs */}
+            <div className="pt-2 border-t">
+              <label
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                  includeHLR ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300/50" : "bg-card hover:bg-muted/50"
+                )}
+              >
+                <Checkbox
+                  checked={includeHLR}
+                  onCheckedChange={(checked) => setIncludeHLR(!!checked)}
+                  aria-label="Include HLR Assessment"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Crown className="size-4 text-amber-600" />
+                    <span className="text-sm font-medium">Higher Level Reviewer Assessment</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Commander&apos;s holistic assessment (generated from all entries)
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
           {/* API Key Indicator */}
           <div className="flex items-center gap-2 text-xs sm:text-sm">
             <Key className="size-4 text-muted-foreground shrink-0" />
@@ -616,6 +734,8 @@ export default function GeneratePage() {
                     {statements.map((statement, idx) => {
                       const charCount = statement.length;
                       const isOverLimit = charCount > maxChars;
+                      const statementKey = `${mpa}-${idx}`;
+                      const isSavingThis = savingStatementId === statementKey;
 
                       return (
                         <div
@@ -634,8 +754,24 @@ export default function GeneratePage() {
                                 variant="ghost"
                                 size="icon"
                                 className="size-8 sm:size-9"
+                                onClick={() => quickSaveStatement(mpa, idx, statement, historyIds?.[idx])}
+                                disabled={isSavingThis}
+                                aria-label="Save to library"
+                                title="Save to library"
+                              >
+                                {isSavingThis ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <BookmarkPlus className="size-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 sm:size-9"
                                 onClick={() => openRefinementDialog(mpa, idx, statement, historyIds?.[idx])}
                                 aria-label="Edit and save statement"
+                                title="Edit before saving"
                               >
                                 <Pencil className="size-4" />
                               </Button>
@@ -643,10 +779,11 @@ export default function GeneratePage() {
                                 variant="ghost"
                                 size="icon"
                                 className="size-8 sm:size-9"
-                                onClick={() => copyToClipboard(statement, `${mpa}-${idx}`)}
+                                onClick={() => copyToClipboard(statement, statementKey)}
                                 aria-label="Copy statement"
+                                title="Copy to clipboard"
                               >
-                                {copiedIndex === `${mpa}-${idx}` ? (
+                                {copiedIndex === statementKey ? (
                                   <Check className="size-4 text-green-500" />
                                 ) : (
                                   <Copy className="size-4" />
@@ -727,20 +864,18 @@ export default function GeneratePage() {
           <DialogFooter className="flex-shrink-0 flex-col sm:flex-row gap-2 pt-4 border-t mt-4">
             <Button
               variant="outline"
-              onClick={() => saveRefinedStatement(false)}
-              disabled={isSaving}
+              onClick={() => setEditingStatement(null)}
               className="w-full sm:w-auto"
             >
-              {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : <Save className="size-4 mr-2" />}
-              Save to Library
+              Cancel
             </Button>
             <Button
-              onClick={() => saveRefinedStatement(true)}
+              onClick={() => saveRefinedStatement()}
               disabled={isSaving}
               className="w-full sm:w-auto"
             >
-              {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : <Users className="size-4 mr-2" />}
-              Save & Share
+              {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : <BookmarkPlus className="size-4 mr-2" />}
+              Save to Library
             </Button>
           </DialogFooter>
         </DialogContent>

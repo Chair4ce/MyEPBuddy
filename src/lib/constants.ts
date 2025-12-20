@@ -2,11 +2,18 @@ import type { Rank, MajorGradedArea } from "@/types/database";
 
 // Standard Major Performance Areas - AFI 36-2406
 // These are the same for all users and should not be modified
-export const STANDARD_MGAS: MajorGradedArea[] = [
+
+// MPAs that users can log entries against (excludes HLR which is Commander's assessment)
+export const ENTRY_MGAS: MajorGradedArea[] = [
   { key: "executing_mission", label: "Executing the Mission" },
   { key: "leading_people", label: "Leading People" },
   { key: "managing_resources", label: "Managing Resources" },
   { key: "improving_unit", label: "Improving the Unit" },
+];
+
+// All MPAs including HLR (for statement generation)
+export const STANDARD_MGAS: MajorGradedArea[] = [
+  ...ENTRY_MGAS,
   { key: "hlr_assessment", label: "Higher Level Reviewer Assessment" },
 ];
 

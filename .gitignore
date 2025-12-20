@@ -37,3 +37,6 @@ next-env.d.ts
 # Supabase
 .supabase
 
+# Generated version file
+public/version.json
+

@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "prebuild": "node scripts/generate-version.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "version:generate": "node scripts/generate-version.js",
     "db:push:local": "supabase db push --local",
     "db:push:remote": "supabase db push",
     "db:reset": "supabase db reset"
