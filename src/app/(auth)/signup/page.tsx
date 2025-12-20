@@ -101,16 +101,47 @@ export default function SignupPage() {
     setIsGoogleLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
+      // Check if running as standalone PWA - Google blocks OAuth from embedded webviews
+      const isStandalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window.navigator as any).standalone === true;
 
-      if (error) {
-        toast.error(error.message);
+      if (isStandalone) {
+        // For standalone PWA, get the OAuth URL and open in system browser
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+            skipBrowserRedirect: true,
+          },
+        });
+
+        if (error) {
+          toast.error(error.message);
+          setIsGoogleLoading(false);
+          return;
+        }
+
+        if (data?.url) {
+          // Open in system browser - this bypasses the embedded webview restriction
+          window.open(data.url, "_blank", "noopener,noreferrer");
+          toast.info("Complete sign up, then return to the app");
+        }
         setIsGoogleLoading(false);
+      } else {
+        // Normal browser flow
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+
+        if (error) {
+          toast.error(error.message);
+          setIsGoogleLoading(false);
+        }
       }
     } catch {
       toast.error("An unexpected error occurred");
