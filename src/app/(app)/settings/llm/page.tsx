@@ -76,6 +76,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are an expert Air Force Enlisted Performance 
 
 CRITICAL RULES - NEVER VIOLATE THESE:
 - Every statement MUST be a single, standalone sentence.
+- NEVER use semi-colons (;). Use commas or em-dashes (--) to connect clauses into flowing sentences.
 - Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
 - Character range: AIM for {{max_characters_per_statement}} characters. Minimum 280 characters, maximum {{max_characters_per_statement}}.
 - Generate exactly 2–3 strong statements per Major Performance Area.
