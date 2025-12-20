@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
-import { MAX_STATEMENT_CHARACTERS } from "@/lib/constants";
+import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS } from "@/lib/constants";
 import {
   Search,
   Copy,
@@ -75,7 +75,8 @@ export default function LibraryPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const supabase = createClient();
-  const mgas = epbConfig?.major_graded_areas || [];
+  // Use standard MPAs for all users (AFI 36-2406)
+  const mgas = STANDARD_MGAS;
   const maxChars = epbConfig?.max_characters_per_statement || MAX_STATEMENT_CHARACTERS;
 
   useEffect(() => {

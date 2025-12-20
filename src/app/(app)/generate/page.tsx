@@ -34,7 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
-import { AI_MODELS, MAX_STATEMENT_CHARACTERS } from "@/lib/constants";
+import { AI_MODELS, MAX_STATEMENT_CHARACTERS, STANDARD_MGAS } from "@/lib/constants";
 import { getCharacterCountColor, cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -51,20 +51,13 @@ import {
   Star,
   Crown,
 } from "lucide-react";
-import type { Accomplishment, Profile, UserAPIKeys, WritingStyle, UserLLMSettings, MajorGradedArea } from "@/types/database";
+import type { Accomplishment, Profile, UserAPIKeys, WritingStyle, UserLLMSettings } from "@/types/database";
 
 interface GeneratedStatement {
   mpa: string;
   statements: string[];
   historyIds?: string[];
 }
-
-const DEFAULT_MGAS: MajorGradedArea[] = [
-  { key: "executing_mission", label: "Executing the Mission" },
-  { key: "leading_people", label: "Leading People" },
-  { key: "managing_resources", label: "Managing Resources" },
-  { key: "improving_unit", label: "Improving the Unit" },
-];
 
 export default function GeneratePage() {
   const { profile, subordinates } = useUserStore();
@@ -91,7 +84,8 @@ export default function GeneratePage() {
 
   const supabase = createClient();
   const cycleYear = userSettings?.current_cycle_year || new Date().getFullYear();
-  const mgas = userSettings?.major_graded_areas || DEFAULT_MGAS;
+  // Use standard MPAs for all users (AFI 36-2406)
+  const mgas = STANDARD_MGAS;
   const maxChars = userSettings?.max_characters_per_statement || MAX_STATEMENT_CHARACTERS;
 
   // Load user's writing style preference and LLM settings

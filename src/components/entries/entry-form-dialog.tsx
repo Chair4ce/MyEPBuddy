@@ -27,7 +27,7 @@ import {
   createAccomplishment,
   updateAccomplishment,
 } from "@/app/actions/accomplishments";
-import { DEFAULT_ACTION_VERBS } from "@/lib/constants";
+import { DEFAULT_ACTION_VERBS, STANDARD_MGAS } from "@/lib/constants";
 import { Loader2 } from "lucide-react";
 import type { Accomplishment } from "@/types/database";
 
@@ -59,7 +59,8 @@ export function EntryFormDialog({
     tags: "",
   });
 
-  const mgas = epbConfig?.major_graded_areas || [];
+  // Use standard MPAs for all users (AFI 36-2406)
+  const mgas = STANDARD_MGAS;
   const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
 
   // Reset form when dialog opens/closes or edit entry changes

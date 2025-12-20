@@ -37,6 +37,7 @@ import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
 import { toast } from "@/components/ui/sonner";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
 import { Plus, Pencil, Trash2, Filter, FileText } from "lucide-react";
+import { STANDARD_MGAS } from "@/lib/constants";
 import type { Accomplishment } from "@/types/database";
 
 function EntriesContent() {
@@ -58,7 +59,8 @@ function EntriesContent() {
 
   const supabase = createClient();
   const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
-  const mgas = epbConfig?.major_graded_areas || [];
+  // Use standard MPAs for all users (AFI 36-2406)
+  const mgas = STANDARD_MGAS;
 
   // Open dialog if ?new=true
   useEffect(() => {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useUserStore } from "@/stores/user-store";
@@ -27,6 +28,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -58,8 +69,8 @@ import {
   Search,
   ArrowRight,
 } from "lucide-react";
-import type { UserLLMSettings, Acronym, Abbreviation, MajorGradedArea, RankVerbProgression } from "@/types/database";
-import { RANKS } from "@/lib/constants";
+import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression } from "@/types/database";
+import { RANKS, STANDARD_MGAS } from "@/lib/constants";
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant with deep knowledge of Air Force operations, programs, and terminology. Your sole purpose is to generate impactful, narrative-style performance statements that strictly comply with AFI 36-2406 (22 Aug 2025).
 
@@ -124,14 +135,6 @@ ACRONYMS REFERENCE:
 
 const DEFAULT_STYLE_GUIDELINES = `MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.`;
 
-const DEFAULT_MGAS: MajorGradedArea[] = [
-  { key: "executing_mission", label: "Executing the Mission" },
-  { key: "leading_people", label: "Leading People" },
-  { key: "managing_resources", label: "Managing Resources" },
-  { key: "improving_unit", label: "Improving the Unit" },
-  { key: "hlr_assessment", label: "Higher Level Reviewer Assessment" },
-];
-
 const DEFAULT_RANK_VERBS: RankVerbProgression = {
   AB: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Participated"] },
   Amn: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Executed"] },
@@ -144,82 +147,6 @@ const DEFAULT_RANK_VERBS: RankVerbProgression = {
   CMSgt: { primary: ["Championed", "Transformed", "Pioneered"], secondary: ["Revolutionized", "Institutionalized", "Shaped"] },
 };
 
-// Separate component for MPA editing to prevent re-renders
-function MPAEditor({ 
-  mgas, 
-  onChange 
-}: { 
-  mgas: MajorGradedArea[]; 
-  onChange: (mgas: MajorGradedArea[]) => void;
-}) {
-  const [localMgas, setLocalMgas] = useState(mgas);
-
-  useEffect(() => {
-    setLocalMgas(mgas);
-  }, [mgas]);
-
-  const handleChange = useCallback((idx: number, field: 'key' | 'label', value: string) => {
-    const newMgas = [...localMgas];
-    newMgas[idx] = { ...newMgas[idx], [field]: value };
-    setLocalMgas(newMgas);
-  }, [localMgas]);
-
-  const handleBlur = useCallback(() => {
-    onChange(localMgas);
-  }, [localMgas, onChange]);
-
-  const handleAdd = useCallback(() => {
-    const newMgas = [...localMgas, { key: "", label: "" }];
-    setLocalMgas(newMgas);
-    onChange(newMgas);
-  }, [localMgas, onChange]);
-
-  const handleRemove = useCallback((idx: number) => {
-    const newMgas = localMgas.filter((_, i) => i !== idx);
-    setLocalMgas(newMgas);
-    onChange(newMgas);
-  }, [localMgas, onChange]);
-
-  return (
-    <div className="grid gap-3">
-      {localMgas.map((mpa, idx) => (
-        <div key={idx} className="flex flex-col gap-2 sm:flex-row sm:items-center p-3 border rounded-lg bg-muted/30">
-          <div className="flex-1 grid gap-2 sm:grid-cols-2">
-            <Input
-              value={mpa.key}
-              onChange={(e) => handleChange(idx, 'key', e.target.value)}
-              onBlur={handleBlur}
-              placeholder="Key (e.g., executing_mission)"
-              className="text-sm"
-              aria-label={`MPA ${idx + 1} key`}
-            />
-            <Input
-              value={mpa.label}
-              onChange={(e) => handleChange(idx, 'label', e.target.value)}
-              onBlur={handleBlur}
-              placeholder="Label (e.g., Executing the Mission)"
-              className="text-sm"
-              aria-label={`MPA ${idx + 1} label`}
-            />
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleRemove(idx)}
-            className="self-end sm:self-auto flex-shrink-0"
-            aria-label={`Remove MPA ${idx + 1}`}
-          >
-            <Trash2 className="size-4 text-destructive" />
-          </Button>
-        </div>
-      ))}
-      <Button variant="outline" onClick={handleAdd} className="w-full sm:w-auto">
-        <Plus className="size-4 mr-2" />
-        Add MPA
-      </Button>
-    </div>
-  );
-}
 
 // Available placeholders for system prompt
 const AVAILABLE_PLACEHOLDERS = [
@@ -246,37 +173,32 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
   const missingCount = placeholderStatus.length - usedCount;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <Label className="text-xs text-muted-foreground">
-          Placeholders (auto-replaced at generation time)
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-[10px] sm:text-xs text-muted-foreground">
+          Placeholders
         </Label>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{usedCount} used</span>
-          {missingCount > 0 && (
-            <span>· {missingCount} not included</span>
-          )}
-        </div>
+        <span className="text-[10px] sm:text-xs text-muted-foreground">
+          {usedCount}/{placeholderStatus.length}
+        </span>
       </div>
-      <div className="flex flex-wrap gap-1.5 sm:gap-2">
+      <div className="flex flex-wrap gap-1">
         {placeholderStatus.map((p) => (
           <Tooltip key={p.key}>
             <TooltipTrigger asChild>
               <Badge
                 variant={p.isUsed ? "secondary" : "outline"}
                 className={cn(
-                  "cursor-help font-mono text-[10px] sm:text-xs px-1.5 sm:px-2",
+                  "cursor-help font-mono text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0",
                   !p.isUsed && "opacity-50"
                 )}
               >
-                {p.key}
+                {p.key.replace(/\{\{|\}\}/g, '')}
               </Badge>
             </TooltipTrigger>
-            <TooltipContent>
-              <p className="font-medium">{p.description}</p>
-              <p className="text-xs text-muted-foreground">
-                {p.isUsed ? "Included in your prompt" : "Not included — add to use this feature"}
-              </p>
+            <TooltipContent side="bottom" className="max-w-[200px]">
+              <p className="text-xs font-medium">{p.key}</p>
+              <p className="text-[10px] text-muted-foreground">{p.description}</p>
             </TooltipContent>
           </Tooltip>
         ))}
@@ -362,43 +284,45 @@ function AbbreviationEditor({
 
   return (
     <Card>
-      <CardHeader className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <CardTitle>Word Abbreviations</CardTitle>
-            <CardDescription className="mt-1.5">
-              Define word-to-abbreviation mappings ({abbreviations.length} defined)
+      <CardHeader className="px-3 py-3 sm:px-6 sm:py-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base sm:text-lg">Abbreviations</CardTitle>
+            <CardDescription className="text-xs sm:text-sm mt-0.5">
+              {abbreviations.length} defined
             </CardDescription>
           </div>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto flex-shrink-0">
-                <Plus className="size-4 mr-2" />
-                Add Abbreviation
+              <Button size="sm" className="h-8 px-2 sm:px-3 flex-shrink-0">
+                <Plus className="size-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Add</span>
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>Add Abbreviation</DialogTitle>
-                <DialogDescription>
-                  Enter the full word and its abbreviated form
+                <DialogTitle className="text-base">Add Abbreviation</DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm">
+                  Enter word and abbreviation
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Full Word</Label>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Full Word</Label>
                   <Input
                     value={newAbbrev.word}
                     onChange={(e) => setNewAbbrev({ ...newAbbrev, word: e.target.value })}
-                    placeholder="e.g., maintenance"
+                    placeholder="maintenance"
+                    className="h-9 text-sm"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Abbreviation</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Abbreviation</Label>
                   <Input
                     value={newAbbrev.abbreviation}
                     onChange={(e) => setNewAbbrev({ ...newAbbrev, abbreviation: e.target.value })}
-                    placeholder="e.g., maint"
+                    placeholder="maint"
+                    className="h-9 text-sm"
                   />
                 </div>
               </div>
@@ -412,83 +336,85 @@ function AbbreviationEditor({
 
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit Abbreviation</DialogTitle>
-            <DialogDescription>
-              Modify the word or its abbreviated form
+            <DialogTitle className="text-base">Edit Abbreviation</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Modify word or abbreviation
             </DialogDescription>
           </DialogHeader>
           {editingAbbrev && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Full Word</Label>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Full Word</Label>
                 <Input
                   value={editingAbbrev.word}
                   onChange={(e) => setEditingAbbrev({ ...editingAbbrev, word: e.target.value })}
-                  placeholder="e.g., maintenance"
+                  placeholder="maintenance"
+                  className="h-9 text-sm"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Abbreviation</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Abbreviation</Label>
                 <Input
                   value={editingAbbrev.abbreviation}
                   onChange={(e) => setEditingAbbrev({ ...editingAbbrev, abbreviation: e.target.value })}
-                  placeholder="e.g., maint"
+                  placeholder="maint"
+                  className="h-9 text-sm"
                 />
               </div>
             </div>
           )}
           <DialogFooter className="flex-col gap-2 sm:flex-row">
             <Button variant="outline" onClick={() => setShowEditDialog(false)} className="w-full sm:w-auto">Cancel</Button>
-            <Button onClick={handleSaveEdit} className="w-full sm:w-auto">Save Changes</Button>
+            <Button onClick={handleSaveEdit} className="w-full sm:w-auto">Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <CardContent className="space-y-4">
+      <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search abbreviations..."
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-8 h-8 sm:h-9 text-sm"
             aria-label="Search abbreviations"
           />
         </div>
         
         {/* Mobile: Card layout */}
-        <ScrollArea className="h-[400px] border rounded-md md:hidden">
-          <div className="p-2 space-y-2">
+        <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md md:hidden">
+          <div className="p-1.5 space-y-1">
             {filteredAbbreviations.map((abbrev, idx) => (
               <div 
                 key={`${abbrev.word}-${idx}`} 
-                className="flex items-center justify-between gap-2 p-3 bg-muted/30 rounded-lg"
+                className="flex items-center justify-between gap-1.5 p-2 bg-muted/30 rounded"
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="font-medium truncate">{abbrev.word}</span>
-                  <ArrowRight className="size-3 text-muted-foreground flex-shrink-0" />
+                <div className="flex items-center gap-1 min-w-0 flex-1 text-xs sm:text-sm">
+                  <span className="font-medium truncate max-w-[80px] sm:max-w-none">{abbrev.word}</span>
+                  <ArrowRight className="size-2.5 text-muted-foreground flex-shrink-0" />
                   <span className="font-mono text-primary truncate">{abbrev.abbreviation}</span>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-center flex-shrink-0">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => handleEdit(abbrev)}
-                    className="size-8"
+                    className="size-7"
                     aria-label={`Edit ${abbrev.word}`}
                   >
-                    <Pencil className="size-3.5 text-muted-foreground" />
+                    <Pencil className="size-3 text-muted-foreground" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemove(abbrev.word)}
-                    className="size-8"
+                    className="size-7"
                     aria-label={`Remove ${abbrev.word}`}
                   >
-                    <Trash2 className="size-3.5 text-destructive" />
+                    <Trash2 className="size-3 text-destructive" />
                   </Button>
                 </div>
               </div>
@@ -594,40 +520,42 @@ function AcronymEditor({
 
   return (
     <Card>
-      <CardHeader className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <CardTitle>Approved Acronyms</CardTitle>
-            <CardDescription className="mt-1.5">
-              Manage the list of approved acronyms ({acronyms.length} total)
+      <CardHeader className="px-3 py-3 sm:px-6 sm:py-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base sm:text-lg">Acronyms</CardTitle>
+            <CardDescription className="text-xs sm:text-sm mt-0.5">
+              {acronyms.length} approved
             </CardDescription>
           </div>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto flex-shrink-0">
-                <Plus className="size-4 mr-2" />
-                Add Acronym
+              <Button size="sm" className="h-8 px-2 sm:px-3 flex-shrink-0">
+                <Plus className="size-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Add</span>
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>Add Acronym</DialogTitle>
+                <DialogTitle className="text-base">Add Acronym</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Acronym</Label>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Acronym</Label>
                   <Input
                     value={newAcronym.acronym}
                     onChange={(e) => setNewAcronym({ ...newAcronym, acronym: e.target.value })}
-                    placeholder="e.g., AFSC"
+                    placeholder="AFSC"
+                    className="h-9 text-sm"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Definition</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Definition</Label>
                   <Input
                     value={newAcronym.definition}
                     onChange={(e) => setNewAcronym({ ...newAcronym, definition: e.target.value })}
-                    placeholder="e.g., AIR FORCE SPECIALTY CODE"
+                    placeholder="AIR FORCE SPECIALTY CODE"
+                    className="h-9 text-sm"
                   />
                 </div>
               </div>
@@ -638,38 +566,38 @@ function AcronymEditor({
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search acronyms..."
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-8 h-8 sm:h-9 text-sm"
             aria-label="Search acronyms"
           />
         </div>
 
         {/* Mobile: Card layout */}
-        <ScrollArea className="h-[400px] border rounded-md md:hidden">
-          <div className="p-2 space-y-2">
+        <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md md:hidden">
+          <div className="p-1.5 space-y-1">
             {filteredAcronyms.map((acr) => (
               <div 
                 key={acr.acronym} 
-                className="flex items-start justify-between gap-2 p-3 bg-muted/30 rounded-lg"
+                className="flex items-start justify-between gap-1.5 p-2 bg-muted/30 rounded"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="font-mono font-semibold text-primary block">{acr.acronym}</span>
-                  <span className="text-sm text-muted-foreground break-words">{acr.definition}</span>
+                  <span className="font-mono font-semibold text-primary text-xs sm:text-sm block">{acr.acronym}</span>
+                  <span className="text-[10px] sm:text-xs text-muted-foreground break-words leading-tight">{acr.definition}</span>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => handleRemove(acr.acronym)}
-                  className="size-8 flex-shrink-0"
+                  className="size-7 flex-shrink-0"
                   aria-label={`Remove ${acr.acronym}`}
                 >
-                  <Trash2 className="size-3.5 text-destructive" />
+                  <Trash2 className="size-3 text-destructive" />
                 </Button>
               </div>
             ))}
@@ -712,8 +640,21 @@ function AcronymEditor({
   );
 }
 
+// Type for stored settings state (excludes MPAs since they're not user-editable)
+interface SettingsState {
+  maxChars: number;
+  scodDate: string;
+  cycleYear: number;
+  styleGuidelines: string;
+  systemPrompt: string;
+  rankVerbs: RankVerbProgression;
+  acronyms: Acronym[];
+  abbreviations: Abbreviation[];
+}
+
 export default function LLMSettingsPage() {
   const { profile } = useUserStore();
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasExistingSettings, setHasExistingSettings] = useState(false);
@@ -723,17 +664,89 @@ export default function LLMSettingsPage() {
   const [scodDate, setScodDate] = useState("31 March");
   const [cycleYear, setCycleYear] = useState(new Date().getFullYear());
   const [styleGuidelines, setStyleGuidelines] = useState(DEFAULT_STYLE_GUIDELINES);
-  const [mgas, setMgas] = useState<MajorGradedArea[]>(DEFAULT_MGAS);
+  // MPAs are standardized by AFI 36-2406 and not user-editable
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [rankVerbs, setRankVerbs] = useState<RankVerbProgression>(DEFAULT_RANK_VERBS);
   const [acronyms, setAcronyms] = useState<Acronym[]>(DEFAULT_ACRONYMS);
   const [abbreviations, setAbbreviations] = useState<Abbreviation[]>(DEFAULT_ABBREVIATIONS);
+
+  // Track initial state to detect changes
+  const initialStateRef = useRef<SettingsState | null>(null);
+
+  // Navigation interception state
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
   // Dialog state for rank verb editing
   const [editingRank, setEditingRank] = useState<string | null>(null);
   const [editingVerbs, setEditingVerbs] = useState({ primary: "", secondary: "" });
 
   const supabase = createClient();
+
+  // Check if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    if (!initialStateRef.current || isLoading) return false;
+    
+    const initial = initialStateRef.current;
+    return (
+      maxChars !== initial.maxChars ||
+      scodDate !== initial.scodDate ||
+      cycleYear !== initial.cycleYear ||
+      styleGuidelines !== initial.styleGuidelines ||
+      systemPrompt !== initial.systemPrompt ||
+      JSON.stringify(rankVerbs) !== JSON.stringify(initial.rankVerbs) ||
+      JSON.stringify(acronyms) !== JSON.stringify(initial.acronyms) ||
+      JSON.stringify(abbreviations) !== JSON.stringify(initial.abbreviations)
+    );
+  }, [maxChars, scodDate, cycleYear, styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, isLoading]);
+
+  // Warn user before leaving with unsaved changes (browser close/refresh)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasChanges]);
+
+  // Intercept in-app navigation clicks when there are unsaved changes
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (!hasChanges) return;
+      
+      const target = e.target as HTMLElement;
+      const link = target.closest('a');
+      
+      if (link) {
+        const href = link.getAttribute('href');
+        // Only intercept internal navigation (not external links or same-page anchors)
+        if (href && href.startsWith('/') && !href.startsWith('/settings/llm')) {
+          e.preventDefault();
+          e.stopPropagation();
+          setPendingNavigation(href);
+          setShowUnsavedDialog(true);
+        }
+      }
+    };
+
+    // Use capture phase to intercept before other handlers
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [hasChanges]);
+
+  // Handle confirmed navigation after user chooses to discard changes
+  const handleConfirmNavigation = useCallback(() => {
+    if (pendingNavigation) {
+      setShowUnsavedDialog(false);
+      router.push(pendingNavigation);
+      setPendingNavigation(null);
+    }
+  }, [pendingNavigation, router]);
 
   useEffect(() => {
     if (profile) {
@@ -759,15 +772,48 @@ export default function LLMSettingsPage() {
       if (data) {
         setHasExistingSettings(true);
         const settings = data as unknown as UserLLMSettings;
-        setMaxChars(settings.max_characters_per_statement);
-        setScodDate(settings.scod_date);
-        setCycleYear(settings.current_cycle_year);
-        setStyleGuidelines(settings.style_guidelines);
-        setMgas(settings.major_graded_areas);
-        setSystemPrompt(settings.base_system_prompt);
-        setRankVerbs(settings.rank_verb_progression);
-        setAcronyms(settings.acronyms);
-        setAbbreviations(settings.abbreviations || DEFAULT_ABBREVIATIONS);
+        const loadedMaxChars = settings.max_characters_per_statement;
+        const loadedScodDate = settings.scod_date;
+        const loadedCycleYear = settings.current_cycle_year;
+        const loadedStyleGuidelines = settings.style_guidelines;
+        const loadedSystemPrompt = settings.base_system_prompt;
+        const loadedRankVerbs = settings.rank_verb_progression;
+        const loadedAcronyms = settings.acronyms;
+        const loadedAbbreviations = settings.abbreviations || DEFAULT_ABBREVIATIONS;
+
+        setMaxChars(loadedMaxChars);
+        setScodDate(loadedScodDate);
+        setCycleYear(loadedCycleYear);
+        setStyleGuidelines(loadedStyleGuidelines);
+        // MPAs are not user-editable, always use STANDARD_MGAS
+        setSystemPrompt(loadedSystemPrompt);
+        setRankVerbs(loadedRankVerbs);
+        setAcronyms(loadedAcronyms);
+        setAbbreviations(loadedAbbreviations);
+
+        // Store initial state for change detection (excludes MPAs)
+        initialStateRef.current = {
+          maxChars: loadedMaxChars,
+          scodDate: loadedScodDate,
+          cycleYear: loadedCycleYear,
+          styleGuidelines: loadedStyleGuidelines,
+          systemPrompt: loadedSystemPrompt,
+          rankVerbs: JSON.parse(JSON.stringify(loadedRankVerbs)),
+          acronyms: JSON.parse(JSON.stringify(loadedAcronyms)),
+          abbreviations: JSON.parse(JSON.stringify(loadedAbbreviations)),
+        };
+      } else {
+        // No existing settings - store defaults as initial state
+        initialStateRef.current = {
+          maxChars: 350,
+          scodDate: "31 March",
+          cycleYear: new Date().getFullYear(),
+          styleGuidelines: DEFAULT_STYLE_GUIDELINES,
+          systemPrompt: DEFAULT_SYSTEM_PROMPT,
+          rankVerbs: JSON.parse(JSON.stringify(DEFAULT_RANK_VERBS)),
+          acronyms: JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)),
+          abbreviations: JSON.parse(JSON.stringify(DEFAULT_ABBREVIATIONS)),
+        };
       }
     } catch (error) {
       console.error("Error loading settings:", error);
@@ -786,7 +832,7 @@ export default function LLMSettingsPage() {
         max_characters_per_statement: maxChars,
         scod_date: scodDate,
         current_cycle_year: cycleYear,
-        major_graded_areas: mgas,
+        major_graded_areas: STANDARD_MGAS, // Always use standard MPAs
         rank_verb_progression: rankVerbs,
         style_guidelines: styleGuidelines,
         base_system_prompt: systemPrompt,
@@ -807,13 +853,37 @@ export default function LLMSettingsPage() {
         setHasExistingSettings(true);
       }
 
+      // Update initial state to match saved state (excludes MPAs)
+      initialStateRef.current = {
+        maxChars,
+        scodDate,
+        cycleYear,
+        styleGuidelines,
+        systemPrompt,
+        rankVerbs: JSON.parse(JSON.stringify(rankVerbs)),
+        acronyms: JSON.parse(JSON.stringify(acronyms)),
+        abbreviations: JSON.parse(JSON.stringify(abbreviations)),
+      };
+
       toast.success("Settings saved successfully");
+      return true;
     } catch (error) {
       console.error("Error saving settings:", error);
       toast.error("Failed to save settings");
+      return false;
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Handle save and navigate
+  async function handleSaveAndNavigate() {
+    const saved = await saveSettings();
+    if (saved && pendingNavigation) {
+      router.push(pendingNavigation);
+      setPendingNavigation(null);
+    }
+    setShowUnsavedDialog(false);
   }
 
   function resetToDefaults() {
@@ -821,7 +891,7 @@ export default function LLMSettingsPage() {
     setScodDate("31 March");
     setCycleYear(new Date().getFullYear());
     setStyleGuidelines(DEFAULT_STYLE_GUIDELINES);
-    setMgas(DEFAULT_MGAS);
+    // MPAs are not user-editable, always use STANDARD_MGAS
     setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     setRankVerbs(DEFAULT_RANK_VERBS);
     setAcronyms(DEFAULT_ACRONYMS);
@@ -852,120 +922,143 @@ export default function LLMSettingsPage() {
   }
 
   return (
-    <div className="space-y-6 min-w-0">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">LLM Settings</h1>
-          <p className="text-muted-foreground">
+    <div className="space-y-4 sm:space-y-6 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight">LLM Settings</h1>
+            {hasChanges && (
+              <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                Unsaved
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
             Customize your AI generation settings and system prompt
           </p>
         </div>
-        <div className="flex gap-2 flex-shrink-0">
-          <Button variant="outline" onClick={resetToDefaults} className="flex-1 sm:flex-none">
-            <RotateCcw className="size-4 sm:mr-2" />
-            <span className="hidden sm:inline">Reset Defaults</span>
-            <span className="sm:hidden">Reset</span>
+        <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
+          <Button variant="outline" size="sm" onClick={resetToDefaults} className="h-8 sm:h-9 px-2 sm:px-3">
+            <RotateCcw className="size-3.5 sm:size-4" />
+            <span className="hidden md:inline ml-2">Reset</span>
           </Button>
-          <Button onClick={saveSettings} disabled={isSaving} className="flex-1 sm:flex-none">
-            {isSaving ? <Loader2 className="size-4 animate-spin sm:mr-2" /> : <Save className="size-4 sm:mr-2" />}
-            <span className="hidden sm:inline">Save Settings</span>
-            <span className="sm:hidden">Save</span>
-          </Button>
+          {hasChanges && (
+            <Button size="sm" onClick={saveSettings} disabled={isSaving} className="h-8 sm:h-9 px-2 sm:px-3">
+              {isSaving ? <Loader2 className="size-3.5 sm:size-4 animate-spin" /> : <Save className="size-3.5 sm:size-4" />}
+              <span className="hidden md:inline ml-2">Save</span>
+            </Button>
+          )}
         </div>
       </div>
 
-      <Tabs defaultValue="general" className="space-y-4">
-        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-          <TabsList className="inline-flex w-max sm:w-auto h-auto gap-1 p-1">
-            <TabsTrigger value="general" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
-              <Settings className="size-3.5 sm:size-4 flex-shrink-0" />
-              <span>General</span>
-            </TabsTrigger>
-            <TabsTrigger value="prompt" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
-              <Wand2 className="size-3.5 sm:size-4 flex-shrink-0" />
-              <span className="hidden xs:inline">System </span><span>Prompt</span>
-            </TabsTrigger>
-            <TabsTrigger value="verbs" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
-              <FileText className="size-3.5 sm:size-4 flex-shrink-0" />
-              <span>Verbs</span>
-            </TabsTrigger>
-            <TabsTrigger value="abbreviations" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
-              <ArrowRight className="size-3.5 sm:size-4 flex-shrink-0" />
-              <span className="hidden sm:inline">Abbreviations</span>
-              <span className="sm:hidden">Abbr</span>
-            </TabsTrigger>
-            <TabsTrigger value="acronyms" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
-              <BookOpen className="size-3.5 sm:size-4 flex-shrink-0" />
-              <span>Acronyms</span>
-            </TabsTrigger>
-          </TabsList>
-        </div>
+      <Tabs defaultValue="general" className="space-y-3 sm:space-y-4">
+        <TabsList className="w-full h-auto p-1 grid grid-cols-5 gap-0.5">
+          <TabsTrigger value="general" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+            <Settings className="size-4 sm:size-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">General</span>
+          </TabsTrigger>
+          <TabsTrigger value="prompt" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+            <Wand2 className="size-4 sm:size-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Prompt</span>
+          </TabsTrigger>
+          <TabsTrigger value="verbs" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+            <FileText className="size-4 sm:size-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Verbs</span>
+          </TabsTrigger>
+          <TabsTrigger value="abbreviations" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+            <ArrowRight className="size-4 sm:size-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Abbr</span>
+          </TabsTrigger>
+          <TabsTrigger value="acronyms" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+            <BookOpen className="size-4 sm:size-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Acronyms</span>
+          </TabsTrigger>
+        </TabsList>
 
         {/* General Settings */}
         <TabsContent value="general">
           <Card>
-            <CardHeader>
-              <CardTitle>General Settings</CardTitle>
-              <CardDescription>
+            <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
+              <CardTitle className="text-base sm:text-lg">General Settings</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Configure basic EPB generation parameters
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="max-chars">Max Characters per Statement</Label>
+            <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-4 sm:space-y-6">
+              <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="max-chars" className="text-xs sm:text-sm">Max Chars/Statement</Label>
                   <Input
                     id="max-chars"
                     type="number"
                     value={maxChars}
                     onChange={(e) => setMaxChars(parseInt(e.target.value) || 350)}
                     aria-describedby="max-chars-hint"
+                    className="h-9"
                   />
-                  <p id="max-chars-hint" className="text-xs text-muted-foreground">AFI 36-2406 recommends 350 characters</p>
+                  <p id="max-chars-hint" className="text-[10px] sm:text-xs text-muted-foreground">AFI 36-2406: 350 chars</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="scod">SCOD Date</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="scod" className="text-xs sm:text-sm">SCOD Date</Label>
                   <Input
                     id="scod"
                     value={scodDate}
                     onChange={(e) => setScodDate(e.target.value)}
                     placeholder="31 March"
                     aria-describedby="scod-hint"
+                    className="h-9"
                   />
-                  <p id="scod-hint" className="text-xs text-muted-foreground">Static Close Out Date</p>
+                  <p id="scod-hint" className="text-[10px] sm:text-xs text-muted-foreground">Static Close Out Date</p>
                 </div>
-                <div className="space-y-2 sm:col-span-2 lg:col-span-1">
-                  <Label htmlFor="cycle-year">Current Cycle Year</Label>
+                <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                  <Label htmlFor="cycle-year" className="text-xs sm:text-sm">Cycle Year</Label>
                   <Input
                     id="cycle-year"
                     type="number"
                     value={cycleYear}
                     onChange={(e) => setCycleYear(parseInt(e.target.value) || new Date().getFullYear())}
+                    className="h-9"
                   />
                 </div>
               </div>
 
               <Separator />
 
-              <div className="space-y-2">
-                <Label htmlFor="style">Style Guidelines</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="style" className="text-xs sm:text-sm">Style Guidelines</Label>
                 <Textarea
                   id="style"
                   value={styleGuidelines}
                   onChange={(e) => setStyleGuidelines(e.target.value)}
-                  rows={4}
+                  rows={3}
                   placeholder="Enter your writing style guidelines..."
+                  className="text-sm min-h-[80px]"
                 />
-                <p className="text-xs text-muted-foreground">
-                  These guidelines are injected into the system prompt via {"{{style_guidelines}}"}
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  Injected via {"{{style_guidelines}}"}
                 </p>
               </div>
 
               <Separator />
 
-              <div className="space-y-4">
-                <Label>Major Performance Areas</Label>
-                <MPAEditor mgas={mgas} onChange={setMgas} />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs sm:text-sm">Major Performance Areas</Label>
+                  <Badge variant="secondary" className="text-[10px]">AFI 36-2406</Badge>
+                </div>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  Standard EPB categories used for statement generation. These are defined by Air Force regulations.
+                </p>
+                <div className="grid gap-1.5">
+                  {STANDARD_MGAS.map((mpa) => (
+                    <div 
+                      key={mpa.key} 
+                      className="flex items-center gap-2 p-2 border rounded bg-muted/30 text-xs sm:text-sm"
+                    >
+                      <span className="font-medium">{mpa.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -974,19 +1067,19 @@ export default function LLMSettingsPage() {
         {/* System Prompt */}
         <TabsContent value="prompt">
           <Card>
-            <CardHeader>
-              <CardTitle>System Prompt</CardTitle>
-              <CardDescription>
-                Customize the AI system prompt. Use placeholders for dynamic values.
+            <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
+              <CardTitle className="text-base sm:text-lg">System Prompt</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Customize the AI system prompt with placeholders.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-3 sm:space-y-4">
               <PlaceholderStatus systemPrompt={systemPrompt} />
               <Textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                rows={20}
-                className="font-mono text-sm"
+                rows={12}
+                className="font-mono text-xs sm:text-sm min-h-[200px] sm:min-h-[400px]"
                 placeholder="Enter your custom system prompt..."
               />
             </CardContent>
@@ -996,21 +1089,21 @@ export default function LLMSettingsPage() {
         {/* Rank Verbs */}
         <TabsContent value="verbs">
           <Card>
-            <CardHeader>
-              <CardTitle>Rank Verb Progression</CardTitle>
-              <CardDescription>
-                Define action verbs appropriate for each rank level
+            <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
+              <CardTitle className="text-base sm:text-lg">Rank Verb Progression</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Define action verbs for each rank level
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6">
               {/* Mobile: Card layout */}
-              <div className="grid gap-3 md:hidden">
+              <div className="grid gap-2 md:hidden">
                 {RANKS.map(({ value: rank }) => {
                   const verbs = rankVerbs[rank] || { primary: [], secondary: [] };
                   return (
-                    <div key={rank} className="p-3 border rounded-lg space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-lg">{rank}</span>
+                    <div key={rank} className="p-2 sm:p-3 border rounded-lg space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-sm sm:text-base">{rank}</span>
                         <Dialog
                           open={editingRank === rank}
                           onOpenChange={(open) => {
@@ -1026,56 +1119,57 @@ export default function LLMSettingsPage() {
                           }}
                         >
                           <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Pencil className="size-3 mr-1.5" />
-                              Edit
+                            <Button variant="ghost" size="sm" className="h-7 px-2">
+                              <Pencil className="size-3" />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
                             <DialogHeader>
-                              <DialogTitle>Edit Verbs for {rank}</DialogTitle>
-                              <DialogDescription>
-                                Enter comma-separated verbs for this rank
+                              <DialogTitle className="text-base">Edit Verbs for {rank}</DialogTitle>
+                              <DialogDescription className="text-xs sm:text-sm">
+                                Enter comma-separated verbs
                               </DialogDescription>
                             </DialogHeader>
-                            <div className="space-y-4">
-                              <div className="space-y-2">
-                                <Label>Primary Verbs</Label>
+                            <div className="space-y-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs sm:text-sm">Primary Verbs</Label>
                                 <Input
                                   value={editingVerbs.primary}
                                   onChange={(e) => setEditingVerbs({ ...editingVerbs, primary: e.target.value })}
                                   placeholder="Led, Managed, Directed"
+                                  className="h-9 text-sm"
                                 />
                               </div>
-                              <div className="space-y-2">
-                                <Label>Secondary Verbs</Label>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs sm:text-sm">Secondary Verbs</Label>
                                 <Input
                                   value={editingVerbs.secondary}
                                   onChange={(e) => setEditingVerbs({ ...editingVerbs, secondary: e.target.value })}
-                                  placeholder="Supervised, Coordinated, Developed"
+                                  placeholder="Supervised, Coordinated"
+                                  className="h-9 text-sm"
                                 />
                               </div>
                             </div>
-                            <DialogFooter>
-                              <Button onClick={() => updateRankVerbs(rank)}>Save</Button>
+                            <DialogFooter className="flex-col gap-2 sm:flex-row">
+                              <Button onClick={() => updateRankVerbs(rank)} className="w-full sm:w-auto">Save</Button>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         <div>
-                          <p className="text-xs text-muted-foreground mb-1.5">Primary</p>
-                          <div className="flex flex-wrap gap-1">
+                          <p className="text-[10px] text-muted-foreground mb-1">Primary</p>
+                          <div className="flex flex-wrap gap-0.5">
                             {verbs.primary.map((v) => (
-                              <Badge key={v} variant="secondary" className="text-xs">{v}</Badge>
+                              <Badge key={v} variant="secondary" className="text-[10px] px-1.5 py-0">{v}</Badge>
                             ))}
                           </div>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground mb-1.5">Secondary</p>
-                          <div className="flex flex-wrap gap-1">
+                          <p className="text-[10px] text-muted-foreground mb-1">Secondary</p>
+                          <div className="flex flex-wrap gap-0.5">
                             {verbs.secondary.map((v) => (
-                              <Badge key={v} variant="outline" className="text-xs">{v}</Badge>
+                              <Badge key={v} variant="outline" className="text-[10px] px-1.5 py-0">{v}</Badge>
                             ))}
                           </div>
                         </div>
@@ -1093,26 +1187,26 @@ export default function LLMSettingsPage() {
                       <TableHead className="w-20">Rank</TableHead>
                       <TableHead>Primary Verbs</TableHead>
                       <TableHead>Secondary Verbs</TableHead>
-                      <TableHead className="w-20 text-right">Actions</TableHead>
+                      <TableHead className="w-16 text-right">Edit</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {RANKS.map(({ value: rank }) => {
                       const verbs = rankVerbs[rank] || { primary: [], secondary: [] };
                       return (
-                        <TableRow key={rank}>
+                        <TableRow key={rank} className="group">
                           <TableCell className="font-medium">{rank}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {verbs.primary.map((v) => (
-                                <Badge key={v} variant="secondary">{v}</Badge>
+                                <Badge key={v} variant="secondary" className="text-xs">{v}</Badge>
                               ))}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {verbs.secondary.map((v) => (
-                                <Badge key={v} variant="outline">{v}</Badge>
+                                <Badge key={v} variant="outline" className="text-xs">{v}</Badge>
                               ))}
                             </div>
                           </TableCell>
@@ -1132,30 +1226,34 @@ export default function LLMSettingsPage() {
                               }}
                             >
                               <DialogTrigger asChild>
-                                <Button variant="ghost" size="sm">Edit</Button>
+                                <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Pencil className="size-3.5" />
+                                </Button>
                               </DialogTrigger>
-                              <DialogContent>
+                              <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
                                 <DialogHeader>
-                                  <DialogTitle>Edit Verbs for {rank}</DialogTitle>
-                                  <DialogDescription>
-                                    Enter comma-separated verbs for this rank
+                                  <DialogTitle className="text-base">Edit Verbs for {rank}</DialogTitle>
+                                  <DialogDescription className="text-xs sm:text-sm">
+                                    Enter comma-separated verbs
                                   </DialogDescription>
                                 </DialogHeader>
-                                <div className="space-y-4">
-                                  <div className="space-y-2">
-                                    <Label>Primary Verbs</Label>
+                                <div className="space-y-3">
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs sm:text-sm">Primary Verbs</Label>
                                     <Input
                                       value={editingVerbs.primary}
                                       onChange={(e) => setEditingVerbs({ ...editingVerbs, primary: e.target.value })}
                                       placeholder="Led, Managed, Directed"
+                                      className="h-9 text-sm"
                                     />
                                   </div>
-                                  <div className="space-y-2">
-                                    <Label>Secondary Verbs</Label>
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs sm:text-sm">Secondary Verbs</Label>
                                     <Input
                                       value={editingVerbs.secondary}
                                       onChange={(e) => setEditingVerbs({ ...editingVerbs, secondary: e.target.value })}
-                                      placeholder="Supervised, Coordinated, Developed"
+                                      placeholder="Supervised, Coordinated"
+                                      className="h-9 text-sm"
                                     />
                                   </div>
                                 </div>
@@ -1185,6 +1283,34 @@ export default function LLMSettingsPage() {
           <AcronymEditor acronyms={acronyms} onChange={setAcronyms} />
         </TabsContent>
       </Tabs>
+
+      {/* Unsaved Changes Dialog */}
+      <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Would you like to save them before leaving?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel onClick={() => setPendingNavigation(null)} className="w-full sm:w-auto">
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={handleConfirmNavigation}
+              className="w-full sm:w-auto"
+            >
+              Discard Changes
+            </Button>
+            <AlertDialogAction onClick={handleSaveAndNavigate} className="w-full sm:w-auto">
+              {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+              Save & Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -26,6 +26,7 @@ import {
   Target,
   Plus,
 } from "lucide-react";
+import { STANDARD_MGAS } from "@/lib/constants";
 
 export default function DashboardPage() {
   const { profile, subordinates, epbConfig } = useUserStore();
@@ -83,7 +84,8 @@ export default function DashboardPage() {
     loadAccomplishments();
   }, [profile, cycleYear, supabase, setAccomplishments, setIsLoading]);
 
-  const mgas = epbConfig?.major_graded_areas || [];
+  // Use standard MPAs for all users (AFI 36-2406)
+  const mgas = STANDARD_MGAS;
   const maxEntriesPerMPA = 10;
 
   if (isLoading) {

@@ -1,4 +1,14 @@
-import type { Rank } from "@/types/database";
+import type { Rank, MajorGradedArea } from "@/types/database";
+
+// Standard Major Performance Areas - AFI 36-2406
+// These are the same for all users and should not be modified
+export const STANDARD_MGAS: MajorGradedArea[] = [
+  { key: "executing_mission", label: "Executing the Mission" },
+  { key: "leading_people", label: "Leading People" },
+  { key: "managing_resources", label: "Managing Resources" },
+  { key: "improving_unit", label: "Improving the Unit" },
+  { key: "hlr_assessment", label: "Higher Level Reviewer Assessment" },
+];
 
 export const RANKS: { value: Rank; label: string }[] = [
   { value: "AB", label: "AB (Airman Basic)" },

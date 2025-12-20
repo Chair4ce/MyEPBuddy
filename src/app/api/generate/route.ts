@@ -7,6 +7,7 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { DEFAULT_ACRONYMS, formatAcronymsList } from "@/lib/default-acronyms";
 import { DEFAULT_ABBREVIATIONS, formatAbbreviationsList } from "@/lib/default-abbreviations";
+import { STANDARD_MGAS } from "@/lib/constants";
 import type { Rank, WritingStyle, UserLLMSettings, MajorGradedArea, Acronym, Abbreviation } from "@/types/database";
 
 interface AccomplishmentData {
@@ -38,13 +39,7 @@ const DEFAULT_SETTINGS: Partial<UserLLMSettings> = {
   max_characters_per_statement: 350,
   scod_date: "31 March",
   current_cycle_year: new Date().getFullYear(),
-  major_graded_areas: [
-    { key: "executing_mission", label: "Executing the Mission" },
-    { key: "leading_people", label: "Leading People" },
-    { key: "managing_resources", label: "Managing Resources" },
-    { key: "improving_unit", label: "Improving the Unit" },
-    { key: "hlr_assessment", label: "Higher Level Reviewer Assessment" },
-  ],
+  major_graded_areas: STANDARD_MGAS, // Always use standard MPAs
   rank_verb_progression: {
     AB: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Participated"] },
     Amn: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Executed"] },
@@ -202,9 +197,8 @@ function buildSystemPrompt(
   const abbreviations = settings.abbreviations || DEFAULT_ABBREVIATIONS;
   const abbreviationsList = formatAbbreviationsList(abbreviations);
   
-  // Build MGA list
-  const mgas = settings.major_graded_areas || DEFAULT_SETTINGS.major_graded_areas || [];
-  const mgaList = mgas.map((m) => `- ${m.label}`).join("\n");
+  // Build MGA list - always use standard MPAs for all users
+  const mgaList = STANDARD_MGAS.map((m) => `- ${m.label}`).join("\n");
   
   // Build rank verb guidance
   const rankVerbGuidance = `Primary verbs: ${rankVerbs.primary.join(", ")}\n  Secondary verbs: ${rankVerbs.secondary.join(", ")}`;
@@ -354,12 +348,12 @@ export async function POST(request: Request) {
       {} as Record<string, AccomplishmentData[]>
     );
 
-    const mgas = (settings.major_graded_areas || DEFAULT_SETTINGS.major_graded_areas) as MajorGradedArea[];
+    // Always use standard MPAs for all users
     const maxChars = settings.max_characters_per_statement || 350;
     const results: { mpa: string; statements: string[]; historyIds: string[] }[] = [];
 
-    // Generate statements for each MPA
-    for (const mpa of mgas) {
+    // Generate statements for each MPA (using standard MPAs for all users)
+    for (const mpa of STANDARD_MGAS) {
       // Special handling for HLR Assessment - uses ALL accomplishments
       const isHLR = mpa.key === "hlr_assessment";
       const mpaAccomplishments = isHLR ? accomplishments : (accomplishmentsByMPA[mpa.key] || []);

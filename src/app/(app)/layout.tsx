@@ -67,7 +67,7 @@ export default async function AppLayout({
         <AppSidebar profile={profile} />
         <div className="flex-1 flex flex-col ml-0 lg:ml-64">
           <AppHeader profile={profile} />
-          <main className="flex-1 p-4 md:p-6 lg:p-8 animate-fade-in">
+          <main className="flex-1 flex flex-col items-center w-full p-4 md:p-6 lg:p-8 animate-fade-in">
             {children}
           </main>
         </div>
