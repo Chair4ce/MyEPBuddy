@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useUserStore } from "@/stores/user-store";
+import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
 import type { Profile, EPBConfig } from "@/types/database";
 
 interface AppInitializerProps {
@@ -17,8 +18,13 @@ export function AppInitializer({
   epbConfig,
   children,
 }: AppInitializerProps) {
-  const { setProfile, setSubordinates, setEpbConfig, setIsLoading } =
-    useUserStore();
+  const { 
+    setProfile, 
+    setSubordinates, 
+    setEpbConfig, 
+    setIsLoading,
+    profile: storeProfile 
+  } = useUserStore();
 
   useEffect(() => {
     setProfile(profile);
@@ -27,6 +33,20 @@ export function AppInitializer({
     setIsLoading(false);
   }, [profile, subordinates, epbConfig, setProfile, setSubordinates, setEpbConfig, setIsLoading]);
 
-  return <>{children}</>;
+  // Use store profile for reactivity (updates when terms are accepted)
+  const currentProfile = storeProfile ?? profile;
+  const showTermsDialog = currentProfile && !currentProfile.terms_accepted_at;
+
+  return (
+    <>
+      {showTermsDialog && currentProfile && (
+        <TermsAgreementDialog
+          open={true}
+          userId={currentProfile.id}
+        />
+      )}
+      {children}
+    </>
+  );
 }
 

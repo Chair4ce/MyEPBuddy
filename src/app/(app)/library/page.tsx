@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -352,81 +353,94 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Statement Library</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Statement Library</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">
           Your saved statements and generation history
         </p>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search statements..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
+        <CardContent className="pt-4 sm:pt-6">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Search statements..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+                aria-label="Search statements"
+              />
             </div>
-            <Select value={filterMpa} onValueChange={setFilterMpa}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Filter by MPA" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All MPAs</SelectItem>
-                {mgas.map((mpa) => (
-                  <SelectItem key={mpa.key} value={mpa.key}>
-                    {mpa.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterAfsc} onValueChange={setFilterAfsc}>
-              <SelectTrigger className="w-full sm:w-[140px]">
-                <SelectValue placeholder="Filter by AFSC" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All AFSCs</SelectItem>
-                {uniqueAfscs.map((afsc) => (
-                  <SelectItem key={afsc} value={afsc as string}>
-                    {afsc}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 sm:gap-4">
+              <Select value={filterMpa} onValueChange={setFilterMpa}>
+                <SelectTrigger className="w-full sm:w-[180px]" aria-label="Filter by MPA">
+                  <SelectValue placeholder="Filter by MPA" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All MPAs</SelectItem>
+                  {mgas.map((mpa) => (
+                    <SelectItem key={mpa.key} value={mpa.key}>
+                      {mpa.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterAfsc} onValueChange={setFilterAfsc}>
+                <SelectTrigger className="w-full sm:w-[140px]" aria-label="Filter by AFSC">
+                  <SelectValue placeholder="Filter by AFSC" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All AFSCs</SelectItem>
+                  {uniqueAfscs.map((afsc) => (
+                    <SelectItem key={afsc} value={afsc as string}>
+                      {afsc}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-        <TabsList>
-          <TabsTrigger value="refined" className="gap-2">
-            <Star className="size-4" />
-            My Refined ({refinedStatements.length})
-          </TabsTrigger>
-          <TabsTrigger value="history" className="gap-2">
-            <Clock className="size-4" />
-            History ({historyStatements.length})
-          </TabsTrigger>
-          <TabsTrigger value="community" className="gap-2">
-            <Users className="size-4" />
-            Community ({communityStatements.length})
-          </TabsTrigger>
-        </TabsList>
+        <ScrollArea className="w-full">
+          <TabsList className="w-full sm:w-auto inline-flex">
+            <TabsTrigger value="refined" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <Star className="size-3.5 sm:size-4 shrink-0" />
+              <span className="hidden xs:inline">My </span>Refined
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                {refinedStatements.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="history" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <Clock className="size-3.5 sm:size-4 shrink-0" />
+              History
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                {historyStatements.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="community" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <Users className="size-3.5 sm:size-4 shrink-0" />
+              Community
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                {communityStatements.length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+          <ScrollBar orientation="horizontal" className="invisible" />
+        </ScrollArea>
 
         {/* Refined Statements */}
-        <TabsContent value="refined" className="space-y-4 mt-4">
+        <TabsContent value="refined" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
           {filteredRefined.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
+              <CardContent className="py-8 sm:py-12 text-center text-muted-foreground text-sm sm:text-base">
                 No refined statements yet. Generate statements and save your refined versions.
               </CardContent>
             </Card>
@@ -434,75 +448,86 @@ export default function LibraryPage() {
             <div className="space-y-3">
               {filteredRefined.map((statement) => (
                 <Card key={statement.id} className="group">
-                  <CardContent className="pt-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{getMpaLabel(statement.mpa)}</Badge>
-                          <Badge variant="secondary">{statement.rank}</Badge>
-                          <Badge variant="secondary">{statement.afsc}</Badge>
+                  <CardContent className="p-3 sm:pt-4 sm:px-6">
+                    <div className="flex flex-col gap-3">
+                      {/* Header with badges and favorite */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                          <Badge variant="outline" className="text-xs shrink-0">{getMpaLabel(statement.mpa)}</Badge>
+                          <Badge variant="secondary" className="text-xs shrink-0">{statement.rank}</Badge>
+                          <Badge variant="secondary" className="text-xs shrink-0">{statement.afsc}</Badge>
                           {statement.is_favorite && (
-                            <Star className="size-4 text-yellow-500 fill-yellow-500" />
+                            <Star className="size-3.5 sm:size-4 text-yellow-500 fill-yellow-500 shrink-0" />
                           )}
                         </div>
-                        <p className="text-sm leading-relaxed">{statement.statement}</p>
-                        <p className="text-xs text-muted-foreground">
+                      </div>
+                      
+                      {/* Statement text */}
+                      <p className="text-sm leading-relaxed break-words">{statement.statement}</p>
+                      
+                      {/* Footer with date and actions */}
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <p className="text-xs text-muted-foreground shrink-0">
                           Saved {new Date(statement.created_at).toLocaleDateString()}
                         </p>
-                      </div>
-                      <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleFavorite(statement)}
-                          aria-label={statement.is_favorite ? "Remove from favorites" : "Add to favorites"}
-                        >
-                          {statement.is_favorite ? (
-                            <StarOff className="size-4" />
-                          ) : (
-                            <Star className="size-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setEditingStatement(statement);
-                            setEditedText(statement.statement);
-                          }}
-                          aria-label="Edit statement"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => shareWithCommunity(statement)}
-                          aria-label="Share with community"
-                        >
-                          <Users className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => copyToClipboard(statement.statement, statement.id)}
-                          aria-label="Copy statement"
-                        >
-                          {copiedIndex === statement.id ? (
-                            <Check className="size-4 text-green-500" />
-                          ) : (
-                            <Copy className="size-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteStatement(statement.id)}
-                          aria-label="Delete statement"
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        <div className="flex gap-0.5 sm:gap-1 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 sm:size-9"
+                            onClick={() => toggleFavorite(statement)}
+                            aria-label={statement.is_favorite ? "Remove from favorites" : "Add to favorites"}
+                          >
+                            {statement.is_favorite ? (
+                              <StarOff className="size-3.5 sm:size-4" />
+                            ) : (
+                              <Star className="size-3.5 sm:size-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 sm:size-9"
+                            onClick={() => {
+                              setEditingStatement(statement);
+                              setEditedText(statement.statement);
+                            }}
+                            aria-label="Edit statement"
+                          >
+                            <Pencil className="size-3.5 sm:size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 sm:size-9"
+                            onClick={() => shareWithCommunity(statement)}
+                            aria-label="Share with community"
+                          >
+                            <Users className="size-3.5 sm:size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 sm:size-9"
+                            onClick={() => copyToClipboard(statement.statement, statement.id)}
+                            aria-label="Copy statement"
+                          >
+                            {copiedIndex === statement.id ? (
+                              <Check className="size-3.5 sm:size-4 text-green-500" />
+                            ) : (
+                              <Copy className="size-3.5 sm:size-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 sm:size-9 text-destructive hover:text-destructive"
+                            onClick={() => deleteStatement(statement.id)}
+                            aria-label="Delete statement"
+                          >
+                            <Trash2 className="size-3.5 sm:size-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -513,10 +538,10 @@ export default function LibraryPage() {
         </TabsContent>
 
         {/* History */}
-        <TabsContent value="history" className="space-y-4 mt-4">
+        <TabsContent value="history" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
           {filteredHistory.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
+              <CardContent className="py-8 sm:py-12 text-center text-muted-foreground text-sm sm:text-base">
                 No generation history yet. Generate some statements first.
               </CardContent>
             </Card>
@@ -524,30 +549,34 @@ export default function LibraryPage() {
             <div className="space-y-3">
               {filteredHistory.map((statement) => (
                 <Card key={statement.id} className="group">
-                  <CardContent className="pt-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{getMpaLabel(statement.mpa)}</Badge>
-                          <Badge variant="secondary">{statement.rank}</Badge>
-                          <Badge variant="secondary">{statement.model_used}</Badge>
-                        </div>
-                        <p className="text-sm leading-relaxed">{statement.original_statement}</p>
+                  <CardContent className="p-3 sm:pt-4 sm:px-6">
+                    <div className="flex flex-col gap-3">
+                      {/* Header with badges */}
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs shrink-0">{getMpaLabel(statement.mpa)}</Badge>
+                        <Badge variant="secondary" className="text-xs shrink-0">{statement.rank}</Badge>
+                        <Badge variant="secondary" className="text-xs shrink-0 max-w-[120px] truncate">{statement.model_used}</Badge>
+                      </div>
+                      
+                      {/* Statement text */}
+                      <p className="text-sm leading-relaxed break-words">{statement.original_statement}</p>
+                      
+                      {/* Footer with date and copy */}
+                      <div className="flex items-center justify-between gap-2 pt-1">
                         <p className="text-xs text-muted-foreground">
                           Generated {new Date(statement.created_at).toLocaleDateString()}
                         </p>
-                      </div>
-                      <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="size-8 sm:size-9 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                           onClick={() => copyToClipboard(statement.original_statement, statement.id)}
                           aria-label="Copy statement"
                         >
                           {copiedIndex === statement.id ? (
-                            <Check className="size-4 text-green-500" />
+                            <Check className="size-3.5 sm:size-4 text-green-500" />
                           ) : (
-                            <Copy className="size-4" />
+                            <Copy className="size-3.5 sm:size-4" />
                           )}
                         </Button>
                       </div>
@@ -560,24 +589,24 @@ export default function LibraryPage() {
         </TabsContent>
 
         {/* Community */}
-        <TabsContent value="community" className="space-y-4 mt-4">
+        <TabsContent value="community" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
           {!profile?.afsc ? (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
+              <CardContent className="py-8 sm:py-12 text-center text-muted-foreground text-sm sm:text-base px-4">
                 Set your AFSC in settings to see community statements for your career field.
               </CardContent>
             </Card>
           ) : filteredCommunity.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
+              <CardContent className="py-8 sm:py-12 text-center text-muted-foreground text-sm sm:text-base px-4">
                 No community statements for {profile.afsc} yet. Be the first to contribute!
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {/* Info banner */}
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-                <Trophy className="size-4 text-yellow-500" />
+              <div className="flex items-start sm:items-center gap-2 p-2.5 sm:p-3 rounded-lg bg-muted/50 text-xs sm:text-sm text-muted-foreground">
+                <Trophy className="size-4 text-yellow-500 shrink-0 mt-0.5 sm:mt-0" />
                 <span>Top 20 voted statements are used as examples when generating with Community style</span>
               </div>
 
@@ -596,10 +625,10 @@ export default function LibraryPage() {
                         isTopRated && "border-yellow-500/30 bg-yellow-500/5"
                       )}
                     >
-                      <CardContent className="pt-4">
-                        <div className="flex items-start gap-4">
-                          {/* Voting column */}
-                          <div className="flex flex-col items-center gap-1 shrink-0">
+                      <CardContent className="p-3 sm:pt-4 sm:px-6">
+                        <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+                          {/* Mobile: Voting row / Desktop: Voting column */}
+                          <div className="flex sm:flex-col items-center gap-2 sm:gap-1 shrink-0 order-last sm:order-first">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -618,7 +647,7 @@ export default function LibraryPage() {
                               )}
                             </Button>
                             <span className={cn(
-                              "text-sm font-semibold tabular-nums",
+                              "text-sm font-semibold tabular-nums min-w-[2ch] text-center",
                               netVotes > 0 && "text-green-600 dark:text-green-400",
                               netVotes < 0 && "text-red-600 dark:text-red-400",
                               netVotes === 0 && "text-muted-foreground"
@@ -638,32 +667,49 @@ export default function LibraryPage() {
                             >
                               <ThumbsDown className={cn("size-4", userVote === "down" && "fill-current")} />
                             </Button>
+                            
+                            {/* Copy button - mobile inline with votes */}
+                            <div className="flex-1 sm:hidden" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 sm:hidden"
+                              onClick={() => copyToClipboard(statement.statement, statement.id)}
+                              aria-label="Copy statement"
+                            >
+                              {copiedIndex === statement.id ? (
+                                <Check className="size-4 text-green-500" />
+                              ) : (
+                                <Copy className="size-4" />
+                              )}
+                            </Button>
                           </div>
 
                           {/* Content */}
                           <div className="flex-1 space-y-2 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                               {isTopRated && (
-                                <Badge className="gap-1 bg-yellow-500/80 hover:bg-yellow-500 text-yellow-950">
+                                <Badge className="gap-1 bg-yellow-500/80 hover:bg-yellow-500 text-yellow-950 text-xs">
                                   <Trophy className="size-3" />
                                   Top {index + 1}
                                 </Badge>
                               )}
-                              <Badge variant="outline">{getMpaLabel(statement.mpa)}</Badge>
-                              <Badge variant="secondary">{statement.rank}</Badge>
-                              <Badge variant="secondary">{statement.afsc}</Badge>
+                              <Badge variant="outline" className="text-xs">{getMpaLabel(statement.mpa)}</Badge>
+                              <Badge variant="secondary" className="text-xs">{statement.rank}</Badge>
+                              <Badge variant="secondary" className="text-xs">{statement.afsc}</Badge>
                             </div>
-                            <p className="text-sm leading-relaxed">{statement.statement}</p>
+                            <p className="text-sm leading-relaxed break-words">{statement.statement}</p>
                             <p className="text-xs text-muted-foreground">
                               {statement.upvotes} upvotes · {statement.downvotes || 0} downvotes
                             </p>
                           </div>
 
-                          {/* Actions */}
-                          <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* Desktop Actions */}
+                          <div className="hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="size-9"
                               onClick={() => copyToClipboard(statement.statement, statement.id)}
                               aria-label="Copy statement"
                             >
@@ -687,10 +733,10 @@ export default function LibraryPage() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editingStatement} onOpenChange={() => setEditingStatement(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg mx-auto">
           <DialogHeader>
-            <DialogTitle>Edit Statement</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg">Edit Statement</DialogTitle>
+            <DialogDescription className="text-sm">
               Update your refined statement
             </DialogDescription>
           </DialogHeader>
@@ -698,7 +744,7 @@ export default function LibraryPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="edit-text">Statement</Label>
+                <Label htmlFor="edit-text" className="text-sm">Statement</Label>
                 <span className={cn("text-xs", getCharacterCountColor(editedText.length, maxChars))}>
                   {editedText.length}/{maxChars}
                 </span>
@@ -707,17 +753,18 @@ export default function LibraryPage() {
                 id="edit-text"
                 value={editedText}
                 onChange={(e) => setEditedText(e.target.value)}
-                rows={5}
-                className="resize-none"
+                rows={6}
+                className="resize-none text-sm"
+                aria-label="Edit statement text"
               />
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingStatement(null)}>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEditingStatement(null)} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button onClick={saveEditedStatement} disabled={isSaving}>
+            <Button onClick={saveEditedStatement} disabled={isSaving} className="w-full sm:w-auto">
               {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
               Save Changes
             </Button>

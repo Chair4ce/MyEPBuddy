@@ -346,31 +346,31 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">My Team</h1>
-          <p className="text-muted-foreground">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">My Team</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Manage your supervision relationships and team requests
           </p>
         </div>
         <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto shrink-0">
               <UserPlus className="size-4 mr-2" />
               Send Request
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Send Team Request</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-base sm:text-lg">Send Team Request</DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm">
                 Request to supervise someone or request someone to supervise you
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div className="space-y-2">
-                <Label>Request Type</Label>
+                <Label className="text-xs sm:text-sm">Request Type</Label>
                 <Select 
                   value={inviteType} 
                   onValueChange={(v) => {
@@ -378,43 +378,44 @@ export default function TeamPage() {
                     setSearchedProfile(null); // Reset search when type changes
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="text-xs sm:text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {canSupervise(profile?.rank) && (
-                      <SelectItem value="supervise">
+                      <SelectItem value="supervise" className="text-xs sm:text-sm">
                         <div className="flex items-center gap-2">
-                          <ChevronDown className="size-4" />
+                          <ChevronDown className="size-3 sm:size-4" />
                           I want to supervise them
                         </div>
                       </SelectItem>
                     )}
-                    <SelectItem value="be_supervised">
+                    <SelectItem value="be_supervised" className="text-xs sm:text-sm">
                       <div className="flex items-center gap-2">
-                        <ChevronUp className="size-4" />
+                        <ChevronUp className="size-3 sm:size-4" />
                         I want them to supervise me
                       </div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 {!canSupervise(profile?.rank) && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">
                     Only SSgt and above can supervise others
                   </p>
                 )}
               </div>
               
               <div className="space-y-2">
-                <Label>Search by Email</Label>
-                <div className="flex gap-2">
+                <Label className="text-xs sm:text-sm">Search by Email</Label>
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="user@example.com"
                     type="email"
+                    className="text-sm"
                   />
-                  <Button onClick={searchProfile} disabled={isSearching}>
+                  <Button onClick={searchProfile} disabled={isSearching} className="w-full sm:w-auto shrink-0">
                     {isSearching ? <Loader2 className="size-4 animate-spin" /> : "Search"}
                   </Button>
                 </div>
@@ -426,27 +427,27 @@ export default function TeamPage() {
                     ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
                     : "bg-muted/50"
                 }`}>
-                  <CardContent className="">
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarFallback>
+                  <CardContent className="p-3">
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      <Avatar className="size-8 sm:size-10 shrink-0">
+                        <AvatarFallback className="text-xs sm:text-sm">
                           {searchedProfile.full_name?.charAt(0) || "U"}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <p className="font-medium">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm sm:text-base truncate">
                           {searchedProfile.rank} {searchedProfile.full_name}
                         </p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs sm:text-sm text-muted-foreground truncate">
                           {searchedProfile.afsc} • {searchedProfile.unit}
                         </p>
                         {inviteType === "be_supervised" && !canSupervise(searchedProfile.rank) && (
-                          <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                          <p className="text-[10px] sm:text-xs text-red-600 dark:text-red-400 mt-1">
                             This person cannot be a supervisor (must be SSgt+)
                           </p>
                         )}
                       </div>
-                      <Badge variant="outline" className="ml-auto">
+                      <Badge variant="outline" className="shrink-0 text-xs">
                         {searchedProfile.rank}
                       </Badge>
                     </div>
@@ -455,16 +456,17 @@ export default function TeamPage() {
               )}
 
               <div className="space-y-2">
-                <Label>Message (optional)</Label>
+                <Label className="text-xs sm:text-sm">Message (optional)</Label>
                 <Textarea
                   value={inviteMessage}
                   onChange={(e) => setInviteMessage(e.target.value)}
                   placeholder="Add a note to your request..."
                   rows={2}
+                  className="text-sm"
                 />
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button
                 onClick={sendRequest}
                 disabled={
@@ -473,6 +475,7 @@ export default function TeamPage() {
                   (inviteType === "supervise" && !canSupervise(profile?.rank)) ||
                   (inviteType === "be_supervised" && !canSupervise(searchedProfile?.rank))
                 }
+                className="w-full sm:w-auto"
               >
                 {isInviting ? (
                   <Loader2 className="size-4 animate-spin mr-2" />
@@ -489,53 +492,53 @@ export default function TeamPage() {
       {/* Pending Requests */}
       {pendingRequests.length > 0 && (
         <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-              <Clock className="size-5" />
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-base sm:text-lg">
+              <Clock className="size-4 sm:size-5 shrink-0" />
               Pending Requests ({pendingRequests.length})
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Requests waiting for your response
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-4 pt-0 sm:p-6 sm:pt-0">
             {pendingRequests.map((request) => (
               <div
                 key={request.id}
-                className="flex items-center justify-between p-3 rounded-lg border bg-background"
+                className="flex flex-col gap-3 p-3 rounded-lg border bg-background sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>
+                <div className="flex items-start gap-3 min-w-0">
+                  <Avatar className="size-8 sm:size-10 shrink-0">
+                    <AvatarFallback className="text-xs sm:text-sm">
                       {request.requester?.full_name?.charAt(0) || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="font-medium">{getRequestDescription(request)}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm sm:text-base text-wrap">{getRequestDescription(request)}</p>
                     {request.message && (
-                      <p className="text-sm text-muted-foreground">"{request.message}"</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground text-wrap">"{request.message}"</p>
                     )}
                     <p className="text-xs text-muted-foreground">
                       {new Date(request.created_at).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full sm:w-auto shrink-0">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-red-600 hover:text-red-700"
+                    className="flex-1 sm:flex-initial text-red-600 hover:text-red-700 text-xs sm:text-sm"
                     onClick={() => respondToRequest(request.id, false)}
                   >
-                    <X className="size-4 mr-1" />
+                    <X className="size-3 sm:size-4 mr-1" />
                     Decline
                   </Button>
                   <Button
                     size="sm"
-                    className="bg-green-600 hover:bg-green-700"
+                    className="flex-1 sm:flex-initial bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
                     onClick={() => respondToRequest(request.id, true)}
                   >
-                    <Check className="size-4 mr-1" />
+                    <Check className="size-3 sm:size-4 mr-1" />
                     Accept
                   </Button>
                 </div>
@@ -545,79 +548,83 @@ export default function TeamPage() {
         </Card>
       )}
 
-      <Tabs defaultValue="subordinates">
-        <TabsList>
-          <TabsTrigger value="subordinates" className="gap-2">
-            <ChevronDown className="size-4" />
-            My Subordinates ({subordinates.length})
+      <Tabs defaultValue="subordinates" className="w-full">
+        <TabsList className="w-full h-auto flex-wrap sm:flex-nowrap gap-1 p-1">
+          <TabsTrigger value="subordinates" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
+            <ChevronDown className="size-3 sm:size-4 shrink-0" />
+            <span className="hidden xs:inline">My </span>Subordinates
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{subordinates.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="supervisors" className="gap-2">
-            <ChevronUp className="size-4" />
-            My Supervisors ({supervisors.length})
+          <TabsTrigger value="supervisors" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
+            <ChevronUp className="size-3 sm:size-4 shrink-0" />
+            <span className="hidden xs:inline">My </span>Supervisors
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{supervisors.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="chain" className="gap-2">
-            <Users className="size-4" />
-            Full Chain ({subordinateChain.length})
+          <TabsTrigger value="chain" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
+            <Users className="size-3 sm:size-4 shrink-0" />
+            <span className="hidden sm:inline">Full </span>Chain
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{subordinateChain.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="sent" className="gap-2">
-            <Send className="size-4" />
-            Sent Requests ({sentRequests.length})
+          <TabsTrigger value="sent" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
+            <Send className="size-3 sm:size-4 shrink-0" />
+            <span className="hidden sm:inline">Sent </span>Requests
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{sentRequests.length}</Badge>
           </TabsTrigger>
         </TabsList>
 
         {/* Subordinates Tab */}
-        <TabsContent value="subordinates" className="mt-4">
+        <TabsContent value="subordinates" className="mt-3 sm:mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Direct Subordinates</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Direct Subordinates</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 People you directly supervise
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
               {!canSupervise(profile?.rank) ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">
+                <div className="text-center py-6 sm:py-8">
+                  <p className="text-sm sm:text-base text-muted-foreground">
                     Only SSgt and above can have subordinates.
                   </p>
-                  <p className="text-sm text-muted-foreground mt-2">
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-2">
                     Current rank: {profile?.rank || "Unknown"}
                   </p>
                 </div>
               ) : subordinates.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
+                <p className="text-center text-sm sm:text-base text-muted-foreground py-6 sm:py-8">
                   You have no subordinates yet. Send a request to add team members.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {subordinates
                     .sort((a, b) => getRankOrder(b.rank || "") - getRankOrder(a.rank || ""))
                     .map((sub) => (
                       <div
                         key={sub.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
+                        className="flex flex-col gap-2 p-3 rounded-lg border sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarFallback>
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                          <Avatar className="size-8 sm:size-10 shrink-0">
+                            <AvatarFallback className="text-xs sm:text-sm">
                               {sub.full_name?.charAt(0) || "U"}
                             </AvatarFallback>
                           </Avatar>
-                          <div>
-                            <p className="font-medium">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm sm:text-base truncate">
                               {sub.rank} {sub.full_name}
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-xs sm:text-sm text-muted-foreground truncate">
                               {sub.afsc} • {sub.unit}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{sub.role}</Badge>
+                        <div className="flex items-center justify-between gap-2 sm:justify-end">
+                          <Badge variant="secondary" className="text-xs">{sub.role}</Badge>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="text-destructive"
+                            className="size-8 text-destructive shrink-0"
                             onClick={() => removeTeamMember(sub.id, false)}
                           >
                             <UserX className="size-4" />
@@ -632,47 +639,47 @@ export default function TeamPage() {
         </TabsContent>
 
         {/* Supervisors Tab */}
-        <TabsContent value="supervisors" className="mt-4">
+        <TabsContent value="supervisors" className="mt-3 sm:mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>My Supervisors</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">My Supervisors</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 People who supervise you
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
               {supervisors.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
+                <p className="text-center text-sm sm:text-base text-muted-foreground py-6 sm:py-8">
                   You have no supervisors yet. Send a request to join a team.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {supervisors.map((sup) => (
                     <div
                       key={sup.id}
-                      className="flex items-center justify-between p-3 rounded-lg border"
+                      className="flex flex-col gap-2 p-3 rounded-lg border sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                        <Avatar className="size-8 sm:size-10 shrink-0">
+                          <AvatarFallback className="text-xs sm:text-sm">
                             {sup.full_name?.charAt(0) || "U"}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <p className="font-medium">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm sm:text-base truncate">
                             {sup.rank} {sup.full_name}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs sm:text-sm text-muted-foreground truncate">
                             {sup.afsc} • {sup.unit}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">Supervisor</Badge>
+                      <div className="flex items-center justify-between gap-2 sm:justify-end">
+                        <Badge variant="outline" className="text-xs">Supervisor</Badge>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-destructive"
+                          className="size-8 text-destructive shrink-0"
                           onClick={() => removeTeamMember(sup.id, true)}
                         >
                           <UserX className="size-4" />
@@ -687,58 +694,66 @@ export default function TeamPage() {
         </TabsContent>
 
         {/* Chain Tab */}
-        <TabsContent value="chain" className="mt-4">
+        <TabsContent value="chain" className="mt-3 sm:mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Full Subordinate Chain</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Full Subordinate Chain</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 All members in your chain of command (including subordinates of subordinates)
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
               {!canSupervise(profile?.rank) ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">
+                <div className="text-center py-6 sm:py-8">
+                  <p className="text-sm sm:text-base text-muted-foreground">
                     Only SSgt and above can have a subordinate chain.
                   </p>
                 </div>
               ) : subordinateChain.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
+                <p className="text-center text-sm sm:text-base text-muted-foreground py-6 sm:py-8">
                   No subordinate chain found.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {subordinateChain.map((member) => (
-                    <div
-                      key={member.id}
-                      className="flex items-center justify-between p-3 rounded-lg border"
-                      style={{ marginLeft: `${(member.depth - 1) * 24}px` }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          {member.depth > 1 && (
-                            <div className="w-4 h-px bg-border" />
-                          )}
-                          <Avatar className="size-8">
-                            <AvatarFallback className="text-xs">
-                              {member.full_name?.charAt(0) || "U"}
-                            </AvatarFallback>
-                          </Avatar>
+                  {subordinateChain.map((member) => {
+                    // Limit indentation on mobile to prevent overflow
+                    const mobileIndent = Math.min((member.depth - 1) * 12, 48);
+                    const desktopIndent = (member.depth - 1) * 24;
+                    
+                    return (
+                      <div
+                        key={member.id}
+                        className="flex items-center justify-between p-2 sm:p-3 rounded-lg border transition-all"
+                        style={{ 
+                          marginLeft: `clamp(${mobileIndent}px, calc(${mobileIndent}px + (${desktopIndent - mobileIndent}px) * ((100vw - 320px) / 320)), ${desktopIndent}px)`
+                        }}
+                      >
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                            {member.depth > 1 && (
+                              <div className="w-2 sm:w-4 h-px bg-border" />
+                            )}
+                            <Avatar className="size-7 sm:size-8">
+                              <AvatarFallback className="text-[10px] sm:text-xs">
+                                {member.full_name?.charAt(0) || "U"}
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-xs sm:text-sm truncate">
+                              {member.rank} {member.full_name}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+                              {member.afsc}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-sm">
-                            {member.rank} {member.full_name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {member.afsc}
-                          </p>
-                        </div>
+                        <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0 ml-2">
+                          L{member.depth}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        Level {member.depth}
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -746,42 +761,42 @@ export default function TeamPage() {
         </TabsContent>
 
         {/* Sent Requests Tab */}
-        <TabsContent value="sent" className="mt-4">
+        <TabsContent value="sent" className="mt-3 sm:mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Sent Requests</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Sent Requests</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Requests you've sent that are pending response
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
               {sentRequests.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
+                <p className="text-center text-sm sm:text-base text-muted-foreground py-6 sm:py-8">
                   No pending sent requests.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {sentRequests.map((request) => (
                     <div
                       key={request.id}
-                      className="flex items-center justify-between p-3 rounded-lg border"
+                      className="flex flex-col gap-2 p-3 rounded-lg border sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>
+                      <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+                        <Avatar className="size-8 sm:size-10 shrink-0">
+                          <AvatarFallback className="text-xs sm:text-sm">
                             {request.target?.full_name?.charAt(0) || "U"}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <p className="font-medium">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm sm:text-base truncate">
                             {request.target?.rank} {request.target?.full_name}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs sm:text-sm text-muted-foreground">
                             {request.request_type === "supervise"
                               ? "You want to supervise them"
                               : "You want them to supervise you"}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-[10px] sm:text-xs text-muted-foreground">
                             Sent {new Date(request.created_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -789,11 +804,11 @@ export default function TeamPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-destructive"
+                        className="w-full sm:w-auto text-destructive text-xs sm:text-sm shrink-0"
                         onClick={() => cancelRequest(request.id)}
                       >
-                        <X className="size-4 mr-1" />
-                        Cancel
+                        <X className="size-3 sm:size-4 mr-1" />
+                        Cancel Request
                       </Button>
                     </div>
                   ))}

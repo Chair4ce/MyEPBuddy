@@ -181,33 +181,39 @@ function MPAEditor({
   }, [localMgas, onChange]);
 
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-3">
       {localMgas.map((mpa, idx) => (
-        <div key={idx} className="flex items-center gap-2">
-          <Input
-            value={mpa.key}
-            onChange={(e) => handleChange(idx, 'key', e.target.value)}
-            onBlur={handleBlur}
-            placeholder="Key"
-            className="w-48"
-          />
-          <Input
-            value={mpa.label}
-            onChange={(e) => handleChange(idx, 'label', e.target.value)}
-            onBlur={handleBlur}
-            placeholder="Label"
-            className="flex-1"
-          />
+        <div key={idx} className="flex flex-col gap-2 sm:flex-row sm:items-center p-3 border rounded-lg bg-muted/30">
+          <div className="flex-1 grid gap-2 sm:grid-cols-2">
+            <Input
+              value={mpa.key}
+              onChange={(e) => handleChange(idx, 'key', e.target.value)}
+              onBlur={handleBlur}
+              placeholder="Key (e.g., executing_mission)"
+              className="text-sm"
+              aria-label={`MPA ${idx + 1} key`}
+            />
+            <Input
+              value={mpa.label}
+              onChange={(e) => handleChange(idx, 'label', e.target.value)}
+              onBlur={handleBlur}
+              placeholder="Label (e.g., Executing the Mission)"
+              className="text-sm"
+              aria-label={`MPA ${idx + 1} label`}
+            />
+          </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => handleRemove(idx)}
+            className="self-end sm:self-auto flex-shrink-0"
+            aria-label={`Remove MPA ${idx + 1}`}
           >
             <Trash2 className="size-4 text-destructive" />
           </Button>
         </div>
       ))}
-      <Button variant="outline" onClick={handleAdd}>
+      <Button variant="outline" onClick={handleAdd} className="w-full sm:w-auto">
         <Plus className="size-4 mr-2" />
         Add MPA
       </Button>
@@ -241,7 +247,7 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <Label className="text-xs text-muted-foreground">
           Placeholders (auto-replaced at generation time)
         </Label>
@@ -252,14 +258,14 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
           )}
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {placeholderStatus.map((p) => (
           <Tooltip key={p.key}>
             <TooltipTrigger asChild>
               <Badge
                 variant={p.isUsed ? "secondary" : "outline"}
                 className={cn(
-                  "cursor-help font-mono text-xs",
+                  "cursor-help font-mono text-[10px] sm:text-xs px-1.5 sm:px-2",
                   !p.isUsed && "opacity-50"
                 )}
               >
@@ -356,17 +362,17 @@ function AbbreviationEditor({
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
+      <CardHeader className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <CardTitle>Word Abbreviations</CardTitle>
-            <CardDescription>
-              Define word-to-abbreviation mappings. The AI will automatically use these shorter forms in generated statements ({abbreviations.length} defined)
+            <CardDescription className="mt-1.5">
+              Define word-to-abbreviation mappings ({abbreviations.length} defined)
             </CardDescription>
           </div>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="w-full sm:w-auto flex-shrink-0">
                 <Plus className="size-4 mr-2" />
                 Add Abbreviation
               </Button>
@@ -396,8 +402,8 @@ function AbbreviationEditor({
                   />
                 </div>
               </div>
-              <DialogFooter>
-                <Button onClick={handleAdd}>Add</Button>
+              <DialogFooter className="flex-col gap-2 sm:flex-row">
+                <Button onClick={handleAdd} className="w-full sm:w-auto">Add</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -433,9 +439,9 @@ function AbbreviationEditor({
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setShowEditDialog(false)} className="w-full sm:w-auto">Cancel</Button>
+            <Button onClick={handleSaveEdit} className="w-full sm:w-auto">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -448,9 +454,50 @@ function AbbreviationEditor({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
+            aria-label="Search abbreviations"
           />
         </div>
-        <ScrollArea className="h-[400px] border rounded-md">
+        
+        {/* Mobile: Card layout */}
+        <ScrollArea className="h-[400px] border rounded-md md:hidden">
+          <div className="p-2 space-y-2">
+            {filteredAbbreviations.map((abbrev, idx) => (
+              <div 
+                key={`${abbrev.word}-${idx}`} 
+                className="flex items-center justify-between gap-2 p-3 bg-muted/30 rounded-lg"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="font-medium truncate">{abbrev.word}</span>
+                  <ArrowRight className="size-3 text-muted-foreground flex-shrink-0" />
+                  <span className="font-mono text-primary truncate">{abbrev.abbreviation}</span>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEdit(abbrev)}
+                    className="size-8"
+                    aria-label={`Edit ${abbrev.word}`}
+                  >
+                    <Pencil className="size-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemove(abbrev.word)}
+                    className="size-8"
+                    aria-label={`Remove ${abbrev.word}`}
+                  >
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+
+        {/* Desktop: Table layout */}
+        <ScrollArea className="h-[400px] border rounded-md hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -475,6 +522,7 @@ function AbbreviationEditor({
                         size="icon"
                         onClick={() => handleEdit(abbrev)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label={`Edit ${abbrev.word}`}
                       >
                         <Pencil className="size-4 text-muted-foreground" />
                       </Button>
@@ -483,6 +531,7 @@ function AbbreviationEditor({
                         size="icon"
                         onClick={() => handleRemove(abbrev.word)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label={`Remove ${abbrev.word}`}
                       >
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
@@ -545,17 +594,17 @@ function AcronymEditor({
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
+      <CardHeader className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <CardTitle>Approved Acronyms</CardTitle>
-            <CardDescription>
+            <CardDescription className="mt-1.5">
               Manage the list of approved acronyms ({acronyms.length} total)
             </CardDescription>
           </div>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="w-full sm:w-auto flex-shrink-0">
                 <Plus className="size-4 mr-2" />
                 Add Acronym
               </Button>
@@ -582,8 +631,8 @@ function AcronymEditor({
                   />
                 </div>
               </div>
-              <DialogFooter>
-                <Button onClick={handleAdd}>Add</Button>
+              <DialogFooter className="flex-col gap-2 sm:flex-row">
+                <Button onClick={handleAdd} className="w-full sm:w-auto">Add</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -597,9 +646,38 @@ function AcronymEditor({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
+            aria-label="Search acronyms"
           />
         </div>
-        <ScrollArea className="h-[400px] border rounded-md">
+
+        {/* Mobile: Card layout */}
+        <ScrollArea className="h-[400px] border rounded-md md:hidden">
+          <div className="p-2 space-y-2">
+            {filteredAcronyms.map((acr) => (
+              <div 
+                key={acr.acronym} 
+                className="flex items-start justify-between gap-2 p-3 bg-muted/30 rounded-lg"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono font-semibold text-primary block">{acr.acronym}</span>
+                  <span className="text-sm text-muted-foreground break-words">{acr.definition}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleRemove(acr.acronym)}
+                  className="size-8 flex-shrink-0"
+                  aria-label={`Remove ${acr.acronym}`}
+                >
+                  <Trash2 className="size-3.5 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+
+        {/* Desktop: Table layout */}
+        <ScrollArea className="h-[400px] border rounded-md hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -610,7 +688,7 @@ function AcronymEditor({
             </TableHeader>
             <TableBody>
               {filteredAcronyms.map((acr) => (
-                <TableRow key={acr.acronym}>
+                <TableRow key={acr.acronym} className="group">
                   <TableCell className="font-mono font-medium">{acr.acronym}</TableCell>
                   <TableCell className="text-sm">{acr.definition}</TableCell>
                   <TableCell>
@@ -618,6 +696,8 @@ function AcronymEditor({
                       variant="ghost"
                       size="icon"
                       onClick={() => handleRemove(acr.acronym)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label={`Remove ${acr.acronym}`}
                     >
                       <Trash2 className="size-4 text-destructive" />
                     </Button>
@@ -772,49 +852,54 @@ export default function LLMSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
+    <div className="space-y-6 min-w-0">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">LLM Settings</h1>
           <p className="text-muted-foreground">
             Customize your AI generation settings and system prompt
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={resetToDefaults}>
-            <RotateCcw className="size-4 mr-2" />
-            Reset Defaults
+        <div className="flex gap-2 flex-shrink-0">
+          <Button variant="outline" onClick={resetToDefaults} className="flex-1 sm:flex-none">
+            <RotateCcw className="size-4 sm:mr-2" />
+            <span className="hidden sm:inline">Reset Defaults</span>
+            <span className="sm:hidden">Reset</span>
           </Button>
-          <Button onClick={saveSettings} disabled={isSaving}>
-            {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : <Save className="size-4 mr-2" />}
-            Save Settings
+          <Button onClick={saveSettings} disabled={isSaving} className="flex-1 sm:flex-none">
+            {isSaving ? <Loader2 className="size-4 animate-spin sm:mr-2" /> : <Save className="size-4 sm:mr-2" />}
+            <span className="hidden sm:inline">Save Settings</span>
+            <span className="sm:hidden">Save</span>
           </Button>
         </div>
       </div>
 
       <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="general" className="gap-2">
-            <Settings className="size-4" />
-            General
-          </TabsTrigger>
-          <TabsTrigger value="prompt" className="gap-2">
-            <Wand2 className="size-4" />
-            System Prompt
-          </TabsTrigger>
-          <TabsTrigger value="verbs" className="gap-2">
-            <FileText className="size-4" />
-            Rank Verbs
-          </TabsTrigger>
-          <TabsTrigger value="abbreviations" className="gap-2">
-            <ArrowRight className="size-4" />
-            Abbreviations ({abbreviations.length})
-          </TabsTrigger>
-          <TabsTrigger value="acronyms" className="gap-2">
-            <BookOpen className="size-4" />
-            Acronyms ({acronyms.length})
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex w-max sm:w-auto h-auto gap-1 p-1">
+            <TabsTrigger value="general" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <Settings className="size-3.5 sm:size-4 flex-shrink-0" />
+              <span>General</span>
+            </TabsTrigger>
+            <TabsTrigger value="prompt" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <Wand2 className="size-3.5 sm:size-4 flex-shrink-0" />
+              <span className="hidden xs:inline">System </span><span>Prompt</span>
+            </TabsTrigger>
+            <TabsTrigger value="verbs" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <FileText className="size-3.5 sm:size-4 flex-shrink-0" />
+              <span>Verbs</span>
+            </TabsTrigger>
+            <TabsTrigger value="abbreviations" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <ArrowRight className="size-3.5 sm:size-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Abbreviations</span>
+              <span className="sm:hidden">Abbr</span>
+            </TabsTrigger>
+            <TabsTrigger value="acronyms" className="gap-1.5 sm:gap-2 text-xs sm:text-sm px-2.5 sm:px-3">
+              <BookOpen className="size-3.5 sm:size-4 flex-shrink-0" />
+              <span>Acronyms</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* General Settings */}
         <TabsContent value="general">
@@ -826,7 +911,7 @@ export default function LLMSettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="max-chars">Max Characters per Statement</Label>
                   <Input
@@ -834,8 +919,9 @@ export default function LLMSettingsPage() {
                     type="number"
                     value={maxChars}
                     onChange={(e) => setMaxChars(parseInt(e.target.value) || 350)}
+                    aria-describedby="max-chars-hint"
                   />
-                  <p className="text-xs text-muted-foreground">AFI 36-2406 recommends 350 characters</p>
+                  <p id="max-chars-hint" className="text-xs text-muted-foreground">AFI 36-2406 recommends 350 characters</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="scod">SCOD Date</Label>
@@ -844,10 +930,11 @@ export default function LLMSettingsPage() {
                     value={scodDate}
                     onChange={(e) => setScodDate(e.target.value)}
                     placeholder="31 March"
+                    aria-describedby="scod-hint"
                   />
-                  <p className="text-xs text-muted-foreground">Static Close Out Date</p>
+                  <p id="scod-hint" className="text-xs text-muted-foreground">Static Close Out Date</p>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:col-span-2 lg:col-span-1">
                   <Label htmlFor="cycle-year">Current Cycle Year</Label>
                   <Input
                     id="cycle-year"
@@ -916,89 +1003,174 @@ export default function LLMSettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-24">Rank</TableHead>
-                    <TableHead>Primary Verbs</TableHead>
-                    <TableHead>Secondary Verbs</TableHead>
-                    <TableHead className="w-20">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {RANKS.map(({ value: rank }) => {
-                    const verbs = rankVerbs[rank] || { primary: [], secondary: [] };
-                    return (
-                      <TableRow key={rank}>
-                        <TableCell className="font-medium">{rank}</TableCell>
-                        <TableCell>
+              {/* Mobile: Card layout */}
+              <div className="grid gap-3 md:hidden">
+                {RANKS.map(({ value: rank }) => {
+                  const verbs = rankVerbs[rank] || { primary: [], secondary: [] };
+                  return (
+                    <div key={rank} className="p-3 border rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-lg">{rank}</span>
+                        <Dialog
+                          open={editingRank === rank}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              setEditingRank(rank);
+                              setEditingVerbs({
+                                primary: verbs.primary.join(", "),
+                                secondary: verbs.secondary.join(", "),
+                              });
+                            } else {
+                              setEditingRank(null);
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Pencil className="size-3 mr-1.5" />
+                              Edit
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Edit Verbs for {rank}</DialogTitle>
+                              <DialogDescription>
+                                Enter comma-separated verbs for this rank
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                                <Label>Primary Verbs</Label>
+                                <Input
+                                  value={editingVerbs.primary}
+                                  onChange={(e) => setEditingVerbs({ ...editingVerbs, primary: e.target.value })}
+                                  placeholder="Led, Managed, Directed"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Secondary Verbs</Label>
+                                <Input
+                                  value={editingVerbs.secondary}
+                                  onChange={(e) => setEditingVerbs({ ...editingVerbs, secondary: e.target.value })}
+                                  placeholder="Supervised, Coordinated, Developed"
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button onClick={() => updateRankVerbs(rank)}>Save</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1.5">Primary</p>
                           <div className="flex flex-wrap gap-1">
                             {verbs.primary.map((v) => (
-                              <Badge key={v} variant="secondary">{v}</Badge>
+                              <Badge key={v} variant="secondary" className="text-xs">{v}</Badge>
                             ))}
                           </div>
-                        </TableCell>
-                        <TableCell>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1.5">Secondary</p>
                           <div className="flex flex-wrap gap-1">
                             {verbs.secondary.map((v) => (
-                              <Badge key={v} variant="outline">{v}</Badge>
+                              <Badge key={v} variant="outline" className="text-xs">{v}</Badge>
                             ))}
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Dialog
-                            open={editingRank === rank}
-                            onOpenChange={(open) => {
-                              if (open) {
-                                setEditingRank(rank);
-                                setEditingVerbs({
-                                  primary: verbs.primary.join(", "),
-                                  secondary: verbs.secondary.join(", "),
-                                });
-                              } else {
-                                setEditingRank(null);
-                              }
-                            }}
-                          >
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm">Edit</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Edit Verbs for {rank}</DialogTitle>
-                                <DialogDescription>
-                                  Enter comma-separated verbs for this rank
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="space-y-2">
-                                  <Label>Primary Verbs</Label>
-                                  <Input
-                                    value={editingVerbs.primary}
-                                    onChange={(e) => setEditingVerbs({ ...editingVerbs, primary: e.target.value })}
-                                    placeholder="Led, Managed, Directed"
-                                  />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: Table layout */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-20">Rank</TableHead>
+                      <TableHead>Primary Verbs</TableHead>
+                      <TableHead>Secondary Verbs</TableHead>
+                      <TableHead className="w-20 text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {RANKS.map(({ value: rank }) => {
+                      const verbs = rankVerbs[rank] || { primary: [], secondary: [] };
+                      return (
+                        <TableRow key={rank}>
+                          <TableCell className="font-medium">{rank}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {verbs.primary.map((v) => (
+                                <Badge key={v} variant="secondary">{v}</Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {verbs.secondary.map((v) => (
+                                <Badge key={v} variant="outline">{v}</Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Dialog
+                              open={editingRank === rank}
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  setEditingRank(rank);
+                                  setEditingVerbs({
+                                    primary: verbs.primary.join(", "),
+                                    secondary: verbs.secondary.join(", "),
+                                  });
+                                } else {
+                                  setEditingRank(null);
+                                }
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm">Edit</Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Edit Verbs for {rank}</DialogTitle>
+                                  <DialogDescription>
+                                    Enter comma-separated verbs for this rank
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label>Primary Verbs</Label>
+                                    <Input
+                                      value={editingVerbs.primary}
+                                      onChange={(e) => setEditingVerbs({ ...editingVerbs, primary: e.target.value })}
+                                      placeholder="Led, Managed, Directed"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Secondary Verbs</Label>
+                                    <Input
+                                      value={editingVerbs.secondary}
+                                      onChange={(e) => setEditingVerbs({ ...editingVerbs, secondary: e.target.value })}
+                                      placeholder="Supervised, Coordinated, Developed"
+                                    />
+                                  </div>
                                 </div>
-                                <div className="space-y-2">
-                                  <Label>Secondary Verbs</Label>
-                                  <Input
-                                    value={editingVerbs.secondary}
-                                    onChange={(e) => setEditingVerbs({ ...editingVerbs, secondary: e.target.value })}
-                                    placeholder="Supervised, Coordinated, Developed"
-                                  />
-                                </div>
-                              </div>
-                              <DialogFooter>
-                                <Button onClick={() => updateRankVerbs(rank)}>Save</Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                                <DialogFooter>
+                                  <Button onClick={() => updateRankVerbs(rank)}>Save</Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

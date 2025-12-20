@@ -23,6 +23,7 @@ export interface Profile {
   supervisor_id: string | null;
   avatar_url: string | null;
   writing_style: WritingStyle;
+  terms_accepted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -186,6 +187,7 @@ export interface Database {
           supervisor_id: string | null;
           avatar_url: string | null;
           writing_style: string;
+          terms_accepted_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -200,6 +202,7 @@ export interface Database {
           supervisor_id?: string | null;
           avatar_url?: string | null;
           writing_style?: string;
+          terms_accepted_at?: string | null;
         };
         Update: {
           id?: string;
@@ -212,6 +215,7 @@ export interface Database {
           supervisor_id?: string | null;
           avatar_url?: string | null;
           writing_style?: string;
+          terms_accepted_at?: string | null;
         };
       };
       teams: {

@@ -108,16 +108,18 @@ export function AppSidebar({ profile }: AppSidebarProps) {
 
   return (
     <>
-      {/* Mobile menu button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed top-4 left-4 z-50 lg:hidden"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label={isOpen ? "Close menu" : "Open menu"}
-      >
-        {isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-      </Button>
+      {/* Mobile hamburger button - only visible when sidebar is closed */}
+      {!isOpen && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="fixed top-4 left-4 z-50 lg:hidden"
+          onClick={() => setIsOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu className="size-5" />
+        </Button>
+      )}
 
       {/* Overlay */}
       {isOpen && (
@@ -136,8 +138,8 @@ export function AppSidebar({ profile }: AppSidebarProps) {
         )}
       >
         <div className="flex flex-col h-full">
-          {/* Logo */}
-          <div className="flex items-center h-16 px-6 border-b border-sidebar-border">
+          {/* Logo & Close button */}
+          <div className="flex items-center justify-between h-16 px-6 border-b border-sidebar-border">
             <Link
               href="/dashboard"
               className="flex items-center gap-2 font-bold text-lg"
@@ -150,6 +152,16 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                 My EPBuddy
               </span>
             </Link>
+            {/* Mobile close button - inside sidebar header */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden -mr-2"
+              onClick={() => setIsOpen(false)}
+              aria-label="Close menu"
+            >
+              <X className="size-5" />
+            </Button>
           </div>
 
           <ScrollArea className="flex-1 px-3 py-4">

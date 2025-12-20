@@ -356,10 +356,10 @@ export default function GeneratePage() {
   const selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-6 min-w-0">
+      <div className="min-w-0">
         <h1 className="text-2xl font-bold tracking-tight">Generate EPB</h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground text-sm sm:text-base">
           Create myEval-ready narrative statements from your accomplishments
         </p>
       </div>
@@ -372,23 +372,23 @@ export default function GeneratePage() {
             Select the ratee, AI model, and writing style for generation
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="space-y-4 min-w-0">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {/* Ratee Selection */}
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Ratee</Label>
               <Select value={selectedRatee} onValueChange={setSelectedRatee}>
-                <SelectTrigger aria-label="Select ratee">
-                  <SelectValue />
+                <SelectTrigger aria-label="Select ratee" className="w-full">
+                  <SelectValue className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="self">
-                    Myself ({profile?.rank} {profile?.full_name})
+                    <span className="truncate">Myself ({profile?.rank} {profile?.full_name})</span>
                   </SelectItem>
                   {canManageTeam &&
                     subordinates.map((sub) => (
                       <SelectItem key={sub.id} value={sub.id}>
-                        {sub.rank} {sub.full_name}
+                        <span className="truncate">{sub.rank} {sub.full_name}</span>
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -400,12 +400,14 @@ export default function GeneratePage() {
               <Label>AI Model</Label>
               <Select value={selectedModel} onValueChange={setSelectedModel}>
                 <SelectTrigger aria-label="Select AI model">
-                  <SelectValue />
+                  <SelectValue>
+                    {selectedModelInfo?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {AI_MODELS.map((model) => (
                     <SelectItem key={model.id} value={model.id}>
-                      <div className="flex flex-col">
+                      <div className="flex flex-col items-start">
                         <span>{model.name}</span>
                         <span className="text-xs text-muted-foreground">
                           {model.description}
@@ -457,22 +459,22 @@ export default function GeneratePage() {
           </div>
 
           {/* Style Explanation */}
-          <div className="p-3 rounded-lg bg-muted/50 text-sm">
+          <div className="p-3 rounded-lg bg-muted/50 text-xs sm:text-sm">
             {writingStyle === "personal" && (
-              <p><User className="inline size-4 mr-1" /> <strong>Personal Style:</strong> Uses your own refined statements as examples for consistent voice.</p>
+              <p className="flex items-start gap-1.5"><User className="size-4 shrink-0 mt-0.5" /> <span><strong>Personal Style:</strong> Uses your own refined statements as examples for consistent voice.</span></p>
             )}
             {writingStyle === "community" && (
-              <p><Users className="inline size-4 mr-1" /> <strong>Community Style:</strong> Uses top-rated statements from your AFSC community.</p>
+              <p className="flex items-start gap-1.5"><Users className="size-4 shrink-0 mt-0.5" /> <span><strong>Community Style:</strong> Uses top-rated statements from your AFSC community.</span></p>
             )}
             {writingStyle === "hybrid" && (
-              <p><Star className="inline size-4 mr-1" /> <strong>Hybrid:</strong> Combines your personal style with community best practices.</p>
+              <p className="flex items-start gap-1.5"><Star className="size-4 shrink-0 mt-0.5" /> <span><strong>Hybrid:</strong> Combines your personal style with community best practices.</span></p>
             )}
           </div>
 
           {/* API Key Indicator */}
-          <div className="flex items-center gap-2 text-sm">
-            <Key className="size-4 text-muted-foreground" />
-            <span className="text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs sm:text-sm">
+            <Key className="size-4 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground min-w-0">
               {hasUserKey ? (
                 <span className="text-green-600 dark:text-green-400">
                   Using your {selectedModelInfo?.provider} API key
@@ -491,21 +493,21 @@ export default function GeneratePage() {
           <Separator />
 
           {/* Stats Summary */}
-          <div className="flex flex-wrap gap-4">
-            <div>
-              <span className="text-sm text-muted-foreground">Ratee Rank: </span>
-              <Badge variant="outline">{rateeProfile?.rank || "N/A"}</Badge>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-4">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs sm:text-sm text-muted-foreground shrink-0">Rank:</span>
+              <Badge variant="outline" className="truncate">{rateeProfile?.rank || "N/A"}</Badge>
             </div>
-            <div>
-              <span className="text-sm text-muted-foreground">AFSC: </span>
-              <Badge variant="outline">{rateeProfile?.afsc || "N/A"}</Badge>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs sm:text-sm text-muted-foreground shrink-0">AFSC:</span>
+              <Badge variant="outline" className="truncate">{rateeProfile?.afsc || "N/A"}</Badge>
             </div>
-            <div>
-              <span className="text-sm text-muted-foreground">Entries Available: </span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs sm:text-sm text-muted-foreground shrink-0">Entries:</span>
               <Badge variant="secondary">{accomplishments.length}</Badge>
             </div>
-            <div>
-              <span className="text-sm text-muted-foreground">MPAs Covered: </span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs sm:text-sm text-muted-foreground shrink-0">MPAs:</span>
               <Badge variant="secondary">
                 {new Set(accomplishments.map((a) => a.mpa)).size}/{mgas.length}
               </Badge>
@@ -531,9 +533,9 @@ export default function GeneratePage() {
           </Button>
 
           {accomplishments.length === 0 && (
-            <div className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400">
-              <AlertCircle className="size-4" />
-              No accomplishments found for this ratee in {cycleYear}. Add entries first.
+            <div className="flex items-start gap-2 text-xs sm:text-sm text-orange-600 dark:text-orange-400">
+              <AlertCircle className="size-4 shrink-0 mt-0.5" />
+              <span>No accomplishments found for this ratee in {cycleYear}. Add entries first.</span>
             </div>
           )}
         </CardContent>
@@ -542,33 +544,44 @@ export default function GeneratePage() {
       {/* Generated Statements */}
       {generatedStatements.length > 0 && (
         <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between">
-              <div>
+          <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="min-w-0">
                 <CardTitle>Generated Statements</CardTitle>
-                <CardDescription>
+                <CardDescription className="truncate">
                   {rateeProfile?.rank} {rateeProfile?.full_name} • {cycleYear} Cycle
                 </CardDescription>
               </div>
-              <Button variant="outline" onClick={downloadAllStatements}>
+              <Button variant="outline" onClick={downloadAllStatements} className="w-full sm:w-auto shrink-0">
                 <Download className="size-4 mr-2" />
                 Download All
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             <Tabs defaultValue={generatedStatements[0]?.mpa}>
-              <TabsList className="flex-wrap h-auto gap-2">
+              <TabsList className="flex flex-wrap h-auto gap-1 sm:gap-2 w-full justify-start p-1">
                 {generatedStatements.map(({ mpa }) => {
                   const isHLR = mpa === "hlr_assessment";
+                  const label = mgas.find((m) => m.key === mpa)?.label || mpa;
+                  // Shorten labels for mobile
+                  const shortLabel = label
+                    .replace("Executing the Mission", "Mission")
+                    .replace("Leading People", "Leading")
+                    .replace("Managing Resources", "Resources")
+                    .replace("Improving the Unit", "Improving");
                   return (
                     <TabsTrigger 
                       key={mpa} 
                       value={mpa}
-                      className={cn(isHLR && "bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200")}
+                      className={cn(
+                        "text-xs sm:text-sm px-2 sm:px-3",
+                        isHLR && "bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200"
+                      )}
                     >
-                      {isHLR && <Crown className="size-4 mr-1" />}
-                      {mgas.find((m) => m.key === mpa)?.label || mpa}
+                      {isHLR && <Crown className="size-3 sm:size-4 mr-1" />}
+                      <span className="sm:hidden">{shortLabel}</span>
+                      <span className="hidden sm:inline">{label}</span>
                     </TabsTrigger>
                   );
                 })}
@@ -577,15 +590,15 @@ export default function GeneratePage() {
               {generatedStatements.map(({ mpa, statements, historyIds }) => {
                 const isHLR = mpa === "hlr_assessment";
                 return (
-                <TabsContent key={mpa} value={mpa} className="space-y-4 mt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {isHLR && <Crown className="size-5 text-amber-600" />}
-                      <h3 className="font-medium">
+                <TabsContent key={mpa} value={mpa} className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isHLR && <Crown className="size-4 sm:size-5 text-amber-600 shrink-0" />}
+                      <h3 className="font-medium text-sm sm:text-base truncate">
                         {mgas.find((m) => m.key === mpa)?.label || mpa}
                       </h3>
                       {isHLR && (
-                        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-300">
+                        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-300 text-xs shrink-0">
                           Commander&apos;s Assessment
                         </Badge>
                       )}
@@ -593,6 +606,7 @@ export default function GeneratePage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="w-full sm:w-auto"
                       onClick={() => copyToClipboard(statements.join("\n\n"), `all-${mpa}`)}
                     >
                       {copiedIndex === `all-${mpa}` ? (
@@ -613,18 +627,19 @@ export default function GeneratePage() {
                         <div
                           key={idx}
                           className={cn(
-                            "p-4 rounded-lg border bg-card group",
+                            "p-3 sm:p-4 rounded-lg border bg-card group",
                             isOverLimit && "border-destructive/50"
                           )}
                         >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <p className="text-sm leading-relaxed">{statement}</p>
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs sm:text-sm leading-relaxed break-words">{statement}</p>
                             </div>
-                            <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex gap-1 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity self-end sm:self-start">
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="size-8 sm:size-9"
                                 onClick={() => openRefinementDialog(mpa, idx, statement, historyIds?.[idx])}
                                 aria-label="Edit and save statement"
                               >
@@ -633,6 +648,7 @@ export default function GeneratePage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="size-8 sm:size-9"
                                 onClick={() => copyToClipboard(statement, `${mpa}-${idx}`)}
                                 aria-label="Copy statement"
                               >
@@ -644,14 +660,14 @@ export default function GeneratePage() {
                               </Button>
                             </div>
                           </div>
-                          <div className="mt-3 flex items-center justify-between">
-                            <div className="flex-1">
+                          <div className="mt-2 sm:mt-3 flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
                               <Progress
                                 value={Math.min((charCount / maxChars) * 100, 100)}
                                 className={cn("h-1.5", isOverLimit && "[&>*]:bg-destructive")}
                               />
                             </div>
-                            <span className={cn("text-xs ml-3", getCharacterCountColor(charCount, maxChars))}>
+                            <span className={cn("text-xs shrink-0", getCharacterCountColor(charCount, maxChars))}>
                               {charCount}/{maxChars}
                             </span>
                           </div>

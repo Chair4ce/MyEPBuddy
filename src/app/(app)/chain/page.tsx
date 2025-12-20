@@ -179,26 +179,26 @@ export default function ChainPage() {
     const isExpanded = expandedNodes.has(node.profile.id);
 
     return (
-      <div key={node.profile.id} className="relative">
-        {/* Connector lines */}
+      <div key={node.profile.id} className="relative min-w-0">
+        {/* Connector lines - hidden on mobile for cleaner look */}
         {depth > 0 && (
           <>
             {/* Horizontal line to node */}
             <div
-              className="absolute border-t-2 border-border"
+              className="absolute border-t-2 border-border hidden sm:block"
               style={{
-                left: -24,
-                top: 28,
-                width: 24,
+                left: -16,
+                top: 24,
+                width: 16,
               }}
             />
             {/* Vertical line from parent */}
             {!isLast && (
               <div
-                className="absolute border-l-2 border-border"
+                className="absolute border-l-2 border-border hidden sm:block"
                 style={{
-                  left: -24,
-                  top: 28,
+                  left: -16,
+                  top: 24,
                   height: "calc(100% + 8px)",
                 }}
               />
@@ -206,17 +206,17 @@ export default function ChainPage() {
           </>
         )}
 
-        {/* Node card */}
+        {/* Node card - responsive padding */}
         <div
           className={cn(
-            "relative p-3 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md bg-card",
+            "relative p-2 sm:p-3 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md bg-card",
             !hasCustomColor(node.profile.rank) && "border-border",
-            node.profile.id === profile?.id && "ring-2 ring-primary ring-offset-2"
+            node.profile.id === profile?.id && "ring-2 ring-primary ring-offset-1 sm:ring-offset-2"
           )}
           style={getRankStyle(node.profile.rank)}
           onClick={() => hasChildren && toggleExpand(node.profile.id)}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {hasChildren && (
               <div className="shrink-0">
                 {isExpanded ? (
@@ -226,37 +226,37 @@ export default function ChainPage() {
                 )}
               </div>
             )}
-            <Avatar className="size-10 shrink-0">
-              <AvatarFallback className="text-sm font-medium">
+            <Avatar className="size-8 sm:size-10 shrink-0">
+              <AvatarFallback className="text-xs sm:text-sm font-medium">
                 {node.profile.full_name?.split(" ").map((n) => n[0]).join("") || "U"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm truncate">
+              <p className="font-semibold text-xs sm:text-sm truncate">
                 {node.profile.rank} {node.profile.full_name}
               </p>
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
                 {node.profile.afsc} • {node.profile.unit}
               </p>
             </div>
             {hasChildren && (
-              <Badge variant="secondary" className="shrink-0">
+              <Badge variant="secondary" className="shrink-0 text-[10px] sm:text-xs px-1.5 sm:px-2">
                 {node.children.length}
               </Badge>
             )}
           </div>
         </div>
 
-        {/* Children */}
+        {/* Children - responsive margin */}
         {hasChildren && isExpanded && (
-          <div className="ml-8 mt-2 space-y-2 relative">
-            {/* Vertical line connecting children */}
+          <div className="ml-4 sm:ml-6 md:ml-8 mt-2 space-y-2 relative">
+            {/* Vertical line connecting children - hidden on mobile */}
             <div
-              className="absolute border-l-2 border-border"
+              className="absolute border-l-2 border-border hidden sm:block"
               style={{
-                left: -24,
+                left: -16,
                 top: 0,
-                height: "calc(100% - 28px)",
+                height: "calc(100% - 24px)",
               }}
             />
             {node.children.map((child, idx) =>
@@ -289,61 +289,65 @@ export default function ChainPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Chain of Command</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Chain of Command</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">
           Visualization of your supervision hierarchy
         </p>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Users className="size-5 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{allProfiles.length - 1}</p>
-                <p className="text-xs text-muted-foreground">Total in Chain</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        {Object.entries(stats)
-          .sort(([a], [b]) => RANK_ORDER.indexOf(a) - RANK_ORDER.indexOf(b))
-          .slice(0, 5)
-          .map(([rank, count]) => (
-            <Card key={rank}>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <User className="size-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-2xl font-bold">{count}</p>
-                    <p className="text-xs text-muted-foreground">{rank}s</p>
-                  </div>
+      {/* Stats - horizontal scroll on mobile */}
+      <div className="relative -mx-4 px-4 md:mx-0 md:px-0">
+        <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 lg:grid-cols-6 md:overflow-visible md:pb-0 snap-x snap-mandatory">
+          <Card className="shrink-0 w-[140px] md:w-auto snap-start">
+            <CardContent className="pt-3 pb-3 md:pt-4">
+              <div className="flex items-center gap-2">
+                <Users className="size-4 md:size-5 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xl md:text-2xl font-bold">{allProfiles.length - 1}</p>
+                  <p className="text-[10px] md:text-xs text-muted-foreground truncate">Total in Chain</p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            </CardContent>
+          </Card>
+          {Object.entries(stats)
+            .sort(([a], [b]) => RANK_ORDER.indexOf(a) - RANK_ORDER.indexOf(b))
+            .slice(0, 5)
+            .map(([rank, count]) => (
+              <Card key={rank} className="shrink-0 w-[120px] md:w-auto snap-start">
+                <CardContent className="pt-3 pb-3 md:pt-4">
+                  <div className="flex items-center gap-2">
+                    <User className="size-4 md:size-5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xl md:text-2xl font-bold">{count}</p>
+                      <p className="text-[10px] md:text-xs text-muted-foreground truncate">{rank}s</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+        </div>
       </div>
 
       {/* Tree */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="size-5" />
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-2 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Users className="size-4 sm:size-5" />
             Supervision Tree
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Click on a node to expand/collapse. Your position is highlighted.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-2 sm:px-6">
           {tree ? (
-            <div className="p-4">{renderTreeNode(tree)}</div>
+            <div className="p-2 sm:p-4 overflow-x-auto">
+              <div className="min-w-0">{renderTreeNode(tree)}</div>
+            </div>
           ) : (
-            <p className="text-center text-muted-foreground py-8">
+            <p className="text-center text-muted-foreground py-8 text-sm">
               No subordinates in your chain of command.
             </p>
           )}
@@ -352,12 +356,12 @@ export default function ChainPage() {
 
       {/* Rank Color Settings */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+        <CardHeader className="pb-2 sm:pb-6">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
               <CardTitle className="text-sm">Rank Colors</CardTitle>
               <CardDescription className="text-xs">
-                Click on a rank to customize its color
+                Tap a rank to customize its color
               </CardDescription>
             </div>
             {Object.keys(rankColors).length > 0 && (
@@ -368,15 +372,15 @@ export default function ChainPage() {
                   setRankColors({});
                   localStorage.removeItem(STORAGE_KEY);
                 }}
-                className="text-xs text-muted-foreground"
+                className="text-xs text-muted-foreground shrink-0"
               >
-                Reset All
+                Reset
               </Button>
             )}
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
+        <CardContent className="px-3 sm:px-6">
+          <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2 sm:gap-3">
             {RANK_ORDER.map((rank) => {
               const color = rankColors[rank];
               return (
@@ -384,7 +388,7 @@ export default function ChainPage() {
                   <PopoverTrigger asChild>
                     <button
                       className={cn(
-                        "px-3 py-1.5 rounded border-2 text-xs font-medium transition-all hover:shadow-md cursor-pointer",
+                        "px-2 sm:px-3 py-1.5 rounded border-2 text-[10px] sm:text-xs font-medium transition-all hover:shadow-md cursor-pointer w-full sm:w-auto",
                         !color && "bg-card border-border hover:border-muted-foreground"
                       )}
                       style={color ? { backgroundColor: `${color}20`, borderColor: color } : undefined}
@@ -392,9 +396,9 @@ export default function ChainPage() {
                       {rank}
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-3" align="center">
+                  <PopoverContent className="w-auto p-3" align="center" side="top">
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-4">
                         <span className="text-sm font-medium">{rank} Color</span>
                         {color && (
                           <Button
@@ -413,13 +417,13 @@ export default function ChainPage() {
                         onChange={(e) => updateRankColor(rank, e.target.value)}
                         className="w-full h-10 rounded cursor-pointer border-0"
                       />
-                      <div className="flex gap-1 flex-wrap">
+                      <div className="grid grid-cols-4 gap-1.5">
                         {["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"].map((preset) => (
                           <button
                             key={preset}
                             onClick={() => updateRankColor(rank, preset)}
                             className={cn(
-                              "size-6 rounded-full border-2 transition-transform hover:scale-110",
+                              "size-7 rounded-full border-2 transition-transform hover:scale-110",
                               color === preset ? "border-foreground ring-2 ring-offset-2 ring-foreground" : "border-transparent"
                             )}
                             style={{ backgroundColor: preset }}
