@@ -50,7 +50,6 @@ export default async function Image() {
             letterSpacing: "0.1em",
           }}
         >
-          ★ USAF ★
         </div>
 
         {/* Main content */}
