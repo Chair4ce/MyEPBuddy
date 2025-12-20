@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import {
@@ -12,9 +12,18 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, User, Users, ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Loader2, User, Users, ChevronDown, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types/database";
+
+const RANK_ORDER = ["CMSgt", "SMSgt", "MSgt", "TSgt", "SSgt", "SrA", "A1C", "Amn", "AB"];
+const STORAGE_KEY = "chain-rank-colors";
 
 interface TreeNode {
   profile: Profile;
@@ -22,14 +31,43 @@ interface TreeNode {
   isExpanded: boolean;
 }
 
+type RankColors = Record<string, string>;
+
 export default function ChainPage() {
   const { profile } = useUserStore();
   const [isLoading, setIsLoading] = useState(true);
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [teamRelations, setTeamRelations] = useState<{ supervisor_id: string; subordinate_id: string }[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [rankColors, setRankColors] = useState<RankColors>({});
 
   const supabase = createClient();
+
+  // Load rank colors from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setRankColors(JSON.parse(stored));
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, []);
+
+  // Save rank colors to localStorage whenever they change
+  const updateRankColor = useCallback((rank: string, color: string | null) => {
+    setRankColors((prev) => {
+      const next = { ...prev };
+      if (color) {
+        next[rank] = color;
+      } else {
+        delete next[rank];
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -119,19 +157,21 @@ export default function ChainPage() {
     });
   }
 
-  function getRankColor(rank: string | null): string {
-    const colors: Record<string, string> = {
-      CMSgt: "bg-purple-100 dark:bg-purple-900/30 border-purple-500",
-      SMSgt: "bg-indigo-100 dark:bg-indigo-900/30 border-indigo-500",
-      MSgt: "bg-blue-100 dark:bg-blue-900/30 border-blue-500",
-      TSgt: "bg-cyan-100 dark:bg-cyan-900/30 border-cyan-500",
-      SSgt: "bg-teal-100 dark:bg-teal-900/30 border-teal-500",
-      SrA: "bg-green-100 dark:bg-green-900/30 border-green-500",
-      A1C: "bg-lime-100 dark:bg-lime-900/30 border-lime-500",
-      Amn: "bg-yellow-100 dark:bg-yellow-900/30 border-yellow-500",
-      AB: "bg-orange-100 dark:bg-orange-900/30 border-orange-500",
+  // Returns inline style object for custom colors, or empty for default styling
+  function getRankStyle(rank: string | null): React.CSSProperties {
+    const color = rankColors[rank || ""];
+    if (!color) return {};
+    
+    // Create a lighter background version of the color
+    return {
+      backgroundColor: `${color}20`, // 20 = ~12% opacity in hex
+      borderColor: color,
     };
-    return colors[rank || ""] || "bg-gray-100 dark:bg-gray-900/30 border-gray-500";
+  }
+
+  // Check if rank has a custom color
+  function hasCustomColor(rank: string | null): boolean {
+    return Boolean(rankColors[rank || ""]);
   }
 
   function renderTreeNode(node: TreeNode, depth: number = 0, isLast: boolean = true) {
@@ -169,10 +209,11 @@ export default function ChainPage() {
         {/* Node card */}
         <div
           className={cn(
-            "relative p-3 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md",
-            getRankColor(node.profile.rank),
+            "relative p-3 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md bg-card",
+            !hasCustomColor(node.profile.rank) && "border-border",
             node.profile.id === profile?.id && "ring-2 ring-primary ring-offset-2"
           )}
+          style={getRankStyle(node.profile.rank)}
           onClick={() => hasChildren && toggleExpand(node.profile.id)}
         >
           <div className="flex items-center gap-3">
@@ -270,10 +311,7 @@ export default function ChainPage() {
           </CardContent>
         </Card>
         {Object.entries(stats)
-          .sort(([a], [b]) => {
-            const order = ["CMSgt", "SMSgt", "MSgt", "TSgt", "SSgt", "SrA", "A1C", "Amn", "AB"];
-            return order.indexOf(a) - order.indexOf(b);
-          })
+          .sort(([a], [b]) => RANK_ORDER.indexOf(a) - RANK_ORDER.indexOf(b))
           .slice(0, 5)
           .map(([rank, count]) => (
             <Card key={rank}>
@@ -312,21 +350,87 @@ export default function ChainPage() {
         </CardContent>
       </Card>
 
-      {/* Legend */}
+      {/* Rank Color Settings */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Rank Colors</CardTitle>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm">Rank Colors</CardTitle>
+              <CardDescription className="text-xs">
+                Click on a rank to customize its color
+              </CardDescription>
+            </div>
+            {Object.keys(rankColors).length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRankColors({});
+                  localStorage.removeItem(STORAGE_KEY);
+                }}
+                className="text-xs text-muted-foreground"
+              >
+                Reset All
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {["CMSgt", "SMSgt", "MSgt", "TSgt", "SSgt", "SrA", "A1C", "Amn", "AB"].map((rank) => (
-              <div
-                key={rank}
-                className={cn("px-3 py-1 rounded border-2 text-xs font-medium", getRankColor(rank))}
-              >
-                {rank}
-              </div>
-            ))}
+          <div className="flex flex-wrap gap-3">
+            {RANK_ORDER.map((rank) => {
+              const color = rankColors[rank];
+              return (
+                <Popover key={rank}>
+                  <PopoverTrigger asChild>
+                    <button
+                      className={cn(
+                        "px-3 py-1.5 rounded border-2 text-xs font-medium transition-all hover:shadow-md cursor-pointer",
+                        !color && "bg-card border-border hover:border-muted-foreground"
+                      )}
+                      style={color ? { backgroundColor: `${color}20`, borderColor: color } : undefined}
+                    >
+                      {rank}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" align="center">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{rank} Color</span>
+                        {color && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                            onClick={() => updateRankColor(rank, null)}
+                          >
+                            <X className="size-3" />
+                          </Button>
+                        )}
+                      </div>
+                      <input
+                        type="color"
+                        value={color || "#6b7280"}
+                        onChange={(e) => updateRankColor(rank, e.target.value)}
+                        className="w-full h-10 rounded cursor-pointer border-0"
+                      />
+                      <div className="flex gap-1 flex-wrap">
+                        {["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"].map((preset) => (
+                          <button
+                            key={preset}
+                            onClick={() => updateRankColor(rank, preset)}
+                            className={cn(
+                              "size-6 rounded-full border-2 transition-transform hover:scale-110",
+                              color === preset ? "border-foreground ring-2 ring-offset-2 ring-foreground" : "border-transparent"
+                            )}
+                            style={{ backgroundColor: preset }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

@@ -1,5 +1,5 @@
 -- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: gen_random_uuid() is built into PostgreSQL 13+ and doesn't require uuid-ossp
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Create rank enum type
@@ -27,7 +27,7 @@ CREATE TABLE profiles (
 
 -- Teams table (supervisor-subordinate relationships)
 CREATE TABLE teams (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   supervisor_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   subordinate_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -37,7 +37,7 @@ CREATE TABLE teams (
 
 -- Accomplishments table
 CREATE TABLE accomplishments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   created_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -98,7 +98,7 @@ Generate statements that are:
 
 -- User API Keys table (encrypted storage)
 CREATE TABLE user_api_keys (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
   openai_key TEXT,
   anthropic_key TEXT,
