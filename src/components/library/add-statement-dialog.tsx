@@ -135,10 +135,10 @@ export function AddStatementDialog({
           cycle_year: cycleYear,
           is_favorite: false,
         } as never)
-        .select()
-        .single();
+        .select("id")
+        .single() as { data: { id: string } | null; error: Error | null };
 
-      if (insertError) throw insertError;
+      if (insertError || !newStatement) throw insertError || new Error("Failed to create statement");
 
       // Create shares based on granular sharing options
       const shares: Array<{

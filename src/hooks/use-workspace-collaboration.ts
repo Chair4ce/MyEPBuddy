@@ -87,7 +87,7 @@ export function useWorkspaceCollaboration(
         const online: CollaboratorPresence[] = [];
         
         Object.entries(presenceState).forEach(([userId, presences]) => {
-          const presence = presences[0] as { fullName: string; email: string; isHost: boolean };
+          const presence = presences[0] as unknown as { fullName: string; email: string; isHost: boolean } | undefined;
           if (presence) {
             online.push({
               id: userId,
@@ -102,7 +102,7 @@ export function useWorkspaceCollaboration(
         setCollaborators(online);
       })
       .on("presence", { event: "join" }, ({ key, newPresences }) => {
-        const presence = newPresences[0] as { fullName: string; email: string; isHost: boolean };
+        const presence = newPresences[0] as unknown as { fullName: string; email: string; isHost: boolean } | undefined;
         if (presence && optionsRef.current.onParticipantJoin) {
           optionsRef.current.onParticipantJoin({
             id: key,
@@ -177,11 +177,11 @@ export function useWorkspaceCollaboration(
         .insert({
           host_user_id: profile.id,
           workspace_state: workspaceState,
-        })
+        } as never)
         .select()
-        .single();
+        .single() as unknown as { data: WorkspaceSession | null; error: Error | null };
 
-      if (createError) throw createError;
+      if (createError || !newSession) throw createError || new Error("Failed to create session");
 
       // Add host as participant
       await supabase
@@ -190,9 +190,9 @@ export function useWorkspaceCollaboration(
           session_id: newSession.id,
           user_id: profile.id,
           is_host: true,
-        });
+        } as never);
 
-      setSession(newSession as WorkspaceSession);
+      setSession(newSession);
       setIsHost(true);
       
       // Subscribe to realtime channel
@@ -225,7 +225,7 @@ export function useWorkspaceCollaboration(
         .select("*, host_profile:profiles!workspace_sessions_host_user_id_fkey(*)")
         .eq("session_code", code.toUpperCase())
         .eq("is_active", true)
-        .single();
+        .single() as unknown as { data: WorkspaceSession | null; error: Error | null };
 
       if (findError || !existingSession) {
         setError("Session not found or has expired");
@@ -239,7 +239,7 @@ export function useWorkspaceCollaboration(
         .eq("session_id", existingSession.id)
         .eq("user_id", profile.id)
         .is("left_at", null)
-        .single();
+        .single() as unknown as { data: { id: string } | null; error: Error | null };
 
       if (!existingParticipant) {
         // Join as participant
@@ -249,12 +249,12 @@ export function useWorkspaceCollaboration(
             session_id: existingSession.id,
             user_id: profile.id,
             is_host: false,
-          });
+          } as never);
 
         if (joinError) throw joinError;
       }
 
-      setSession(existingSession as WorkspaceSession);
+      setSession(existingSession);
       setIsHost(existingSession.host_user_id === profile.id);
       
       // Subscribe to realtime channel
@@ -283,7 +283,7 @@ export function useWorkspaceCollaboration(
       // Mark participation as left
       await supabase
         .from("workspace_session_participants")
-        .update({ left_at: new Date().toISOString() })
+        .update({ left_at: new Date().toISOString() } as never)
         .eq("session_id", session.id)
         .eq("user_id", profile.id);
 
@@ -319,7 +319,7 @@ export function useWorkspaceCollaboration(
       // Deactivate session in database
       await supabase
         .from("workspace_sessions")
-        .update({ is_active: false })
+        .update({ is_active: false } as never)
         .eq("id", session.id);
 
       // Clean up
@@ -356,7 +356,7 @@ export function useWorkspaceCollaboration(
     // Also update in database (debounced would be better in production)
     supabase
       .from("workspace_sessions")
-      .update({ workspace_state: newState })
+      .update({ workspace_state: newState } as never)
       .eq("id", session.id)
       .then(() => {
         // Update local state
