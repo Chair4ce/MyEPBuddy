@@ -23,6 +23,12 @@ export default function LandingPage() {
             </div>
             <span>My EPBuddy</span>
           </div>
+          
+          {/* Unclassified Banner */}
+          <span className="hidden sm:inline-block px-3 py-1 text-xs font-semibold tracking-wider rounded bg-green-600 text-white dark:bg-green-700 dark:text-green-50 select-none">
+            UNCLASSIFIED
+          </span>
+          
           <div className="flex items-center gap-4">
             <Button variant="ghost" asChild>
               <Link href="/login">Sign In</Link>
@@ -218,8 +224,16 @@ export default function LandingPage() {
               </div>
               <span>My EPBuddy © {new Date().getFullYear()}</span>
             </div>
+            <div className="flex items-center gap-6 text-sm text-muted-foreground">
+              <Link href="/privacy" className="hover:text-foreground transition-colors">
+                Privacy Policy
+              </Link>
+              <Link href="/terms" className="hover:text-foreground transition-colors">
+                Terms of Service
+              </Link>
+            </div>
             <p className="text-sm text-muted-foreground text-center">
-              Not affiliated with the U.S. Air Force. For personal use only.
+              Not affiliated with the U.S. Air Force or DoD
             </p>
           </div>
         </div>

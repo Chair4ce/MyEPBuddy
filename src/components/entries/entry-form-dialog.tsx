@@ -35,7 +35,8 @@ interface EntryFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editEntry?: Accomplishment | null;
-  targetUserId?: string;
+  targetUserId?: string | null;
+  targetManagedMemberId?: string | null;
 }
 
 export function EntryFormDialog({
@@ -43,6 +44,7 @@ export function EntryFormDialog({
   onOpenChange,
   editEntry,
   targetUserId,
+  targetManagedMemberId,
 }: EntryFormDialogProps) {
   const { profile, epbConfig } = useUserStore();
   const { addAccomplishment, updateAccomplishment: updateStore } =
@@ -103,7 +105,8 @@ export function EntryFormDialog({
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const userId = targetUserId || profile?.id;
+    // For managed members, use supervisor's ID as user_id for RLS
+    const userId = targetManagedMemberId ? profile?.id : (targetUserId || profile?.id);
     if (!userId) {
       toast.error("User not found");
       setIsSubmitting(false);
@@ -133,8 +136,9 @@ export function EntryFormDialog({
         }
       } else {
         const result = await createAccomplishment({
-          user_id: userId,
+          user_id: targetManagedMemberId ? profile?.id || "" : userId, // For managed members, store supervisor's ID
           created_by: profile?.id || userId,
+          team_member_id: targetManagedMemberId || null, // Link to managed member
           date: form.date,
           action_verb: form.action_verb,
           details: form.details,

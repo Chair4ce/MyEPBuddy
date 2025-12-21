@@ -52,7 +52,7 @@ import {
   Star,
   Crown,
 } from "lucide-react";
-import type { Accomplishment, Profile, UserAPIKeys, WritingStyle, UserLLMSettings } from "@/types/database";
+import type { Accomplishment, Profile, UserAPIKeys, WritingStyle, UserLLMSettings, ManagedMember } from "@/types/database";
 
 interface GeneratedStatement {
   mpa: string;
@@ -60,14 +60,27 @@ interface GeneratedStatement {
   historyIds?: string[];
 }
 
+// Union type for ratee (either a Profile or ManagedMember)
+type RateeInfo = {
+  id: string;
+  full_name: string | null;
+  rank: string | null;
+  afsc: string | null;
+  isManagedMember?: boolean;
+};
+
 export default function GeneratePage() {
-  const { profile, subordinates } = useUserStore();
+  const { profile, subordinates, managedMembers } = useUserStore();
   const [selectedRatee, setSelectedRatee] = useState<string>("self");
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedStatements, setGeneratedStatements] = useState<GeneratedStatement[]>([]);
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
-  const [rateeProfile, setRateeProfile] = useState<Profile | null>(null);
+  const [rateeInfo, setRateeInfo] = useState<RateeInfo | null>(null);
+  
+  // Check if selected ratee is a managed member
+  const isManagedMember = selectedRatee.startsWith("managed:");
+  const managedMemberId = isManagedMember ? selectedRatee.replace("managed:", "") : null;
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [hasUserKey, setHasUserKey] = useState(false);
   const [writingStyle, setWritingStyle] = useState<WritingStyle>("personal");
@@ -175,31 +188,66 @@ export default function GeneratePage() {
     checkUserKeys();
   }, [profile, selectedModel, supabase]);
 
-  // Load ratee profile and accomplishments
+  // Load ratee info and accomplishments
   useEffect(() => {
     async function loadRateeData() {
-      const rateeId = selectedRatee === "self" ? profile?.id : selectedRatee;
-      if (!rateeId) return;
+      if (!profile) return;
 
+      // Set ratee info based on selection type
       if (selectedRatee === "self") {
-        setRateeProfile(profile);
+        setRateeInfo({
+          id: profile.id,
+          full_name: profile.full_name,
+          rank: profile.rank,
+          afsc: profile.afsc,
+          isManagedMember: false,
+        });
+      } else if (isManagedMember && managedMemberId) {
+        const member = managedMembers.find((m) => m.id === managedMemberId);
+        if (member) {
+          setRateeInfo({
+            id: member.id,
+            full_name: member.full_name,
+            rank: member.rank,
+            afsc: member.afsc,
+            isManagedMember: true,
+          });
+        }
       } else {
         const sub = subordinates.find((s) => s.id === selectedRatee);
-        setRateeProfile(sub || null);
+        if (sub) {
+          setRateeInfo({
+            id: sub.id,
+            full_name: sub.full_name,
+            rank: sub.rank,
+            afsc: sub.afsc,
+            isManagedMember: false,
+          });
+        }
       }
 
-      const { data } = await supabase
+      // Load accomplishments
+      let query = supabase
         .from("accomplishments")
         .select("*")
-        .eq("user_id", rateeId)
         .eq("cycle_year", cycleYear)
         .order("date", { ascending: false });
 
+      if (isManagedMember && managedMemberId) {
+        // Load entries for managed member
+        query = query.eq("team_member_id", managedMemberId);
+      } else {
+        // Load entries for self or real subordinate
+        const targetUserId = selectedRatee === "self" ? profile.id : selectedRatee;
+        query = query.eq("user_id", targetUserId).is("team_member_id", null);
+      }
+
+      const { data } = await query;
       setAccomplishments(data || []);
     }
 
     loadRateeData();
-  }, [selectedRatee, profile, subordinates, cycleYear, supabase]);
+  }, [selectedRatee, profile, subordinates, managedMembers, isManagedMember, managedMemberId, cycleYear, supabase]);
 
   async function updateWritingStyle(style: WritingStyle) {
     if (!profile) return;
@@ -213,7 +261,7 @@ export default function GeneratePage() {
   }
 
   async function handleGenerate() {
-    if (!rateeProfile) {
+    if (!rateeInfo) {
       toast.error("Please select a ratee");
       return;
     }
@@ -242,9 +290,10 @@ export default function GeneratePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rateeId: rateeProfile.id,
-          rateeRank: rateeProfile.rank,
-          rateeAfsc: rateeProfile.afsc,
+          rateeId: rateeInfo.id,
+          rateeRank: rateeInfo.rank,
+          rateeAfsc: rateeInfo.afsc,
+          isManagedMember: rateeInfo.isManagedMember,
           cycleYear,
           model: selectedModel,
           writingStyle,
@@ -289,7 +338,7 @@ export default function GeneratePage() {
 
   // Quick save without opening the edit dialog
   async function quickSaveStatement(mpa: string, index: number, statement: string, historyId?: string) {
-    if (!profile || !rateeProfile) return;
+    if (!profile || !rateeInfo) return;
     
     const statementKey = `${mpa}-${index}`;
     setSavingStatementId(statementKey);
@@ -300,9 +349,10 @@ export default function GeneratePage() {
         .insert({
           user_id: profile.id,
           history_id: historyId || null,
+          team_member_id: rateeInfo.isManagedMember ? rateeInfo.id : null,
           mpa: mpa,
-          afsc: rateeProfile.afsc || "UNKNOWN",
-          rank: rateeProfile.rank || "AB",
+          afsc: rateeInfo.afsc || "UNKNOWN",
+          rank: rateeInfo.rank || "AB",
           statement: statement,
           cycle_year: new Date().getFullYear(),
         } as never);
@@ -319,7 +369,7 @@ export default function GeneratePage() {
   }
 
   async function saveRefinedStatement() {
-    if (!editingStatement || !profile || !rateeProfile) return;
+    if (!editingStatement || !profile || !rateeInfo) return;
     
     setIsSaving(true);
     
@@ -330,9 +380,10 @@ export default function GeneratePage() {
         .insert({
           user_id: profile.id,
           history_id: editingStatement.historyId || null,
+          team_member_id: rateeInfo.isManagedMember ? rateeInfo.id : null,
           mpa: editingStatement.mpa,
-          afsc: rateeProfile.afsc || "UNKNOWN",
-          rank: rateeProfile.rank || "AB",
+          afsc: rateeInfo.afsc || "UNKNOWN",
+          rank: rateeInfo.rank || "AB",
           statement: editingStatement.refined,
           cycle_year: new Date().getFullYear(),
         } as never);
@@ -375,7 +426,7 @@ export default function GeneratePage() {
   function downloadAllStatements() {
     if (generatedStatements.length === 0) return;
 
-    let content = `EPB Statements - ${rateeProfile?.rank} ${rateeProfile?.full_name}\n`;
+    let content = `EPB Statements - ${rateeInfo?.rank} ${rateeInfo?.full_name}\n`;
     content += `Cycle Year: ${cycleYear}\n`;
     content += `Generated: ${new Date().toLocaleDateString()}\n\n`;
     content += "=".repeat(60) + "\n\n";
@@ -396,7 +447,7 @@ export default function GeneratePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `epb-statements-${rateeProfile?.rank}-${rateeProfile?.full_name?.replace(/\s+/g, "-")}-${cycleYear}.txt`;
+    a.download = `epb-statements-${rateeInfo?.rank}-${rateeInfo?.full_name?.replace(/\s+/g, "-")}-${cycleYear}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -405,8 +456,9 @@ export default function GeneratePage() {
     toast.success("Downloaded EPB statements");
   }
 
-  // Users can generate for subordinates if they have any
-  const canManageTeam = subordinates.length > 0 || profile?.role === "admin";
+  // Users can generate for subordinates if they have any (real or managed)
+  const canManageTeam = subordinates.length > 0 || managedMembers.length > 0 || profile?.role === "admin";
+  const hasSubordinates = subordinates.length > 0 || managedMembers.length > 0;
   const selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
 
   return (
@@ -439,12 +491,33 @@ export default function GeneratePage() {
                   <SelectItem value="self">
                     <span className="truncate">Myself ({profile?.rank} {profile?.full_name})</span>
                   </SelectItem>
-                  {canManageTeam &&
-                    subordinates.map((sub) => (
-                      <SelectItem key={sub.id} value={sub.id}>
-                        <span className="truncate">{sub.rank} {sub.full_name}</span>
-                      </SelectItem>
-                    ))}
+                  {canManageTeam && hasSubordinates && subordinates.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Registered Team
+                      </div>
+                      {subordinates.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          <span className="truncate">{sub.rank} {sub.full_name}</span>
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
+                  {canManageTeam && managedMembers.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Managed Members
+                      </div>
+                      {managedMembers.map((member) => (
+                        <SelectItem key={member.id} value={`managed:${member.id}`}>
+                          <span className="truncate">
+                            {member.rank} {member.full_name}
+                            {member.is_placeholder && " (Managed)"}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -518,7 +591,7 @@ export default function GeneratePage() {
               <p className="flex items-start gap-1.5"><User className="size-4 shrink-0 mt-0.5" /> <span><strong>Personal Style:</strong> Uses your own refined statements as examples for consistent voice.</span></p>
             )}
             {writingStyle === "community" && (
-              <p className="flex items-start gap-1.5"><Users className="size-4 shrink-0 mt-0.5" /> <span><strong>Community Style:</strong> Uses top-rated crowdsourced statements from your AFSC ({rateeProfile?.afsc || profile?.afsc}).</span></p>
+              <p className="flex items-start gap-1.5"><Users className="size-4 shrink-0 mt-0.5" /> <span><strong>Community Style:</strong> Uses top-rated crowdsourced statements from your AFSC ({rateeInfo?.afsc || profile?.afsc}).</span></p>
             )}
             {writingStyle === "hybrid" && (
               <p className="flex items-start gap-1.5"><Star className="size-4 shrink-0 mt-0.5" /> <span><strong>Hybrid:</strong> Combines your personal style with crowdsourced community examples.</span></p>
@@ -538,9 +611,9 @@ export default function GeneratePage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="my-afsc">
-                        My AFSC ({rateeProfile?.afsc || profile?.afsc || "—"})
+                        My AFSC ({rateeInfo?.afsc || profile?.afsc || "—"})
                       </SelectItem>
-                      {availableAfscs.filter(a => a !== (rateeProfile?.afsc || profile?.afsc)).map((afsc) => (
+                      {availableAfscs.filter(a => a !== (rateeInfo?.afsc || profile?.afsc)).map((afsc) => (
                         <SelectItem key={afsc} value={afsc}>
                           {afsc}
                         </SelectItem>
@@ -567,9 +640,9 @@ export default function GeneratePage() {
                   </Select>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Using {communityMpaFilter === "all" ? "top 20 crowdsourced statements across all MPAs" : `top 20 for "${STANDARD_MGAS.find(m => m.key === communityMpaFilter)?.label}"`} from {communityAfscFilter === "my-afsc" ? (rateeProfile?.afsc || profile?.afsc || "your AFSC") : communityAfscFilter}
-              </p>
+                <p className="text-xs text-muted-foreground">
+                  Using {communityMpaFilter === "all" ? "top 20 crowdsourced statements across all MPAs" : `top 20 for "${STANDARD_MGAS.find(m => m.key === communityMpaFilter)?.label}"`} from {communityAfscFilter === "my-afsc" ? (rateeInfo?.afsc || profile?.afsc || "your AFSC") : communityAfscFilter}
+                </p>
             </div>
           )}
 
@@ -684,11 +757,11 @@ export default function GeneratePage() {
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-4">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-xs sm:text-sm text-muted-foreground shrink-0">Rank:</span>
-              <Badge variant="outline" className="truncate">{rateeProfile?.rank || "N/A"}</Badge>
+              <Badge variant="outline" className="truncate">{rateeInfo?.rank || "N/A"}</Badge>
             </div>
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-xs sm:text-sm text-muted-foreground shrink-0">AFSC:</span>
-              <Badge variant="outline" className="truncate">{rateeProfile?.afsc || "N/A"}</Badge>
+              <Badge variant="outline" className="truncate">{rateeInfo?.afsc || "N/A"}</Badge>
             </div>
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-xs sm:text-sm text-muted-foreground shrink-0">Entries:</span>
@@ -737,7 +810,10 @@ export default function GeneratePage() {
               <div className="min-w-0">
                 <CardTitle>Generated Statements</CardTitle>
                 <CardDescription className="truncate">
-                  {rateeProfile?.rank} {rateeProfile?.full_name} • {cycleYear} Cycle
+                  {rateeInfo?.rank} {rateeInfo?.full_name} • {cycleYear} Cycle
+                  {rateeInfo?.isManagedMember && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400">(Managed Member)</span>
+                  )}
                 </CardDescription>
               </div>
               <Button variant="outline" onClick={downloadAllStatements} className="w-full sm:w-auto shrink-0">

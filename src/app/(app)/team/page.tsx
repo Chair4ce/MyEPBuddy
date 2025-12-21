@@ -38,6 +38,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -54,7 +60,8 @@ import {
   Send,
   UserX,
 } from "lucide-react";
-import type { Profile, TeamRequest, TeamRequestType, Rank } from "@/types/database";
+import type { Profile, TeamRequest, TeamRequestType, Rank, ManagedMember } from "@/types/database";
+import { AddManagedMemberDialog } from "@/components/team/add-managed-member-dialog";
 
 // Ranks that can supervise others
 const SUPERVISOR_RANKS: Rank[] = ["SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt"];
@@ -66,8 +73,20 @@ interface ChainMember extends Profile {
   directSubordinates?: Profile[];
 }
 
+// Combined node type for tree that can be either a Profile or ManagedMember
+interface TreeNodeData {
+  id: string;
+  full_name: string | null;
+  rank: Rank | null;
+  afsc: string | null;
+  unit: string | null;
+  isManagedMember: boolean;
+  isPlaceholder?: boolean;
+  email?: string | null;
+}
+
 interface TreeNode {
-  profile: Profile;
+  data: TreeNodeData;
   children: TreeNode[];
   isExpanded: boolean;
 }
@@ -79,7 +98,7 @@ function canSupervise(rank: Rank | null | undefined): boolean {
 }
 
 export default function TeamPage() {
-  const { profile, subordinates, setSubordinates } = useUserStore();
+  const { profile, subordinates, setSubordinates, managedMembers, removeManagedMember } = useUserStore();
   const [isLoading, setIsLoading] = useState(true);
   const [supervisors, setSupervisors] = useState<Profile[]>([]);
   const [pendingRequests, setPendingRequests] = useState<TeamRequest[]>([]);
@@ -94,6 +113,7 @@ export default function TeamPage() {
   
   // Invite dialog state
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showAddMemberDialog, setShowAddMemberDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   // Default to "be_supervised" for junior enlisted who can't supervise
   const [inviteType, setInviteType] = useState<TeamRequestType>(
@@ -239,31 +259,82 @@ export default function TeamPage() {
     }
   }
 
-  // Build tree structure
+  // Build tree structure that includes both real profiles and managed members
   const tree = useMemo(() => {
     if (!profile || allProfiles.length === 0) return null;
 
-    const buildTree = (nodeId: string): TreeNode | null => {
-      const nodeProfile = allProfiles.find((p) => p.id === nodeId);
-      if (!nodeProfile) return null;
+    const buildTree = (nodeId: string, isManaged = false): TreeNode | null => {
+      // Find the node data (either profile or managed member)
+      let nodeData: TreeNodeData | null = null;
+      
+      if (isManaged) {
+        const member = managedMembers.find((m) => m.id === nodeId);
+        if (!member) return null;
+        nodeData = {
+          id: member.id,
+          full_name: member.full_name,
+          rank: member.rank,
+          afsc: member.afsc,
+          unit: member.unit,
+          isManagedMember: true,
+          isPlaceholder: member.is_placeholder,
+          email: member.email,
+        };
+      } else {
+        const nodeProfile = allProfiles.find((p) => p.id === nodeId);
+        if (!nodeProfile) return null;
+        nodeData = {
+          id: nodeProfile.id,
+          full_name: nodeProfile.full_name,
+          rank: nodeProfile.rank,
+          afsc: nodeProfile.afsc,
+          unit: nodeProfile.unit,
+          isManagedMember: false,
+        };
+      }
 
-      const childIds = teamRelations
-        .filter((r) => r.supervisor_id === nodeId)
-        .map((r) => r.subordinate_id);
+      // Get children: real subordinates from teams table (only for profile nodes)
+      let realChildren: TreeNode[] = [];
+      if (!isManaged) {
+        const realChildIds = teamRelations
+          .filter((r) => r.supervisor_id === nodeId)
+          .map((r) => r.subordinate_id);
 
-      const children = childIds
-        .map((id) => buildTree(id))
+        realChildren = realChildIds
+          .map((id) => buildTree(id, false))
+          .filter((n): n is TreeNode => n !== null);
+      }
+
+      // Get children: managed members that report to this node
+      // Check both parent_profile_id (for profile parents) and parent_team_member_id (for managed parents)
+      const managedChildIds = managedMembers
+        .filter((m) => {
+          if (isManaged) {
+            // If current node is a managed member, check parent_team_member_id
+            return m.parent_team_member_id === nodeId;
+          } else {
+            // If current node is a profile, check parent_profile_id
+            return m.parent_profile_id === nodeId;
+          }
+        })
+        .map((m) => m.id);
+
+      const managedChildren = managedChildIds
+        .map((id) => buildTree(id, true))
         .filter((n): n is TreeNode => n !== null);
 
+      // Combine children: real subordinates first, then managed members
+      const allChildren = [...realChildren, ...managedChildren];
+
       return {
-        profile: nodeProfile,
-        children,
+        data: nodeData,
+        children: allChildren,
         isExpanded: expandedNodes.has(nodeId),
       };
     };
 
-    return buildTree(profile.id);
-  }, [profile, allProfiles, teamRelations, expandedNodes]);
+    return buildTree(profile.id, false);
+  }, [profile, allProfiles, teamRelations, managedMembers, expandedNodes]);
 
   function toggleExpand(nodeId: string) {
     setExpandedNodes((prev) => {
@@ -453,6 +524,20 @@ export default function TeamPage() {
     }
   }
 
+  async function removeManagedTeamMember(memberId: string) {
+    try {
+      await supabase
+        .from("team_members")
+        .delete()
+        .eq("id", memberId);
+
+      removeManagedMember(memberId);
+      toast.success("Team member removed");
+    } catch (error) {
+      toast.error("Failed to remove team member");
+    }
+  }
+
   function getRankOrder(rank: string): number {
     const order: Record<string, number> = {
       CMSgt: 9, SMSgt: 8, MSgt: 7, TSgt: 6, SSgt: 5,
@@ -473,11 +558,13 @@ export default function TeamPage() {
   // Tree node renderer
   function renderTreeNode(node: TreeNode, depth: number = 0, isLast: boolean = true) {
     const hasChildren = node.children.length > 0;
-    const isExpanded = expandedNodes.has(node.profile.id);
-    const isCurrentUser = node.profile.id === profile?.id;
+    const isExpanded = expandedNodes.has(node.data.id);
+    const isCurrentUser = node.data.id === profile?.id;
+    const isManagedMember = node.data.isManagedMember;
+    const isPlaceholder = node.data.isPlaceholder;
 
     return (
-      <div key={node.profile.id} className="relative min-w-0">
+      <div key={node.data.id} className="relative min-w-0">
         {/* Connector lines - hidden on small mobile for cleaner look */}
         {depth > 0 && (
           <>
@@ -507,13 +594,13 @@ export default function TeamPage() {
         {/* Node card - mobile-first responsive design */}
         <div
           className={cn(
-            "relative p-2.5 sm:p-3 rounded-lg border-2 transition-all bg-card md:max-w-lg my-1 mx-0.5",
+            "relative p-2.5 sm:p-3 rounded-lg border-2 transition-all bg-card md:max-w-lg my-1 mx-0.5 group",
             hasChildren && "cursor-pointer hover:shadow-md active:scale-[0.99]",
-            !hasCustomColor(node.profile.rank) && "border-border",
+            !hasCustomColor(node.data.rank) && "border-border",
             isCurrentUser && "ring-2 ring-primary ring-offset-1"
           )}
-          style={getRankStyle(node.profile.rank)}
-          onClick={() => hasChildren && toggleExpand(node.profile.id)}
+          style={getRankStyle(node.data.rank)}
+          onClick={() => hasChildren && toggleExpand(node.data.id)}
         >
           <div className="flex items-center gap-2 sm:gap-3">
             {hasChildren && (
@@ -527,15 +614,42 @@ export default function TeamPage() {
             )}
             <Avatar className="size-8 sm:size-9 md:size-10 shrink-0">
               <AvatarFallback className="text-[10px] sm:text-xs md:text-sm font-medium">
-                {node.profile.full_name?.split(" ").map((n) => n[0]).join("") || "U"}
+                {node.data.full_name?.split(" ").map((n) => n[0]).join("") || "U"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-[11px] sm:text-xs md:text-sm truncate">
-                {node.profile.rank} {node.profile.full_name}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="font-semibold text-[11px] sm:text-xs md:text-sm truncate">
+                  {node.data.rank} {node.data.full_name}
+                </p>
+                {isManagedMember && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-[8px] px-1 py-0 h-4 shrink-0 cursor-help",
+                            isPlaceholder 
+                              ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300"
+                              : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300"
+                          )}
+                        >
+                          {isPlaceholder ? "Managed" : "Linked"}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[200px] text-center">
+                        {isPlaceholder 
+                          ? "This member doesn't have an account yet. Their entries are managed by you."
+                          : "This member has signed up and their account is now linked."
+                        }
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
               <p className="text-[10px] sm:text-[11px] md:text-xs text-muted-foreground truncate">
-                {node.profile.afsc} • {node.profile.unit}
+                {node.data.afsc || "No AFSC"} • {node.data.unit || "No Unit"}
               </p>
             </div>
             {hasChildren && (
@@ -550,7 +664,11 @@ export default function TeamPage() {
                 className="size-7 text-destructive shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeTeamMember(node.profile.id, false);
+                  if (isManagedMember) {
+                    removeManagedTeamMember(node.data.id);
+                  } else {
+                    removeTeamMember(node.data.id, false);
+                  }
                 }}
               >
                 <UserX className="size-3.5" />
@@ -594,16 +712,27 @@ export default function TeamPage() {
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">My Team</h1>
           <p className="text-sm sm:text-base text-muted-foreground">
-            Manage your supervision relationships and view your chain of command
+            Manage your team members
           </p>
         </div>
-        <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto shrink-0">
+        <div className="flex flex-col sm:flex-row gap-2">
+          {canSupervise(profile?.rank) && (
+            <Button 
+              variant="outline" 
+              className="w-full sm:w-auto shrink-0"
+              onClick={() => setShowAddMemberDialog(true)}
+            >
               <UserPlus className="size-4 mr-2" />
-              Send Request
+              Add Member
             </Button>
-          </DialogTrigger>
+          )}
+          <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto shrink-0">
+                <Send className="size-4 mr-2" />
+                Send Request
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-base sm:text-lg">Send Team Request</DialogTitle>
@@ -730,6 +859,13 @@ export default function TeamPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
+        
+        {/* Add Managed Member Dialog */}
+        <AddManagedMemberDialog 
+          open={showAddMemberDialog} 
+          onOpenChange={setShowAddMemberDialog} 
+        />
       </div>
 
       {/* Pending Requests */}
@@ -991,12 +1127,16 @@ export default function TeamPage() {
         </TabsContent>
 
         {/* Subordinates Tab */}
-        <TabsContent value="subordinates" className="mt-3 sm:mt-4">
+        <TabsContent value="subordinates" className="mt-3 sm:mt-4 space-y-4">
+          {/* Registered Subordinates */}
           <Card>
             <CardHeader className="p-4 sm:p-6">
-              <CardTitle className="text-base sm:text-lg">Direct Subordinates</CardTitle>
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <User className="size-4 sm:size-5" />
+                Registered Subordinates
+              </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                People you directly supervise
+                Team members with accounts who can manage their own entries
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
@@ -1011,7 +1151,7 @@ export default function TeamPage() {
                 </div>
               ) : subordinates.length === 0 ? (
                 <p className="text-center text-sm sm:text-base text-muted-foreground py-6 sm:py-8">
-                  You have no subordinates yet. Send a request to add team members.
+                  No registered subordinates yet. Send a request to invite users with accounts.
                 </p>
               ) : (
                 <div className="space-y-2 sm:space-y-3">
@@ -1058,6 +1198,113 @@ export default function TeamPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Managed Members */}
+          {canSupervise(profile?.rank) && (
+            <Card>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <Users className="size-4 sm:size-5" />
+                  Managed Members
+                  <Badge variant="outline" className="text-xs">
+                    {managedMembers.length}
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Team members you manage. You can add entries and generate statements for them.
+                  {managedMembers.some(m => m.is_placeholder) && (
+                    <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                      Members marked as &quot;Managed&quot; don&apos;t have accounts yet.
+                    </span>
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                {managedMembers.length === 0 ? (
+                  <div className="text-center py-6 sm:py-8">
+                    <p className="text-sm sm:text-base text-muted-foreground mb-3">
+                      No managed members yet.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddMemberDialog(true)}
+                    >
+                      <UserPlus className="size-4 mr-2" />
+                      Add First Member
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 sm:space-y-3">
+                    {managedMembers
+                      .sort((a, b) => getRankOrder(b.rank || "") - getRankOrder(a.rank || ""))
+                      .map((member) => (
+                        <div
+                          key={member.id}
+                          className={cn(
+                            "flex flex-col gap-2 p-3 rounded-lg border-2 sm:flex-row sm:items-center sm:justify-between",
+                            !hasCustomColor(member.rank) && "border-border"
+                          )}
+                          style={getRankStyle(member.rank)}
+                        >
+                          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                            <Avatar className="size-8 sm:size-10 shrink-0">
+                              <AvatarFallback className="text-xs sm:text-sm">
+                                {member.full_name?.charAt(0) || "U"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-sm sm:text-base truncate">
+                                {member.rank} {member.full_name}
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                                {member.afsc || "No AFSC"} • {member.unit || "No Unit"}
+                              </p>
+                              {member.email && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {member.email}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 sm:justify-end">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {member.is_placeholder ? (
+                                    <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-300 cursor-help">
+                                      Managed
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 cursor-help">
+                                      Linked
+                                    </Badge>
+                                  )}
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-[200px] text-center">
+                                  {member.is_placeholder 
+                                    ? "This member doesn't have an account yet. Their entries are managed by you."
+                                    : "This member has signed up and their account is now linked."
+                                  }
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive shrink-0"
+                              onClick={() => removeManagedTeamMember(member.id)}
+                            >
+                              <UserX className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Supervisors Tab */}

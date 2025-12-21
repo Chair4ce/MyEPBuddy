@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppInitializer } from "@/components/layout/app-initializer";
-import type { Profile, EPBConfig } from "@/types/database";
+import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
 export default async function AppLayout({
   children,
@@ -40,7 +40,10 @@ export default async function AppLayout({
 
   // Fetch subordinates for any member (anyone can have subordinates)
   let subordinates: Profile[] = [];
+  let managedMembers: ManagedMember[] = [];
+  
   if (profile) {
+    // Fetch real subordinates from teams table
     const { data: teamData } = await supabase
       .from("teams")
       .select("subordinate_id")
@@ -55,12 +58,22 @@ export default async function AppLayout({
         .in("id", subordinateIds);
       subordinates = (subProfiles as unknown as Profile[]) || [];
     }
+    
+    // Fetch managed members (placeholder subordinates)
+    const { data: managedData } = await supabase
+      .from("team_members")
+      .select("*")
+      .eq("supervisor_id", user.id)
+      .order("full_name", { ascending: true });
+    
+    managedMembers = (managedData as unknown as ManagedMember[]) || [];
   }
 
   return (
     <AppInitializer
       profile={profile}
       subordinates={subordinates}
+      managedMembers={managedMembers}
       epbConfig={epbConfig}
     >
       <div className="flex h-screen overflow-hidden">

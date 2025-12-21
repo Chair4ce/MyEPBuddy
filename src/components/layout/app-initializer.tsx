@@ -4,11 +4,12 @@ import { useEffect } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
 import { UpdatePrompt } from "@/components/layout/update-prompt";
-import type { Profile, EPBConfig } from "@/types/database";
+import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
 interface AppInitializerProps {
   profile: Profile | null;
   subordinates: Profile[];
+  managedMembers: ManagedMember[];
   epbConfig: EPBConfig | null;
   children: React.ReactNode;
 }
@@ -16,12 +17,14 @@ interface AppInitializerProps {
 export function AppInitializer({
   profile,
   subordinates,
+  managedMembers,
   epbConfig,
   children,
 }: AppInitializerProps) {
   const { 
     setProfile, 
     setSubordinates, 
+    setManagedMembers,
     setEpbConfig, 
     setIsLoading,
     profile: storeProfile 
@@ -30,9 +33,10 @@ export function AppInitializer({
   useEffect(() => {
     setProfile(profile);
     setSubordinates(subordinates);
+    setManagedMembers(managedMembers);
     setEpbConfig(epbConfig);
     setIsLoading(false);
-  }, [profile, subordinates, epbConfig, setProfile, setSubordinates, setEpbConfig, setIsLoading]);
+  }, [profile, subordinates, managedMembers, epbConfig, setProfile, setSubordinates, setManagedMembers, setEpbConfig, setIsLoading]);
 
   // Use store profile for reactivity (updates when terms are accepted)
   const currentProfile = storeProfile ?? profile;

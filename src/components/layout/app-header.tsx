@@ -50,7 +50,12 @@ export function AppHeader({ profile }: AppHeaderProps) {
       <div className="flex items-center justify-between h-full px-4 md:px-6 lg:px-8">
         <div className="lg:hidden w-10 flex-shrink-0" />
         
-        <div className="flex-1" />
+        {/* Unclassified Banner - centered */}
+        <div className="flex-1 flex justify-center">
+          <span className="px-3 py-1 text-xs font-semibold tracking-wider rounded bg-green-600 text-white dark:bg-green-700 dark:text-green-50 select-none">
+            UNCLASSIFIED
+          </span>
+        </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <Button

@@ -56,6 +56,7 @@ export interface Accomplishment {
   id: string;
   user_id: string;
   created_by: string;
+  team_member_id: string | null; // For managed members
   date: string;
   action_verb: string;
   details: string;
@@ -107,6 +108,7 @@ export interface StatementHistory {
   id: string;
   user_id: string;
   ratee_id: string;
+  team_member_id: string | null; // For managed members
   mpa: string;
   afsc: string;
   rank: Rank;
@@ -120,6 +122,7 @@ export interface RefinedStatement {
   id: string;
   user_id: string;
   history_id: string | null;
+  team_member_id: string | null; // For managed members
   mpa: string;
   afsc: string;
   rank: Rank;
@@ -181,6 +184,23 @@ export interface Acronym {
 export interface Abbreviation {
   word: string;
   abbreviation: string;
+}
+
+// Managed Team Member (placeholder subordinate without an account)
+export interface ManagedMember {
+  id: string;
+  supervisor_id: string;
+  parent_profile_id: string | null; // Who this member reports to (real profile)
+  parent_team_member_id: string | null; // Who this member reports to (managed member)
+  linked_user_id: string | null;
+  full_name: string;
+  email: string | null;
+  rank: Rank | null;
+  afsc: string | null;
+  unit: string | null;
+  is_placeholder: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UserLLMSettings {
@@ -316,6 +336,7 @@ export interface Database {
           id: string;
           user_id: string;
           created_by: string;
+          team_member_id: string | null;
           date: string;
           action_verb: string;
           details: string;
@@ -331,6 +352,7 @@ export interface Database {
           id?: string;
           user_id: string;
           created_by: string;
+          team_member_id?: string | null;
           date: string;
           action_verb: string;
           details: string;
@@ -343,6 +365,7 @@ export interface Database {
         Update: {
           user_id?: string;
           created_by?: string;
+          team_member_id?: string | null;
           date?: string;
           action_verb?: string;
           details?: string;
@@ -351,6 +374,47 @@ export interface Database {
           mpa?: string;
           tags?: Json;
           cycle_year?: number;
+        };
+      };
+      team_members: {
+        Row: {
+          id: string;
+          supervisor_id: string;
+          parent_profile_id: string | null;
+          parent_team_member_id: string | null;
+          linked_user_id: string | null;
+          full_name: string;
+          email: string | null;
+          rank: string | null;
+          afsc: string | null;
+          unit: string | null;
+          is_placeholder: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          supervisor_id: string;
+          parent_profile_id?: string | null;
+          parent_team_member_id?: string | null;
+          linked_user_id?: string | null;
+          full_name: string;
+          email?: string | null;
+          rank?: string | null;
+          afsc?: string | null;
+          unit?: string | null;
+          is_placeholder?: boolean;
+        };
+        Update: {
+          parent_profile_id?: string | null;
+          parent_team_member_id?: string | null;
+          linked_user_id?: string | null;
+          full_name?: string;
+          email?: string | null;
+          rank?: string | null;
+          afsc?: string | null;
+          unit?: string | null;
+          is_placeholder?: boolean;
         };
       };
       epb_config: {

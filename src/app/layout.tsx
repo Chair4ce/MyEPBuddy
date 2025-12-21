@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     template: "%s | My EPBuddy",
   },
   description:
-    "AI-powered tool to track accomplishments and generate myEval-ready Enlisted Performance Brief (EPB) narrative statements. Compliant with AFI 36-2406.",
+    "Personal productivity tool for Air Force service members to track accomplishments and draft EPB narrative statements. Not affiliated with the U.S. Government or Department of Defense. Designed to assist with AFI 36-2406 compliance.",
   keywords: [
     "Air Force",
     "EPB",
@@ -34,10 +34,19 @@ export const metadata: Metadata = {
     "enlisted evaluation",
     "performance statement",
     "AI writing assistant",
+    "productivity tool",
+    "personal development",
   ],
   authors: [{ name: "My EPBuddy", url: siteUrl }],
   creator: "My EPBuddy",
   publisher: "My EPBuddy",
+  
+  // Additional classification metadata for enterprise proxies
+  other: {
+    "classification": "UNCLASSIFIED",
+    "distribution": "Public",
+    "government-affiliation": "None - Independent personal productivity tool",
+  },
   
   // Canonical URL
   metadataBase: new URL(siteUrl),

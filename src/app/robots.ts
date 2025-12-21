@@ -14,7 +14,6 @@ export default function robots(): MetadataRoute.Robots {
           "/entries",
           "/generate",
           "/team",
-          "/chain",
           "/library",
           "/settings",
           "/admin",

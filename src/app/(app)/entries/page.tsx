@@ -38,11 +38,11 @@ import { toast } from "@/components/ui/sonner";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
 import { Plus, Pencil, Trash2, Filter, FileText } from "lucide-react";
 import { ENTRY_MGAS } from "@/lib/constants";
-import type { Accomplishment } from "@/types/database";
+import type { Accomplishment, ManagedMember } from "@/types/database";
 
 function EntriesContent() {
   const searchParams = useSearchParams();
-  const { profile, subordinates, epbConfig } = useUserStore();
+  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
   const {
     accomplishments,
     setAccomplishments,
@@ -69,6 +69,10 @@ function EntriesContent() {
     }
   }, [searchParams]);
 
+  // Check if selected user is a managed member (starts with "managed:")
+  const isManagedMember = selectedUser.startsWith("managed:");
+  const managedMemberId = isManagedMember ? selectedUser.replace("managed:", "") : null;
+
   // Load accomplishments
   useEffect(() => {
     async function loadAccomplishments() {
@@ -76,15 +80,21 @@ function EntriesContent() {
 
       setIsLoading(true);
 
-      const targetUserId =
-        selectedUser === "self" ? profile.id : selectedUser;
-
       let query = supabase
         .from("accomplishments")
         .select("*")
-        .eq("user_id", targetUserId)
         .eq("cycle_year", cycleYear)
         .order("date", { ascending: false });
+
+      // Filter by user type
+      if (isManagedMember && managedMemberId) {
+        // Load entries for managed member
+        query = query.eq("team_member_id", managedMemberId);
+      } else {
+        // Load entries for self or real subordinate
+        const targetUserId = selectedUser === "self" ? profile.id : selectedUser;
+        query = query.eq("user_id", targetUserId).is("team_member_id", null);
+      }
 
       if (selectedMPA !== "all") {
         query = query.eq("mpa", selectedMPA);
@@ -100,7 +110,7 @@ function EntriesContent() {
     }
 
     loadAccomplishments();
-  }, [profile, selectedUser, selectedMPA, cycleYear, supabase, setAccomplishments, setIsLoading]);
+  }, [profile, selectedUser, isManagedMember, managedMemberId, selectedMPA, cycleYear, supabase, setAccomplishments, setIsLoading]);
 
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
@@ -125,8 +135,9 @@ function EntriesContent() {
     setEditingEntry(null);
   }
 
-  // Users can add entries for subordinates if they have any
-  const canManageTeam = subordinates.length > 0 || profile?.role === "admin";
+  // Users can add entries for subordinates if they have any (real or managed)
+  const canManageTeam = subordinates.length > 0 || managedMembers.length > 0 || profile?.role === "admin";
+  const hasSubordinates = subordinates.length > 0 || managedMembers.length > 0;
 
   if (isLoading) {
     return <EntriesSkeleton />;
@@ -151,7 +162,7 @@ function EntriesContent() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4">
-            {canManageTeam && subordinates.length > 0 && (
+            {canManageTeam && hasSubordinates && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Viewing for</label>
                 <Select value={selectedUser} onValueChange={setSelectedUser}>
@@ -160,11 +171,31 @@ function EntriesContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="self">Myself</SelectItem>
-                    {subordinates.map((sub) => (
-                      <SelectItem key={sub.id} value={sub.id}>
-                        {sub.rank} {sub.full_name}
-                      </SelectItem>
-                    ))}
+                    {subordinates.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          Registered Team
+                        </div>
+                        {subordinates.map((sub) => (
+                          <SelectItem key={sub.id} value={sub.id}>
+                            {sub.rank} {sub.full_name}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {managedMembers.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          Managed Members
+                        </div>
+                        {managedMembers.map((member) => (
+                          <SelectItem key={member.id} value={`managed:${member.id}`}>
+                            {member.rank} {member.full_name}
+                            {member.is_placeholder && " (Managed)"}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -322,7 +353,8 @@ function EntriesContent() {
         open={dialogOpen}
         onOpenChange={handleDialogClose}
         editEntry={editingEntry}
-        targetUserId={selectedUser === "self" ? profile?.id : selectedUser}
+        targetUserId={selectedUser === "self" ? profile?.id : (isManagedMember ? null : selectedUser)}
+        targetManagedMemberId={isManagedMember ? managedMemberId : null}
       />
     </div>
   );

@@ -1,12 +1,15 @@
 {
-  "name": "My EPBuddy",
+  "name": "My EPBuddy - Personal EPB Writing Assistant",
   "short_name": "EPBuddy",
-  "description": "AI-powered Air Force EPB statement generator",
+  "description": "Personal productivity tool for tracking accomplishments and drafting EPB statements. Not affiliated with the U.S. Air Force or DoD.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#3b82f6",
   "orientation": "portrait-primary",
+  "lang": "en-US",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -21,8 +24,10 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["productivity", "utilities"],
+  "categories": ["productivity", "utilities", "business"],
   "screenshots": [],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "iarc_rating_id": "",
+  "related_applications": []
 }
 

@@ -19,7 +19,6 @@ import {
   X,
   Library,
   Wand2,
-  GitBranch,
   Heart,
 } from "lucide-react";
 import type { Profile } from "@/types/database";
@@ -45,12 +44,6 @@ const navItems = [
     title: "My Team",
     href: "/team",
     icon: Users,
-    roles: ["member", "admin"],
-  },
-  {
-    title: "Chain of Command",
-    href: "/chain",
-    icon: GitBranch,
     roles: ["member", "admin"],
   },
   {
