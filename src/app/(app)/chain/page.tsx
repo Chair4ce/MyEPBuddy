@@ -180,16 +180,16 @@ export default function ChainPage() {
 
     return (
       <div key={node.profile.id} className="relative min-w-0">
-        {/* Connector lines - hidden on mobile for cleaner look */}
+        {/* Connector lines - hidden on small mobile for cleaner look */}
         {depth > 0 && (
           <>
             {/* Horizontal line to node */}
             <div
               className="absolute border-t-2 border-border hidden sm:block"
               style={{
-                left: -16,
-                top: 24,
-                width: 16,
+                left: -12,
+                top: 22,
+                width: 12,
               }}
             />
             {/* Vertical line from parent */}
@@ -197,21 +197,22 @@ export default function ChainPage() {
               <div
                 className="absolute border-l-2 border-border hidden sm:block"
                 style={{
-                  left: -16,
-                  top: 24,
-                  height: "calc(100% + 8px)",
+                  left: -12,
+                  top: 22,
+                  height: "calc(100% + 6px)",
                 }}
               />
             )}
           </>
         )}
 
-        {/* Node card - responsive padding */}
+        {/* Node card - mobile-first responsive design */}
         <div
           className={cn(
-            "relative p-2 sm:p-3 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md bg-card",
+            "relative p-2.5 sm:p-3 rounded-lg border-2 transition-all bg-card md:max-w-lg my-1 mx-0.5",
+            hasChildren && "cursor-pointer hover:shadow-md active:scale-[0.99]",
             !hasCustomColor(node.profile.rank) && "border-border",
-            node.profile.id === profile?.id && "ring-2 ring-primary ring-offset-1 sm:ring-offset-2"
+            node.profile.id === profile?.id && "ring-2 ring-primary ring-offset-1"
           )}
           style={getRankStyle(node.profile.rank)}
           onClick={() => hasChildren && toggleExpand(node.profile.id)}
@@ -226,37 +227,37 @@ export default function ChainPage() {
                 )}
               </div>
             )}
-            <Avatar className="size-8 sm:size-10 shrink-0">
-              <AvatarFallback className="text-xs sm:text-sm font-medium">
+            <Avatar className="size-8 sm:size-9 md:size-10 shrink-0">
+              <AvatarFallback className="text-[10px] sm:text-xs md:text-sm font-medium">
                 {node.profile.full_name?.split(" ").map((n) => n[0]).join("") || "U"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-xs sm:text-sm truncate">
+              <p className="font-semibold text-[11px] sm:text-xs md:text-sm truncate">
                 {node.profile.rank} {node.profile.full_name}
               </p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+              <p className="text-[10px] sm:text-[11px] md:text-xs text-muted-foreground truncate">
                 {node.profile.afsc} • {node.profile.unit}
               </p>
             </div>
             {hasChildren && (
-              <Badge variant="secondary" className="shrink-0 text-[10px] sm:text-xs px-1.5 sm:px-2">
+              <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5">
                 {node.children.length}
               </Badge>
             )}
           </div>
         </div>
 
-        {/* Children - responsive margin */}
+        {/* Children - mobile-first responsive margin */}
         {hasChildren && isExpanded && (
-          <div className="ml-4 sm:ml-6 md:ml-8 mt-2 space-y-2 relative">
-            {/* Vertical line connecting children - hidden on mobile */}
+          <div className="ml-3 sm:ml-5 md:ml-6 mt-1.5 sm:mt-2 space-y-1.5 sm:space-y-2 relative">
+            {/* Vertical line connecting children - hidden on small mobile */}
             <div
               className="absolute border-l-2 border-border hidden sm:block"
               style={{
-                left: -16,
+                left: -12,
                 top: 0,
-                height: "calc(100% - 24px)",
+                height: "calc(100% - 20px)",
               }}
             />
             {node.children.map((child, idx) =>
@@ -282,31 +283,31 @@ export default function ChainPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      <div className="w-full max-w-5xl mx-auto flex items-center justify-center min-h-[300px] sm:min-h-[400px]">
+        <Loader2 className="size-6 sm:size-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="w-full max-w-5xl mx-auto space-y-3 sm:space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Chain of Command</h1>
-        <p className="text-sm sm:text-base text-muted-foreground">
+        <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight">Chain of Command</h1>
+        <p className="text-xs sm:text-sm md:text-base text-muted-foreground">
           Visualization of your supervision hierarchy
         </p>
       </div>
 
-      {/* Stats - horizontal scroll on mobile */}
+      {/* Stats - horizontal scroll on mobile, grid on tablet/desktop */}
       <div className="relative -mx-4 px-4 md:mx-0 md:px-0">
-        <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 lg:grid-cols-6 md:overflow-visible md:pb-0 snap-x snap-mandatory">
-          <Card className="shrink-0 w-[140px] md:w-auto snap-start">
-            <CardContent className="pt-3 pb-3 md:pt-4">
-              <div className="flex items-center gap-2">
+        <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 lg:grid-cols-4 md:overflow-visible md:pb-0 snap-x snap-mandatory scrollbar-hide">
+          <Card className="shrink-0 w-28 sm:w-32 md:w-auto snap-start">
+            <CardContent className="p-1 md:pt-4 md:pb-4">
+              <div className="flex items-center gap-2 md:gap-3">
                 <Users className="size-4 md:size-5 text-muted-foreground shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-xl md:text-2xl font-bold">{allProfiles.length - 1}</p>
-                  <p className="text-[10px] md:text-xs text-muted-foreground truncate">Total in Chain</p>
+                  <p className="text-lg md:text-2xl font-bold">{allProfiles.length - 1}</p>
+                  <p className="text-[10px] md:text-xs text-muted-foreground">Total</p>
                 </div>
               </div>
             </CardContent>
@@ -315,13 +316,13 @@ export default function ChainPage() {
             .sort(([a], [b]) => RANK_ORDER.indexOf(a) - RANK_ORDER.indexOf(b))
             .slice(0, 5)
             .map(([rank, count]) => (
-              <Card key={rank} className="shrink-0 w-[120px] md:w-auto snap-start">
-                <CardContent className="pt-3 pb-3 md:pt-4">
-                  <div className="flex items-center gap-2">
+              <Card key={rank} className="shrink-0 w-24 sm:w-28 md:w-auto snap-start">
+                <CardContent className="p-1 md:pt-4 md:pb-4">
+                  <div className="flex items-center gap-2 md:gap-3">
                     <User className="size-4 md:size-5 text-muted-foreground shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-xl md:text-2xl font-bold">{count}</p>
-                      <p className="text-[10px] md:text-xs text-muted-foreground truncate">{rank}s</p>
+                      <p className="text-lg md:text-2xl font-bold">{count}</p>
+                      <p className="text-[10px] md:text-xs text-muted-foreground">{rank}s</p>
                     </div>
                   </div>
                 </CardContent>
@@ -331,23 +332,23 @@ export default function ChainPage() {
       </div>
 
       {/* Tree */}
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-2 sm:pb-6">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+      <Card>
+        <CardHeader className="px-3 sm:px-6 pb-2 sm:pb-4">
+          <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
             <Users className="size-4 sm:size-5" />
             Supervision Tree
           </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            Click on a node to expand/collapse. Your position is highlighted.
+          <CardDescription className="text-[11px] sm:text-xs md:text-sm">
+            Tap to expand/collapse. Your position is highlighted.
           </CardDescription>
         </CardHeader>
-        <CardContent className="px-2 sm:px-6">
+        <CardContent className="px-2 sm:px-4 md:px-6 pt-1.5 pb-3 sm:pb-4 md:pb-6">
           {tree ? (
-            <div className="p-2 sm:p-4 overflow-x-auto">
-              <div className="min-w-0">{renderTreeNode(tree)}</div>
+            <div className="overflow-x-auto">
+              <div className="md:max-w-2xl lg:max-w-3xl">{renderTreeNode(tree)}</div>
             </div>
           ) : (
-            <p className="text-center text-muted-foreground py-8 text-sm">
+            <p className="text-center text-muted-foreground py-6 sm:py-8 text-xs sm:text-sm">
               No subordinates in your chain of command.
             </p>
           )}
@@ -355,13 +356,13 @@ export default function ChainPage() {
       </Card>
 
       {/* Rank Color Settings */}
-      <Card>
-        <CardHeader className="pb-2 sm:pb-6">
+      <Card className="md:max-w-xl lg:max-w-2xl">
+        <CardHeader className="px-3 sm:px-6 pb-2 sm:pb-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <CardTitle className="text-sm">Rank Colors</CardTitle>
-              <CardDescription className="text-xs">
-                Tap a rank to customize its color
+              <CardTitle className="text-xs sm:text-sm">Rank Colors</CardTitle>
+              <CardDescription className="text-[10px] sm:text-xs">
+                Customize colors for the tree
               </CardDescription>
             </div>
             {Object.keys(rankColors).length > 0 && (
@@ -372,15 +373,15 @@ export default function ChainPage() {
                   setRankColors({});
                   localStorage.removeItem(STORAGE_KEY);
                 }}
-                className="text-xs text-muted-foreground shrink-0"
+                className="text-[10px] sm:text-xs text-muted-foreground shrink-0 h-7 px-2"
               >
                 Reset
               </Button>
             )}
           </div>
         </CardHeader>
-        <CardContent className="px-3 sm:px-6">
-          <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2 sm:gap-3">
+        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-4">
+          <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
             {RANK_ORDER.map((rank) => {
               const color = rankColors[rank];
               return (
@@ -388,7 +389,7 @@ export default function ChainPage() {
                   <PopoverTrigger asChild>
                     <button
                       className={cn(
-                        "px-2 sm:px-3 py-1.5 rounded border-2 text-[10px] sm:text-xs font-medium transition-all hover:shadow-md cursor-pointer w-full sm:w-auto",
+                        "px-2 sm:px-3 py-1.5 rounded border-2 text-[10px] sm:text-xs font-medium transition-all hover:shadow-md cursor-pointer",
                         !color && "bg-card border-border hover:border-muted-foreground"
                       )}
                       style={color ? { backgroundColor: `${color}20`, borderColor: color } : undefined}

@@ -63,13 +63,15 @@ export default async function AppLayout({
       subordinates={subordinates}
       epbConfig={epbConfig}
     >
-      <div className="flex min-h-screen">
+      <div className="flex h-screen overflow-hidden">
         <AppSidebar profile={profile} />
-        <div className="flex-1 flex flex-col ml-0 lg:ml-64">
+        <div className="flex-1 flex flex-col ml-0 lg:ml-64 min-w-0 overflow-hidden">
           <AppHeader profile={profile} />
-          <main className="flex-1 flex flex-col items-center w-full p-4 md:p-6 lg:p-8 animate-fade-in">
-            {children}
-          </main>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <main className="flex flex-col items-center w-full p-4 md:p-6 lg:p-8 animate-fade-in">
+              {children}
+            </main>
+          </div>
         </div>
       </div>
     </AppInitializer>

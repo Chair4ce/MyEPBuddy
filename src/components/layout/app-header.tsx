@@ -46,16 +46,17 @@ export function AppHeader({ profile }: AppHeaderProps) {
       .toUpperCase() || profile?.email?.charAt(0).toUpperCase() || "U";
 
   return (
-    <header className="sticky top-0 z-30 h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="h-16 flex-shrink-0 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center justify-between h-full px-4 md:px-6 lg:px-8">
-        <div className="lg:hidden w-10" />
+        <div className="lg:hidden w-10 flex-shrink-0" />
         
         <div className="flex-1" />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="ghost"
             size="icon"
+            className="flex-shrink-0"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             aria-label="Toggle theme"
           >
@@ -67,10 +68,10 @@ export function AppHeader({ profile }: AppHeaderProps) {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="relative h-9 w-9 rounded-full"
+                className="relative h-9 w-9 rounded-full flex-shrink-0"
                 aria-label="User menu"
               >
-                <Avatar className="size-9">
+                <Avatar className="size-9 flex-shrink-0">
                   <AvatarImage
                     src={profile?.avatar_url || undefined}
                     alt={profile?.full_name || "User"}
