@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -16,15 +16,52 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, ExternalLink, Copy, Check } from "lucide-react";
+
+// Detect if running in a restricted browser context (in-app browsers, PWAs)
+function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
+  if (typeof window === "undefined") return { restricted: false, browserName: "" };
+
+  const ua = navigator.userAgent || "";
+
+  // Check for standalone PWA
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window.navigator as any).standalone === true;
+
+  if (isStandalone) return { restricted: true, browserName: "this app" };
+
+  // Detect specific in-app browsers
+  if (/LinkedIn/i.test(ua)) return { restricted: true, browserName: "LinkedIn" };
+  if (/FBAN|FBAV/i.test(ua)) return { restricted: true, browserName: "Facebook" };
+  if (/Instagram/i.test(ua)) return { restricted: true, browserName: "Instagram" };
+  if (/Twitter/i.test(ua)) return { restricted: true, browserName: "Twitter/X" };
+  if (/Snapchat/i.test(ua)) return { restricted: true, browserName: "Snapchat" };
+  if (/Slack/i.test(ua)) return { restricted: true, browserName: "Slack" };
+  if (/Line\//i.test(ua)) return { restricted: true, browserName: "Line" };
+  if (/KAKAOTALK/i.test(ua)) return { restricted: true, browserName: "KakaoTalk" };
+  if (/WeChat|MicroMessenger/i.test(ua)) return { restricted: true, browserName: "WeChat" };
+
+  return { restricted: false, browserName: "" };
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [restrictedBrowser, setRestrictedBrowser] = useState<{
+    restricted: boolean;
+    browserName: string;
+  }>({ restricted: false, browserName: "" });
+  const [copied, setCopied] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    setRestrictedBrowser(isRestrictedBrowser());
+  }, []);
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -52,54 +89,42 @@ export default function LoginPage() {
   }
 
   async function handleGoogleLogin() {
+    // Don't allow Google login from restricted browsers - they need to open in real browser
+    if (restrictedBrowser.restricted) {
+      toast.error(
+        `Google sign-in doesn't work in ${restrictedBrowser.browserName}. Please open in Safari or Chrome.`
+      );
+      return;
+    }
+
     setIsGoogleLoading(true);
 
     try {
-      // Check if running as standalone PWA - Google blocks OAuth from embedded webviews
-      const isStandalone =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window.navigator as any).standalone === true;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
 
-      if (isStandalone) {
-        // For standalone PWA, get the OAuth URL and open in system browser
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: `${window.location.origin}/auth/callback`,
-            skipBrowserRedirect: true,
-          },
-        });
-
-        if (error) {
-          toast.error(error.message);
-          setIsGoogleLoading(false);
-          return;
-        }
-
-        if (data?.url) {
-          // Open in system browser - this bypasses the embedded webview restriction
-          window.open(data.url, "_blank", "noopener,noreferrer");
-          toast.info("Complete sign in, then return to the app");
-        }
+      if (error) {
+        toast.error(error.message);
         setIsGoogleLoading(false);
-      } else {
-        // Normal browser flow
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: `${window.location.origin}/auth/callback`,
-          },
-        });
-
-        if (error) {
-          toast.error(error.message);
-          setIsGoogleLoading(false);
-        }
       }
     } catch {
       toast.error("An unexpected error occurred");
       setIsGoogleLoading(false);
+    }
+  }
+
+  async function handleCopyUrl() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      toast.success("URL copied! Paste it in Safari or Chrome.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy URL");
     }
   }
 
@@ -114,6 +139,39 @@ export default function LoginPage() {
         </p>
       </div>
 
+      {/* Warning banner for in-app browsers */}
+      {restrictedBrowser.restricted && (
+        <Card className="mb-4 border-amber-500/50 bg-amber-500/10">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <ExternalLink className="size-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="space-y-2 flex-1">
+                <p className="text-sm font-medium text-amber-500">
+                  Open in Safari or Chrome
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Google sign-in doesn&apos;t work in {restrictedBrowser.browserName}&apos;s browser. 
+                  Copy this link and paste it in Safari or Chrome.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyUrl}
+                  className="mt-2 w-full border-amber-500/50 hover:bg-amber-500/20"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-green-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                  {copied ? "Copied!" : "Copy URL"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl">Sign in</CardTitle>
@@ -126,7 +184,7 @@ export default function LoginPage() {
             variant="outline"
             className="w-full"
             onClick={handleGoogleLogin}
-            disabled={isGoogleLoading || isLoading}
+            disabled={isGoogleLoading || isLoading || restrictedBrowser.restricted}
           >
             {isGoogleLoading ? (
               <Loader2 className="size-4 animate-spin" />
