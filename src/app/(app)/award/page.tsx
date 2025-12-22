@@ -24,7 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { BulletCanvasPreview } from "@/components/award/bullet-canvas-preview";
+import { BulletCanvasPreview, type LineMetric } from "@/components/award/bullet-canvas-preview";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -653,6 +653,49 @@ export default function AwardPage() {
     }
   }
 
+  // Per-line compression - uses line metrics from canvas preview
+  const [currentLineMetrics, setCurrentLineMetrics] = useState<LineMetric[]>([]);
+
+  function handleCompressLine(lineIndex: number) {
+    if (!workspaceText || lineIndex >= currentLineMetrics.length) return;
+    
+    const lineMetric = currentLineMetrics[lineIndex];
+    if (!lineMetric || lineMetric.isCompressed) return;
+    
+    // Get the line text and compress just that portion
+    const before = workspaceText.substring(0, lineMetric.startIndex);
+    const lineText = workspaceText.substring(lineMetric.startIndex, lineMetric.endIndex);
+    const after = workspaceText.substring(lineMetric.endIndex);
+    
+    // Replace normal spaces with thin spaces in this line only
+    const compressedLine = lineText.replace(/ /g, '\u2006');
+    
+    const newText = before + compressedLine + after;
+    setWorkspaceText(newText);
+    updateWorkspaceText(newText);
+    toast.success(`Compressed line ${lineIndex + 1}`);
+  }
+
+  function handleNormalizeLine(lineIndex: number) {
+    if (!workspaceText || lineIndex >= currentLineMetrics.length) return;
+    
+    const lineMetric = currentLineMetrics[lineIndex];
+    if (!lineMetric || !lineMetric.isCompressed) return;
+    
+    // Get the line text and normalize just that portion
+    const before = workspaceText.substring(0, lineMetric.startIndex);
+    const lineText = workspaceText.substring(lineMetric.startIndex, lineMetric.endIndex);
+    const after = workspaceText.substring(lineMetric.endIndex);
+    
+    // Replace thin/medium spaces with normal spaces in this line only
+    const normalizedLine = lineText.replace(/[\u2006\u2004]/g, ' ');
+    
+    const newText = before + normalizedLine + after;
+    setWorkspaceText(newText);
+    updateWorkspaceText(newText);
+    toast.success(`Normalized line ${lineIndex + 1}`);
+  }
+
   async function handleReviseSelection(mode: "expand" | "compress" | "general" = "general") {
     const textarea = workspaceTextareaRef.current;
     if (!textarea || textarea.selectionStart === textarea.selectionEnd) {
@@ -898,7 +941,7 @@ export default function AwardPage() {
   // ============================================================================
 
   return (
-    <div className="flex flex-col gap-4 w-full">
+    <div className="flex flex-col gap-4 w-full transition-all duration-200">
       {/* ============================================================================ */}
       {/* TOP: Selection & Config (Collapsible) */}
       {/* ============================================================================ */}
@@ -1567,6 +1610,8 @@ export default function AwardPage() {
         </CardHeader>
 
         <CardContent>
+          {/* Fixed minimum height to prevent layout shifts */}
+          <div style={{ minHeight: "400px" }} className="transition-all duration-300">
           {workspaceStatements.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
               <Pencil className="size-12 mx-auto mb-4 opacity-30" />
@@ -1574,8 +1619,8 @@ export default function AwardPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Statement Tabs */}
-              <div className="flex gap-2 overflow-x-auto pb-2">
+              {/* Statement Tabs - stable height */}
+              <div className="flex gap-2 overflow-x-auto pb-2 min-h-[40px]">
                 {workspaceStatements.map((stmt, idx) => {
                   const catInfo = AWARD_1206_CATEGORIES.find((c) => c.key === stmt.category);
                   const isActive = activeWorkspaceId === stmt.id;
@@ -1609,8 +1654,8 @@ export default function AwardPage() {
 
               {activeWorkspaceStatement && (
                 <>
-                  {/* Metadata Bar */}
-                  <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/30 rounded-lg">
+                  {/* Metadata Bar - fixed height to prevent shifts */}
+                  <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/30 rounded-lg min-h-[48px]">
                     <Badge variant="secondary" className="text-xs">
                       {activeWorkspaceStatement.quarter} {selectedYear}
                     </Badge>
@@ -1621,23 +1666,26 @@ export default function AwardPage() {
                       {nomineeInfo?.full_name}
                     </Badge>
                     <Separator orientation="vertical" className="h-4" />
-                    <span className={cn("text-xs font-medium", isOverflow ? "text-destructive" : "text-muted-foreground")}>
+                    <span className={cn("text-xs font-medium transition-colors", isOverflow ? "text-destructive" : "text-muted-foreground")}>
                       {sentenceCount} sentence{sentenceCount !== 1 ? "s" : ""} • ~{estimatedLines} line{estimatedLines !== 1 ? "s" : ""} • {workspaceText.length} chars
                     </span>
-                    {isOverflow && (
-                      <Badge variant="destructive" className="text-xs">
-                        Exceeds 3 lines
-                      </Badge>
-                    )}
-                    {sentenceCount > 3 && (
-                      <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
-                        {sentenceCount} sentences (target: 2-3)
-                      </Badge>
-                    )}
+                    {/* Reserve space for badges to prevent layout shift */}
+                    <div className="flex gap-1 min-w-[100px]">
+                      {isOverflow && (
+                        <Badge variant="destructive" className="text-xs animate-in fade-in duration-200">
+                          Exceeds 3 lines
+                        </Badge>
+                      )}
+                      {sentenceCount > 3 && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 animate-in fade-in duration-200">
+                          {sentenceCount} sentences
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Toolbar */}
-                  <div className="flex flex-wrap gap-2 p-2 bg-muted/20 rounded-lg">
+                  {/* Toolbar - stable height */}
+                  <div className="flex flex-wrap gap-2 p-2 bg-muted/20 rounded-lg min-h-[48px] items-center">
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button 
@@ -1800,35 +1848,14 @@ export default function AwardPage() {
                     </div>
                   </div>
 
-                  {/* 1206 Canvas Preview - Shows exact character spacing */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium">1206 Preview</span>
-                        {workspaceText.includes('\u2006') && (
-                          <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 dark:bg-green-900/20">
-                            Compressed
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{sentenceCount} sentence{sentenceCount !== 1 ? "s" : ""}</span>
-                        <span>•</span>
-                        <span>~{Math.ceil(getTextWidthPx(workspaceText) / AF1206_LINE_WIDTH_PX)} line{Math.ceil(getTextWidthPx(workspaceText) / AF1206_LINE_WIDTH_PX) !== 1 ? "s" : ""}</span>
-                        <span>•</span>
-                        <span>{workspaceText.length} chars</span>
-                      </div>
-                    </div>
-                    
-                    {/* Canvas render with exact character widths */}
-                    <div className="overflow-x-auto">
-                      <BulletCanvasPreview 
-                        text={workspaceText} 
-                        width={760}
-                        className="shadow-sm"
-                      />
-                    </div>
-                  </div>
+                  {/* Line Fill Indicator with per-line controls */}
+                  <BulletCanvasPreview 
+                    text={workspaceText} 
+                    width={760}
+                    onMetricsChange={(metrics) => setCurrentLineMetrics(metrics)}
+                    onCompressLine={handleCompressLine}
+                    onNormalizeLine={handleNormalizeLine}
+                  />
 
 
                   {/* Actions */}
@@ -1850,6 +1877,7 @@ export default function AwardPage() {
               )}
             </div>
           )}
+          </div>
         </CardContent>
       </Card>
 

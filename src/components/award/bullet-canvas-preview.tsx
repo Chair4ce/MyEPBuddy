@@ -5,12 +5,11 @@ import { AF1206_LINE_WIDTH_PX } from "@/lib/bullet-fitting";
 import { cn } from "@/lib/utils";
 
 /**
- * Bullet preview component based on pdf-bullets project.
+ * Line fill indicator component based on pdf-bullets project.
  * https://github.com/AF-VCD/pdf-bullets
  * 
- * Uses canvas.measureText() to accurately measure text width,
- * including the special Unicode spaces (\u2006, \u2004).
- * The browser knows how to render these spaces at their correct widths.
+ * Uses a hidden canvas to measure text width accurately,
+ * then displays line fill bars with per-line compress/normalize controls.
  */
 
 export interface LineMetric {
@@ -18,13 +17,18 @@ export interface LineMetric {
   width: number;
   fillPercent: number;
   isOverflow: boolean;
+  isCompressed: boolean;
+  startIndex: number;
+  endIndex: number;
 }
 
-interface BulletCanvasPreviewProps {
+interface LineFillIndicatorProps {
   text: string;
   width?: number;
   className?: string;
   onMetricsChange?: (metrics: LineMetric[]) => void;
+  onCompressLine?: (lineIndex: number) => void;
+  onNormalizeLine?: (lineIndex: number) => void;
 }
 
 // Adobe line split regex - split after space, ?, /, |, -, %, ! if followed by alphanumeric
@@ -33,26 +37,32 @@ function adobeLineSplit(text: string): string[] {
   return text.split(regex).filter(Boolean);
 }
 
-// Render text with line wrapping based on measured widths (like pdf-bullets)
+interface LineInfo {
+  text: string;
+  startIndex: number;
+  endIndex: number;
+}
+
+// Render text with line wrapping based on measured widths
 function renderBulletText(
   text: string,
   getWidth: (t: string) => number,
-  targetWidth: number
-): { textLines: string[]; overflow: number } {
+  targetWidth: number,
+  startOffset: number = 0
+): { lines: LineInfo[]; overflow: number } {
   if (!text || text.trim() === "") {
-    return { textLines: [""], overflow: -targetWidth };
+    return { lines: [{ text: "", startIndex: startOffset, endIndex: startOffset }], overflow: -targetWidth };
   }
 
   const fullWidth = getWidth(text.trimEnd());
 
   if (fullWidth <= targetWidth) {
     return {
-      textLines: [text],
+      lines: [{ text, startIndex: startOffset, endIndex: startOffset + text.length }],
       overflow: fullWidth - targetWidth,
     };
   }
 
-  // Text is wider than target - find where to break
   const textSplit = adobeLineSplit(text);
 
   if (textSplit.length > 0 && getWidth(textSplit[0]?.trimEnd() || "") < targetWidth) {
@@ -69,17 +79,23 @@ function renderBulletText(
     const remainder = textSplit.slice(answerIdx).join("");
 
     if (remainder === text || !remainder) {
-      return { textLines: [text], overflow: fullWidth - targetWidth };
+      return { 
+        lines: [{ text, startIndex: startOffset, endIndex: startOffset + text.length }], 
+        overflow: fullWidth - targetWidth 
+      };
     }
 
-    const recursedResult = renderBulletText(remainder, getWidth, targetWidth);
+    const recursedResult = renderBulletText(remainder, getWidth, targetWidth, startOffset + firstLine.length);
     return {
-      textLines: [firstLine, ...recursedResult.textLines],
+      lines: [
+        { text: firstLine, startIndex: startOffset, endIndex: startOffset + firstLine.length },
+        ...recursedResult.lines
+      ],
       overflow: fullWidth - targetWidth,
     };
   }
 
-  // First token is wider than target - do character-level break
+  // Character-level break for very long words
   const avgCharWidth = fullWidth / text.length;
   const guessIndex = Math.floor(targetWidth / avgCharWidth);
   let answerIdx = guessIndex;
@@ -104,12 +120,18 @@ function renderBulletText(
   const remainder = text.substring(answerIdx);
 
   if (remainder === text || !remainder) {
-    return { textLines: [text], overflow: fullWidth - targetWidth };
+    return { 
+      lines: [{ text, startIndex: startOffset, endIndex: startOffset + text.length }], 
+      overflow: fullWidth - targetWidth 
+    };
   }
 
-  const recursedResult = renderBulletText(remainder, getWidth, targetWidth);
+  const recursedResult = renderBulletText(remainder, getWidth, targetWidth, startOffset + firstLine.length);
   return {
-    textLines: [firstLine, ...recursedResult.textLines],
+    lines: [
+      { text: firstLine, startIndex: startOffset, endIndex: startOffset + firstLine.length },
+      ...recursedResult.lines
+    ],
     overflow: fullWidth - targetWidth,
   };
 }
@@ -119,118 +141,84 @@ export function BulletCanvasPreview({
   width = AF1206_LINE_WIDTH_PX,
   className = "",
   onMetricsChange,
-}: BulletCanvasPreviewProps) {
+  onCompressLine,
+  onNormalizeLine,
+}: LineFillIndicatorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [lineMetrics, setLineMetrics] = useState<LineMetric[]>([]);
+  
+  // Store callback in ref to avoid infinite loops
+  const onMetricsChangeRef = useRef(onMetricsChange);
+  onMetricsChangeRef.current = onMetricsChange;
 
   // Check if text contains special spacing
   const isCompressed = text.includes('\u2006');
   const isExpanded = text.includes('\u2004');
 
   useEffect(() => {
+    // Create hidden canvas for text measurement
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Settings - use 12pt Times New Roman like the actual 1206
     const fontSize = 12;
-    const lineHeight = fontSize * 1.5;
     const padding = 8;
     const maxWidth = width - padding * 2;
 
-    // Set font FIRST so measureText works correctly
     ctx.font = `${fontSize}pt "Times New Roman", Times, serif`;
-
-    // Create width measurement function (exactly like pdf-bullets does)
     const getWidth = (t: string) => ctx.measureText(t).width;
 
-    // Render text with proper line breaking using actual measured widths
-    const { textLines } = renderBulletText(text, getWidth, maxWidth);
+    const { lines } = renderBulletText(text, getWidth, maxWidth);
 
-    // Calculate canvas height
-    const textHeight = Math.max(1, textLines.length) * lineHeight;
-    const canvasHeight = textHeight + padding * 2;
-
-    // Set canvas size with device pixel ratio for sharpness
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = canvasHeight * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${canvasHeight}px`;
-    ctx.scale(dpr, dpr);
-
-    // Clear background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, canvasHeight);
-
-    // Re-set font after scaling
-    ctx.font = `${fontSize}pt "Times New Roman", Times, serif`;
-    ctx.fillStyle = "#000000";
-    ctx.textBaseline = "top";
-
-    // Calculate metrics for each line BEFORE drawing
-    const metrics: LineMetric[] = textLines.map(line => {
-      const lineWidth = ctx.measureText(line.trimEnd()).width;
+    const metrics: LineMetric[] = lines.map(lineInfo => {
+      const lineWidth = ctx.measureText(lineInfo.text.trimEnd()).width;
       const fillPercent = Math.round((lineWidth / maxWidth) * 100);
+      const lineIsCompressed = lineInfo.text.includes('\u2006');
       return {
-        text: line,
+        text: lineInfo.text,
         width: lineWidth,
         fillPercent,
         isOverflow: fillPercent > 100,
+        isCompressed: lineIsCompressed,
+        startIndex: lineInfo.startIndex,
+        endIndex: lineInfo.endIndex,
       };
     });
 
-    // Update state and notify parent
     setLineMetrics(metrics);
-    if (onMetricsChange) {
-      onMetricsChange(metrics);
+    if (onMetricsChangeRef.current) {
+      onMetricsChangeRef.current(metrics);
     }
+  }, [text, width, isCompressed, isExpanded]);
 
-    // Draw text lines - the browser will render \u2006 and \u2004 at correct widths
-    for (let lineIdx = 0; lineIdx < textLines.length; lineIdx++) {
-      const line = textLines[lineIdx];
-      const y = padding + lineIdx * lineHeight;
-      
-      // Draw the line as-is - browser handles special Unicode spaces correctly
-      ctx.fillText(line, padding, y);
-    }
-
-  }, [text, width, isCompressed, isExpanded, onMetricsChange]);
-
-  // Count sentences
   const sentenceCount = text.split(/[.!?]/).filter(s => s.trim().length > 0).length;
 
   return (
-    <div className="space-y-3">
-      {/* Canvas Preview */}
-      <canvas
-        ref={canvasRef}
-        className={`border rounded shadow-sm ${className}`}
-        style={{ 
-          display: "block",
-          backgroundColor: "#fff",
-        }}
-      />
+    <div className={cn("space-y-2", className)}>
+      {/* Hidden canvas for text measurement */}
+      <canvas ref={canvasRef} width={width} height={50} className="hidden" />
 
       {/* Line Fill Bars */}
-      <div className="p-3 border rounded-lg bg-muted/20 space-y-2">
+      <div className="p-3 border rounded-lg bg-muted/20 space-y-2" style={{ minHeight: "120px" }}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium">1206 Line Fill</span>
-            {isCompressed && (
-              <span className="text-xs text-green-600 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded border border-green-300">
-                Compressed
-              </span>
-            )}
-            {isExpanded && (
-              <span className="text-xs text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-300">
-                Expanded
-              </span>
-            )}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-medium shrink-0">1206 Line Fill</span>
+            <div className="w-20 h-5">
+              {isCompressed && (
+                <span className="text-xs text-green-600 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded border border-green-300 transition-opacity">
+                  Compressed
+                </span>
+              )}
+              {isExpanded && (
+                <span className="text-xs text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-300 transition-opacity">
+                  Expanded
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
             <span>{sentenceCount} sentence{sentenceCount !== 1 ? "s" : ""}</span>
             <span>•</span>
             <span>{lineMetrics.length} line{lineMetrics.length !== 1 ? "s" : ""}</span>
@@ -239,36 +227,87 @@ export function BulletCanvasPreview({
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          {lineMetrics.map((metric, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-8">L{i + 1}</span>
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden relative">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-all",
-                    metric.isOverflow ? "bg-red-500" :
-                    metric.fillPercent >= 95 ? "bg-green-500" :
-                    metric.fillPercent >= 85 ? "bg-amber-500" :
-                    "bg-blue-500"
+        {/* Line bars with controls */}
+        <div className="space-y-1.5" style={{ minHeight: "44px" }}>
+          {[0, 1, 2].map((i) => {
+            const metric = lineMetrics[i];
+            const hasLine = !!metric;
+            
+            return (
+              <div 
+                key={i} 
+                className={cn(
+                  "flex items-center gap-2 transition-opacity duration-200",
+                  !hasLine && "opacity-30"
+                )}
+              >
+                <span className="text-xs text-muted-foreground w-8">L{i + 1}</span>
+                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden relative">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-300",
+                      !hasLine ? "bg-muted" :
+                      metric.isOverflow ? "bg-red-500" :
+                      metric.fillPercent >= 95 ? "bg-green-500" :
+                      metric.fillPercent >= 85 ? "bg-amber-500" :
+                      "bg-blue-500"
+                    )}
+                    style={{ width: hasLine ? `${Math.min(100, metric.fillPercent)}%` : "0%" }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 w-px bg-green-600/50"
+                    style={{ left: '95%' }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-12 text-right">
+                  {hasLine ? `${metric.fillPercent}%` : "—"}
+                </span>
+                {/* Per-line compress/normalize buttons */}
+                <div className="flex items-center gap-0.5 w-14 justify-end">
+                  {hasLine && (
+                    <>
+                      {metric.isCompressed ? (
+                        <button
+                          onClick={() => onNormalizeLine?.(i)}
+                          disabled={!onNormalizeLine}
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            "bg-green-50 text-green-700 border-green-200 hover:bg-green-100",
+                            "dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/50",
+                            !onNormalizeLine && "opacity-50 cursor-not-allowed"
+                          )}
+                          title="Normalize line spacing"
+                        >
+                          ↔
+                        </button>
+                      ) : metric.fillPercent > 95 ? (
+                        <button
+                          onClick={() => onCompressLine?.(i)}
+                          disabled={!onCompressLine}
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100",
+                            "dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/50",
+                            !onCompressLine && "opacity-50 cursor-not-allowed"
+                          )}
+                          title="Compress line spacing"
+                        >
+                          ←→
+                        </button>
+                      ) : null}
+                    </>
                   )}
-                  style={{ width: `${Math.min(100, metric.fillPercent)}%` }}
-                />
-                {/* 95% marker */}
-                <div
-                  className="absolute top-0 bottom-0 w-px bg-green-600/50"
-                  style={{ left: '95%' }}
-                />
+                </div>
               </div>
-              <span className="text-xs text-muted-foreground w-12 text-right">
-                {metric.fillPercent}%
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        <p className="text-xs text-muted-foreground pt-1">
-          {lineMetrics.some(m => m.isOverflow) ? (
+        {/* Status message */}
+        <p className="text-xs text-muted-foreground pt-1 h-5">
+          {lineMetrics.length === 0 ? (
+            <span className="text-muted-foreground">Enter text to see line fill.</span>
+          ) : lineMetrics.some(m => m.isOverflow) ? (
             <span className="text-red-500">⚠️ Text overflows - compress spacing or shorten text.</span>
           ) : lineMetrics.every(m => m.fillPercent >= 95 && m.fillPercent <= 100) ? (
             <span className="text-green-500">✓ Optimal fill! All lines 95-100%.</span>

@@ -158,6 +158,17 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Collapsible animations */
+@keyframes collapsible-down {
+  from { height: 0; opacity: 0; }
+  to { height: var(--radix-collapsible-content-height); opacity: 1; }
+}
+
+@keyframes collapsible-up {
+  from { height: var(--radix-collapsible-content-height); opacity: 1; }
+  to { height: 0; opacity: 0; }
+}
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out forwards;
 }
@@ -168,6 +179,14 @@
 
 .animate-slide-down {
   animation: slide-down 0.3s ease-out forwards;
+}
+
+.animate-collapsible-down {
+  animation: collapsible-down 0.2s ease-out;
+}
+
+.animate-collapsible-up {
+  animation: collapsible-up 0.2s ease-out;
 }
 
 /* Staggered animation delays */
