@@ -58,6 +58,7 @@ const navItems = [
     href: "/award",
     icon: Award,
     roles: ["member", "admin"],
+    badge: "BETA",
   },
   {
     title: "Statement Library",
@@ -181,7 +182,12 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                     )}
                   >
                     <item.icon className="size-4" />
-                    {item.title}
+                    <span className="flex-1">{item.title}</span>
+                    {"badge" in item && item.badge && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

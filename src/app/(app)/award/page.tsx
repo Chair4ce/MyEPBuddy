@@ -81,6 +81,8 @@ import {
   Eye,
   Calendar,
   X,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import {
   Tooltip,
@@ -215,6 +217,11 @@ export default function AwardPage() {
   const [shareWithNominee, setShareWithNominee] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  // ---- Feedback Dialog State ----
+  const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
   // ---- Misc State ----
   const [hasUserKey, setHasUserKey] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -294,23 +301,30 @@ export default function AwardPage() {
   useEffect(() => {
     async function checkUserKeys() {
       if (!profile) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_api_keys")
-        .select("*")
+        .select("openai_key, anthropic_key, google_key, grok_key")
         .eq("user_id", profile.id)
         .single();
 
-      const selectedProvider = AI_MODELS.find((m) => m.id === selectedModel)?.provider;
-      if (data) {
-        const hasKey =
-          (selectedProvider === "openai" && data.openai_key) ||
-          (selectedProvider === "anthropic" && data.anthropic_key) ||
-          (selectedProvider === "google" && data.google_key) ||
-          (selectedProvider === "xai" && data.grok_key);
-        setHasUserKey(!!hasKey);
-      } else {
+      if (error || !data) {
         setHasUserKey(false);
+        return;
       }
+
+      const keys = data as { 
+        openai_key: string | null; 
+        anthropic_key: string | null; 
+        google_key: string | null; 
+        grok_key: string | null; 
+      };
+      const selectedProvider = AI_MODELS.find((m) => m.id === selectedModel)?.provider;
+      const hasKey =
+        (selectedProvider === "openai" && !!keys.openai_key) ||
+        (selectedProvider === "anthropic" && !!keys.anthropic_key) ||
+        (selectedProvider === "google" && !!keys.google_key) ||
+        (selectedProvider === "xai" && !!keys.grok_key);
+      setHasUserKey(hasKey);
     }
     checkUserKeys();
   }, [profile, selectedModel, supabase]);
@@ -772,13 +786,20 @@ export default function AwardPage() {
 
     setSelectedTextRange({ start, end });
 
-    const matchingCategory = Object.values(DEFAULT_ACTION_VERBS).find((verbs) =>
-      verbs.some((v) => v.toLowerCase() === selectedWord.toLowerCase())
+    // Check if the selected word is an action verb
+    const isActionVerb = DEFAULT_ACTION_VERBS.some(
+      (v) => v.toLowerCase() === selectedWord.toLowerCase()
     );
 
-    if (matchingCategory) {
-      setSynonyms(matchingCategory.filter((v) => v.toLowerCase() !== selectedWord.toLowerCase()).slice(0, 8));
+    if (isActionVerb) {
+      // Suggest other action verbs as synonyms
+      setSynonyms(
+        DEFAULT_ACTION_VERBS
+          .filter((v) => v.toLowerCase() !== selectedWord.toLowerCase())
+          .slice(0, 8)
+      );
     } else {
+      // Default suggestions for non-verbs
       setSynonyms(["Led", "Directed", "Managed", "Coordinated", "Executed", "Spearheaded", "Orchestrated", "Championed"]);
     }
 
@@ -850,7 +871,8 @@ export default function AwardPage() {
       const mpa = categoryInfo?.key || activeWorkspaceStatement.category;
       const isForSelf = nomineeInfo.id === profile.id && !nomineeInfo.isManagedMember;
 
-      const { data: savedStatement, error: insertError } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: savedStatement, error: insertError } = await (supabase as any)
         .from("refined_statements")
         .insert({
           user_id: profile.id,
@@ -870,7 +892,8 @@ export default function AwardPage() {
       if (insertError) throw insertError;
 
       if (shareWithNominee && !isForSelf && savedStatement && !nomineeInfo.isManagedMember) {
-        await supabase.from("statement_shares").insert({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any).from("statement_shares").insert({
           statement_id: savedStatement.id,
           owner_id: profile.id,
           share_type: "user",
@@ -913,6 +936,34 @@ export default function AwardPage() {
     toast.success("Session cleared");
   }
 
+  async function handleSubmitFeedback() {
+    if (!feedbackText.trim()) {
+      toast.error("Please enter feedback");
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from("user_feedback").insert({
+        user_id: profile?.id,
+        feature: "award_generator",
+        feedback: feedbackText.trim(),
+      });
+
+      if (error) throw error;
+
+      toast.success("Thank you for your feedback!");
+      setFeedbackText("");
+      setShowFeedbackDialog(false);
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      toast.error("Failed to submit feedback");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  }
+
   async function copyToClipboard(text: string, id: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -953,7 +1004,12 @@ export default function AwardPage() {
                 <div className="flex items-center gap-3">
                   <Award className="size-5" />
                   <div>
-                    <CardTitle className="text-base">Generate Award Statement</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base">Generate Award Statement</CardTitle>
+                      <Badge variant="outline" className="text-[10px] h-5 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700">
+                        BETA
+                      </Badge>
+                    </div>
                     <CardDescription className="text-xs">
                       {nomineeInfo ? `${nomineeInfo.rank} ${nomineeInfo.full_name}` : "Select nominee"} • {selectedEntries.length} entries selected
                     </CardDescription>
@@ -1594,18 +1650,29 @@ export default function AwardPage() {
             <div className="flex items-center gap-3">
               <Pencil className="size-5" />
               <div>
-                <CardTitle className="text-base">Statement Workspace</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">Statement Workspace</CardTitle>
+                  <Badge variant="outline" className="text-[10px] h-5 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700">
+                    BETA
+                  </Badge>
+                </div>
                 <CardDescription className="text-xs">
-                  {workspaceStatements.length} statement{workspaceStatements.length !== 1 ? "s" : ""} in workspace
+                  {workspaceStatements.length} statement{workspaceStatements.length !== 1 ? "s" : ""} in workspace • Results may not work as intended
                 </CardDescription>
               </div>
             </div>
-            {workspaceStatements.length > 0 && (
-              <Button size="sm" variant="outline" onClick={clearWorkspace}>
-                <Trash2 className="size-3 mr-1" />
-                Clear All
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setShowFeedbackDialog(true)}>
+                <MessageSquare className="size-3 mr-1" />
+                Feedback
               </Button>
-            )}
+              {workspaceStatements.length > 0 && (
+                <Button size="sm" variant="outline" onClick={clearWorkspace}>
+                  <Trash2 className="size-3 mr-1" />
+                  Clear All
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
 
@@ -2034,6 +2101,53 @@ export default function AwardPage() {
                 <>
                   <Save className="size-4 mr-2" />
                   Save Statement
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Feedback Dialog */}
+      <Dialog open={showFeedbackDialog} onOpenChange={setShowFeedbackDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="size-5" />
+              Send Feedback
+            </DialogTitle>
+            <DialogDescription>
+              Help us improve this beta feature. Let us know what&apos;s working and what isn&apos;t.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <Textarea
+              placeholder="What would make this feature better? Report bugs, suggest improvements, or share your experience..."
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              rows={5}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              Your feedback helps us prioritize improvements.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFeedbackDialog(false)} disabled={isSubmittingFeedback}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitFeedback} disabled={isSubmittingFeedback || !feedbackText.trim()}>
+              {isSubmittingFeedback ? (
+                <>
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="size-4 mr-2" />
+                  Submit Feedback
                 </>
               )}
             </Button>

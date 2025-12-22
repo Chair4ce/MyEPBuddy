@@ -627,6 +627,26 @@ export interface Database {
           grok_key?: string | null;
         };
       };
+      user_feedback: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          feature: string;
+          feedback: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          feature: string;
+          feedback: string;
+          created_at?: string;
+        };
+        Update: {
+          feature?: string;
+          feedback?: string;
+        };
+      };
       statement_history: {
         Row: {
           id: string;
@@ -665,6 +685,11 @@ export interface Database {
           is_favorite: boolean;
           created_at: string;
           updated_at: string;
+          cycle_year: number;
+          created_by: string | null;
+          team_member_id: string | null;
+          statement_type: string;
+          source_accomplishment_ids: string[] | null;
         };
         Insert: {
           id?: string;
@@ -675,10 +700,17 @@ export interface Database {
           rank: string;
           statement: string;
           is_favorite?: boolean;
+          cycle_year?: number;
+          created_by?: string;
+          team_member_id?: string | null;
+          statement_type?: string;
+          source_accomplishment_ids?: string[] | null;
         };
         Update: {
           statement?: string;
           is_favorite?: boolean;
+          statement_type?: string;
+          source_accomplishment_ids?: string[] | null;
         };
       };
       community_statements: {

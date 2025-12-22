@@ -374,6 +374,8 @@ export type Database = {
           mpa: string
           rank: Database["public"]["Enums"]["user_rank"]
           statement: string
+          statement_type: string
+          source_accomplishment_ids: string[] | null
           team_member_id: string | null
           updated_at: string
           user_id: string
@@ -389,6 +391,8 @@ export type Database = {
           mpa: string
           rank: Database["public"]["Enums"]["user_rank"]
           statement: string
+          statement_type?: string
+          source_accomplishment_ids?: string[] | null
           team_member_id?: string | null
           updated_at?: string
           user_id: string
@@ -404,6 +408,8 @@ export type Database = {
           mpa?: string
           rank?: Database["public"]["Enums"]["user_rank"]
           statement?: string
+          statement_type?: string
+          source_accomplishment_ids?: string[] | null
           team_member_id?: string | null
           updated_at?: string
           user_id?: string
@@ -843,6 +849,38 @@ export type Database = {
             foreignKeyName: "user_api_keys_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_feedback: {
+        Row: {
+          id: string
+          user_id: string | null
+          feature: string
+          feedback: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          feature: string
+          feedback: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          feature?: string
+          feedback?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
