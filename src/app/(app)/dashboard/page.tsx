@@ -14,14 +14,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   FileText,
   Users,
   Sparkles,
-  TrendingUp,
   Calendar,
   Target,
   Plus,
@@ -29,6 +27,8 @@ import {
 import { ENTRY_MGAS } from "@/lib/constants";
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
+import { EPBProgressCard } from "@/components/epb/epb-progress-card";
+import type { Rank } from "@/types/database";
 
 export default function DashboardPage() {
   const { profile, subordinates, epbConfig } = useUserStore();
@@ -88,7 +88,6 @@ export default function DashboardPage() {
 
   // Use entry MPAs for tracking (excludes HLR which is Commander's assessment)
   const mgas = ENTRY_MGAS;
-  const maxEntriesPerMPA = 10;
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -193,59 +192,51 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* MPA Progress */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="size-5" />
-            MPA Coverage
-          </CardTitle>
-          <CardDescription>
-            Track your accomplishments across Major Performance Areas
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {mgas.map((mpa) => {
-            const count = stats.byMPA[mpa.key] || 0;
-            const percentage = Math.min((count / maxEntriesPerMPA) * 100, 100);
-            const status =
-              count === 0
-                ? "empty"
-                : count < 3
-                  ? "low"
-                  : count < 6
-                    ? "good"
-                    : "excellent";
+      {/* EPB Progress - Only for military enlisted */}
+      {profile?.rank !== "Civilian" && (
+        <EPBProgressCard 
+          rank={profile?.rank as Rank | null} 
+          entries={accomplishments} 
+        />
+      )}
 
-            return (
-              <div key={mpa.key} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{mpa.label}</span>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={
-                        status === "empty"
-                          ? "destructive"
-                          : status === "low"
-                            ? "secondary"
-                            : status === "good"
-                              ? "default"
-                              : "default"
-                      }
-                      className={
-                        status === "excellent" ? "bg-green-600 hover:bg-green-700" : ""
-                      }
-                    >
-                      {count} entries
-                    </Badge>
-                  </div>
-                </div>
-                <Progress value={percentage} className="h-2" />
+      {/* Team Summary - For civilians or supervisors with subordinates */}
+      {profile?.rank === "Civilian" && subordinates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="size-5" />
+              Team Overview
+            </CardTitle>
+            <CardDescription>
+              Quick view of your team&apos;s performance tracking status
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                <div className="text-3xl font-bold">{subordinates.length}</div>
+                <p className="text-sm text-muted-foreground">Direct Reports</p>
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                <div className="text-3xl font-bold">—</div>
+                <p className="text-sm text-muted-foreground">Entries This Month</p>
+              </div>
+            </div>
+            <div className="text-center pt-2">
+              <Button variant="outline" asChild>
+                <Link href="/team">
+                  <Users className="size-4 mr-2" />
+                  View Full Team Status
+                </Link>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Civilian performance tracking coming soon. For now, use the Team page to manage your subordinates&apos; EPB progress.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent Entries */}
       <Card>

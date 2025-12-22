@@ -36,9 +36,17 @@ export const RANKS: { value: Rank; label: string }[] = [
   { value: "MSgt", label: "MSgt (Master Sergeant)" },
   { value: "SMSgt", label: "SMSgt (Senior Master Sergeant)" },
   { value: "CMSgt", label: "CMSgt (Chief Master Sergeant)" },
+  { value: "Civilian", label: "Civilian (DoD Civilian)" },
 ];
 
-export const SUPERVISOR_RANKS: Rank[] = ["SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt"];
+// Ranks that can supervise others
+export const SUPERVISOR_RANKS: Rank[] = ["SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt", "Civilian"];
+
+// Helper to check if a rank is a military enlisted rank (has EPB)
+export function isMilitaryEnlisted(rank: Rank | null): boolean {
+  if (!rank) return false;
+  return rank !== "Civilian";
+}
 
 export const AI_MODELS = [
   {
@@ -116,6 +124,126 @@ export const DEFAULT_ACTION_VERBS = [
 ];
 
 export const MAX_STATEMENT_CHARACTERS = 350;
+
+// ============================================
+// EPB STATIC CLOSE-OUT DATES BY RANK
+// ============================================
+// These are the official AF EPB static close-out dates
+// AB and Amn do not have EPBs until they become SrA
+
+export type RankTier = "airman" | "ssgt" | "tsgt" | "msgt" | "smsgt" | "cmsgt";
+
+export const RANK_TO_TIER: Record<Rank, RankTier | null> = {
+  AB: null,      // No EPB for AB
+  Amn: null,     // No EPB for Amn
+  A1C: "airman", // First EPB at SrA, but includes A1C entries
+  SrA: "airman",
+  SSgt: "ssgt",
+  TSgt: "tsgt",
+  MSgt: "msgt",
+  SMSgt: "smsgt",
+  CMSgt: "cmsgt",
+};
+
+// Static close-out dates (month and day) for each rank tier
+export const STATIC_CLOSEOUT_DATES: Record<RankTier, { month: number; day: number; label: string }> = {
+  airman: { month: 3, day: 31, label: "March 31" },     // AB-SrA
+  ssgt: { month: 9, day: 30, label: "September 30" },   // SSgt
+  tsgt: { month: 11, day: 30, label: "November 30" },   // TSgt
+  msgt: { month: 1, day: 31, label: "January 31" },     // MSgt
+  smsgt: { month: 5, day: 31, label: "May 31" },        // SMSgt
+  cmsgt: { month: 7, day: 31, label: "July 31" },       // CMSgt
+};
+
+// Get the static close-out date for a given rank
+export function getStaticCloseoutDate(rank: Rank | null): { date: Date; label: string } | null {
+  if (!rank) return null;
+  
+  const tier = RANK_TO_TIER[rank];
+  if (!tier) return null; // AB and Amn don't have EPBs
+  
+  const closeout = STATIC_CLOSEOUT_DATES[tier];
+  const now = new Date();
+  let year = now.getFullYear();
+  
+  // If we've passed this year's closeout, use next year
+  const thisYearDate = new Date(year, closeout.month - 1, closeout.day);
+  if (now > thisYearDate) {
+    year += 1;
+  }
+  
+  return {
+    date: new Date(year, closeout.month - 1, closeout.day),
+    label: closeout.label,
+  };
+}
+
+// Get days until close-out
+export function getDaysUntilCloseout(rank: Rank | null): number | null {
+  const closeout = getStaticCloseoutDate(rank);
+  if (!closeout) return null;
+  
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diff = closeout.date.getTime() - now.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+// Get EPB submission milestones (60 days, 40 days, 30 days before close-out)
+export function getEPBMilestones(rank: Rank | null): { label: string; date: Date; daysFromNow: number; isPast: boolean }[] | null {
+  const closeout = getStaticCloseoutDate(rank);
+  if (!closeout) return null;
+  
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  
+  const milestones = [
+    { label: "EPB due to immediate supervisor", daysBefore: 67 },    // ~1 week before 60
+    { label: "EPB due to next tier", daysBefore: 60 },               // 60 days
+    { label: "EPB due to MSgt/Flight Chief", daysBefore: 40 },       // 40 days
+    { label: "EPB due to SMSgt/Superintendent", daysBefore: 30 },    // 30 days
+    { label: "EPB due to CMSgt/Chief", daysBefore: 20 },             // 20 days
+    { label: "Final EPB due to AF in MyEval", daysBefore: 0 },       // Closeout
+  ];
+  
+  return milestones.map(m => {
+    const date = new Date(closeout.date);
+    date.setDate(date.getDate() - m.daysBefore);
+    const daysFromNow = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return {
+      label: m.label,
+      date,
+      daysFromNow,
+      isPast: daysFromNow < 0,
+    };
+  });
+}
+
+// Get cycle progress percentage (based on 12 month cycle ending at closeout)
+export function getCycleProgress(rank: Rank | null): number | null {
+  const closeout = getStaticCloseoutDate(rank);
+  if (!closeout) return null;
+  
+  // Cycle starts 12 months before close-out
+  const cycleStart = new Date(closeout.date);
+  cycleStart.setFullYear(cycleStart.getFullYear() - 1);
+  
+  const now = new Date();
+  const totalDays = (closeout.date.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24);
+  const elapsedDays = (now.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24);
+  
+  return Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
+}
+
+// Get urgency level based on days until closeout
+export function getCloseoutUrgency(daysUntil: number | null): "none" | "low" | "medium" | "high" | "critical" {
+  if (daysUntil === null) return "none";
+  if (daysUntil <= 30) return "critical";
+  if (daysUntil <= 60) return "high";
+  if (daysUntil <= 90) return "medium";
+  if (daysUntil <= 180) return "low";
+  return "none";
+}
 
 // ============================================
 // AWARDS SYSTEM CONSTANTS

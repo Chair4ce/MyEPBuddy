@@ -92,7 +92,13 @@ import { AddAwardDialog } from "@/components/team/add-award-dialog";
 import { AwardBadges } from "@/components/team/award-badges";
 import { AwardsPanel } from "@/components/team/awards-panel";
 import { AwardRequestsPanel } from "@/components/team/award-requests-panel";
-import { MPA_ABBREVIATIONS, STANDARD_MGAS } from "@/lib/constants";
+import { 
+  MPA_ABBREVIATIONS, 
+  STANDARD_MGAS, 
+  getDaysUntilCloseout, 
+  ENTRY_MGAS,
+  RANK_TO_TIER 
+} from "@/lib/constants";
 
 // Ranks that can supervise others
 const SUPERVISOR_RANKS: Rank[] = ["SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt"];
@@ -1095,270 +1101,240 @@ export default function TeamPage() {
           style={getRankStyle(node.data.rank)}
           onClick={() => hasChildren && toggleExpand(node.data.id)}
         >
-          <div className="flex items-center gap-2 sm:gap-3">
-            {hasChildren && (
-              <div className="shrink-0">
-                {isExpanded ? (
-                  <ChevronDown className="size-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="size-4 text-muted-foreground" />
-                )}
-              </div>
-            )}
-            <Avatar className="size-8 sm:size-9 md:size-10 shrink-0">
-              <AvatarFallback className="text-[10px] sm:text-xs md:text-sm font-medium">
-                {node.data.full_name?.split(" ").map((n) => n[0]).join("") || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <p className="font-semibold text-[11px] sm:text-xs md:text-sm truncate">
-                  {node.data.rank} {node.data.full_name}
-                </p>
-                {isManagedMember && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            "text-[8px] px-1 py-0 h-4 shrink-0 cursor-help",
-                            node.data.member_status === "prior_subordinate"
-                              ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300"
-                              : node.data.member_status === "archived"
-                              ? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300"
-                              : isPlaceholder 
-                              ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300"
-                              : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300"
-                          )}
-                        >
-                          {node.data.member_status === "prior_subordinate" 
-                            ? "Prior" 
-                            : node.data.member_status === "archived"
-                            ? "Archived"
-                            : isPlaceholder ? "Managed" : "Linked"}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[200px] text-center">
-                        {node.data.member_status === "prior_subordinate"
-                          ? "This is a former subordinate. You still have access to their entries for EPB completion."
-                          : node.data.member_status === "archived"
-                          ? "This member has been archived. Their data is preserved for reference."
-                          : isPlaceholder 
-                          ? "This member doesn't have an account yet. Their entries are managed by you."
-                          : "This member has signed up and their account is now linked."
-                        }
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-              </div>
-              <p className="text-[10px] sm:text-[11px] md:text-xs text-muted-foreground truncate">
-                {node.data.afsc || "No AFSC"} • {node.data.unit || "No Unit"}
-              </p>
-              {/* MPA Metrics */}
-              {memberMetrics[node.data.id] && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {STANDARD_MGAS.map((mpa) => {
-                    const entryCount = memberMetrics[node.data.id]?.entries[mpa.key] || 0;
-                    const stmtCount = memberMetrics[node.data.id]?.statements[mpa.key] || 0;
-                    const abbr = MPA_ABBREVIATIONS[mpa.key];
-                    return (
-                      <TooltipProvider key={mpa.key}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span 
-                              className={cn(
-                                "inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-muted/50 cursor-help",
-                                entryCount === 0 && stmtCount === 0 && "opacity-40"
-                              )}
-                            >
-                              <span className="font-medium">{abbr}</span>
-                              <span className="text-muted-foreground">{entryCount}/{stmtCount}</span>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="text-xs">
-                            <p className="font-medium">{mpa.label}</p>
-                            <p>{entryCount} entries • {stmtCount} statements</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    );
-                  })}
+          {/* Main content */}
+          <div className="space-y-2">
+            {/* Top row: Avatar, name, and expand chevron */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {hasChildren && (
+                <div className="shrink-0">
+                  {isExpanded ? (
+                    <ChevronDown className="size-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  )}
                 </div>
               )}
-              {/* Award badges */}
+              <Avatar className="size-8 sm:size-9 md:size-10 shrink-0">
+                <AvatarFallback className="text-[10px] sm:text-xs md:text-sm font-medium">
+                  {node.data.full_name?.split(" ").map((n) => n[0]).join("") || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                {/* Name row */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="font-semibold text-[11px] sm:text-xs md:text-sm truncate">
+                    {node.data.rank} {node.data.full_name}
+                  </p>
+                  {isManagedMember && (
+                    <Badge 
+                      variant="outline" 
+                      className={cn(
+                        "text-[8px] px-1 py-0 h-4 shrink-0",
+                        node.data.member_status === "prior_subordinate"
+                          ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300"
+                          : node.data.member_status === "archived"
+                          ? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300"
+                          : isPlaceholder 
+                          ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300"
+                          : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300"
+                      )}
+                    >
+                      {node.data.member_status === "prior_subordinate" 
+                        ? "Prior" 
+                        : node.data.member_status === "archived"
+                        ? "Archived"
+                        : isPlaceholder ? "Managed" : "Linked"}
+                    </Badge>
+                  )}
+                  {/* Subordinate count inline with name on mobile */}
+                  {hasChildren && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5">
+                      {node.children.length}
+                    </Badge>
+                  )}
+                </div>
+                {/* AFSC/Unit */}
+                <p className="text-[10px] sm:text-[11px] md:text-xs text-muted-foreground truncate">
+                  {node.data.afsc || "No AFSC"} • {node.data.unit || "No Unit"}
+                </p>
+              </div>
+              {/* Award badges - inline on desktop */}
               {!isCurrentUser && (() => {
                 const memberAwards = isManagedMember 
                   ? getMemberAwards(undefined, node.data.id)
                   : getMemberAwards(node.data.id, undefined);
                 return memberAwards.length > 0 ? (
-                  <div className="flex items-center gap-1 mt-1">
-                    <AwardBadges awards={memberAwards} maxDisplay={4} size="sm" />
-                    {canSupervise(profile?.rank) && (
+                  <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                    <AwardBadges awards={memberAwards} maxDisplay={3} size="sm" />
+                  </div>
+                ) : null;
+              })()}
+            </div>
+            
+            {/* Bottom row: Badges and action buttons - visible for non-current user */}
+            {!isCurrentUser && (
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
+                {/* Left: Status badges */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Award badges - shown on mobile only */}
+                  {(() => {
+                    const memberAwards = isManagedMember 
+                      ? getMemberAwards(undefined, node.data.id)
+                      : getMemberAwards(node.data.id, undefined);
+                    return memberAwards.length > 0 ? (
+                      <div className="flex sm:hidden items-center gap-1">
+                        <AwardBadges awards={memberAwards} maxDisplay={2} size="sm" />
+                      </div>
+                    ) : null;
+                  })()}
+                  {/* Days supervised */}
+                  {node.data.supervision_start_date && (
+                    <Badge variant="outline" className="text-[9px] px-1.5 gap-0.5 whitespace-nowrap">
+                      <Clock className="size-2.5" />
+                      {formatDaysSupervised(calculateDaysSupervised(node.data.supervision_start_date, node.data.supervision_end_date))}
+                    </Badge>
+                  )}
+                  {/* EPB deadline */}
+                  {node.data.rank && RANK_TO_TIER[node.data.rank as Rank] && (() => {
+                    const rank = node.data.rank as Rank;
+                    const daysUntil = getDaysUntilCloseout(rank);
+                    const metrics = memberMetrics[node.data.id];
+                    const coveredMPAs = metrics ? Object.values(metrics.entries).filter(v => v > 0).length : 0;
+                    const totalMPAs = ENTRY_MGAS.length;
+                    if (rank === "AB" || rank === "Amn" || rank === "Civilian") return null;
+                    return (
+                      <Badge variant="outline" className="text-[9px] px-1.5 gap-0.5 whitespace-nowrap">
+                        <Calendar className="size-2.5" />
+                        {daysUntil}d • {coveredMPAs}/{totalMPAs}
+                      </Badge>
+                    );
+                  })()}
+                  {/* MPA Metrics - Hidden on mobile */}
+                  {memberMetrics[node.data.id] && (
+                    <div className="hidden sm:flex flex-wrap gap-1">
+                      {STANDARD_MGAS.map((mpa) => {
+                        const entryCount = memberMetrics[node.data.id]?.entries[mpa.key] || 0;
+                        const stmtCount = memberMetrics[node.data.id]?.statements[mpa.key] || 0;
+                        const abbr = MPA_ABBREVIATIONS[mpa.key];
+                        return (
+                          <span 
+                            key={mpa.key}
+                            className={cn(
+                              "inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-muted/50",
+                              entryCount === 0 && stmtCount === 0 && "opacity-40"
+                            )}
+                          >
+                            <span className="font-medium">{abbr}</span>
+                            <span className="text-muted-foreground">{entryCount}/{stmtCount}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Right: Action buttons - large touch targets */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Add Award button */}
+                  {canSupervise(profile?.rank) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2.5 text-xs gap-1.5 active:scale-95 transition-transform touch-manipulation"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAwardRecipient({
+                          profileId: isManagedMember ? undefined : node.data.id,
+                          teamMemberId: isManagedMember ? node.data.id : undefined,
+                          name: `${node.data.rank || ""} ${node.data.full_name || "Unknown"}`.trim(),
+                        });
+                        setShowAddAwardDialog(true);
+                      }}
+                    >
+                      <Trophy className="size-4" />
+                      <span className="hidden sm:inline">Award</span>
+                    </Button>
+                  )}
+                  {/* Details button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-2.5 text-xs gap-1.5 active:scale-95 transition-transform touch-manipulation"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openSubordinateDetails(node.data);
+                    }}
+                  >
+                    <Info className="size-4" />
+                    <span className="hidden sm:inline">Details</span>
+                  </Button>
+                  {/* More options menu */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-4 opacity-40 hover:opacity-100 ml-0.5"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        className="size-8 shrink-0 active:scale-95 transition-transform touch-manipulation"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openSubordinateDetails(node.data)}>
+                        <Info className="size-4 mr-2" />
+                        View Details
+                      </DropdownMenuItem>
+                      {canSupervise(profile?.rank) && (
+                        <DropdownMenuItem onClick={() => {
                           setAwardRecipient({
                             profileId: isManagedMember ? undefined : node.data.id,
                             teamMemberId: isManagedMember ? node.data.id : undefined,
                             name: `${node.data.rank || ""} ${node.data.full_name || "Unknown"}`.trim(),
                           });
                           setShowAddAwardDialog(true);
-                        }}
-                        title="Add another award"
+                        }}>
+                          <Trophy className="size-4 mr-2" />
+                          Add Award
+                        </DropdownMenuItem>
+                      )}
+                      {node.data.member_status === "prior_subordinate" && (
+                        <>
+                          <DropdownMenuItem onClick={() => archivePriorSubordinate(node.data.id)}>
+                            <Archive className="size-4 mr-2" />
+                            Archive
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={() => setConfirmDeleteMember({ 
+                          id: node.data.id, 
+                          name: node.data.full_name || "Unknown",
+                          type: node.data.member_status === "prior_subordinate" || node.data.member_status === "archived"
+                            ? "prior_subordinate" 
+                            : isManagedMember ? "managed" : "real",
+                          isSupervisor: !isManagedMember && supervisors.some(s => s.id === node.data.id)
+                        })}
                       >
-                        <Plus className="size-3" />
-                      </Button>
-                    )}
-                  </div>
-                ) : canSupervise(profile?.rank) ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 text-[9px] px-1.5 gap-1 opacity-50 hover:opacity-100 mt-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAwardRecipient({
-                        profileId: isManagedMember ? undefined : node.data.id,
-                        teamMemberId: isManagedMember ? node.data.id : undefined,
-                        name: `${node.data.rank || ""} ${node.data.full_name || "Unknown"}`.trim(),
-                      });
-                      setShowAddAwardDialog(true);
-                    }}
-                  >
-                    <Trophy className="size-2.5" />
-                    Add Award
-                  </Button>
-                ) : null;
-              })()}
-            </div>
-            {/* Days supervised badge */}
-            {!isCurrentUser && node.data.supervision_start_date && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="outline" className="shrink-0 text-[9px] px-1.5 gap-0.5 cursor-help">
-                      <Clock className="size-2.5" />
-                      {formatDaysSupervised(calculateDaysSupervised(node.data.supervision_start_date, node.data.supervision_end_date))}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs max-w-[200px]">
-                    <p className="font-medium">Time Supervised</p>
-                    <p>
-                      {node.data.supervision_start_date && new Date(node.data.supervision_start_date).toLocaleDateString()}
-                      {" → "}
-                      {node.data.supervision_end_date 
-                        ? new Date(node.data.supervision_end_date).toLocaleDateString()
-                        : "Present"
-                      }
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {/* Subordinate count with tooltip */}
-            {hasChildren && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 cursor-help">
-                      {node.children.length}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    {node.children.length} direct subordinate{node.children.length !== 1 ? "s" : ""}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {!isCurrentUser && (
-              <>
-                {/* Info button for subordinates */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openSubordinateDetails(node.data);
-                  }}
-                >
-                  <Info className="size-3.5 text-muted-foreground" />
-                </Button>
-                {node.data.member_status === "prior_subordinate" ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openSubordinateDetails(node.data)}>
-                      <Info className="size-4 mr-2" />
-                      Details
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => archivePriorSubordinate(node.data.id)}>
-                      <Archive className="size-4 mr-2" />
-                      Archive
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      className="text-destructive"
-                      onClick={() => setConfirmDeleteMember({ 
-                        id: node.data.id, 
-                        name: node.data.full_name || "Unknown",
-                        type: "prior_subordinate"
-                      })}
-                    >
-                      <Trash2 className="size-4 mr-2" />
-                      Delete...
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : node.data.member_status === "archived" ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 text-destructive shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteMember({ 
-                      id: node.data.id, 
-                      name: node.data.full_name || "Unknown",
-                      type: "prior_subordinate"
-                    });
-                  }}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 text-destructive shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteMember({ 
-                      id: node.data.id, 
-                      name: node.data.full_name || "Unknown",
-                      type: isManagedMember ? "managed" : "real",
-                      isSupervisor: !isManagedMember && supervisors.some(s => s.id === node.data.id)
-                    });
-                  }}
-                >
-                  <UserX className="size-3.5" />
-                </Button>
-              )}
-              </>
+                        {node.data.member_status === "prior_subordinate" || node.data.member_status === "archived" ? (
+                          <>
+                            <Trash2 className="size-4 mr-2" />
+                            Delete
+                          </>
+                        ) : (
+                          <>
+                            <UserX className="size-4 mr-2" />
+                            Remove
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
             )}
           </div>
         </div>

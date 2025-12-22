@@ -7,7 +7,8 @@ export type Rank =
   | "TSgt"
   | "MSgt"
   | "SMSgt"
-  | "CMSgt";
+  | "CMSgt"
+  | "Civilian";
 
 export type UserRole = "member" | "admin";
 export type WritingStyle = "personal" | "community" | "hybrid";

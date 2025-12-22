@@ -28,7 +28,8 @@ import {
   updateAccomplishment,
 } from "@/app/actions/accomplishments";
 import { DEFAULT_ACTION_VERBS, ENTRY_MGAS } from "@/lib/constants";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
+import { celebrateEntry } from "@/lib/confetti";
 import type { Accomplishment } from "@/types/database";
 
 interface EntryFormDialogProps {
@@ -156,7 +157,13 @@ export function EntryFormDialog({
 
         if (result.data) {
           addAccomplishment(result.data);
-          toast.success("Entry created");
+          
+          // Celebrate the new entry!
+          celebrateEntry();
+          toast.success("Entry created!", {
+            description: "Great job tracking your accomplishment!",
+            duration: 3000,
+          });
         }
       }
 
@@ -328,7 +335,11 @@ export function EntryFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto h-9 sm:h-10 text-sm">
+            <Button 
+              type="submit" 
+              disabled={isSubmitting} 
+              className="w-full sm:w-auto h-9 sm:h-10 text-sm group relative overflow-hidden"
+            >
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin mr-2" />
@@ -337,7 +348,10 @@ export function EntryFormDialog({
               ) : editEntry ? (
                 "Update Entry"
               ) : (
-                "Create Entry"
+                <>
+                  <Sparkles className="size-4 mr-2 group-hover:animate-pulse" />
+                  Create Entry
+                </>
               )}
             </Button>
           </DialogFooter>

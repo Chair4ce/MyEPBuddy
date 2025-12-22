@@ -21,8 +21,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { RANKS } from "@/lib/constants";
-import { Loader2, User } from "lucide-react";
+import { 
+  RANKS, 
+  getStaticCloseoutDate, 
+  getDaysUntilCloseout, 
+  getCycleProgress,
+  RANK_TO_TIER 
+} from "@/lib/constants";
+import { Loader2, User, Calendar, Clock } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import type { Rank, Profile } from "@/types/database";
 
 export default function SettingsPage() {
@@ -223,7 +230,145 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* EPB Close-out Date Card */}
+      <EPBCloseoutCard rank={profile?.rank || null} />
     </div>
+  );
+}
+
+// EPB Close-out Information Card
+function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
+  const tier = rank ? RANK_TO_TIER[rank] : null;
+  const closeout = getStaticCloseoutDate(rank);
+  const daysUntil = getDaysUntilCloseout(rank);
+  const cycleProgress = getCycleProgress(rank);
+
+  // Civilians don't have EPBs - don't show this card
+  if (rank === "Civilian") {
+    return null;
+  }
+
+  // AB and Amn don't have EPBs
+  if (rank && (rank === "AB" || rank === "Amn")) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-full bg-muted flex items-center justify-center">
+              <Calendar className="size-5 text-muted-foreground" />
+            </div>
+            <div>
+              <CardTitle>EPB Close-out Date</CardTitle>
+              <CardDescription>
+                Static close-out date for your rank
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-muted/50 rounded-lg p-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              Airmen with rank AB or Amn do not submit EPBs. Your first EPB will be when you reach Senior Airman (SrA) and will include all entries since you joined the Air Force.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!rank || !tier || !closeout) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-full bg-muted flex items-center justify-center">
+              <Calendar className="size-5 text-muted-foreground" />
+            </div>
+            <div>
+              <CardTitle>EPB Close-out Date</CardTitle>
+              <CardDescription>
+                Static close-out date for your rank
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Set your rank above to see your EPB close-out date.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-full flex items-center justify-center bg-primary/10">
+            <Calendar className="size-5 text-primary" />
+          </div>
+          <div>
+            <CardTitle>EPB Close-out Date</CardTitle>
+            <CardDescription>
+              Static close-out date for {rank}
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Close-out date display */}
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+          <div>
+            <p className="text-sm text-muted-foreground">Your EPB Close-out</p>
+            <p className="text-2xl font-bold">
+              {closeout.label}, {closeout.date.getFullYear()}
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="flex items-center gap-1.5 justify-end text-foreground">
+              <Clock className="size-4" />
+              <span className="text-sm font-medium">
+                {daysUntil !== null ? (
+                  daysUntil === 0 ? "Today!" : 
+                  daysUntil === 1 ? "Tomorrow" :
+                  daysUntil < 0 ? `${Math.abs(daysUntil)} days ago` :
+                  `${daysUntil} days`
+                ) : "—"}
+              </span>
+            </div>
+            <p className="text-xs mt-0.5 opacity-80">
+              {daysUntil !== null && daysUntil > 0 ? "until close-out" : daysUntil === 0 ? "" : "since close-out"}
+            </p>
+          </div>
+        </div>
+
+        {/* Cycle progress */}
+        {cycleProgress !== null && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Performance Cycle Progress</span>
+              <span className="font-medium">{Math.round(cycleProgress)}%</span>
+            </div>
+            <Progress value={cycleProgress} className="h-2" />
+            <p className="text-xs text-muted-foreground">
+              {cycleProgress < 25 ? "Early in your cycle—great time to start logging entries!" :
+               cycleProgress < 50 ? "Good progress—keep adding accomplishments throughout the year." :
+               cycleProgress < 75 ? "Past the halfway point—ensure all major accomplishments are logged." :
+               cycleProgress < 90 ? "Approaching close-out—finalize your entries soon." :
+               "Close-out approaching—submit your EPB to your supervisor!"}
+            </p>
+          </div>
+        )}
+
+        {/* Info about dates */}
+        <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-1">
+          <p><strong>Note:</strong> This is the official AF static close-out date for your rank tier.</p>
+          <p>Typically, units require your finalized EPB 60 days before close-out.</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
