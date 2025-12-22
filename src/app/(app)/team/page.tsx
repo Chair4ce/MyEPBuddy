@@ -65,6 +65,9 @@ import {
   Info,
   Calendar,
   History,
+  Trophy,
+  Medal,
+  Plus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -83,8 +86,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { Profile, TeamRequest, TeamRequestType, Rank, ManagedMember } from "@/types/database";
+import type { Profile, TeamRequest, TeamRequestType, Rank, ManagedMember, Award, AwardRequest } from "@/types/database";
 import { AddManagedMemberDialog } from "@/components/team/add-managed-member-dialog";
+import { AddAwardDialog } from "@/components/team/add-award-dialog";
+import { AwardBadges } from "@/components/team/award-badges";
+import { AwardsPanel } from "@/components/team/awards-panel";
+import { AwardRequestsPanel } from "@/components/team/award-requests-panel";
 import { MPA_ABBREVIATIONS, STANDARD_MGAS } from "@/lib/constants";
 
 // Ranks that can supervise others
@@ -233,6 +240,17 @@ export default function TeamPage() {
     status: string;
   }[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Awards state
+  const [awards, setAwards] = useState<Award[]>([]);
+  const [pendingAwardRequests, setPendingAwardRequests] = useState<AwardRequest[]>([]);
+  const [isLoadingAwards, setIsLoadingAwards] = useState(false);
+  const [showAddAwardDialog, setShowAddAwardDialog] = useState(false);
+  const [awardRecipient, setAwardRecipient] = useState<{
+    profileId?: string;
+    teamMemberId?: string;
+    name: string;
+  } | null>(null);
 
   const supabase = createClient();
 
@@ -933,6 +951,86 @@ export default function TeamPage() {
     }
   }
 
+  // Load awards for team members
+  async function loadAwards() {
+    if (!profile?.id) return;
+    
+    setIsLoadingAwards(true);
+    try {
+      // Get all member IDs we can view awards for - use full subordinate chain
+      const chainProfileIds = subordinateChain.map((m) => m.id);
+      // Also include direct subordinates and all profiles in the tree
+      const allProfileProfileIds = allProfiles.map((p) => p.id);
+      const allProfileIds = [...new Set([...chainProfileIds, ...subordinates.map((s) => s.id), ...allProfileProfileIds])];
+      const teamMemberIds = managedMembers.map((m) => m.id);
+      
+
+      // Load awards for all profiles in chain and managed members
+      let allAwards: Award[] = [];
+
+      if (allProfileIds.length > 0) {
+        const { data: profileAwards } = await supabase
+          .from("awards")
+          .select("*")
+          .in("recipient_profile_id", allProfileIds)
+          .order("created_at", { ascending: false });
+        
+        if (profileAwards) {
+          allAwards = [...allAwards, ...(profileAwards as Award[])];
+        }
+      }
+
+      if (teamMemberIds.length > 0) {
+        const { data: memberAwards } = await supabase
+          .from("awards")
+          .select("*")
+          .in("recipient_team_member_id", teamMemberIds)
+          .order("created_at", { ascending: false });
+        
+        if (memberAwards) {
+          allAwards = [...allAwards, ...(memberAwards as Award[])];
+        }
+      }
+
+      setAwards(allAwards);
+
+      // Load pending award requests (where I'm the approver)
+      const { data: requests } = await supabase
+        .from("award_requests")
+        .select(`
+          *,
+          requester:profiles!award_requests_requester_id_fkey(*),
+          recipient_profile:profiles!award_requests_recipient_profile_id_fkey(*),
+          recipient_team_member:team_members!award_requests_recipient_team_member_id_fkey(*)
+        `)
+        .eq("approver_id", profile.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      setPendingAwardRequests((requests as AwardRequest[]) || []);
+    } catch (error) {
+      console.error("Error loading awards:", error);
+    } finally {
+      setIsLoadingAwards(false);
+    }
+  }
+
+  // Load awards when team data changes
+  useEffect(() => {
+    if (profile && !isLoading && (subordinateChain.length > 0 || subordinates.length > 0 || managedMembers.length > 0)) {
+      loadAwards();
+    }
+  }, [profile, subordinateChain, subordinates, managedMembers, isLoading]);
+
+  // Get awards for a specific member
+  function getMemberAwards(profileId?: string, teamMemberId?: string): Award[] {
+    return awards.filter(
+      (a) =>
+        (profileId && a.recipient_profile_id === profileId) ||
+        (teamMemberId && a.recipient_team_member_id === teamMemberId)
+    );
+  }
+
   function getRankOrder(rank: string): number {
     const order: Record<string, number> = {
       CMSgt: 9, SMSgt: 8, MSgt: 7, TSgt: 6, SSgt: 5,
@@ -1089,6 +1187,54 @@ export default function TeamPage() {
                   })}
                 </div>
               )}
+              {/* Award badges */}
+              {!isCurrentUser && (() => {
+                const memberAwards = isManagedMember 
+                  ? getMemberAwards(undefined, node.data.id)
+                  : getMemberAwards(node.data.id, undefined);
+                return memberAwards.length > 0 ? (
+                  <div className="flex items-center gap-1 mt-1">
+                    <AwardBadges awards={memberAwards} maxDisplay={4} size="sm" />
+                    {canSupervise(profile?.rank) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-4 opacity-40 hover:opacity-100 ml-0.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAwardRecipient({
+                            profileId: isManagedMember ? undefined : node.data.id,
+                            teamMemberId: isManagedMember ? node.data.id : undefined,
+                            name: `${node.data.rank || ""} ${node.data.full_name || "Unknown"}`.trim(),
+                          });
+                          setShowAddAwardDialog(true);
+                        }}
+                        title="Add another award"
+                      >
+                        <Plus className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                ) : canSupervise(profile?.rank) ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-[9px] px-1.5 gap-1 opacity-50 hover:opacity-100 mt-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAwardRecipient({
+                        profileId: isManagedMember ? undefined : node.data.id,
+                        teamMemberId: isManagedMember ? node.data.id : undefined,
+                        name: `${node.data.rank || ""} ${node.data.full_name || "Unknown"}`.trim(),
+                      });
+                      setShowAddAwardDialog(true);
+                    }}
+                  >
+                    <Trophy className="size-2.5" />
+                    Add Award
+                  </Button>
+                ) : null;
+              })()}
             </div>
             {/* Days supervised badge */}
             {!isCurrentUser && node.data.supervision_start_date && (
@@ -1247,7 +1393,7 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-4 sm:space-y-6">
+    <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">My Team</h1>
@@ -1660,17 +1806,6 @@ export default function TeamPage() {
           <Card className="shrink-0 w-28 sm:w-32 md:w-auto snap-start">
             <CardContent className="p-2 pl-2 md:p-4">
               <div className="flex items-center gap-2 md:gap-3">
-                <Users className="size-4 md:size-5 text-muted-foreground shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-lg md:text-2xl font-bold">{allProfiles.length - 1}</p>
-                  <p className="text-[10px] md:text-xs text-muted-foreground">Total Chain</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="shrink-0 w-28 sm:w-32 md:w-auto snap-start">
-            <CardContent className="p-2 pl-2 md:p-4">
-              <div className="flex items-center gap-2 md:gap-3">
                 <ChevronDown className="size-4 md:size-5 text-muted-foreground shrink-0" />
                 <div className="min-w-0">
                   <p className="text-lg md:text-2xl font-bold">{subordinates.length}</p>
@@ -1700,35 +1835,48 @@ export default function TeamPage() {
       </div>
 
       <Tabs defaultValue="chain" className="w-full">
-        <TabsList className="w-full h-auto flex-wrap sm:flex-nowrap gap-1 p-1">
-          <TabsTrigger value="chain" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
-            <Users className="size-3 sm:size-4 shrink-0" />
-            <span className="hidden sm:inline">Full </span>Chain
-            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{subordinateChain.length}</Badge>
+        <TabsList className="w-full h-auto flex flex-wrap justify-start gap-1 p-1 bg-muted/50">
+          <TabsTrigger value="chain" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5">
+            <Users className="size-3 sm:size-3.5 shrink-0" />
+            <span className="hidden sm:inline">Chain</span>
+            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{subordinateChain.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="subordinates" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
-            <ChevronDown className="size-3 sm:size-4 shrink-0" />
-            <span className="hidden xs:inline">My </span>Subordinates
-            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{subordinates.length}</Badge>
+          <TabsTrigger value="subordinates" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5">
+            <ChevronDown className="size-3 sm:size-3.5 shrink-0" />
+            <span className="hidden sm:inline">Subs</span>
+            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{subordinates.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="supervisors" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
-            <ChevronUp className="size-3 sm:size-4 shrink-0" />
-            <span className="hidden xs:inline">My </span>Supervisor
-            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{supervisors.length}</Badge>
+          <TabsTrigger value="supervisors" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5">
+            <ChevronUp className="size-3 sm:size-3.5 shrink-0" />
+            <span className="hidden sm:inline">Sups</span>
+            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{supervisors.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="sent" className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
-            <Send className="size-3 sm:size-4 shrink-0" />
-            <span className="hidden sm:inline">Sent </span>Requests
-            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] sm:text-xs">{sentRequests.length}</Badge>
+          <TabsTrigger value="sent" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5">
+            <Send className="size-3 sm:size-3.5 shrink-0" />
+            <span className="hidden sm:inline">Requests</span>
+            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{sentRequests.length}</Badge>
           </TabsTrigger>
           <TabsTrigger 
             value="history" 
-            className="flex-1 gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
+            className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5"
             onClick={() => loadSupervisionHistory()}
           >
-            <History className="size-3 sm:size-4 shrink-0" />
-            <span className="hidden sm:inline">Supervision </span>History
+            <History className="size-3 sm:size-3.5 shrink-0" />
+            <span className="hidden sm:inline">History</span>
           </TabsTrigger>
+          {canSupervise(profile?.rank) && (subordinates.length > 0 || managedMembers.length > 0) && (
+            <TabsTrigger 
+              value="awards" 
+              className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5"
+              onClick={() => loadAwards()}
+            >
+              <Trophy className="size-3 sm:size-3.5 shrink-0" />
+              <span className="hidden sm:inline">Awards</span>
+              {awards.length > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 text-[9px]">{awards.length}</Badge>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Full Chain Tab with Tree Visualization */}
@@ -2403,7 +2551,44 @@ export default function TeamPage() {
             </div>
           )}
         </TabsContent>
+
+        {/* Awards Tab */}
+        {canSupervise(profile?.rank) && (subordinates.length > 0 || managedMembers.length > 0) && (
+          <TabsContent value="awards" className="mt-3 sm:mt-4 space-y-4">
+            {/* Pending Award Requests */}
+            {pendingAwardRequests.length > 0 && (
+              <AwardRequestsPanel
+                requests={pendingAwardRequests}
+                onRequestUpdated={() => loadAwards()}
+              />
+            )}
+
+            {/* Awards Panel */}
+            <AwardsPanel
+              awards={awards}
+              isLoading={isLoadingAwards}
+              canAddAwards={canSupervise(profile?.rank)}
+              onAddAward={() => {
+                setAwardRecipient(null);
+                setShowAddAwardDialog(true);
+              }}
+            />
+          </TabsContent>
+        )}
       </Tabs>
+
+      {/* Add Award Dialog */}
+      <AddAwardDialog
+        open={showAddAwardDialog}
+        onOpenChange={setShowAddAwardDialog}
+        recipientProfileId={awardRecipient?.profileId}
+        recipientTeamMemberId={awardRecipient?.teamMemberId}
+        recipientName={awardRecipient?.name}
+        onSuccess={() => {
+          loadAwards();
+          setAwardRecipient(null);
+        }}
+      />
     </div>
   );
 }

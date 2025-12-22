@@ -306,6 +306,97 @@ export interface WorkspaceSessionParticipant {
   profile?: Profile;
 }
 
+// ============================================
+// AWARDS SYSTEM TYPES
+// ============================================
+
+export type AwardType = "coin" | "quarterly" | "annual" | "special";
+export type AwardLevel = "squadron" | "group" | "wing" | "majcom" | "haf";
+export type AwardCategory = "snco" | "nco" | "amn" | "jr_tech" | "sr_tech" | "innovation" | "volunteer" | "team";
+export type AwardRequestStatus = "pending" | "approved" | "denied";
+export type AwardQuarter = "Q1" | "Q2" | "Q3" | "Q4";
+
+export interface Award {
+  id: string;
+  recipient_profile_id: string | null;
+  recipient_team_member_id: string | null;
+  created_by: string;
+  supervisor_id: string;
+  award_type: AwardType;
+  award_name: string | null;
+  coin_presenter: string | null;
+  coin_description: string | null;
+  coin_date: string | null;
+  quarter: AwardQuarter | null;
+  award_year: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  award_level: AwardLevel | null;
+  award_category: AwardCategory | null;
+  is_team_award: boolean;
+  cycle_year: number;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  recipient_profile?: Profile;
+  recipient_team_member?: ManagedMember;
+  team_members?: AwardTeamMember[];
+}
+
+export interface AwardTeamMember {
+  id: string;
+  award_id: string;
+  profile_id: string | null;
+  team_member_id: string | null;
+  created_at: string;
+  // Joined fields
+  profile?: Profile;
+  team_member?: ManagedMember;
+}
+
+export interface AwardRequest {
+  id: string;
+  requester_id: string;
+  approver_id: string;
+  recipient_profile_id: string | null;
+  recipient_team_member_id: string | null;
+  status: AwardRequestStatus;
+  reviewed_at: string | null;
+  denial_reason: string | null;
+  award_type: AwardType;
+  award_name: string | null;
+  coin_presenter: string | null;
+  coin_description: string | null;
+  coin_date: string | null;
+  quarter: AwardQuarter | null;
+  award_year: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  award_level: AwardLevel | null;
+  award_category: AwardCategory | null;
+  is_team_award: boolean;
+  cycle_year: number;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  requester?: Profile;
+  approver?: Profile;
+  recipient_profile?: Profile;
+  recipient_team_member?: ManagedMember;
+}
+
+export interface AwardCatalog {
+  id: string;
+  name: string;
+  short_name: string | null;
+  description: string | null;
+  award_type: AwardType;
+  is_team_eligible: boolean;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+}
+
 // JSON type for Supabase
 type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 

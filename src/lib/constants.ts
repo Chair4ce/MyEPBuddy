@@ -117,3 +117,68 @@ export const DEFAULT_ACTION_VERBS = [
 
 export const MAX_STATEMENT_CHARACTERS = 350;
 
+// ============================================
+// AWARDS SYSTEM CONSTANTS
+// ============================================
+
+import type { AwardType, AwardLevel, AwardCategory, AwardQuarter } from "@/types/database";
+
+export const AWARD_TYPES: { value: AwardType; label: string; description: string }[] = [
+  { value: "coin", label: "Challenge Coin", description: "Coin presented by leadership" },
+  { value: "quarterly", label: "Quarterly Award", description: "Quarterly recognition program" },
+  { value: "annual", label: "Annual Award", description: "Annual recognition program" },
+  { value: "special", label: "Special Award", description: "Named awards (Sijan, Levitow, etc.)" },
+];
+
+export const AWARD_LEVELS: { value: AwardLevel; label: string; shortLabel: string }[] = [
+  { value: "squadron", label: "Squadron", shortLabel: "SQ" },
+  { value: "group", label: "Group", shortLabel: "GP" },
+  { value: "wing", label: "Wing", shortLabel: "WG" },
+  { value: "majcom", label: "MAJCOM", shortLabel: "MAJCOM" },
+  { value: "haf", label: "Headquarters Air Force", shortLabel: "HAF" },
+];
+
+export const AWARD_CATEGORIES: { value: AwardCategory; label: string }[] = [
+  { value: "snco", label: "SNCO (Senior NCO)" },
+  { value: "nco", label: "NCO" },
+  { value: "amn", label: "Airman" },
+  { value: "jr_tech", label: "Junior Technician" },
+  { value: "sr_tech", label: "Senior Technician" },
+  { value: "innovation", label: "Innovation" },
+  { value: "volunteer", label: "Volunteer" },
+  { value: "team", label: "Team" },
+];
+
+export const AWARD_QUARTERS: { value: AwardQuarter; label: string }[] = [
+  { value: "Q1", label: "Q1 (Jan-Mar)" },
+  { value: "Q2", label: "Q2 (Apr-Jun)" },
+  { value: "Q3", label: "Q3 (Jul-Sep)" },
+  { value: "Q4", label: "Q4 (Oct-Dec)" },
+];
+
+// Get quarter from a date
+export function getQuarterFromDate(date: Date): AwardQuarter {
+  const month = date.getMonth();
+  if (month <= 2) return "Q1";
+  if (month <= 5) return "Q2";
+  if (month <= 8) return "Q3";
+  return "Q4";
+}
+
+// Get quarter date range
+export function getQuarterDateRange(quarter: AwardQuarter, year: number): { start: string; end: string } {
+  const ranges: Record<AwardQuarter, { startMonth: number; endMonth: number }> = {
+    Q1: { startMonth: 0, endMonth: 2 },
+    Q2: { startMonth: 3, endMonth: 5 },
+    Q3: { startMonth: 6, endMonth: 8 },
+    Q4: { startMonth: 9, endMonth: 11 },
+  };
+  const range = ranges[quarter];
+  const start = new Date(year, range.startMonth, 1);
+  const end = new Date(year, range.endMonth + 1, 0); // Last day of end month
+  return {
+    start: start.toISOString().split("T")[0],
+    end: end.toISOString().split("T")[0],
+  };
+}
+
