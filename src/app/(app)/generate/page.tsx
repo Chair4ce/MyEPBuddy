@@ -355,6 +355,7 @@ export default function GeneratePage() {
           rank: rateeInfo.rank || "AB",
           statement: statement,
           cycle_year: new Date().getFullYear(),
+          statement_type: "epb",
         } as never);
 
       if (error) throw error;
@@ -386,6 +387,7 @@ export default function GeneratePage() {
           rank: rateeInfo.rank || "AB",
           statement: editingStatement.refined,
           cycle_year: new Date().getFullYear(),
+          statement_type: "epb",
         } as never);
 
       if (refinedError) throw refinedError;

@@ -105,6 +105,8 @@ export interface UserAPIKeys {
   updated_at: string;
 }
 
+export type StatementType = 'epb' | 'award';
+
 export interface StatementHistory {
   id: string;
   user_id: string;
@@ -116,6 +118,7 @@ export interface StatementHistory {
   original_statement: string;
   model_used: string;
   cycle_year: number;
+  statement_type: StatementType;
   created_at: string;
 }
 
@@ -130,6 +133,7 @@ export interface RefinedStatement {
   rank: Rank;
   statement: string;
   cycle_year: number;
+  statement_type: StatementType;
   is_favorite: boolean;
   created_at: string;
   updated_at: string;
@@ -168,6 +172,7 @@ export interface SharedStatementView {
   rank: Rank;
   statement: string;
   cycle_year: number;
+  statement_type: StatementType;
   is_favorite: boolean;
   created_at: string;
   updated_at: string;
@@ -245,6 +250,14 @@ export interface PendingPriorDataReview {
   supervisor?: Profile;
 }
 
+// Award sentences per category configuration
+export interface AwardSentencesPerCategory {
+  executing_mission: number;
+  leading_people: number;
+  improving_unit: number;
+  managing_resources: number;
+}
+
 export interface UserLLMSettings {
   id: string;
   user_id: string;
@@ -258,6 +271,12 @@ export interface UserLLMSettings {
   base_system_prompt: string;
   acronyms: Acronym[];
   abbreviations: Abbreviation[];
+  // Award-specific settings (AF Form 1206)
+  award_system_prompt: string;
+  award_abbreviations: Abbreviation[];
+  award_style_guidelines: string;
+  award_sentences_per_category: AwardSentencesPerCategory;
+  award_period_text: string | null;
   created_at: string;
   updated_at: string;
 }

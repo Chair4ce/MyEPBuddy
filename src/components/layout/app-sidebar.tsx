@@ -20,6 +20,7 @@ import {
   Library,
   Wand2,
   Heart,
+  Award,
 } from "lucide-react";
 import type { Profile } from "@/types/database";
 
@@ -50,6 +51,12 @@ const navItems = [
     title: "Generate EPB",
     href: "/generate",
     icon: Sparkles,
+    roles: ["member", "admin"],
+  },
+  {
+    title: "Generate Award",
+    href: "/award",
+    icon: Award,
     roles: ["member", "admin"],
   },
   {

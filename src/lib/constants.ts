@@ -311,3 +311,64 @@ export function getQuarterDateRange(quarter: AwardQuarter, year: number): { star
   };
 }
 
+// Fiscal year quarter date range (Oct-Sep)
+export function getFiscalQuarterDateRange(quarter: AwardQuarter, fiscalYear: number): { start: string; end: string } {
+  // Fiscal year starts Oct 1 of prior calendar year
+  // FY25 = Oct 2024 - Sep 2025
+  const ranges: Record<AwardQuarter, { startMonth: number; yearOffset: number; endMonth: number; endYearOffset: number }> = {
+    Q1: { startMonth: 9, yearOffset: -1, endMonth: 11, endYearOffset: -1 }, // Oct-Dec
+    Q2: { startMonth: 0, yearOffset: 0, endMonth: 2, endYearOffset: 0 },    // Jan-Mar
+    Q3: { startMonth: 3, yearOffset: 0, endMonth: 5, endYearOffset: 0 },    // Apr-Jun
+    Q4: { startMonth: 6, yearOffset: 0, endMonth: 8, endYearOffset: 0 },    // Jul-Sep
+  };
+  const range = ranges[quarter];
+  const startYear = fiscalYear + range.yearOffset;
+  const endYear = fiscalYear + range.endYearOffset;
+  const start = new Date(startYear, range.startMonth, 1);
+  const end = new Date(endYear, range.endMonth + 1, 0); // Last day of end month
+  return {
+    start: start.toISOString().split("T")[0],
+    end: end.toISOString().split("T")[0],
+  };
+}
+
+// ============================================
+// AF FORM 1206 AWARD CATEGORIES
+// ============================================
+
+export interface Award1206Category {
+  key: string;
+  label: string;
+  heading: string; // Exact heading for 1206
+  description?: string; // Optional description for UI hints
+}
+
+// AF Form 1206 Award Categories (standard quarterly/annual award format)
+export const AWARD_1206_CATEGORIES: Award1206Category[] = [
+  { 
+    key: "leadership_job_performance", 
+    label: "Leadership & Job Performance", 
+    heading: "LEADERSHIP AND JOB PERFORMANCE IN PRIMARY DUTY",
+    description: "Excellence, initiative, and mission accomplishment in core role. Highlight significant achievements beyond routine duties."
+  },
+  { 
+    key: "significant_self_improvement", 
+    label: "Self-Improvement", 
+    heading: "SIGNIFICANT SELF-IMPROVEMENT",
+    description: "Education (courses, degrees), professional development, skill acquisition, certifications, and leadership training."
+  },
+  { 
+    key: "base_community_involvement", 
+    label: "Base/Community", 
+    heading: "BASE OR COMMUNITY INVOLVEMENT",
+    description: "Volunteer work, base support activities, community service, cultural/religious activities, and public service."
+  },
+];
+
+// Default sentences per category for awards
+export const DEFAULT_AWARD_SENTENCES: Record<string, number> = {
+  leadership_job_performance: 6,
+  significant_self_improvement: 3,
+  base_community_involvement: 3,
+};
+

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
@@ -36,9 +36,12 @@ import {
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
 import { toast } from "@/components/ui/sonner";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
-import { Plus, Pencil, Trash2, Filter, FileText } from "lucide-react";
-import { ENTRY_MGAS } from "@/lib/constants";
-import type { Accomplishment, ManagedMember, Profile } from "@/types/database";
+import { Plus, Pencil, Trash2, Filter, FileText, LayoutList, CalendarDays, Calendar } from "lucide-react";
+import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange } from "@/lib/constants";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import type { Accomplishment, ManagedMember, Profile, AwardQuarter } from "@/types/database";
 import {
   Tooltip,
   TooltipContent,
@@ -64,6 +67,10 @@ function EntriesContent() {
   const [selectedMPA, setSelectedMPA] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [creatorProfiles, setCreatorProfiles] = useState<Record<string, { full_name: string | null; rank: string | null }>>({});
+  
+  // View mode: list (chronological) or quarterly
+  const [viewMode, setViewMode] = useState<"list" | "quarterly">("list");
+  const [useFiscalYear, setUseFiscalYear] = useState(false);
 
   const supabase = createClient();
   const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
@@ -145,6 +152,42 @@ function EntriesContent() {
     loadAccomplishments();
   }, [profile, selectedUser, isManagedMember, managedMemberId, selectedMPA, cycleYear, supabase, setAccomplishments, setIsLoading]);
 
+  // Group entries by quarter for quarterly view
+  interface QuarterGroup {
+    quarter: AwardQuarter;
+    label: string;
+    dateRange: { start: string; end: string };
+    entries: Accomplishment[];
+  }
+
+  const quarterGroups = useMemo((): QuarterGroup[] => {
+    const groups: QuarterGroup[] = AWARD_QUARTERS.map((q) => {
+      const dateRange = useFiscalYear
+        ? getFiscalQuarterDateRange(q.value, cycleYear)
+        : getQuarterDateRange(q.value, cycleYear);
+
+      return {
+        quarter: q.value,
+        label: useFiscalYear ? `FY${cycleYear.toString().slice(-2)} ${q.value}` : `${q.value} ${cycleYear}`,
+        dateRange,
+        entries: [],
+      };
+    });
+
+    // Assign entries to quarters based on date
+    accomplishments.forEach((entry) => {
+      const entryDate = entry.date;
+      for (const group of groups) {
+        if (entryDate >= group.dateRange.start && entryDate <= group.dateRange.end) {
+          group.entries.push(entry);
+          break;
+        }
+      }
+    });
+
+    return groups;
+  }, [accomplishments, useFiscalYear, cycleYear]);
+
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
@@ -194,7 +237,7 @@ function EntriesContent() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4 items-end">
             {canManageTeam && hasSubordinates && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Viewing for</label>
@@ -253,11 +296,47 @@ function EntriesContent() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* View Mode Toggle */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">View</label>
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "quarterly")}>
+                <TabsList className="h-9">
+                  <TabsTrigger value="list" className="gap-1.5 px-3">
+                    <LayoutList className="size-4" />
+                    <span className="hidden sm:inline">List</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="quarterly" className="gap-1.5 px-3">
+                    <CalendarDays className="size-4" />
+                    <span className="hidden sm:inline">Quarterly</span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* Fiscal Year Toggle - only show in quarterly view */}
+            {viewMode === "quarterly" && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Calendar className="size-4" />
+                  Year Type
+                </label>
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-background">
+                  <span className={cn("text-sm", !useFiscalYear && "font-medium")}>Calendar</span>
+                  <Switch
+                    checked={useFiscalYear}
+                    onCheckedChange={setUseFiscalYear}
+                    aria-label="Toggle fiscal year"
+                  />
+                  <span className={cn("text-sm", useFiscalYear && "font-medium")}>Fiscal</span>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Entries List */}
+      {/* Entries List or Quarterly View */}
       {accomplishments.length === 0 ? (
         <Card>
           <CardContent className="py-12">
@@ -276,7 +355,125 @@ function EntriesContent() {
             </div>
           </CardContent>
         </Card>
+      ) : viewMode === "quarterly" ? (
+        /* Quarterly View */
+        <div className="space-y-6">
+          {quarterGroups.map((group) => (
+            <Card key={group.quarter}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "flex items-center justify-center size-10 rounded-lg font-bold text-lg",
+                      group.entries.length > 0 
+                        ? "bg-primary text-primary-foreground" 
+                        : "bg-muted text-muted-foreground"
+                    )}>
+                      {group.quarter}
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{group.label}</CardTitle>
+                      <CardDescription className="text-xs">
+                        {new Date(group.dateRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })} - {new Date(group.dateRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant={group.entries.length > 0 ? "default" : "secondary"}>
+                    {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              {group.entries.length > 0 && (
+                <CardContent className="pt-0">
+                  <div className="space-y-3">
+                    {group.entries.map((entry) => (
+                      <div 
+                        key={entry.id} 
+                        className="group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <Badge variant="outline" className="text-xs">
+                                {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(entry.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              </span>
+                              {entry.created_by && entry.created_by !== entry.user_id && creatorProfiles[entry.created_by] && (
+                                <TooltipProvider delayDuration={200}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="secondary" className="text-xs gap-1">
+                                        <UserCheck className="size-3" />
+                                        {creatorProfiles[entry.created_by].rank}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Entry created by {creatorProfiles[entry.created_by].rank} {creatorProfiles[entry.created_by].full_name}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                            <p className="font-medium text-sm">{entry.action_verb}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{entry.details}</p>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => handleEdit(entry)}
+                              aria-label="Edit entry"
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <AlertDialog
+                              open={deleteId === entry.id}
+                              onOpenChange={(open) => !open && setDeleteId(null)}
+                            >
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 text-destructive hover:text-destructive"
+                                  onClick={() => setDeleteId(entry.id)}
+                                  aria-label="Delete entry"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Entry</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this entry? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(entry.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
       ) : (
+        /* List View */
         <div className="space-y-4">
           {accomplishments.map((entry) => (
             <Card key={entry.id} className="group">

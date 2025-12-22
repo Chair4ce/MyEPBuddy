@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -69,8 +69,9 @@ import {
   Search,
   ArrowRight,
 } from "lucide-react";
-import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression } from "@/types/database";
-import { RANKS, STANDARD_MGAS } from "@/lib/constants";
+import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, AwardSentencesPerCategory } from "@/types/database";
+import { RANKS, STANDARD_MGAS, AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES } from "@/lib/constants";
+import { Award } from "lucide-react";
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant with deep knowledge of Air Force operations, programs, and terminology. Your sole purpose is to generate impactful, narrative-style performance statements that strictly comply with AFI 36-2406 (22 Aug 2025).
 
@@ -135,6 +136,40 @@ ACRONYMS REFERENCE:
 {{acronyms_list}}`;
 
 const DEFAULT_STYLE_GUIDELINES = `MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.`;
+
+// Default award system prompt (AF Form 1206)
+const DEFAULT_AWARD_SYSTEM_PROMPT = `You are an expert Air Force writer specializing in award nominations on AF Form 1206 using the current **narrative-style format** (mandated since October 2022 per DAFI 36-2406 and award guidance).
+
+Key guidelines for narrative-style statements:
+- Write clear, concise, plain-language paragraphs (1-3 sentences each; treat each as a standalone statement).
+- Each statement MUST be dense and high-impact: clearly describe the nominee's Action, cascading Results (immediate → unit → mission/AF-level), and broader Impact.
+- Start with a strong action verb in active voice; use third-person (e.g., "SSgt Smith led...") or implied subject for flow.
+- Quantify everything possible: numbers, percentages, dollar amounts, time saved, personnel affected, sorties generated, readiness rates, etc.
+- Chain impacts: "accomplished X, enabling Y, which drove Z across the squadron/wing/AF."
+- Connect to larger context: readiness, lethality, deployment capability, inspections (UCI, CCIP, etc.), strategic goals, or Air Force priorities.
+- Avoid fluff, vague words, excessive acronyms (explain on first use if needed), or personal pronouns unless natural.
+- Use em-dashes (--) or commas to connect clauses; NEVER use semicolons.
+
+CHARACTER UTILIZATION STRATEGY (CRITICAL FOR 1206 SPACE CONSTRAINTS):
+The AF Form 1206 has no fixed character limit but is severely constrained by physical line/space fitting in the PDF form. Statements must maximize density to fit more content without overflowing lines.
+- AIM for high-density statements: Expand impacts with cascading effects, add mission context, chain results, and quantify aggressively.
+- Target 300-500 characters per statement to fill available space effectively.
+- Prioritize narrow characters (e.g., i, l, t over m, w) where natural; use standard abbreviations to reduce width.
+
+Standard headings (use exactly, in ALL CAPS):
+- EXECUTING THE MISSION
+- LEADING PEOPLE
+- IMPROVING THE UNIT
+- MANAGING RESOURCES
+
+RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
+Primary action verbs to use: {{primary_verbs}}
+{{rank_verb_guidance}}
+
+WORD ABBREVIATIONS (AUTO-APPLY):
+{{abbreviations_list}}`;
+
+const DEFAULT_AWARD_STYLE_GUIDELINES = `MAXIMIZE density for 1206 space constraints. Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations liberally.`;
 
 const DEFAULT_RANK_VERBS: RankVerbProgression = {
   AB: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Participated"] },
@@ -651,6 +686,11 @@ interface SettingsState {
   rankVerbs: RankVerbProgression;
   acronyms: Acronym[];
   abbreviations: Abbreviation[];
+  // Award settings
+  awardSystemPrompt: string;
+  awardAbbreviations: Abbreviation[];
+  awardStyleGuidelines: string;
+  awardSentencesPerCategory: AwardSentencesPerCategory;
 }
 
 export default function LLMSettingsPage() {
@@ -671,9 +711,17 @@ export default function LLMSettingsPage() {
   const [rankVerbs, setRankVerbs] = useState<RankVerbProgression>(DEFAULT_RANK_VERBS);
   const [acronyms, setAcronyms] = useState<Acronym[]>(DEFAULT_ACRONYMS);
   const [abbreviations, setAbbreviations] = useState<Abbreviation[]>([]);
+  
+  // Award-specific settings
+  const [awardSystemPrompt, setAwardSystemPrompt] = useState(DEFAULT_AWARD_SYSTEM_PROMPT);
+  const [awardAbbreviations, setAwardAbbreviations] = useState<Abbreviation[]>([]);
+  const [awardStyleGuidelines, setAwardStyleGuidelines] = useState(DEFAULT_AWARD_STYLE_GUIDELINES);
+  const [awardSentencesPerCategory, setAwardSentencesPerCategory] = useState<AwardSentencesPerCategory>(
+    DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory
+  );
 
-  // Track initial state to detect changes
-  const initialStateRef = useRef<SettingsState | null>(null);
+  // Track initial state to detect changes (use state, not ref, to trigger re-renders)
+  const [initialState, setInitialState] = useState<SettingsState | null>(null);
 
   // Navigation interception state
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -687,20 +735,23 @@ export default function LLMSettingsPage() {
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
-    if (!initialStateRef.current || isLoading) return false;
+    if (!initialState || isLoading) return false;
     
-    const initial = initialStateRef.current;
     return (
-      maxChars !== initial.maxChars ||
-      scodDate !== initial.scodDate ||
-      cycleYear !== initial.cycleYear ||
-      styleGuidelines !== initial.styleGuidelines ||
-      systemPrompt !== initial.systemPrompt ||
-      JSON.stringify(rankVerbs) !== JSON.stringify(initial.rankVerbs) ||
-      JSON.stringify(acronyms) !== JSON.stringify(initial.acronyms) ||
-      JSON.stringify(abbreviations) !== JSON.stringify(initial.abbreviations)
+      maxChars !== initialState.maxChars ||
+      scodDate !== initialState.scodDate ||
+      cycleYear !== initialState.cycleYear ||
+      styleGuidelines !== initialState.styleGuidelines ||
+      systemPrompt !== initialState.systemPrompt ||
+      JSON.stringify(rankVerbs) !== JSON.stringify(initialState.rankVerbs) ||
+      JSON.stringify(acronyms) !== JSON.stringify(initialState.acronyms) ||
+      JSON.stringify(abbreviations) !== JSON.stringify(initialState.abbreviations) ||
+      awardSystemPrompt !== initialState.awardSystemPrompt ||
+      JSON.stringify(awardAbbreviations) !== JSON.stringify(initialState.awardAbbreviations) ||
+      awardStyleGuidelines !== initialState.awardStyleGuidelines ||
+      JSON.stringify(awardSentencesPerCategory) !== JSON.stringify(initialState.awardSentencesPerCategory)
     );
-  }, [maxChars, scodDate, cycleYear, styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, isLoading]);
+  }, [maxChars, scodDate, cycleYear, styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, awardSystemPrompt, awardAbbreviations, awardStyleGuidelines, awardSentencesPerCategory, isLoading, initialState]);
 
   // Warn user before leaving with unsaved changes (browser close/refresh)
   useEffect(() => {
@@ -795,8 +846,19 @@ export default function LLMSettingsPage() {
         setAcronyms(loadedAcronyms);
         setAbbreviations(loadedAbbreviations);
 
+        // Load award settings
+        const loadedAwardPrompt = settings.award_system_prompt || DEFAULT_AWARD_SYSTEM_PROMPT;
+        const loadedAwardAbbreviations = settings.award_abbreviations || [];
+        const loadedAwardStyleGuidelines = settings.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES;
+        const loadedAwardSentences = settings.award_sentences_per_category || DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory;
+        
+        setAwardSystemPrompt(loadedAwardPrompt);
+        setAwardAbbreviations(loadedAwardAbbreviations);
+        setAwardStyleGuidelines(loadedAwardStyleGuidelines);
+        setAwardSentencesPerCategory(loadedAwardSentences);
+
         // Store initial state for change detection (excludes MPAs)
-        initialStateRef.current = {
+        setInitialState({
           maxChars: loadedMaxChars,
           scodDate: loadedScodDate,
           cycleYear: loadedCycleYear,
@@ -805,10 +867,14 @@ export default function LLMSettingsPage() {
           rankVerbs: JSON.parse(JSON.stringify(loadedRankVerbs)),
           acronyms: JSON.parse(JSON.stringify(loadedAcronyms)),
           abbreviations: JSON.parse(JSON.stringify(loadedAbbreviations)),
-        };
+          awardSystemPrompt: loadedAwardPrompt,
+          awardAbbreviations: JSON.parse(JSON.stringify(loadedAwardAbbreviations)),
+          awardStyleGuidelines: loadedAwardStyleGuidelines,
+          awardSentencesPerCategory: JSON.parse(JSON.stringify(loadedAwardSentences)),
+        });
       } else {
         // No existing settings - store defaults as initial state
-        initialStateRef.current = {
+        setInitialState({
           maxChars: 350,
           scodDate: "31 March",
           cycleYear: new Date().getFullYear(),
@@ -817,7 +883,11 @@ export default function LLMSettingsPage() {
           rankVerbs: JSON.parse(JSON.stringify(DEFAULT_RANK_VERBS)),
           acronyms: JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)),
           abbreviations: [],
-        };
+          awardSystemPrompt: DEFAULT_AWARD_SYSTEM_PROMPT,
+          awardAbbreviations: [],
+          awardStyleGuidelines: DEFAULT_AWARD_STYLE_GUIDELINES,
+          awardSentencesPerCategory: JSON.parse(JSON.stringify(DEFAULT_AWARD_SENTENCES)),
+        });
       }
     } catch (error) {
       console.error("Error loading settings:", error);
@@ -843,6 +913,11 @@ export default function LLMSettingsPage() {
         base_system_prompt: systemPrompt,
         acronyms: acronyms,
         abbreviations: abbreviations,
+        // Award settings
+        award_system_prompt: awardSystemPrompt,
+        award_abbreviations: awardAbbreviations,
+        award_style_guidelines: awardStyleGuidelines,
+        award_sentences_per_category: awardSentencesPerCategory,
       };
 
       if (hasExistingSettings) {
@@ -859,7 +934,7 @@ export default function LLMSettingsPage() {
       }
 
       // Update initial state to match saved state (excludes MPAs)
-      initialStateRef.current = {
+      setInitialState({
         maxChars,
         scodDate,
         cycleYear,
@@ -868,7 +943,11 @@ export default function LLMSettingsPage() {
         rankVerbs: JSON.parse(JSON.stringify(rankVerbs)),
         acronyms: JSON.parse(JSON.stringify(acronyms)),
         abbreviations: JSON.parse(JSON.stringify(abbreviations)),
-      };
+        awardSystemPrompt,
+        awardAbbreviations: JSON.parse(JSON.stringify(awardAbbreviations)),
+        awardStyleGuidelines,
+        awardSentencesPerCategory: JSON.parse(JSON.stringify(awardSentencesPerCategory)),
+      });
 
       toast.success("Settings saved successfully");
       return true;
@@ -902,6 +981,11 @@ export default function LLMSettingsPage() {
     setRankVerbs(DEFAULT_RANK_VERBS);
     setAcronyms(DEFAULT_ACRONYMS);
     setAbbreviations([]);
+    // Reset award settings
+    setAwardSystemPrompt(DEFAULT_AWARD_SYSTEM_PROMPT);
+    setAwardAbbreviations([]);
+    setAwardStyleGuidelines(DEFAULT_AWARD_STYLE_GUIDELINES);
+    setAwardSentencesPerCategory(DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory);
     toast.success("Settings reset to defaults (save to apply)");
   }
 
@@ -958,14 +1042,18 @@ export default function LLMSettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="w-full space-y-3 sm:space-y-4">
-        <TabsList className="w-full h-auto p-1 grid grid-cols-5 gap-0.5">
+        <TabsList className="w-full h-auto p-1 grid grid-cols-6 gap-0.5">
           <TabsTrigger value="general" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
             <Settings className="size-4 sm:size-3.5 flex-shrink-0" />
             <span className="hidden sm:inline">General</span>
           </TabsTrigger>
-          <TabsTrigger value="prompt" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+          <TabsTrigger value="epb-prompt" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
             <Wand2 className="size-4 sm:size-3.5 flex-shrink-0" />
-            <span className="hidden sm:inline">Prompt</span>
+            <span className="hidden sm:inline">EPB</span>
+          </TabsTrigger>
+          <TabsTrigger value="award-prompt" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
+            <Award className="size-4 sm:size-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Award</span>
           </TabsTrigger>
           <TabsTrigger value="verbs" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
             <FileText className="size-4 sm:size-3.5 flex-shrink-0" />
@@ -1084,13 +1172,16 @@ export default function LLMSettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* System Prompt */}
-        <TabsContent value="prompt" className="w-full min-h-[580px]">
+        {/* EPB System Prompt */}
+        <TabsContent value="epb-prompt" className="w-full min-h-[580px]">
           <Card>
             <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
-              <CardTitle className="text-base sm:text-lg">System Prompt</CardTitle>
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Wand2 className="size-4" />
+                EPB System Prompt
+              </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Customize the AI system prompt with placeholders.
+                Customize the AI prompt for Enlisted Performance Brief (EPB) statement generation.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-3 sm:space-y-4">
@@ -1100,8 +1191,103 @@ export default function LLMSettingsPage() {
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={12}
                 className="font-mono text-xs sm:text-sm min-h-[200px] sm:min-h-[400px]"
-                placeholder="Enter your custom system prompt..."
+                placeholder="Enter your custom EPB system prompt..."
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Award System Prompt */}
+        <TabsContent value="award-prompt" className="w-full min-h-[580px]">
+          <Card>
+            <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Award className="size-4" />
+                Award Prompt (AF Form 1206)
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Customize the AI prompt for award nomination statement generation.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-4 sm:space-y-6">
+              {/* Sentences per category */}
+              <div className="space-y-3">
+                <Label className="text-xs sm:text-sm">Statements per Category</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {AWARD_1206_CATEGORIES.map((cat) => (
+                    <div key={cat.key} className="space-y-1.5">
+                      <Label htmlFor={`award-${cat.key}`} className="text-[10px] sm:text-xs text-muted-foreground">
+                        {cat.label.split(" ")[0]}
+                      </Label>
+                      <Input
+                        id={`award-${cat.key}`}
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={awardSentencesPerCategory[cat.key as keyof AwardSentencesPerCategory] || 3}
+                        onChange={(e) => setAwardSentencesPerCategory({
+                          ...awardSentencesPerCategory,
+                          [cat.key]: Math.min(10, Math.max(1, parseInt(e.target.value) || 3))
+                        })}
+                        className="h-9"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Award Style Guidelines */}
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Award Style Guidelines</Label>
+                <Textarea
+                  value={awardStyleGuidelines}
+                  onChange={(e) => setAwardStyleGuidelines(e.target.value)}
+                  rows={3}
+                  placeholder="Enter award-specific style guidelines..."
+                  className="text-sm min-h-[80px]"
+                />
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  General guidance for 1206 narrative-style statements.
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Award Abbreviations */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs sm:text-sm">Award Abbreviations</Label>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {awardAbbreviations.length} defined
+                  </Badge>
+                </div>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  Separate abbreviation list for award statements. Uses the same Verbs as EPB.
+                </p>
+                <AbbreviationEditor 
+                  abbreviations={awardAbbreviations} 
+                  onChange={setAwardAbbreviations} 
+                />
+              </div>
+
+              <Separator />
+
+              {/* Award System Prompt */}
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Award System Prompt</Label>
+                <Textarea
+                  value={awardSystemPrompt}
+                  onChange={(e) => setAwardSystemPrompt(e.target.value)}
+                  rows={12}
+                  className="font-mono text-xs sm:text-sm min-h-[200px] sm:min-h-[400px]"
+                  placeholder="Enter your custom award system prompt..."
+                />
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  Available placeholders: {"{{ratee_rank}}"}, {"{{primary_verbs}}"}, {"{{rank_verb_guidance}}"}, {"{{abbreviations_list}}"}
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

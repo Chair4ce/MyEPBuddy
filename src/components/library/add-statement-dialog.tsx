@@ -28,7 +28,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
 import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS } from "@/lib/constants";
 import { Loader2, UserCheck, Users, Globe, CheckCircle2 } from "lucide-react";
-import type { Rank } from "@/types/database";
+import type { Rank, StatementType } from "@/types/database";
 
 interface AddStatementDialogProps {
   open: boolean;
@@ -50,6 +50,7 @@ export function AddStatementDialog({
   const [selectedAfsc, setSelectedAfsc] = useState("");
   const [selectedRank, setSelectedRank] = useState<Rank | "">("");
   const [cycleYear, setCycleYear] = useState<number>(new Date().getFullYear());
+  const [statementType, setStatementType] = useState<StatementType>("epb");
 
   // Granular sharing options
   const [shareWithSupervisor, setShareWithSupervisor] = useState(false);
@@ -94,6 +95,7 @@ export function AddStatementDialog({
     setSelectedAfsc(profile?.afsc || "");
     setSelectedRank(profile?.rank || "");
     setCycleYear(epbConfig?.current_cycle_year || new Date().getFullYear());
+    setStatementType("epb");
     setShareWithSupervisor(false);
     setShareWithSubordinates(false);
     setShareWithCommunity(false);
@@ -133,6 +135,7 @@ export function AddStatementDialog({
           rank: selectedRank,
           statement: statementText.trim(),
           cycle_year: cycleYear,
+          statement_type: statementType,
           is_favorite: false,
         } as never)
         .select("id")
@@ -244,6 +247,24 @@ export function AddStatementDialog({
               className="resize-none text-sm"
               aria-label="Statement text"
             />
+          </div>
+
+          <Separator />
+
+          {/* Statement Type Selector */}
+          <div className="space-y-2">
+            <Label htmlFor="type-select" className="text-sm">
+              Statement Type
+            </Label>
+            <Select value={statementType} onValueChange={(v) => setStatementType(v as StatementType)}>
+              <SelectTrigger id="type-select" className="w-full">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="epb">EPB Statement</SelectItem>
+                <SelectItem value="award">Award Statement (1206)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Separator />

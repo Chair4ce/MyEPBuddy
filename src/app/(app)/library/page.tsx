@@ -58,6 +58,7 @@ export default function LibraryPage() {
   const [filterMpa, setFilterMpa] = useState<string>("all");
   const [filterAfsc, setFilterAfsc] = useState<string>("all");
   const [filterCycleYear, setFilterCycleYear] = useState<string>("all");
+  const [filterStatementType, setFilterStatementType] = useState<string>("all");
   const [votingId, setVotingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
@@ -428,16 +429,17 @@ export default function LibraryPage() {
     return mgas.find((m) => m.key === key)?.label || key;
   }
 
-  function filterStatements<T extends { mpa: string; afsc?: string; statement?: string; cycle_year?: number }>(
+  function filterStatements<T extends { mpa: string; afsc?: string; statement?: string; cycle_year?: number; statement_type?: string }>(
     statements: T[]
   ): T[] {
     return statements.filter((s) => {
       const matchesMpa = filterMpa === "all" || s.mpa === filterMpa;
       const matchesAfsc = filterAfsc === "all" || s.afsc === filterAfsc;
       const matchesCycle = filterCycleYear === "all" || s.cycle_year?.toString() === filterCycleYear;
+      const matchesType = filterStatementType === "all" || (s.statement_type || "epb") === filterStatementType;
       const text = s.statement || "";
       const matchesSearch = !searchQuery || text.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesMpa && matchesAfsc && matchesCycle && matchesSearch;
+      return matchesMpa && matchesAfsc && matchesCycle && matchesType && matchesSearch;
     });
   }
 
@@ -544,7 +546,17 @@ export default function LibraryPage() {
               aria-label="Search statements"
             />
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 w-full sm:w-auto sm:flex">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 w-full sm:w-auto sm:flex">
+            <Select value={filterStatementType} onValueChange={setFilterStatementType}>
+              <SelectTrigger className="w-full sm:w-[110px]" aria-label="Filter by type">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="epb">EPB</SelectItem>
+                <SelectItem value="award">Award</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={filterMpa} onValueChange={setFilterMpa}>
               <SelectTrigger className="w-full sm:w-[180px]" aria-label="Filter by MPA">
                 <SelectValue placeholder="Filter by MPA" />

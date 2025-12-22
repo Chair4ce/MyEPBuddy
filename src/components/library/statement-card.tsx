@@ -94,6 +94,14 @@ export function StatementCard(props: StatementCardProps) {
             {/* Header with badges and favorite */}
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                {statement.statement_type === "award" ? (
+                  <Badge variant="default" className="text-xs shrink-0 bg-amber-500 hover:bg-amber-600">
+                    <Trophy className="size-3 mr-1" />
+                    Award
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs shrink-0">EPB</Badge>
+                )}
                 <Badge variant="outline" className="text-xs shrink-0">{mpaLabel}</Badge>
                 <Badge variant="secondary" className="text-xs shrink-0">{statement.rank}</Badge>
                 <Badge variant="secondary" className="text-xs shrink-0">{statement.afsc}</Badge>
@@ -212,6 +220,14 @@ export function StatementCard(props: StatementCardProps) {
             {/* Header with badges */}
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                {statement.statement_type === "award" ? (
+                  <Badge variant="default" className="text-xs shrink-0 bg-amber-500 hover:bg-amber-600">
+                    <Trophy className="size-3 mr-1" />
+                    Award
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs shrink-0">EPB</Badge>
+                )}
                 <Badge variant="outline" className="text-xs shrink-0">{mpaLabel}</Badge>
                 <Badge variant="secondary" className="text-xs shrink-0">{statement.rank}</Badge>
                 <Badge variant="secondary" className="text-xs shrink-0">{statement.afsc}</Badge>
