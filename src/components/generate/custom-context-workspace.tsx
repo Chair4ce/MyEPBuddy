@@ -917,6 +917,7 @@ export function CustomContextWorkspace({
       rateeId,
       selectedMPAs,
       mpaData: newMpaData,
+      usedVerbs: session?.usedVerbs || [],
       lastUpdated: Date.now(),
     });
   };

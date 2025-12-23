@@ -778,7 +778,8 @@ Output ONLY the statement text, no quotes or JSON.`;
               });
               
               // Save to history
-              const { data: historyData } = await supabase
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const { data: historyData } = await (supabase as any)
                 .from("statement_history")
                 .insert({
                   user_id: user.id,

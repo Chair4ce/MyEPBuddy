@@ -685,13 +685,6 @@ export default function GeneratePage() {
                 </div>
               </div>
 
-              {selectedMPAs.length > 0 && accomplishments.length > 0 && (
-                <div className="flex items-start gap-2 text-xs sm:text-sm text-green-600 dark:text-green-400">
-                  <Check className="size-4 shrink-0 mt-0.5" />
-                  <span>Select MPAs above, then use the workspace below to assign accomplishments and generate statements.</span>
-                </div>
-              )}
-
               {accomplishments.length === 0 && (
                 <div className="flex items-start gap-2 text-xs sm:text-sm text-orange-600 dark:text-orange-400">
                   <AlertCircle className="size-4 shrink-0 mt-0.5" />

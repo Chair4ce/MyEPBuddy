@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       .from("user_api_keys")
       .select("openai_key, anthropic_key, google_key, xai_key")
       .eq("user_id", user.id)
-      .single();
+      .single() as { data: { openai_key: string | null; anthropic_key: string | null; google_key: string | null; xai_key: string | null } | null };
 
     const userKeys = {
       openai: apiKeys?.openai_key || null,

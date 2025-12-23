@@ -100,8 +100,8 @@ import {
   MPA_ABBREVIATIONS, 
   STANDARD_MGAS, 
   getDaysUntilCloseout, 
+  getStaticCloseoutDate,
   ENTRY_MGAS,
-  RANK_TO_TIER 
 } from "@/lib/constants";
 
 // Ranks that can supervise others
@@ -222,6 +222,12 @@ export default function TeamPage() {
   const [editStartDate, setEditStartDate] = useState("");
   const [editEndDate, setEditEndDate] = useState("");
   const [isSavingDates, setIsSavingDates] = useState(false);
+  const [subordinateStatements, setSubordinateStatements] = useState<{
+    mpa: string;
+    statement: string;
+    created_by: string | null;
+  }[]>([]);
+  const [loadingStatements, setLoadingStatements] = useState(false);
   
   // Real subordinate supervision dates (from teams table)
   const [teamSupervisionDates, setTeamSupervisionDates] = useState<Record<string, {
@@ -883,6 +889,8 @@ export default function TeamPage() {
   }
 
   async function openSubordinateDetails(node: TreeNodeData) {
+    const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
+    
     // Set initial values from local data
     setSelectedSubordinate({
       id: node.id,
@@ -895,6 +903,33 @@ export default function TeamPage() {
       supervision_start_date: node.supervision_start_date || null,
       supervision_end_date: node.supervision_end_date || null,
     });
+    
+    // Load statements for this subordinate
+    setLoadingStatements(true);
+    setSubordinateStatements([]);
+    
+    try {
+      let stmtQuery = supabase
+        .from("refined_statements")
+        .select("mpa, statement, created_by")
+        .eq("cycle_year", cycleYear)
+        .eq("statement_type", "epb");
+      
+      if (node.isManagedMember) {
+        stmtQuery = stmtQuery.eq("team_member_id", node.id);
+      } else {
+        stmtQuery = stmtQuery.eq("user_id", node.id);
+      }
+      
+      const { data: stmtData } = await stmtQuery;
+      if (stmtData) {
+        setSubordinateStatements(stmtData);
+      }
+    } catch (error) {
+      console.error("Error loading statements:", error);
+    } finally {
+      setLoadingStatements(false);
+    }
     
     // For managed members, use local data
     if (node.isManagedMember) {
@@ -1202,7 +1237,7 @@ export default function TeamPage() {
                     </Badge>
                   )}
                   {/* EPB deadline */}
-                  {node.data.rank && RANK_TO_TIER[node.data.rank as Rank] && (() => {
+                  {node.data.rank && getStaticCloseoutDate(node.data.rank as Rank) && (() => {
                     const rank = node.data.rank as Rank;
                     const daysUntil = getDaysUntilCloseout(rank);
                     const metrics = memberMetrics[node.data.id];
@@ -1664,7 +1699,7 @@ export default function TeamPage() {
         
         {/* Subordinate Details Dialog */}
         <Dialog open={!!selectedSubordinate} onOpenChange={() => setSelectedSubordinate(null)}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Subordinate Details</DialogTitle>
               <DialogDescription>
@@ -1680,7 +1715,7 @@ export default function TeamPage() {
                       {selectedSubordinate?.name?.split(" ").map((n) => n[0]).join("") || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold">
                       {selectedSubordinate?.rank} {selectedSubordinate?.name}
                     </p>
@@ -1692,6 +1727,98 @@ export default function TeamPage() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* EPB Due Date */}
+              {selectedSubordinate?.rank && (() => {
+                const daysUntil = getDaysUntilCloseout(selectedSubordinate.rank);
+                if (daysUntil === null) return null;
+                const isUrgent = daysUntil <= 30;
+                const isWarning = daysUntil <= 60;
+                return (
+                  <div className={cn(
+                    "p-3 rounded-lg border flex items-center gap-3",
+                    isUrgent ? "bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700" :
+                    isWarning ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700" :
+                    "bg-muted/50"
+                  )}>
+                    <Calendar className={cn(
+                      "size-5",
+                      isUrgent ? "text-red-600" : isWarning ? "text-amber-600" : "text-muted-foreground"
+                    )} />
+                    <div>
+                      <p className={cn(
+                        "text-sm font-medium",
+                        isUrgent ? "text-red-700 dark:text-red-400" : isWarning ? "text-amber-700 dark:text-amber-400" : ""
+                      )}>
+                        EPB Due in {daysUntil} days
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Close-out: {getStaticCloseoutDate(selectedSubordinate.rank)?.label || "N/A"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* MPA Statement Status */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <FileText className="size-4" />
+                  Statement Status ({epbConfig?.current_cycle_year || new Date().getFullYear()})
+                </h4>
+                
+                {loadingStatements ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {STANDARD_MGAS.map((mpa) => {
+                      const stmts = subordinateStatements.filter(s => s.mpa === mpa.key);
+                      const hasStatements = stmts.length > 0;
+                      const isHLR = mpa.key === "hlr_assessment";
+                      
+                      return (
+                        <div
+                          key={mpa.key}
+                          className={cn(
+                            "p-2 rounded-lg border text-xs",
+                            hasStatements ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700" : "bg-muted/30"
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {hasStatements ? (
+                              <Check className="size-3 text-green-600" />
+                            ) : (
+                              <X className="size-3 text-muted-foreground" />
+                            )}
+                            {isHLR && <Trophy className="size-3 text-amber-600" />}
+                            <span className="font-medium truncate">
+                              {MPA_ABBREVIATIONS[mpa.key] || mpa.key}
+                            </span>
+                            {hasStatements && (
+                              <Badge variant="secondary" className="ml-auto text-[10px] h-4">
+                                {stmts.length}
+                              </Badge>
+                            )}
+                          </div>
+                          {hasStatements && (
+                            <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">
+                              {stmts[0].created_by === profile?.id ? "By you" : "By member"}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {!loadingStatements && subordinateStatements.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    No statements created yet for this cycle.
+                  </p>
+                )}
               </div>
 
               {/* Supervision Dates */}

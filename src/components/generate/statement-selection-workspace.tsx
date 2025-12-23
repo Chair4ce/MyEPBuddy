@@ -118,7 +118,7 @@ export function StatementSelectionWorkspace({
         return;
       }
       
-      const { data } = await query;
+      const { data } = await query as { data: { mpa: string; statement: string; created_by: string | null }[] | null };
       
       const progress: Record<string, number> = {};
       STANDARD_MGAS.forEach(m => { progress[m.key] = 0; });
