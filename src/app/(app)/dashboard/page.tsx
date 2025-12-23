@@ -27,8 +27,7 @@ import {
 import { ENTRY_MGAS } from "@/lib/constants";
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
-import { EPBProgressCard } from "@/components/epb/epb-progress-card";
-import type { Rank } from "@/types/database";
+import { EPBStatementStatusCard } from "@/components/epb/epb-statement-status-card";
 
 export default function DashboardPage() {
   const { profile, subordinates, epbConfig } = useUserStore();
@@ -192,11 +191,15 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* EPB Progress - Only for military enlisted */}
-      {profile?.rank !== "Civilian" && (
-        <EPBProgressCard 
-          rank={profile?.rank as Rank | null} 
-          entries={accomplishments} 
+      {/* EPB Progress - Statement status */}
+      {profile && (
+        <EPBStatementStatusCard
+          profileId={profile.id}
+          selectedUser="self"
+          isManagedMember={false}
+          managedMemberId={null}
+          cycleYear={cycleYear}
+          title="EPB Progress"
         />
       )}
 

@@ -35,6 +35,7 @@ interface EPBProgressCardProps {
   statements?: { mpa: string }[];
   className?: string;
   compact?: boolean;
+  title?: string;
 }
 
 // Recommended minimum entries per MPA for a complete EPB
@@ -47,6 +48,7 @@ export function EPBProgressCard({
   statements = [],
   className,
   compact = false,
+  title = "Performance Coverage & Progress",
 }: EPBProgressCardProps) {
   const tier = rank ? RANK_TO_TIER[rank] : null;
   const closeout = getStaticCloseoutDate(rank);
@@ -213,7 +215,7 @@ export function EPBProgressCard({
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Target className="size-4" />
-            EPB Progress
+            {title}
           </CardTitle>
           <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
             <Clock className="size-4" />

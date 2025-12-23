@@ -605,8 +605,14 @@ CRITICAL TRANSFORMATION REQUIREMENTS:
 4. Restructure content: [Strong action verb] + [Specific scope/scale] + [Immediate result] + [Strategic mission impact]
 5. Replace weak phrasing with powerful action-oriented language
 6. Convert any dashes (--) to commas for proper EPB format
-7. Enhance metrics presentation and impact quantification
+7. Enhance metrics presentation IF metrics exist in input - DO NOT INVENT metrics
 8. Even if input looks polished, REWRITE it with improved structure and flow
+
+CRITICAL - DO NOT FABRICATE:
+- NEVER invent numbers, dollar amounts, percentages, or quantities not in the input
+- NEVER make up specific details, unit names, project names, or timelines
+- If input is vague (e.g., "I did stuff"), output should reflect that vagueness
+- Only enhance structure and language, not content
 
 BANNED VERBS - NEVER USE:
 "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized", "Impacted"
@@ -640,6 +646,10 @@ HLR TRANSFORMATION REQUIREMENTS:
 5. Use definitive language: "My top performer", "Ready for immediate promotion"
 6. Convert any dashes (--) to commas for proper format
 
+CRITICAL - DO NOT FABRICATE:
+- NEVER invent numbers, dollar amounts, or metrics not in the input
+- If input is vague, enhance structure and language only, not content substance
+
 BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
 
 STRUCTURE:
@@ -670,7 +680,13 @@ TRANSFORMATION REQUIREMENTS:
 4. Focus on accomplishments that relate to "${mpa.label}"
 5. STRUCTURE: [Strong action verb] + [Specific scope/scale] + [Immediate result] + [Strategic mission impact]
 6. CHAIN impacts: "achieved X, enabling Y, which drove Z"
-7. Enhance metrics presentation and quantify impact
+7. Enhance metrics IF they exist in input - DO NOT INVENT metrics
+
+CRITICAL - DO NOT FABRICATE:
+- NEVER invent numbers, dollar amounts, percentages, or quantities not in the input
+- NEVER make up specific details, unit names, project names, or timelines
+- If input is vague, output should reflect that vagueness - enhance structure only
+- Only enhance language and structure, not content substance
 
 BANNED VERBS - NEVER USE: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized"
 Use strong alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated, Streamlined

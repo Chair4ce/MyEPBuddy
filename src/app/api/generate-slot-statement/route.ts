@@ -63,7 +63,7 @@ function getModelProvider(model: string, userKeys: Record<string, string | null>
       return anthropic(mapping.modelId);
     }
     case "google": {
-      const key = userKeys.google || process.env.GOOGLE_AI_API_KEY;
+      const key = userKeys.google || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!key) throw new Error("Google AI API key not configured");
       const google = createGoogleGenerativeAI({ apiKey: key });
       return google(mapping.modelId);
@@ -102,15 +102,15 @@ export async function POST(request: Request) {
     // Get user API keys
     const { data: apiKeys } = await supabase
       .from("user_api_keys")
-      .select("openai_key, anthropic_key, google_key, xai_key")
+      .select("openai_key, anthropic_key, google_key, grok_key")
       .eq("user_id", user.id)
-      .single() as { data: { openai_key: string | null; anthropic_key: string | null; google_key: string | null; xai_key: string | null } | null };
+      .single() as { data: { openai_key: string | null; anthropic_key: string | null; google_key: string | null; grok_key: string | null } | null };
 
     const userKeys = {
       openai: apiKeys?.openai_key || null,
       anthropic: apiKeys?.anthropic_key || null,
       google: apiKeys?.google_key || null,
-      xai: apiKeys?.xai_key || null,
+      xai: apiKeys?.grok_key || null,
     };
 
     const modelProvider = getModelProvider(model, userKeys);

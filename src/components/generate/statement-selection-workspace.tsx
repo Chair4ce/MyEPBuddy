@@ -487,8 +487,8 @@ export function StatementSelectionWorkspace({
                 </div>
                 
                 {/* Mode Toggle */}
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-                  <span className="text-sm text-muted-foreground mr-2">Select for:</span>
+                <div className="flex items-center justify-center flex-wrap gap-2 p-3 rounded-lg bg-muted/50 border">
+                  <span className="text-sm text-muted-foreground mr-2 w-full sm:w-auto">Select for:</span>
                   <Button
                     variant={selectionMode === "stmt1" ? "default" : "outline"}
                     size="sm"
@@ -519,7 +519,7 @@ export function StatementSelectionWorkspace({
                 </div>
                 
                 {/* Entries */}
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                <div className="space-y-2 max-h-[400px] overflow-y-auto p-1">
                   {accomplishments.map((acc) => {
                     const inSlot1 = workspaceState.slot1Ids.includes(acc.id);
                     const inSlot2 = workspaceState.slot2Ids.includes(acc.id);

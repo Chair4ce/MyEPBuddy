@@ -753,10 +753,26 @@ export function CustomContextWorkspace({
     };
   };
 
+  // Clear entire session from localStorage
+  const clearEntireSession = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setSession(null);
+  }, []);
+
   // Generate for MPA
   const generateForMPA = async (mpaKey: string) => {
     const data = getMPAData(mpaKey);
     setGeneratingMPA(mpaKey);
+    
+    // Clear any previously generated content for this MPA before regenerating
+    updateMPAData(mpaKey, {
+      ...data,
+      generated: undefined,
+      edited: undefined,
+      relevancyScore: undefined,
+      isSaved: false,
+      isExpanded: true,
+    });
     
     // Notify parent to collapse config section for focused editing
     onStartWorking?.();
@@ -817,6 +833,7 @@ export function CustomContextWorkspace({
           text2: data.statementCount === 2 ? statements[1] : undefined,
         },
         relevancyScore,
+        isExpanded: true, // Keep expanded after generation to show results
       });
 
       toast.success(`Generated statement for ${ENTRY_MGAS.find((m) => m.key === mpaKey)?.label}`);
@@ -935,8 +952,29 @@ export function CustomContextWorkspace({
     );
   }
 
+  // Check if there's any generated content in the session
+  const hasAnyGeneratedContent = mpasToShow.some(mpaKey => {
+    const data = getMPAData(mpaKey);
+    return data.generated?.text1;
+  });
+
   return (
     <div className="space-y-4">
+      {/* Clear session button when there's generated content */}
+      {hasAnyGeneratedContent && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearEntireSession}
+            className="text-xs text-muted-foreground hover:text-destructive"
+          >
+            <RotateCcw className="size-3 mr-1.5" />
+            Start Fresh
+          </Button>
+        </div>
+      )}
+      
       {mpasToShow.map((mpaKey) => {
         const mpa = ENTRY_MGAS.find((m) => m.key === mpaKey);
         if (!mpa) return null;
