@@ -54,6 +54,16 @@ import {
 import { useEPBShellStore, type MPAWorkspaceMode, type SourceType } from "@/stores/epb-shell-store";
 import { LoadedActionCard } from "./loaded-action-card";
 import { ActionSelectorSheet } from "./action-selector-sheet";
+import { 
+  SectionCollaborationDialog, 
+  CollaboratorsPanel, 
+  EditingIndicator,
+} from "./section-collaboration-dialog";
+import { 
+  useEPBSectionCollaboration, 
+  type SectionWorkspaceState,
+  type JoinRequest,
+} from "@/hooks/use-epb-section-collaboration";
 import type { EPBShellSection, EPBShellSnapshot, Accomplishment } from "@/types/database";
 
 interface MPASectionCardProps {
@@ -260,8 +270,42 @@ export function MPASectionCard({
   const [snapshotNote, setSnapshotNote] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
+  const [showCollabDialog, setShowCollabDialog] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
+
+  // Collaboration hook for real-time editing
+  const collaboration = useEPBSectionCollaboration({
+    sectionId: section.id,
+    onStateChange: useCallback((collabState: SectionWorkspaceState) => {
+      // When remote state changes, update local state
+      if (collabState.draftText !== undefined) {
+        updateSectionState(section.mpa, { draftText: collabState.draftText, isDirty: true });
+      }
+    }, [section.mpa, updateSectionState]),
+    onParticipantJoin: useCallback((participant: { rank: string | null; fullName: string }) => {
+      toast.success(`${participant.rank ? participant.rank + " " : ""}${participant.fullName} joined the session`);
+    }, []),
+    onParticipantLeave: useCallback((participantId: string) => {
+      // Just show a generic message
+      toast.info("A collaborator left the session");
+    }, []),
+    onJoinRequest: useCallback((request: { fullName: string; rank: string | null }) => {
+      // Show toast notification for host
+      toast.info(`${request.rank ? request.rank + " " : ""}${request.fullName} wants to join your session`, {
+        duration: 10000,
+      });
+    }, []),
+    onJoinApproved: useCallback(() => {
+      // Switch to edit mode when approved
+      updateSectionState(section.mpa, { mode: "edit" });
+      toast.success("Your request was approved! You can now edit.");
+      setShowCollabDialog(false);
+    }, [section.mpa, updateSectionState]),
+    onJoinRejected: useCallback(() => {
+      toast.error("Your request to join was declined");
+    }, []),
+  });
 
   // Get loaded actions
   const statement1Actions = useMemo(() => 
@@ -379,12 +423,54 @@ export function MPASectionCard({
     toast.success("Restored from snapshot");
   };
 
-  // Handle text change
+  // Handle text change with collaboration broadcasting
   const handleTextChange = (value: string) => {
     updateSectionState(section.mpa, {
       draftText: value,
       isDirty: value !== section.statement_text,
     });
+    
+    // Broadcast to collaborators if in a session
+    if (collaboration.isInSession) {
+      collaboration.broadcastState({ draftText: value });
+    }
+  };
+
+  // Handle mode change with collaboration check
+  const handleModeChange = async (newMode: MPAWorkspaceMode) => {
+    // If switching to edit or AI mode, check for active sessions
+    if (newMode === "edit" || newMode === "ai-assist") {
+      const activeSession = await collaboration.checkActiveSession();
+      
+      if (activeSession && !activeSession.isOwnSession) {
+        // Someone else is editing - show dialog
+        setShowCollabDialog(true);
+        return;
+      }
+      
+      // Start editing session if not already in one
+      if (!collaboration.isInSession && !activeSession?.isOwnSession) {
+        await collaboration.startEditing({ draftText: state.draftText });
+      }
+    } else if (newMode === "view" && collaboration.isInSession) {
+      // Leaving edit mode - leave the session
+      await collaboration.leaveSession();
+    }
+    
+    updateSectionState(section.mpa, { mode: newMode });
+  };
+
+  // Handle joining a collaboration session
+  const handleJoinSession = async () => {
+    const success = await collaboration.requestToJoin();
+    // Don't immediately switch to edit mode - wait for approval
+    // The mode will be switched when the join is approved via the onJoinApproved callback
+    return success;
+  };
+
+  // Handle view only mode
+  const handleViewOnly = () => {
+    updateSectionState(section.mpa, { mode: "view" });
   };
 
   // Reset to saved version
@@ -552,11 +638,39 @@ export function MPASectionCard({
 
         <CollapsibleContent className="animate-in slide-in-from-top-2 duration-200">
           <CardContent className="pt-0 space-y-4">
+            {/* Editing indicator - show if someone else is editing */}
+            {collaboration.activeSession && !collaboration.activeSession.isOwnSession && !collaboration.isInSession && (
+              <EditingIndicator
+                hostName={
+                  collaboration.activeSession.hostRank
+                    ? `${collaboration.activeSession.hostRank} ${collaboration.activeSession.hostFullName}`
+                    : collaboration.activeSession.hostFullName || "Someone"
+                }
+                participantCount={collaboration.activeSession.participantCount}
+                onClick={() => setShowCollabDialog(true)}
+              />
+            )}
+
+            {/* Collaborators panel - show when in a session or when host has pending requests */}
+            {(collaboration.isInSession || (collaboration.isHost && collaboration.joinRequests.length > 0)) && (
+              <CollaboratorsPanel
+                collaborators={collaboration.collaborators}
+                sessionCode={collaboration.session?.session_code || null}
+                isHost={collaboration.isHost}
+                onLeave={collaboration.leaveSession}
+                onEnd={collaboration.endSession}
+                joinRequests={collaboration.joinRequests}
+                mpaLabel={mpa?.label || section.mpa}
+                onApproveRequest={collaboration.approveJoinRequest}
+                onRejectRequest={collaboration.rejectJoinRequest}
+              />
+            )}
+
             {/* Mode selector and actions */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <ModeSelector
                 currentMode={state.mode}
-                onModeChange={(mode) => updateSectionState(section.mpa, { mode })}
+                onModeChange={handleModeChange}
               />
               <div className="flex items-center gap-1">
                 <Popover open={showHistory} onOpenChange={setShowHistory}>
@@ -651,14 +765,14 @@ export function MPASectionCard({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => updateSectionState(section.mpa, { mode: "edit" })}
+                        onClick={() => handleModeChange("edit")}
                       >
                         <Pencil className="size-3.5 mr-1.5" />
                         Edit
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => updateSectionState(section.mpa, { mode: "ai-assist" })}
+                        onClick={() => handleModeChange("ai-assist")}
                       >
                         <Sparkles className="size-3.5 mr-1.5" />
                         AI Assist
@@ -951,6 +1065,18 @@ export function MPASectionCard({
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
+
+      {/* Collaboration dialog for when someone else is editing */}
+      <SectionCollaborationDialog
+        isOpen={showCollabDialog}
+        onClose={() => setShowCollabDialog(false)}
+        activeSession={collaboration.activeSession}
+        mpaLabel={mpa?.label || section.mpa}
+        onJoinSession={handleJoinSession}
+        onViewOnly={handleViewOnly}
+        isJoining={collaboration.isLoading}
+        joinStatus={collaboration.joinStatus}
+      />
     </Card>
   );
 }
