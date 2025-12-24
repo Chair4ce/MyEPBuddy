@@ -1,17 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Heart, Coffee, Rocket, Code2, Sparkles, ExternalLink, Github, GitPullRequest } from "lucide-react";
 
 export default function SupportPage() {
-  const cashAppTag = "$JacyHoag";
-
-  const handleCopyTag = () => {
-    navigator.clipboard.writeText(cashAppTag);
-  };
+  const buyMeACoffeeUrl = "https://buymeacoffee.com/chairforceone";
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
@@ -62,64 +56,39 @@ export default function SupportPage() {
       {/* Donation Card */}
       <Card>
         <CardContent className="p-8">
-          <div className="flex flex-col lg:flex-row items-center gap-8">
-            {/* QR Code */}
+          <div className="flex flex-col items-center gap-6 text-center">
+            {/* Coffee Icon */}
             <div className="relative group">
-              <div className="absolute -inset-2 bg-gradient-to-r from-green-400 to-emerald-500 rounded-2xl blur-lg opacity-30 group-hover:opacity-50 transition-opacity" />
-              <div className="relative bg-white p-4 rounded-xl shadow-lg">
-                <Image
-                  src="/CashAppQR.png"
-                  alt="CashApp QR Code"
-                  width={200}
-                  height={200}
-                  className="rounded-lg"
-                  priority
-                />
+              <div className="absolute -inset-3 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full blur-lg opacity-30 group-hover:opacity-50 transition-opacity" />
+              <div className="relative size-24 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center shadow-lg">
+                <Coffee className="size-12 text-white" />
               </div>
             </div>
 
             {/* Info */}
-            <div className="flex-1 text-center lg:text-left space-y-4">
-              <div className="space-y-2">
-                <h3 className="text-2xl font-bold">Donate via CashApp</h3>
-                <p className="text-muted-foreground">
-                  Scan the QR code or use my CashApp tag below
-                </p>
-              </div>
-
-              <div className="flex items-center justify-center lg:justify-start gap-3">
-                <Badge 
-                  className="text-lg py-2 px-4 bg-[#00D632] hover:bg-[#00C02D] text-white font-mono cursor-pointer transition-all hover:scale-105"
-                  onClick={handleCopyTag}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Copy CashApp tag ${cashAppTag}`}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCopyTag()}
-                >
-                  {cashAppTag}
-                </Badge>
-                <span className="text-xs text-muted-foreground">(click to copy)</span>
-              </div>
-
-              <div className="pt-4">
-                <Button 
-                  asChild 
-                  size="lg" 
-                  className="bg-[#00D632] hover:bg-[#00C02D] text-white gap-2"
-                >
-                  <a 
-                    href={`https://cash.app/${cashAppTag.replace('$', '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Open CashApp to donate"
-                  >
-                    <Coffee className="size-4" />
-                    Buy Me a Coffee
-                    <ExternalLink className="size-3" />
-                  </a>
-                </Button>
-              </div>
+            <div className="space-y-3">
+              <h3 className="text-2xl font-bold">Buy Me a Coffee</h3>
+              <p className="text-muted-foreground max-w-md">
+                If My EPBuddy has helped you, consider buying me a coffee to keep the project going!
+              </p>
             </div>
+
+            <Button 
+              asChild 
+              size="lg" 
+              className="bg-[#FFDD00] hover:bg-[#E5C700] text-black font-semibold gap-2 px-8"
+            >
+              <a 
+                href={buyMeACoffeeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Buy me a coffee"
+              >
+                <Coffee className="size-5" />
+                Buy Me a Coffee
+                <ExternalLink className="size-4" />
+              </a>
+            </Button>
           </div>
         </CardContent>
       </Card>
