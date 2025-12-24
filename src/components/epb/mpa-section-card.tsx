@@ -1,33 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Button } from "@/components/ui/button";
+// IMPORTANT: Not using shadcn Button, Switch, Progress, Label to avoid Radix ref composition issues
+// Using native HTML elements instead
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
   CardHeader,
 } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+// Collapsible removed - caused ref loop issues with asChild pattern
+// Popover removed - caused ref loop issues with asChild pattern
+// Tooltip removed - caused ref loop issues with asChild pattern
 import { toast } from "@/components/ui/sonner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
 import { STANDARD_MGAS, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
@@ -54,16 +38,7 @@ import {
 import { useEPBShellStore, type MPAWorkspaceMode, type SourceType } from "@/stores/epb-shell-store";
 import { LoadedActionCard } from "./loaded-action-card";
 import { ActionSelectorSheet } from "./action-selector-sheet";
-import { 
-  SectionCollaborationDialog, 
-  CollaboratorsPanel, 
-  EditingIndicator,
-} from "./section-collaboration-dialog";
-import { 
-  useEPBSectionCollaboration, 
-  type SectionWorkspaceState,
-  type JoinRequest,
-} from "@/hooks/use-epb-section-collaboration";
+// Per-section collaboration removed - using page-level collaboration instead
 import type { EPBShellSection, EPBShellSnapshot, Accomplishment } from "@/types/database";
 
 interface MPASectionCardProps {
@@ -80,6 +55,11 @@ interface MPASectionCardProps {
   enableAutosave?: boolean;
   autosaveDelayMs?: number;
   cycleYear: number;
+  // Section lock props (for single-user mode)
+  isLockedByOther?: boolean;
+  lockedByInfo?: { name: string; rank: string | null } | null;
+  onAcquireLock?: () => Promise<{ success: boolean; lockedBy?: string }>;
+  onReleaseLock?: () => Promise<void>;
 }
 
 interface GenerateOptions {
@@ -99,76 +79,68 @@ function getMPAInfo(mpaKey: string) {
   return { mpa, isHLR, maxChars };
 }
 
-// Mode selector component
+// Mode selector component - SIMPLIFIED: Removed Tooltip wrappers to fix ref loop
 function ModeSelector({
   currentMode,
   onModeChange,
+  isLockedByOther = false,
+  lockedByInfo,
 }: {
   currentMode: MPAWorkspaceMode;
   onModeChange: (mode: MPAWorkspaceMode) => void;
+  isLockedByOther?: boolean;
+  lockedByInfo?: { name: string; rank: string | null } | null;
 }) {
+  const lockedTitle = isLockedByOther && lockedByInfo
+    ? `Locked by ${lockedByInfo.rank || ""} ${lockedByInfo.name}`
+    : "";
+
   return (
     <div className="flex items-center gap-1 p-0.5 rounded-lg bg-muted/50 border">
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => onModeChange("view")}
-              className={cn(
-                "px-2 py-1 text-xs rounded transition-colors",
-                currentMode === "view"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              View
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>View current statement</p>
-          </TooltipContent>
-        </Tooltip>
+      <button
+        onClick={() => onModeChange("view")}
+        title="View current statement"
+        className={cn(
+          "px-2 py-1 text-xs rounded transition-colors",
+          currentMode === "view"
+            ? "bg-background shadow-sm text-foreground"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        View
+      </button>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => onModeChange("edit")}
-              className={cn(
-                "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
-                currentMode === "edit"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Pencil className="size-3" />
-              Edit
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>Manually edit statement</p>
-          </TooltipContent>
-        </Tooltip>
+      <button
+        onClick={() => !isLockedByOther && onModeChange("edit")}
+        title={isLockedByOther ? lockedTitle : "Manually edit statement"}
+        disabled={isLockedByOther}
+        className={cn(
+          "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
+          currentMode === "edit"
+            ? "bg-background shadow-sm text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          isLockedByOther && "opacity-50 cursor-not-allowed"
+        )}
+      >
+        <Pencil className="size-3" />
+        Edit
+      </button>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => onModeChange("ai-assist")}
-              className={cn(
-                "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
-                currentMode === "ai-assist"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Sparkles className="size-3" />
-              AI Assist
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>Generate or revise with AI</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <button
+        onClick={() => !isLockedByOther && onModeChange("ai-assist")}
+        title={isLockedByOther ? lockedTitle : "Generate or revise with AI"}
+        disabled={isLockedByOther}
+        className={cn(
+          "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
+          currentMode === "ai-assist"
+            ? "bg-background shadow-sm text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          isLockedByOther && "opacity-50 cursor-not-allowed"
+        )}
+      >
+        <Sparkles className="size-3" />
+        AI Assist
+      </button>
     </div>
   );
 }
@@ -251,6 +223,11 @@ export function MPASectionCard({
   enableAutosave = true,
   autosaveDelayMs = 2000,
   cycleYear,
+  // Lock props for single-user mode
+  isLockedByOther = false,
+  lockedByInfo,
+  onAcquireLock,
+  onReleaseLock,
 }: MPASectionCardProps) {
   const { mpa, isHLR, maxChars } = getMPAInfo(section.mpa);
   
@@ -259,8 +236,9 @@ export function MPASectionCard({
   const storedState = sectionStates[section.mpa];
   const updateSectionState = useEPBShellStore((s) => s.updateSectionState);
   const initializeSectionState = useEPBShellStore((s) => s.initializeSectionState);
-  const setAutosaveTimer = useEPBShellStore((s) => s.setAutosaveTimer);
-  const clearAutosaveTimer = useEPBShellStore((s) => s.clearAutosaveTimer);
+  
+  // Use local ref for autosave timer to avoid Zustand updates on every keystroke
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Use stored state or defaults
   const state = storedState || DEFAULT_SECTION_STATE;
@@ -270,42 +248,12 @@ export function MPASectionCard({
   const [snapshotNote, setSnapshotNote] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
-  const [showCollabDialog, setShowCollabDialog] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
-
-  // Collaboration hook for real-time editing
-  const collaboration = useEPBSectionCollaboration({
-    sectionId: section.id,
-    onStateChange: useCallback((collabState: SectionWorkspaceState) => {
-      // When remote state changes, update local state
-      if (collabState.draftText !== undefined) {
-        updateSectionState(section.mpa, { draftText: collabState.draftText, isDirty: true });
-      }
-    }, [section.mpa, updateSectionState]),
-    onParticipantJoin: useCallback((participant: { rank: string | null; fullName: string }) => {
-      toast.success(`${participant.rank ? participant.rank + " " : ""}${participant.fullName} joined the session`);
-    }, []),
-    onParticipantLeave: useCallback((participantId: string) => {
-      // Just show a generic message
-      toast.info("A collaborator left the session");
-    }, []),
-    onJoinRequest: useCallback((request: { fullName: string; rank: string | null }) => {
-      // Show toast notification for host
-      toast.info(`${request.rank ? request.rank + " " : ""}${request.fullName} wants to join your session`, {
-        duration: 10000,
-      });
-    }, []),
-    onJoinApproved: useCallback(() => {
-      // Switch to edit mode when approved
-      updateSectionState(section.mpa, { mode: "edit" });
-      toast.success("Your request was approved! You can now edit.");
-      setShowCollabDialog(false);
-    }, [section.mpa, updateSectionState]),
-    onJoinRejected: useCallback(() => {
-      toast.error("Your request to join was declined");
-    }, []),
-  });
+  
+  // LOCAL state for textarea - only syncs to Zustand on blur (like /award page)
+  // This prevents constant re-renders during typing which causes ref composition loops
+  const [localText, setLocalText] = useState(state.draftText);
 
   // Get loaded actions
   const statement1Actions = useMemo(() => 
@@ -329,8 +277,17 @@ export function MPASectionCard({
     if (!state.draftText && section.statement_text) {
       initializeSectionState(section.mpa, section.statement_text);
       lastSavedRef.current = section.statement_text;
+      setLocalText(section.statement_text);
     }
   }, [section.mpa, section.statement_text, state.draftText, initializeSectionState]);
+
+  // Sync localText when state.draftText changes from external sources (collaboration, AI generation)
+  // but only when NOT focused (user is typing)
+  useEffect(() => {
+    if (document.activeElement !== textareaRef.current && state.draftText !== localText) {
+      setLocalText(state.draftText);
+    }
+  }, [state.draftText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Autosave functionality
   const performAutosave = useCallback(async (text: string) => {
@@ -350,46 +307,60 @@ export function MPASectionCard({
     }
   }, [enableAutosave, maxChars, onSave, section.mpa, updateSectionState]);
 
-  // Debounced autosave effect
+  // Debounced autosave effect - uses localText when editing
+  // Uses local ref for timer to avoid Zustand updates on every keystroke
   useEffect(() => {
-    if (!enableAutosave || !state.isDirty) return;
+    if (!enableAutosave) return;
     if (state.mode !== "edit") return;
+    if (localText === lastSavedRef.current) return;
     
-    clearAutosaveTimer(section.mpa);
+    // Clear existing timer using local ref (no Zustand update)
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
     
-    const timer = setTimeout(() => {
-      performAutosave(state.draftText);
+    // Set new timer using local ref
+    autosaveTimerRef.current = setTimeout(() => {
+      performAutosave(localText);
+      autosaveTimerRef.current = null;
     }, autosaveDelayMs);
     
-    setAutosaveTimer(section.mpa, timer);
-    
     return () => {
-      clearTimeout(timer);
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
     };
-  }, [state.draftText, state.isDirty, state.mode, enableAutosave, autosaveDelayMs, section.mpa, performAutosave, clearAutosaveTimer, setAutosaveTimer]);
+  }, [localText, state.mode, enableAutosave, autosaveDelayMs, performAutosave]);
 
-  const charCount = state.draftText.length;
+  // Use localText for display when in edit mode (for responsive character counting)
+  const displayText = state.mode === "edit" ? localText : state.draftText;
+  const charCount = displayText.length;
   const isOverLimit = charCount > maxChars;
-  const hasContent = state.draftText.trim().length > 0;
-  const hasUnsavedChanges = state.draftText !== section.statement_text;
+  const hasContent = displayText.trim().length > 0;
+  const hasUnsavedChanges = displayText !== section.statement_text;
 
   // Copy to clipboard
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(state.draftText);
+    await navigator.clipboard.writeText(displayText);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Save changes
+  // Save changes - use localText if in edit mode
   const handleSave = async () => {
-    if (isOverLimit) {
+    const textToSave = state.mode === "edit" ? localText : state.draftText;
+    if (textToSave.length > maxChars) {
       toast.error(`Statement exceeds ${maxChars} character limit`);
       return;
     }
+    // Sync local text to store first
+    if (state.mode === "edit") {
+      updateSectionState(section.mpa, { draftText: localText });
+    }
     updateSectionState(section.mpa, { isSaving: true });
     try {
-      await onSave(state.draftText);
+      await onSave(textToSave);
       updateSectionState(section.mpa, { isDirty: false });
       toast.success("Statement saved");
     } catch (error) {
@@ -423,55 +394,41 @@ export function MPASectionCard({
     toast.success("Restored from snapshot");
   };
 
-  // Handle text change with collaboration broadcasting
+  // Handle text change - UPDATE LOCAL STATE ONLY (like /award page)
+  // Zustand is updated on blur to prevent constant re-renders
   const handleTextChange = (value: string) => {
-    updateSectionState(section.mpa, {
-      draftText: value,
-      isDirty: value !== section.statement_text,
-    });
-    
-    // Broadcast to collaborators if in a session
-    if (collaboration.isInSession) {
-      collaboration.broadcastState({ draftText: value });
-    }
+    setLocalText(value);
   };
 
-  // Handle mode change with collaboration check
+  // Sync local text to Zustand on blur
+  const handleTextBlur = () => {
+    updateSectionState(section.mpa, {
+      draftText: localText,
+      isDirty: localText !== section.statement_text,
+    });
+  };
+
+  // Handle mode change - with lock acquisition in single-user mode
   const handleModeChange = async (newMode: MPAWorkspaceMode) => {
-    // If switching to edit or AI mode, check for active sessions
-    if (newMode === "edit" || newMode === "ai-assist") {
-      const activeSession = await collaboration.checkActiveSession();
-      
-      if (activeSession && !activeSession.isOwnSession) {
-        // Someone else is editing - show dialog
-        setShowCollabDialog(true);
-        return;
+    // If entering edit or ai-assist mode, try to acquire lock (if lock function provided)
+    if ((newMode === "edit" || newMode === "ai-assist") && onAcquireLock) {
+      const result = await onAcquireLock();
+      if (!result.success) {
+        toast.error(`This section is locked`, {
+          description: `${result.lockedBy || "Another user"} is currently editing`,
+        });
+        return; // Don't change mode
       }
-      
-      // Start editing session if not already in one
-      if (!collaboration.isInSession && !activeSession?.isOwnSession) {
-        await collaboration.startEditing({ draftText: state.draftText });
-      }
-    } else if (newMode === "view" && collaboration.isInSession) {
-      // Leaving edit mode - leave the session
-      await collaboration.leaveSession();
+    }
+    
+    // If leaving edit/ai-assist mode, release lock
+    if ((state.mode === "edit" || state.mode === "ai-assist") && newMode === "view" && onReleaseLock) {
+      await onReleaseLock();
     }
     
     updateSectionState(section.mpa, { mode: newMode });
   };
 
-  // Handle joining a collaboration session
-  const handleJoinSession = async () => {
-    const success = await collaboration.requestToJoin();
-    // Don't immediately switch to edit mode - wait for approval
-    // The mode will be switched when the join is approved via the onJoinApproved callback
-    return success;
-  };
-
-  // Handle view only mode
-  const handleViewOnly = () => {
-    updateSectionState(section.mpa, { mode: "view" });
-  };
 
   // Reset to saved version
   const handleReset = () => {
@@ -579,164 +536,168 @@ export function MPASectionCard({
         hasContent && !hasUnsavedChanges && "border-green-500/30"
       )}
     >
-      <Collapsible open={!isCollapsed} onOpenChange={() => onToggleCollapse()}>
-        {/* Header */}
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between gap-2">
-            <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-2 min-w-0 flex-1 text-left group">
-                {isHLR && <Crown className="size-4 text-amber-600 shrink-0" />}
-                <span className="font-medium text-sm truncate">
-                  {mpa?.label || section.mpa}
-                </span>
-                {hasContent && (
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      "text-[10px] shrink-0",
-                      isOverLimit && "bg-destructive/10 text-destructive"
-                    )}
-                  >
-                    {charCount}/{maxChars}
-                  </Badge>
-                )}
-                {isAutosaving && (
-                  <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-600/30 shrink-0 animate-pulse">
-                    Saving...
-                  </Badge>
-                )}
-                {hasUnsavedChanges && !isAutosaving && (
-                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-600/30 shrink-0">
-                    {enableAutosave ? "Editing..." : "Unsaved"}
-                  </Badge>
-                )}
-                {isCollapsed ? (
-                  <ChevronDown className="size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
-                ) : (
-                  <ChevronUp className="size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
-                )}
-              </button>
-            </CollapsibleTrigger>
-            {/* Copy button moved outside CollapsibleTrigger */}
-            {isCollapsed && hasContent && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0"
-                onClick={handleCopy}
+      {/* Header - NO Collapsible/Radix components to avoid ref issues */}
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <button 
+            className="flex items-center gap-2 min-w-0 flex-1 text-left group"
+            onClick={onToggleCollapse}
+          >
+            {isHLR && <Crown className="size-4 text-amber-600 shrink-0" />}
+            <span className="font-medium text-sm truncate">
+              {mpa?.label || section.mpa}
+            </span>
+            {/* Lock indicator for single-user mode */}
+            {isLockedByOther && lockedByInfo && (
+              <Badge
+                variant="outline"
+                className="text-[10px] shrink-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
               >
-                {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-              </Button>
+                🔒 {lockedByInfo.rank || ""} {lockedByInfo.name.split(" ")[0]} editing
+              </Badge>
             )}
-          </div>
+            {hasContent && (
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "text-[10px] shrink-0",
+                  isOverLimit && "bg-destructive/10 text-destructive"
+                )}
+              >
+                {charCount}/{maxChars}
+              </Badge>
+            )}
+            {isAutosaving && (
+              <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-600/30 shrink-0 animate-pulse">
+                Saving...
+              </Badge>
+            )}
+            {hasUnsavedChanges && !isAutosaving && (
+              <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-600/30 shrink-0">
+                {enableAutosave ? "Editing..." : "Unsaved"}
+              </Badge>
+            )}
+            {isCollapsed ? (
+              <ChevronDown className="size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
+            ) : (
+              <ChevronUp className="size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
+            )}
+          </button>
+          {/* Copy button */}
           {isCollapsed && hasContent && (
-            <p className="text-xs text-muted-foreground line-clamp-1 mt-1 pl-6">
-              {state.draftText.slice(0, 100)}...
-            </p>
+            <button
+              className="inline-flex items-center justify-center rounded-md size-6 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              onClick={handleCopy}
+            >
+              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+            </button>
           )}
-        </CardHeader>
+        </div>
+        {isCollapsed && hasContent && (
+          <p className="text-xs text-muted-foreground line-clamp-1 mt-1 pl-6">
+            {state.draftText.slice(0, 100)}...
+          </p>
+        )}
+      </CardHeader>
 
-        <CollapsibleContent className="animate-in slide-in-from-top-2 duration-200">
-          <CardContent className="pt-0 space-y-4">
-            {/* Editing indicator - show if someone else is editing */}
-            {collaboration.activeSession && !collaboration.activeSession.isOwnSession && !collaboration.isInSession && (
-              <EditingIndicator
-                hostName={
-                  collaboration.activeSession.hostRank
-                    ? `${collaboration.activeSession.hostRank} ${collaboration.activeSession.hostFullName}`
-                    : collaboration.activeSession.hostFullName || "Someone"
-                }
-                participantCount={collaboration.activeSession.participantCount}
-                onClick={() => setShowCollabDialog(true)}
-              />
-            )}
-
-            {/* Collaborators panel - show when in a session or when host has pending requests */}
-            {(collaboration.isInSession || (collaboration.isHost && collaboration.joinRequests.length > 0)) && (
-              <CollaboratorsPanel
-                collaborators={collaboration.collaborators}
-                sessionCode={collaboration.session?.session_code || null}
-                isHost={collaboration.isHost}
-                onLeave={collaboration.leaveSession}
-                onEnd={collaboration.endSession}
-                joinRequests={collaboration.joinRequests}
-                mpaLabel={mpa?.label || section.mpa}
-                onApproveRequest={collaboration.approveJoinRequest}
-                onRejectRequest={collaboration.rejectJoinRequest}
-              />
-            )}
-
+      {/* Content - conditionally rendered instead of using Collapsible */}
+      {!isCollapsed && (
+        <CardContent className="pt-0 space-y-4 animate-in slide-in-from-top-2 duration-200">
             {/* Mode selector and actions */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <ModeSelector
                 currentMode={state.mode}
                 onModeChange={handleModeChange}
+                isLockedByOther={isLockedByOther}
+                lockedByInfo={lockedByInfo}
               />
               <div className="flex items-center gap-1">
-                <Popover open={showHistory} onOpenChange={setShowHistory}>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-7">
-                      <History className="size-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent side="left" className="w-72 p-0" align="start">
-                    <div className="p-3 border-b">
-                      <h4 className="font-medium text-sm">Snapshot History</h4>
-                      <p className="text-xs text-muted-foreground">
-                        {snapshots.length} snapshot{snapshots.length !== 1 && "s"}
-                      </p>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {snapshots.length === 0 ? (
-                        <p className="p-3 text-sm text-muted-foreground text-center">
-                          No snapshots yet
-                        </p>
-                      ) : (
-                        snapshots.map((snap) => (
-                          <button
-                            key={snap.id}
-                            onClick={() => handleRestoreSnapshot(snap)}
-                            className="w-full p-3 text-left hover:bg-muted/50 border-b last:border-0 transition-colors"
-                          >
-                            <p className="text-xs text-muted-foreground mb-1">
-                              {new Date(snap.created_at).toLocaleString()}
-                            </p>
-                            {snap.note && (
-                              <p className="text-xs font-medium mb-1">{snap.note}</p>
-                            )}
-                            <p className="text-sm line-clamp-2">{snap.statement_text}</p>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                {/* History button - no Popover to avoid ref issues */}
+                <button
+                  className="inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                  onClick={() => setShowHistory(!showHistory)}
+                  title="View snapshot history"
+                >
+                  <History className="size-3.5" />
+                </button>
 
-                <Popover open={showSnapshotNote} onOpenChange={setShowSnapshotNote}>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-7" disabled={!hasContent}>
-                      <Camera className="size-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-3" align="end">
-                    <div className="space-y-2">
-                      <Label className="text-xs">Snapshot note (optional)</Label>
-                      <input
-                        type="text"
-                        value={snapshotNote}
-                        onChange={(e) => setSnapshotNote(e.target.value)}
-                        placeholder="e.g., Before revisions"
-                        className="w-full px-2 py-1.5 text-sm border rounded-md"
-                      />
-                      <Button size="sm" onClick={handleCreateSnapshot} className="w-full">
-                        <Camera className="size-3.5 mr-1.5" />
-                        Save Snapshot
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                {/* Snapshot button - simplified */}
+                <button
+                  className="inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                  disabled={!hasContent}
+                  onClick={() => setShowSnapshotNote(!showSnapshotNote)}
+                  title="Save snapshot"
+                >
+                  <Camera className="size-3.5" />
+                </button>
               </div>
             </div>
+
+            {/* History Panel - inline dropdown */}
+            {showHistory && (
+              <div className="rounded-lg border bg-card shadow-lg animate-in slide-in-from-top-2 duration-200">
+                <div className="p-3 border-b">
+                  <h4 className="font-medium text-sm">Snapshot History</h4>
+                  <p className="text-xs text-muted-foreground">
+                    {snapshots.length} snapshot{snapshots.length !== 1 && "s"}
+                  </p>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  {snapshots.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground text-center">
+                      No snapshots yet
+                    </p>
+                  ) : (
+                    snapshots.map((snap) => (
+                      <button
+                        key={snap.id}
+                        onClick={() => handleRestoreSnapshot(snap)}
+                        className="w-full p-3 text-left hover:bg-muted/50 border-b last:border-0 transition-colors"
+                      >
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {new Date(snap.created_at).toLocaleString()}
+                        </p>
+                        {snap.note && (
+                          <p className="text-xs font-medium mb-1">{snap.note}</p>
+                        )}
+                        <p className="text-sm line-clamp-2">{snap.statement_text}</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Snapshot Note Panel - inline form */}
+            {showSnapshotNote && (
+              <div className="rounded-lg border bg-card shadow-lg p-3 animate-in slide-in-from-top-2 duration-200">
+                <div className="space-y-2">
+                  <span className="text-xs font-medium">Snapshot note (optional)</span>
+                  <input
+                    type="text"
+                    value={snapshotNote}
+                    onChange={(e) => setSnapshotNote(e.target.value)}
+                    placeholder="e.g., Before revisions"
+                    className="w-full px-2 py-1.5 text-sm border rounded-md"
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleCreateSnapshot} 
+                      className="flex-1 h-8 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center"
+                    >
+                      <Camera className="size-3.5 mr-1.5" />
+                      Save Snapshot
+                    </button>
+                    <button 
+                      onClick={() => setShowSnapshotNote(false)}
+                      className="h-8 px-3 rounded-md text-sm font-medium border bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* View Mode */}
             {state.mode === "view" && (
@@ -747,10 +708,12 @@ export function MPASectionCard({
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">{state.draftText}</p>
                     </div>
                     <div className="flex items-center justify-between">
-                      <Progress
-                        value={Math.min((charCount / maxChars) * 100, 100)}
-                        className={cn("w-24 h-1.5", isOverLimit && "[&>*]:bg-destructive")}
-                      />
+                      <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
+                        <div
+                          className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
+                          style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
+                        />
+                      </div>
                       <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
                         {charCount}/{maxChars}
                       </span>
@@ -758,26 +721,33 @@ export function MPASectionCard({
                   </>
                 ) : (
                   <div className="p-6 rounded-lg border-2 border-dashed text-center">
-                    <p className="text-sm text-muted-foreground mb-3">
-                      No statement yet. Switch to Edit or AI Assist to add content.
-                    </p>
-                    <div className="flex items-center justify-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleModeChange("edit")}
-                      >
-                        <Pencil className="size-3.5 mr-1.5" />
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleModeChange("ai-assist")}
-                      >
-                        <Sparkles className="size-3.5 mr-1.5" />
-                        AI Assist
-                      </Button>
-                    </div>
+                    {isLockedByOther && lockedByInfo ? (
+                      <p className="text-sm text-muted-foreground">
+                        🔒 {lockedByInfo.rank || ""} {lockedByInfo.name.split(" ")[0]} is currently editing this section.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          No statement yet. Switch to Edit or AI Assist to add content.
+                        </p>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleModeChange("edit")}
+                            className="h-8 px-3 rounded-md text-sm font-medium border bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+                          >
+                            <Pencil className="size-3.5 mr-1.5" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleModeChange("ai-assist")}
+                            className="h-8 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center"
+                          >
+                            <Sparkles className="size-3.5 mr-1.5" />
+                            AI Assist
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -788,47 +758,56 @@ export function MPASectionCard({
               <div className="flex gap-4">
                 {/* Main editing area */}
                 <div className="flex-1 space-y-3">
-                  <Textarea
+                  <textarea
                     ref={textareaRef}
-                    value={state.draftText}
+                    value={localText}
                     onChange={(e) => handleTextChange(e.target.value)}
+                    onBlur={handleTextBlur}
                     placeholder={`Enter your ${mpa?.label || "statement"} here...`}
                     rows={5}
                     className={cn(
-                      "resize-none text-sm transition-colors",
+                      "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
                       isOverLimit && "border-destructive focus-visible:ring-destructive"
                     )}
                   />
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <Progress
-                        value={Math.min((charCount / maxChars) * 100, 100)}
-                        className={cn("w-24 h-1.5", isOverLimit && "[&>*]:bg-destructive")}
-                      />
+                      <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
+                        <div
+                          className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
+                          style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
+                        />
+                      </div>
                       <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
                         {charCount}/{maxChars}
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
                       {hasUnsavedChanges && (
-                        <Button variant="ghost" size="sm" onClick={handleReset} className="h-7 text-xs">
+                        <button 
+                          onClick={handleReset} 
+                          className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+                        >
                           <RotateCcw className="size-3 mr-1" />
                           Reset
-                        </Button>
+                        </button>
                       )}
-                      <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 text-xs" disabled={!hasContent}>
+                      <button 
+                        onClick={handleCopy} 
+                        disabled={!hasContent}
+                        className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
+                      >
                         {copied ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
                         Copy
-                      </Button>
-                      <Button
-                        size="sm"
+                      </button>
+                      <button
                         onClick={handleSave}
                         disabled={state.isSaving || isOverLimit || !hasUnsavedChanges}
-                        className="h-7 text-xs"
+                        className="h-7 px-2.5 rounded-md text-xs bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                       >
                         {state.isSaving ? <Loader2 className="size-3 animate-spin mr-1" /> : <Save className="size-3 mr-1" />}
                         Save
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -845,9 +824,12 @@ export function MPASectionCard({
                           <span className="text-xs font-medium text-muted-foreground">
                             Loaded Actions ({totalLoadedActions})
                           </span>
-                          <Button variant="ghost" size="icon" className="size-6" onClick={toggleActionsPanel}>
+                          <button 
+                            onClick={toggleActionsPanel}
+                            className="size-6 rounded-md hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+                          >
                             <PanelLeftClose className="size-3" />
-                          </Button>
+                          </button>
                         </div>
                         <div className="space-y-2 max-h-48 overflow-y-auto">
                           {statement1Actions.map((action) => (
@@ -871,14 +853,12 @@ export function MPASectionCard({
                         </div>
                       </div>
                     ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
+                      <button
                         onClick={toggleActionsPanel}
+                        className="size-8 rounded-md hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                       >
                         <PanelLeft className="size-4" />
-                      </Button>
+                      </button>
                     )}
                   </div>
                 )}
@@ -898,15 +878,28 @@ export function MPASectionCard({
                 {/* Two-statement toggle */}
                 <div className="flex items-center justify-between p-2 rounded-lg bg-muted/20">
                   <div className="space-y-0.5">
-                    <Label className="text-xs font-medium">Two Statements</Label>
+                    <span className="text-xs font-medium">Two Statements</span>
                     <p className="text-[10px] text-muted-foreground">
                       Generate two sentences sharing the {maxChars} character limit
                     </p>
                   </div>
-                  <Switch
-                    checked={state.usesTwoStatements}
-                    onCheckedChange={(checked) => updateSectionState(section.mpa, { usesTwoStatements: checked })}
-                  />
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={state.usesTwoStatements}
+                    onClick={() => updateSectionState(section.mpa, { usesTwoStatements: !state.usesTwoStatements })}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                      state.usesTwoStatements ? "bg-primary" : "bg-input"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform",
+                        state.usesTwoStatements ? "translate-x-4" : "translate-x-0"
+                      )}
+                    />
+                  </button>
                 </div>
 
                 {/* Performance Actions source */}
@@ -915,9 +908,9 @@ export function MPASectionCard({
                     {/* Statement 1 actions */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <Label className="text-xs font-medium">
+                        <span className="text-xs font-medium">
                           {state.usesTwoStatements ? "Statement 1 Actions" : "Load Actions"}
-                        </Label>
+                        </span>
                         <ActionSelectorSheet
                           accomplishments={mpaAccomplishments}
                           selectedIds={state.statement1ActionIds}
@@ -926,10 +919,10 @@ export function MPASectionCard({
                           statementNumber={state.usesTwoStatements ? 1 : undefined}
                           cycleYear={cycleYear}
                           trigger={
-                            <Button variant="outline" size="sm" className="h-7 text-xs">
+                            <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                               <Plus className="size-3 mr-1" />
                               {statement1Actions.length > 0 ? `${statement1Actions.length} Loaded` : "Load Actions"}
-                            </Button>
+                            </button>
                           }
                         />
                       </div>
@@ -951,7 +944,7 @@ export function MPASectionCard({
                     {state.usesTwoStatements && (
                       <div className="space-y-2 pt-2 border-t">
                         <div className="flex items-center justify-between">
-                          <Label className="text-xs font-medium">Statement 2 Actions</Label>
+                          <span className="text-xs font-medium">Statement 2 Actions</span>
                           <ActionSelectorSheet
                             accomplishments={mpaAccomplishments}
                             selectedIds={state.statement2ActionIds}
@@ -960,10 +953,10 @@ export function MPASectionCard({
                             statementNumber={2}
                             cycleYear={cycleYear}
                             trigger={
-                              <Button variant="outline" size="sm" className="h-7 text-xs">
+                              <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                                 <Plus className="size-3 mr-1" />
                                 {statement2Actions.length > 0 ? `${statement2Actions.length} Loaded` : "Load Actions"}
-                              </Button>
+                              </button>
                             }
                           />
                         </div>
@@ -988,26 +981,26 @@ export function MPASectionCard({
                 {state.sourceType === "custom" && (
                   <div className="space-y-3">
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">
+                      <span className="text-xs font-medium">
                         {state.usesTwoStatements ? "Statement 1 Context" : "Custom Context"}
-                      </Label>
-                      <Textarea
+                      </span>
+                      <textarea
                         value={state.statement1Context}
                         onChange={(e) => updateSectionState(section.mpa, { statement1Context: e.target.value })}
                         placeholder="Paste accomplishment details, metrics, impact, or any context for the AI to use..."
                         rows={3}
-                        className="resize-none text-sm"
+                        className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-none"
                       />
                     </div>
                     {state.usesTwoStatements && (
                       <div className="space-y-2 pt-2 border-t">
-                        <Label className="text-xs font-medium">Statement 2 Context</Label>
-                        <Textarea
+                        <span className="text-xs font-medium">Statement 2 Context</span>
+                        <textarea
                           value={state.statement2Context}
                           onChange={(e) => updateSectionState(section.mpa, { statement2Context: e.target.value })}
                           placeholder="Context for the second statement..."
                           rows={3}
-                          className="resize-none text-sm"
+                          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-none"
                         />
                       </div>
                     )}
@@ -1015,10 +1008,10 @@ export function MPASectionCard({
                 )}
 
                 {/* Generate button */}
-                <Button
+                <button
                   onClick={handleGenerate}
                   disabled={state.isGenerating || !canGenerate}
-                  className="w-full"
+                  className="w-full h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                 >
                   {state.isGenerating ? (
                     <Loader2 className="size-4 animate-spin mr-2" />
@@ -1026,19 +1019,17 @@ export function MPASectionCard({
                     <Sparkles className="size-4 mr-2" />
                   )}
                   Generate Statement
-                </Button>
+                </button>
 
                 {/* Current draft preview */}
                 {hasContent && (
                   <div className="space-y-2 p-3 rounded-lg bg-muted/30 border">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs font-medium">Current Draft</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <span className="text-xs font-medium">Current Draft</span>
+                      <button
                         onClick={() => handleRevise()}
                         disabled={state.isRevising}
-                        className="h-6 text-xs"
+                        className="h-6 px-2 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                       >
                         {state.isRevising ? (
                           <Loader2 className="size-3 animate-spin mr-1" />
@@ -1046,14 +1037,16 @@ export function MPASectionCard({
                           <Wand2 className="size-3 mr-1" />
                         )}
                         Revise
-                      </Button>
+                      </button>
                     </div>
                     <p className="text-sm">{state.draftText}</p>
                     <div className="flex items-center gap-2 pt-2 border-t">
-                      <Progress
-                        value={Math.min((charCount / maxChars) * 100, 100)}
-                        className={cn("flex-1 h-1", isOverLimit && "[&>*]:bg-destructive")}
-                      />
+                      <div className={cn("flex-1 h-1 bg-primary/20 rounded-full overflow-hidden")}>
+                        <div
+                          className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
+                          style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
+                        />
+                      </div>
                       <span className={cn("text-xs tabular-nums shrink-0", getCharacterCountColor(charCount, maxChars))}>
                         {charCount}/{maxChars}
                       </span>
@@ -1063,20 +1056,8 @@ export function MPASectionCard({
               </div>
             )}
           </CardContent>
-        </CollapsibleContent>
-      </Collapsible>
+      )}
 
-      {/* Collaboration dialog for when someone else is editing */}
-      <SectionCollaborationDialog
-        isOpen={showCollabDialog}
-        onClose={() => setShowCollabDialog(false)}
-        activeSession={collaboration.activeSession}
-        mpaLabel={mpa?.label || section.mpa}
-        onJoinSession={handleJoinSession}
-        onViewOnly={handleViewOnly}
-        isJoining={collaboration.isLoading}
-        joinStatus={collaboration.joinStatus}
-      />
     </Card>
   );
 }

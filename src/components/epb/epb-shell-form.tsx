@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,6 +40,9 @@ import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
 import { MPASectionCard } from "./mpa-section-card";
 import { EPBShellShareDialog } from "./epb-shell-share-dialog";
+import { RealtimeCursors } from "./realtime-cursors";
+import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
+import { useSectionLocks } from "@/hooks/use-section-locks";
 import type { EPBShell, EPBShellSection, EPBShellSnapshot, Accomplishment, Profile, ManagedMember, UserLLMSettings } from "@/types/database";
 
 interface EPBShellFormProps {
@@ -79,6 +82,67 @@ export function EPBShellForm({
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
   const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [isTogglingMode, setIsTogglingMode] = useState(false);
+  
+  // Ref for cursor tracking container
+  const contentContainerRef = useRef<HTMLDivElement>(null);
+
+  // Multi-user mode from the shell
+  const isMultiUserMode = currentShell?.multi_user_enabled ?? false;
+
+  // Section locks hook - only active when multi-user mode is OFF
+  const sectionLocks = useSectionLocks({
+    shellId: currentShell?.id || null,
+    enabled: !isMultiUserMode,
+  });
+
+  // Page-level collaboration hook - only active when multi-user mode is ON
+  const collaboration = useEPBCollaboration({
+    shellId: isMultiUserMode ? (currentShell?.id || null) : null,
+    onStateChange: useCallback((_state: import("@/hooks/use-epb-collaboration").EPBWorkspaceState) => {
+      // Handle remote state changes (e.g., sync section content)
+      // For now, we'll just use cursor tracking
+    }, []),
+    onParticipantJoin: useCallback((participant: import("@/hooks/use-epb-collaboration").EPBCollaborator) => {
+      toast.success(`${participant.rank ? participant.rank + " " : ""}${participant.fullName} joined`, {
+        description: "You can now collaborate in real-time",
+      });
+    }, []),
+    onParticipantLeave: useCallback((_participantId: string) => {
+      toast.info("A collaborator left the session");
+    }, []),
+  });
+
+  // Toggle multi-user mode
+  const handleToggleMultiUserMode = useCallback(async () => {
+    if (!currentShell) return;
+    
+    setIsTogglingMode(true);
+    try {
+      const newValue = !currentShell.multi_user_enabled;
+      
+      const { error } = await supabase
+        .from("epb_shells")
+        .update({ multi_user_enabled: newValue } as never)
+        .eq("id", currentShell.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setCurrentShell({ ...currentShell, multi_user_enabled: newValue });
+      
+      toast.success(newValue ? "Multi-user mode enabled" : "Multi-user mode disabled", {
+        description: newValue 
+          ? "Others can now join your session for real-time collaboration" 
+          : "Record locking is now active per MPA section",
+      });
+    } catch (err) {
+      console.error("Failed to toggle multi-user mode:", err);
+      toast.error("Failed to change collaboration mode");
+    } finally {
+      setIsTogglingMode(false);
+    }
+  }, [currentShell, supabase, setCurrentShell]);
 
   // Calculate completion status
   const completedMPAs = Object.values(sections).filter(
@@ -685,6 +749,84 @@ export function EPBShellForm({
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              {/* Collaborate Toggle */}
+              <button
+                onClick={handleToggleMultiUserMode}
+                disabled={isTogglingMode}
+                className={cn(
+                  "relative inline-flex h-8 items-center gap-2 rounded-full px-4 text-sm font-medium transition-all",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "disabled:pointer-events-none disabled:opacity-50",
+                  isMultiUserMode
+                    ? "bg-violet-600 text-white hover:bg-violet-700 shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                {isTogglingMode ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : isMultiUserMode ? (
+                  <Users className="size-4" />
+                ) : (
+                  <User className="size-4" />
+                )}
+                <span>Collaborate</span>
+                {isMultiUserMode && collaboration.collaborators.length > 0 && (
+                  <span className="flex items-center justify-center size-5 rounded-full bg-white/20 text-xs font-bold">
+                    {collaboration.collaborators.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Session controls - only shown when multi-user is enabled */}
+              {isMultiUserMode && (
+                <div className="flex items-center gap-1.5">
+                  {!collaboration.isInSession ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => collaboration.createSession()}
+                        disabled={collaboration.isLoading}
+                        className="h-7 px-2 text-xs"
+                      >
+                        {collaboration.isLoading ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          "Start"
+                        )}
+                      </Button>
+                      <span className="text-muted-foreground text-xs">or</span>
+                      <input
+                        type="text"
+                        placeholder="Code"
+                        className="h-7 w-16 rounded border bg-background px-2 text-xs uppercase placeholder:normal-case"
+                        maxLength={6}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const code = (e.target as HTMLInputElement).value.trim();
+                            if (code) collaboration.joinSession(code);
+                          }
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Badge variant="secondary" className="h-7 px-2 font-mono text-xs">
+                        {collaboration.sessionCode}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={collaboration.isHost ? collaboration.endSession : collaboration.leaveSession}
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                      >
+                        {collaboration.isHost ? "End" : "Leave"}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+              
               <Button variant="outline" size="sm" onClick={() => setShowShareDialog(true)}>
                 <Share2 className="size-4 mr-1.5" />
                 Share
@@ -775,27 +917,51 @@ export function EPBShellForm({
         </CardContent>
       </Card>
 
-      {/* MPA Sections */}
-      <div className="space-y-4">
+      {/* MPA Sections with cursor tracking */}
+      <div 
+        ref={contentContainerRef}
+        className="space-y-4 relative"
+      >
+        {/* Realtime cursors overlay - only visible in collaboration session */}
+        {collaboration.isInSession && currentShell && (
+          <RealtimeCursors
+            roomName={`epb-${currentShell.id}`}
+            username={profile?.full_name || "Anonymous"}
+            userRank={profile?.rank}
+            enabled={collaboration.isInSession}
+            containerRef={contentContainerRef}
+          />
+        )}
+
         {STANDARD_MGAS.map((mpa) => {
           const section = sections[mpa.key];
           if (!section) return null;
 
+          // Get lock info for this section (only relevant in single-user mode)
+          const lockInfo = !isMultiUserMode ? sectionLocks.getLockedByInfo(mpa.key) : null;
+          const isLockedByOther = !isMultiUserMode && sectionLocks.isLockedByOther(mpa.key);
+
           return (
-            <MPASectionCard
-              key={mpa.key}
-              section={section}
-              isCollapsed={collapsedSections[mpa.key] ?? false}
-              onToggleCollapse={() => toggleSectionCollapsed(mpa.key)}
-              onSave={(text) => handleSaveSection(mpa.key, text)}
-              onCreateSnapshot={(text, note) => handleCreateSnapshot(mpa.key, text, note)}
-              onGenerateStatement={(opts) => handleGenerateStatement(mpa.key, opts)}
-              onReviseStatement={(text, ctx) => handleReviseStatement(mpa.key, text, ctx)}
-              snapshots={snapshots[section.id] || []}
-              accomplishments={accomplishments}
-              onOpenAccomplishments={() => onOpenAccomplishments(mpa.key)}
-              cycleYear={cycleYear}
-            />
+            <div key={mpa.key} data-mpa-key={mpa.key}>
+              <MPASectionCard
+                section={section}
+                isCollapsed={collapsedSections[mpa.key] ?? false}
+                onToggleCollapse={() => toggleSectionCollapsed(mpa.key)}
+                onSave={(text) => handleSaveSection(mpa.key, text)}
+                onCreateSnapshot={(text, note) => handleCreateSnapshot(mpa.key, text, note)}
+                onGenerateStatement={(opts) => handleGenerateStatement(mpa.key, opts)}
+                onReviseStatement={(text, ctx) => handleReviseStatement(mpa.key, text, ctx)}
+                snapshots={snapshots[section.id] || []}
+                // Lock props for single-user mode
+                isLockedByOther={isLockedByOther}
+                lockedByInfo={lockInfo}
+                onAcquireLock={() => sectionLocks.acquireLock(section.id)}
+                onReleaseLock={() => sectionLocks.releaseLock(section.id)}
+                accomplishments={accomplishments}
+                onOpenAccomplishments={() => onOpenAccomplishments(mpa.key)}
+                cycleYear={cycleYear}
+              />
+            </div>
           );
         })}
       </div>

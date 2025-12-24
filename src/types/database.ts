@@ -442,6 +442,7 @@ export interface EPBShell {
   team_member_id: string | null;
   created_by: string;
   cycle_year: number;
+  multi_user_enabled: boolean; // Toggle for multi-user collaboration mode
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -481,6 +482,16 @@ export interface EPBShellShare {
   created_at: string;
   // Joined fields
   shared_with_profile?: Profile;
+}
+
+export interface EPBSectionLock {
+  section_id: string;
+  mpa_key: string;
+  user_id: string;
+  user_name: string;
+  user_rank: string | null;
+  acquired_at: string;
+  expires_at: string;
 }
 
 // JSON type for Supabase

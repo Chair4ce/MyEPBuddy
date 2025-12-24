@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,7 +10,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -121,21 +119,32 @@ export function ActionSelectorSheet({
     return STANDARD_MGAS.find((m) => m.key === mpa)?.label || mpa;
   };
 
+  // Default trigger if none provided - using plain button to avoid ref issues
+  const defaultTrigger = (
+    <button className="inline-flex items-center justify-center rounded-md h-8 px-3 text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+      <Plus className="size-3.5 mr-1.5" />
+      Load Actions
+      {selectedIds.length > 0 && (
+        <Badge className="ml-1.5 size-5 p-0 justify-center">
+          {selectedIds.length}
+        </Badge>
+      )}
+    </button>
+  );
+
+  // Render trigger with onClick to open dialog
+  // This avoids the DialogTrigger asChild ref composition issue
+  const triggerElement = trigger || defaultTrigger;
+  const triggerWithClick = (
+    <span onClick={() => setIsOpen(true)} className="cursor-pointer">
+      {triggerElement}
+    </span>
+  );
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button variant="outline" size="sm" className="h-8">
-            <Plus className="size-3.5 mr-1.5" />
-            Load Actions
-            {selectedIds.length > 0 && (
-              <Badge className="ml-1.5 size-5 p-0 justify-center">
-                {selectedIds.length}
-              </Badge>
-            )}
-          </Button>
-        )}
-      </DialogTrigger>
+    <>
+      {triggerWithClick}
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -189,23 +198,21 @@ export function ActionSelectorSheet({
           {/* Quick actions */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
+              <button
+                type="button"
+                className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                 onClick={selectAllVisible}
               >
                 Select All ({filteredAccomplishments.length})
-              </Button>
+              </button>
               {localSelection.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-muted-foreground"
+                <button
+                  type="button"
+                  className="h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                   onClick={clearSelection}
                 >
                   Clear
-                </Button>
+                </button>
               )}
             </div>
             <Badge variant="secondary" className="text-xs">
@@ -222,13 +229,13 @@ export function ActionSelectorSheet({
                     No actions found
                   </p>
                   {searchQuery && (
-                    <Button
-                      variant="link"
-                      className="text-xs"
+                    <button
+                      type="button"
+                      className="text-xs text-primary underline-offset-4 hover:underline"
                       onClick={() => setSearchQuery("")}
                     >
                       Clear search
-                    </Button>
+                    </button>
                   )}
                 </div>
               ) : (
@@ -279,14 +286,23 @@ export function ActionSelectorSheet({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setIsOpen(false)}>
+          <button
+            type="button"
+            className="h-9 px-4 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+            onClick={() => setIsOpen(false)}
+          >
             Cancel
-          </Button>
-          <Button onClick={applySelection}>
+          </button>
+          <button
+            type="button"
+            className="h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center"
+            onClick={applySelection}
+          >
             Load {localSelection.length} Action{localSelection.length !== 1 && "s"}
-          </Button>
+          </button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }
