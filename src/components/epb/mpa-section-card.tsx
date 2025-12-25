@@ -41,12 +41,15 @@ import {
   Lock,
   CheckCircle2,
   Circle,
+  Bookmark,
+  BookMarked,
+  Trash2,
 } from "lucide-react";
 import { useEPBShellStore, type MPAWorkspaceMode, type SourceType } from "@/stores/epb-shell-store";
 import { LoadedActionCard } from "./loaded-action-card";
 import { ActionSelectorSheet } from "./action-selector-sheet";
 // Per-section collaboration removed - using page-level collaboration instead
-import type { EPBShellSection, EPBShellSnapshot, Accomplishment } from "@/types/database";
+import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment } from "@/types/database";
 
 interface MPASectionCardProps {
   section: EPBShellSection;
@@ -73,6 +76,12 @@ interface MPASectionCardProps {
   onRefresh?: () => Promise<void>;
   // Completion toggle
   onToggleComplete?: () => void;
+  // Highlight pulse animation when scrolled to
+  isHighlighted?: boolean;
+  // Saved examples (scratchpad)
+  savedExamples?: EPBSavedExample[];
+  onSaveExample?: (text: string, note?: string) => Promise<void>;
+  onDeleteExample?: (id: string) => Promise<void>;
 }
 
 interface GenerateOptions {
@@ -184,6 +193,12 @@ export function MPASectionCard({
   onRefresh,
   // Completion toggle
   onToggleComplete,
+  // Highlight pulse
+  isHighlighted = false,
+  // Saved examples
+  savedExamples = [],
+  onSaveExample,
+  onDeleteExample,
 }: MPASectionCardProps) {
   const { mpa, isHLR, maxChars } = getMPAInfo(section.mpa);
   
@@ -217,6 +232,14 @@ export function MPASectionCard({
   // AI Generate panel state
   const [generateVersionCount, setGenerateVersionCount] = useState(3);
   const [generatedStatements, setGeneratedStatements] = useState<string[]>([]);
+  
+  // Saved examples panel state
+  const [showExamples, setShowExamples] = useState(false);
+  const [isSavingExample, setIsSavingExample] = useState(false);
+  
+  // Refs for scrolling panels into view
+  const aiGeneratePanelRef = useRef<HTMLDivElement>(null);
+  const revisePanelRef = useRef<HTMLDivElement>(null);
   
   // LOCAL state for textarea - only syncs to Zustand on blur (like /award page)
   // This prevents constant re-renders during typing which causes ref composition loops
@@ -386,17 +409,47 @@ export function MPASectionCard({
     }
   };
 
-  // Sync local text to Zustand on blur (always, regardless of collaboration mode)
-  const handleTextBlur = () => {
+  // Acquire lock when textarea gains focus
+  const handleTextFocus = async () => {
+    if (onAcquireLock && !isCollaborating) {
+      const result = await onAcquireLock();
+      if (!result.success) {
+        // Lock failed - blur the textarea to prevent editing
+        textareaRef.current?.blur();
+        toast.error(`This section is locked by ${result.lockedBy || "another user"}`);
+      }
+    }
+  };
+
+  // Sync local text to Zustand on blur, save, and release lock
+  const handleTextBlur = async () => {
     // Clear any pending collab sync
     if (collabSyncTimerRef.current) {
       clearTimeout(collabSyncTimerRef.current);
       collabSyncTimerRef.current = null;
     }
+    
+    // Update Zustand state
     updateSectionState(section.mpa, {
       draftText: localText,
       isDirty: localText !== section.statement_text,
     });
+    
+    // Auto-save if there are changes
+    if (localText !== section.statement_text) {
+      try {
+        await onSave(localText);
+        lastSavedRef.current = localText;
+      } catch {
+        // Save failed - changes will persist in local state
+        console.error("Auto-save on blur failed");
+      }
+    }
+    
+    // Release lock when leaving the field
+    if (onReleaseLock && !isCollaborating) {
+      await onReleaseLock();
+    }
   };
 
   // Cleanup collab sync timer on unmount
@@ -501,6 +554,20 @@ export function MPASectionCard({
     setGeneratedStatements([]);
     toast.success("Statement applied");
   };
+  
+  // Save a statement to the examples scratchpad
+  const handleSaveToExamples = async (statement: string, note?: string) => {
+    if (!onSaveExample) return;
+    setIsSavingExample(true);
+    try {
+      await onSaveExample(statement, note);
+      toast.success("Saved to examples");
+    } catch {
+      toast.error("Failed to save example");
+    } finally {
+      setIsSavingExample(false);
+    }
+  };
 
   // Generate revisions with AI (for revise panel)
   const handleGenerateRevisions = async () => {
@@ -585,7 +652,8 @@ export function MPASectionCard({
         "transition-all duration-300 ease-in-out overflow-hidden",
         isHLR && "border-amber-300/30 dark:border-amber-700/30",
         hasUnsavedChanges && "ring-1 ring-amber-400/50",
-        section.is_complete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10"
+        section.is_complete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10",
+        isHighlighted && "animate-pulse-highlight"
       )}
     >
       {/* Header - NO Collapsible/Radix components to avoid ref issues */}
@@ -711,16 +779,34 @@ export function MPASectionCard({
         <CardContent className="pt-0 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 duration-200 px-3 sm:px-6">
             {/* Working Statement Area - ALWAYS at top */}
             <div className="space-y-3">
+              {/* Editing indicator when locked by another user */}
+              {isLockedByOther && lockedByInfo && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-xs animate-in fade-in-0 duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <span className="relative flex size-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full size-2 bg-amber-500"></span>
+                    </span>
+                    <span className="font-medium">
+                      {lockedByInfo.rank ? `${lockedByInfo.rank} ${lockedByInfo.name}` : lockedByInfo.name} is editing...
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <textarea
                 ref={textareaRef}
                 value={localText}
                 onChange={(e) => handleTextChange(e.target.value)}
+                onFocus={handleTextFocus}
                 onBlur={handleTextBlur}
-                placeholder={`Enter your ${mpa?.label || "statement"} here...`}
+                placeholder={isLockedByOther ? "Waiting for edit to complete..." : `Enter your ${mpa?.label || "statement"} here...`}
+                disabled={isLockedByOther}
                 rows={5}
                 className={cn(
                   "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
-                  isOverLimit && "border-destructive focus-visible:ring-destructive"
+                  isOverLimit && "border-destructive focus-visible:ring-destructive",
+                  isLockedByOther && "bg-muted/50 cursor-not-allowed"
                 )}
               />
               
@@ -773,8 +859,19 @@ export function MPASectionCard({
                 {/* AI Assist button - always visible */}
                 <button
                   onClick={() => {
-                    handleModeChange("ai-assist");
-                    setShowRevisePanel(false);
+                    const isCurrentlyOpen = state.mode === "ai-assist" && !showRevisePanel;
+                    if (isCurrentlyOpen) {
+                      // Toggle off - go back to edit mode
+                      handleModeChange("edit");
+                    } else {
+                      // Toggle on
+                      handleModeChange("ai-assist");
+                      setShowRevisePanel(false);
+                      // Scroll panel into view after it renders
+                      setTimeout(() => {
+                        aiGeneratePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                      }, 100);
+                    }
                   }}
                   className={cn(
                     "h-7 px-2.5 rounded-md text-xs inline-flex items-center justify-center transition-colors",
@@ -792,8 +889,15 @@ export function MPASectionCard({
                 {hasContent && (
                   <button
                     onClick={() => {
-                      setShowRevisePanel(!showRevisePanel);
+                      const opening = !showRevisePanel;
+                      setShowRevisePanel(opening);
                       setGeneratedRevisions([]);
+                      // Scroll panel into view after it renders
+                      if (opening) {
+                        setTimeout(() => {
+                          revisePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                        }, 100);
+                      }
                     }}
                     disabled={isRevising}
                     className={cn(
@@ -838,12 +942,40 @@ export function MPASectionCard({
                         "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showHistory && "bg-accent text-accent-foreground"
                       )}
-                      onClick={() => setShowHistory(!showHistory)}
+                      onClick={() => {
+                        setShowHistory(!showHistory);
+                        if (!showHistory) setShowExamples(false);
+                      }}
                     >
                       <History className="size-3.5" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>History</TooltipContent>
+                </Tooltip>
+
+                {/* Examples button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={cn(
+                        "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        showExamples && "bg-accent text-accent-foreground"
+                      )}
+                      onClick={() => {
+                        setShowExamples(!showExamples);
+                        if (!showExamples) setShowHistory(false);
+                      }}
+                    >
+                      {savedExamples.length > 0 ? (
+                        <BookMarked className="size-3.5" />
+                      ) : (
+                        <Bookmark className="size-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Examples {savedExamples.length > 0 && `(${savedExamples.length})`}
+                  </TooltipContent>
                 </Tooltip>
 
                 {/* Snapshot button */}
@@ -914,9 +1046,91 @@ export function MPASectionCard({
               </div>
             )}
 
+            {/* Saved Examples Panel */}
+            {showExamples && (
+              <div className="rounded-lg border bg-card shadow-lg animate-in fade-in-0 duration-200">
+                <div className="p-3 border-b">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <BookMarked className="size-4" />
+                    Saved Examples
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    {savedExamples.length} example{savedExamples.length !== 1 && "s"} saved for reference
+                  </p>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {savedExamples.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground text-center">
+                      No saved examples yet. Generate statements and save your favorites here for later.
+                    </p>
+                  ) : (
+                    savedExamples.map((example) => (
+                      <div
+                        key={example.id}
+                        className="p-3 border-b last:border-0"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>
+                              {example.created_by_rank ? `${example.created_by_rank} ${example.created_by_name}` : example.created_by_name || "Unknown"}
+                            </span>
+                            <span>•</span>
+                            <span>{new Date(example.created_at).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {!isLockedByOther && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleUseStatement(example.statement_text)}
+                                    className="text-[10px] px-1.5 py-0.5 rounded border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                                  >
+                                    <Check className="size-3 inline mr-0.5" />
+                                    Use
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Use this as your statement</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {onDeleteExample && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => onDeleteExample(example.id)}
+                                    className="text-[10px] px-1.5 py-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete example</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </div>
+                        {example.note && (
+                          <p className="text-[10px] text-muted-foreground mb-1 italic">"{example.note}"</p>
+                        )}
+                        <p className="text-sm select-text cursor-text whitespace-pre-wrap">
+                          {example.statement_text}
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className={cn("text-[10px] tabular-nums", getCharacterCountColor(example.statement_text.length, maxChars))}>
+                            {example.statement_text.length}/{maxChars} chars
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Revise Panel - fades in smoothly below */}
             {showRevisePanel && (
-              <div className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300">
+              <div 
+                ref={revisePanelRef}
+                className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300"
+              >
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium text-sm flex items-center gap-2">
                     <Wand2 className="size-4" />
@@ -986,9 +1200,17 @@ export function MPASectionCard({
                 {/* Generated Revisions - fade in below */}
                 {generatedRevisions.length > 0 && (
                   <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
-                    <h5 className="text-xs font-medium text-muted-foreground">
-                      Generated Revisions ({generatedRevisions.length})
-                    </h5>
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-xs font-medium text-muted-foreground">
+                        Generated Revisions ({generatedRevisions.length})
+                      </h5>
+                      {isLockedByOther && lockedByInfo && (
+                        <span className="text-[10px] text-amber-600 flex items-center gap-1">
+                          <Lock className="size-3" />
+                          Save to use later
+                        </span>
+                      )}
+                    </div>
                     {generatedRevisions.map((revision, index) => (
                       <div
                         key={index}
@@ -1015,18 +1237,37 @@ export function MPASectionCard({
                               </TooltipTrigger>
                               <TooltipContent>Copy this revision</TooltipContent>
                             </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => handleUseRevision(revision)}
-                                  className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
-                                >
-                                  <Check className="size-3 mr-1" />
-                                  Use This
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Replace your statement with this</TooltipContent>
-                            </Tooltip>
+                            {/* Save to Examples button */}
+                            {onSaveExample && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleSaveToExamples(revision, `Revision v${index + 1}`)}
+                                    disabled={isSavingExample}
+                                    className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center disabled:opacity-50"
+                                  >
+                                    <Bookmark className="size-3 mr-1" />
+                                    Save
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Save to examples for later</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {/* Use This button - only when not locked */}
+                            {!isLockedByOther && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleUseRevision(revision)}
+                                    className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                  >
+                                    <Check className="size-3 mr-1" />
+                                    Use This
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Replace your statement with this</TooltipContent>
+                              </Tooltip>
+                            )}
                           </div>
                         </div>
                         <p className="text-sm select-text cursor-text whitespace-pre-wrap leading-relaxed">
@@ -1046,7 +1287,10 @@ export function MPASectionCard({
 
             {/* AI Generate Panel - shows when AI mode is active and not in revise mode */}
             {state.mode === "ai-assist" && !showRevisePanel && (
-              <div className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300">
+              <div 
+                ref={aiGeneratePanelRef}
+                className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300"
+              >
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium text-sm flex items-center gap-2">
                     <Sparkles className="size-4" />
@@ -1236,9 +1480,17 @@ export function MPASectionCard({
                 {/* Generated Statements - fade in below */}
                 {generatedStatements.length > 0 && (
                   <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
-                    <h5 className="text-xs font-medium text-muted-foreground">
-                      Generated Statements ({generatedStatements.length})
-                    </h5>
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-xs font-medium text-muted-foreground">
+                        Generated Statements ({generatedStatements.length})
+                      </h5>
+                      {isLockedByOther && lockedByInfo && (
+                        <span className="text-[10px] text-amber-600 flex items-center gap-1">
+                          <Lock className="size-3" />
+                          Save to use later
+                        </span>
+                      )}
+                    </div>
                     {generatedStatements.map((statement, index) => (
                       <div
                         key={index}
@@ -1265,18 +1517,37 @@ export function MPASectionCard({
                               </TooltipTrigger>
                               <TooltipContent>Copy this statement</TooltipContent>
                             </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => handleUseStatement(statement)}
-                                  className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
-                                >
-                                  <Check className="size-3 mr-1" />
-                                  Use This
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Use this as your statement</TooltipContent>
-                            </Tooltip>
+                            {/* Save to Examples button - always show when available */}
+                            {onSaveExample && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleSaveToExamples(statement, `Generated v${index + 1}`)}
+                                    disabled={isSavingExample}
+                                    className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center disabled:opacity-50"
+                                  >
+                                    <Bookmark className="size-3 mr-1" />
+                                    Save
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Save to examples for later</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {/* Use This button - only when not locked */}
+                            {!isLockedByOther && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleUseStatement(statement)}
+                                    className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                  >
+                                    <Check className="size-3 mr-1" />
+                                    Use This
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Use this as your statement</TooltipContent>
+                              </Tooltip>
+                            )}
                           </div>
                         </div>
                         <p className="text-sm select-text cursor-text whitespace-pre-wrap leading-relaxed">

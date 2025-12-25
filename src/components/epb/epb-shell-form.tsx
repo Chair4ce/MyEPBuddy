@@ -44,7 +44,7 @@ import { RealtimeCursors } from "./realtime-cursors";
 import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
 import { useIdleDetection } from "@/hooks/use-idle-detection";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, Accomplishment, Profile, ManagedMember, UserLLMSettings } from "@/types/database";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, Profile, ManagedMember, UserLLMSettings } from "@/types/database";
 
 interface EPBShellFormProps {
   cycleYear: number;
@@ -73,6 +73,10 @@ export function EPBShellForm({
     snapshots,
     setSnapshots,
     addSnapshot,
+    savedExamples,
+    setSavedExamples,
+    addSavedExample,
+    removeSavedExample,
     collapsedSections,
     toggleSectionCollapsed,
     setSectionCollapsed,
@@ -90,6 +94,7 @@ export function EPBShellForm({
   const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [isTogglingMode, setIsTogglingMode] = useState(false);
+  const [highlightedMpa, setHighlightedMpa] = useState<string | null>(null);
   
   // Ref for cursor tracking container
   const contentContainerRef = useRef<HTMLDivElement>(null);
@@ -264,6 +269,32 @@ export function EPBShellForm({
     }
   };
 
+  // Scroll to and highlight an MPA section
+  const scrollToMpaSection = (mpaKey: string) => {
+    // Expand the section if collapsed
+    if (collapsedSections[mpaKey]) {
+      setSectionCollapsed(mpaKey, false);
+    }
+    
+    // Find the section element using data attribute
+    const sectionElement = document.querySelector(`[data-mpa-key="${mpaKey}"]`);
+    if (sectionElement) {
+      // Scroll to section - position at top of viewport for consistent experience
+      // Small delay to allow collapse animation to complete if section was collapsed
+      setTimeout(() => {
+        sectionElement.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+      
+      // Set highlight state to trigger pulse animation
+      setHighlightedMpa(mpaKey);
+      
+      // Clear highlight after animation completes (0.6s for single pulse)
+      setTimeout(() => {
+        setHighlightedMpa(null);
+      }, 600);
+    }
+  };
+
   // Build ratee selector options
   const rateeOptions: { value: string; label: string; ratee: SelectedRatee }[] = [
     {
@@ -389,6 +420,26 @@ export function EPBShellForm({
               });
               Object.entries(snapshotsBySection).forEach(([sectionId, snaps]) => {
                 setSnapshots(sectionId, snaps);
+              });
+            }
+            
+            // Load saved examples for each section
+            const { data: examplesData } = await supabase
+              .from("epb_saved_examples")
+              .select("*")
+              .in("section_id", sectionIds)
+              .order("created_at", { ascending: false });
+            if (examplesData) {
+              // Group by section_id
+              const examplesBySection: Record<string, EPBSavedExample[]> = {};
+              (examplesData as EPBSavedExample[]).forEach((example) => {
+                if (!examplesBySection[example.section_id]) {
+                  examplesBySection[example.section_id] = [];
+                }
+                examplesBySection[example.section_id].push(example);
+              });
+              Object.entries(examplesBySection).forEach(([sectionId, examples]) => {
+                setSavedExamples(sectionId, examples);
               });
             }
           }
@@ -550,6 +601,52 @@ export function EPBShellForm({
     if (error) throw error;
 
     addSnapshot(section.id, data as EPBShellSnapshot);
+  };
+
+  // Save an example statement to the scratchpad
+  const handleSaveExample = async (mpa: string, text: string, note?: string) => {
+    const section = sections[mpa];
+    if (!section || !profile || !currentShell) return;
+
+    const { data, error } = await supabase
+      .from("epb_saved_examples")
+      .insert({
+        shell_id: currentShell.id,
+        section_id: section.id,
+        mpa: mpa,
+        statement_text: text,
+        created_by: profile.id,
+        created_by_name: profile.full_name,
+        created_by_rank: profile.rank,
+        note: note || null,
+      } as never)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to save example:", error);
+      throw error;
+    }
+
+    addSavedExample(section.id, data as EPBSavedExample);
+  };
+
+  // Delete a saved example
+  const handleDeleteExample = async (mpa: string, exampleId: string) => {
+    const section = sections[mpa];
+    if (!section) return;
+
+    const { error } = await supabase
+      .from("epb_saved_examples")
+      .delete()
+      .eq("id", exampleId);
+
+    if (error) {
+      console.error("Failed to delete example:", error);
+      throw error;
+    }
+
+    removeSavedExample(section.id, exampleId);
   };
 
   // Generate statement(s) using AI (returns multiple versions)
@@ -1026,12 +1123,7 @@ export function EPBShellForm({
                     key={mpa.key}
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      // Expand this section and scroll to it
-                      if (collapsedSections[mpa.key]) {
-                        toggleSectionCollapsed(mpa.key);
-                      }
-                    }}
+                    onClick={() => scrollToMpaSection(mpa.key)}
                     className={cn(
                       "h-auto p-1.5 sm:p-2 flex-col gap-0.5 text-center transition-all hover:shadow-sm",
                       isComplete
@@ -1089,9 +1181,10 @@ export function EPBShellForm({
       </Card>
 
       {/* MPA Sections with cursor tracking */}
+      {/* pb-[60vh] allows scrolling the last card (HLR) to the top of the viewport */}
       <div 
         ref={contentContainerRef}
-        className="space-y-4 relative"
+        className="space-y-4 relative pb-[60vh]"
       >
         {/* Realtime cursors overlay - only visible in collaboration session when feature is enabled */}
         {isCollaborationEnabled && collaboration.isInSession && currentShell && (
@@ -1135,6 +1228,12 @@ export function EPBShellForm({
                 isCollaborating={collaboration.isInSession}
                 // Completion toggle
                 onToggleComplete={() => handleToggleComplete(mpa.key)}
+                // Highlight pulse when scrolled to from progress card
+                isHighlighted={highlightedMpa === mpa.key}
+                // Saved examples (scratchpad)
+                savedExamples={savedExamples[section.id] || []}
+                onSaveExample={(text, note) => handleSaveExample(mpa.key, text, note)}
+                onDeleteExample={(id) => handleDeleteExample(mpa.key, id)}
               />
             </div>
           );

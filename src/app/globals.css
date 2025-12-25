@@ -196,3 +196,20 @@
 .stagger-4 { animation-delay: 0.2s; }
 .stagger-5 { animation-delay: 0.25s; }
 
+/* Pulse highlight animation for scrolling to sections */
+@keyframes pulse-highlight {
+  0% {
+    box-shadow: 0 0 0 0 var(--ring);
+  }
+  40% {
+    box-shadow: 0 0 0 4px var(--ring);
+  }
+  100% {
+    box-shadow: 0 0 0 0 var(--ring);
+  }
+}
+
+.animate-pulse-highlight {
+  animation: pulse-highlight 0.6s ease-out 1;
+}
+

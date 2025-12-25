@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, Rank } from "@/types/database";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Rank } from "@/types/database";
 
 // MPA workspace mode for each section
 export type MPAWorkspaceMode = "view" | "edit" | "ai-assist";
@@ -56,6 +56,9 @@ interface EPBShellState {
   // Snapshots indexed by section ID
   snapshots: Record<string, EPBShellSnapshot[]>;
   
+  // Saved examples indexed by section ID
+  savedExamples: Record<string, EPBSavedExample[]>;
+  
   // Local UI state for each MPA section
   sectionStates: Record<string, MPASectionState>;
   
@@ -76,6 +79,9 @@ interface EPBShellState {
   updateSection: (mpa: string, updates: Partial<EPBShellSection>) => void;
   setSnapshots: (sectionId: string, snapshots: EPBShellSnapshot[]) => void;
   addSnapshot: (sectionId: string, snapshot: EPBShellSnapshot) => void;
+  setSavedExamples: (sectionId: string, examples: EPBSavedExample[]) => void;
+  addSavedExample: (sectionId: string, example: EPBSavedExample) => void;
+  removeSavedExample: (sectionId: string, exampleId: string) => void;
   
   // Section state management
   getSectionState: (mpa: string) => MPASectionState;
@@ -136,6 +142,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   currentShell: null,
   sections: {},
   snapshots: {},
+  savedExamples: {},
   sectionStates: {},
   collapsedSections: {},
   isLoadingShell: false,
@@ -203,6 +210,30 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       snapshots: {
         ...state.snapshots,
         [sectionId]: [snapshot, ...(state.snapshots[sectionId] || [])],
+      },
+    })),
+
+  setSavedExamples: (sectionId, examples) =>
+    set((state) => ({
+      savedExamples: {
+        ...state.savedExamples,
+        [sectionId]: examples,
+      },
+    })),
+
+  addSavedExample: (sectionId, example) =>
+    set((state) => ({
+      savedExamples: {
+        ...state.savedExamples,
+        [sectionId]: [example, ...(state.savedExamples[sectionId] || [])],
+      },
+    })),
+
+  removeSavedExample: (sectionId, exampleId) =>
+    set((state) => ({
+      savedExamples: {
+        ...state.savedExamples,
+        [sectionId]: (state.savedExamples[sectionId] || []).filter(e => e.id !== exampleId),
       },
     })),
 
@@ -334,6 +365,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       currentShell: null,
       sections: {},
       snapshots: {},
+      savedExamples: {},
       sectionStates: {},
       collapsedSections: {},
       isLoadingShell: false,

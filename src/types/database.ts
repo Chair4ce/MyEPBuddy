@@ -475,6 +475,19 @@ export interface EPBShellSnapshot {
   created_at: string;
 }
 
+export interface EPBSavedExample {
+  id: string;
+  shell_id: string;
+  section_id: string;
+  mpa: string;
+  statement_text: string;
+  created_by: string;
+  created_by_name: string | null;
+  created_by_rank: string | null;
+  note: string | null;
+  created_at: string;
+}
+
 export interface EPBShellShare {
   id: string;
   shell_id: string;
