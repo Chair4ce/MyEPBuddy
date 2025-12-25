@@ -133,6 +133,9 @@ interface TreeNodeData {
   member_status?: "active" | "prior_subordinate" | "archived";
   supervision_start_date?: string | null;
   supervision_end_date?: string | null;
+  // For managed members: who created this record (may be different from parent)
+  createdBy?: string | null;
+  createdByName?: string | null;
 }
 
 interface TreeNode {
@@ -194,6 +197,7 @@ export default function TeamPage() {
   );
   const [inviteMessage, setInviteMessage] = useState("");
   const [isInviting, setIsInviting] = useState(false);
+  const [respondingToRequest, setRespondingToRequest] = useState<string | null>(null);
   const [searchedProfile, setSearchedProfile] = useState<Profile | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   
@@ -504,6 +508,12 @@ export default function TeamPage() {
   const tree = useMemo(() => {
     if (!profile || allProfiles.length === 0) return null;
 
+    // Build a lookup map of profile IDs to names for showing "created by" info
+    const profileNameMap: Record<string, string> = {};
+    for (const p of allProfiles) {
+      profileNameMap[p.id] = `${p.rank || ""} ${p.full_name || "Unknown"}`.trim();
+    }
+
     const buildTree = (nodeId: string, isManaged = false): TreeNode | null => {
       // Find the node data (either profile or managed member)
       let nodeData: TreeNodeData | null = null;
@@ -511,6 +521,11 @@ export default function TeamPage() {
       if (isManaged) {
         const member = managedMembers.find((m) => m.id === nodeId);
         if (!member) return null;
+        
+        // Determine creator name - only show if different from current user
+        const createdByMe = member.supervisor_id === profile.id;
+        const creatorName = createdByMe ? null : profileNameMap[member.supervisor_id] || "Unknown";
+        
         nodeData = {
           id: member.id,
           full_name: member.full_name,
@@ -523,6 +538,8 @@ export default function TeamPage() {
           member_status: member.member_status,
           supervision_start_date: member.supervision_start_date,
           supervision_end_date: member.supervision_end_date,
+          createdBy: createdByMe ? null : member.supervisor_id,
+          createdByName: creatorName,
         };
       } else {
         const nodeProfile = allProfiles.find((p) => p.id === nodeId);
@@ -680,18 +697,28 @@ export default function TeamPage() {
   }
 
   async function respondToRequest(requestId: string, accept: boolean) {
+    if (respondingToRequest) return; // Prevent double-clicks
+    
     try {
+      setRespondingToRequest(requestId);
+      
       const request = pendingRequests.find((r) => r.id === requestId);
       if (!request || !profile) return;
 
-      // Update request status
-      await supabase
+      // Update request status first
+      const { error: updateError } = await supabase
         .from("team_requests")
         .update({
           status: accept ? "accepted" : "declined",
           responded_at: new Date().toISOString(),
         } as never)
         .eq("id", requestId);
+
+      if (updateError) {
+        console.error("Request update error:", updateError);
+        toast.error("Failed to update request: " + updateError.message);
+        return;
+      }
 
       // If accepted, create the team relationship
       if (accept) {
@@ -702,13 +729,21 @@ export default function TeamPage() {
           ? profile.id           // I become the subordinate
           : request.requester_id; // Requester becomes the subordinate
 
-        const { error: teamError } = await supabase.from("teams").insert({
-          supervisor_id: supervisorId,
-          subordinate_id: subordinateId,
-        } as never);
+        // Use upsert with conflict handling to avoid duplicate key errors
+        // If the relationship already exists, this will simply succeed without error
+        const { error: teamError } = await supabase.from("teams").upsert(
+          {
+            supervisor_id: supervisorId,
+            subordinate_id: subordinateId,
+          } as never,
+          { 
+            onConflict: 'supervisor_id,subordinate_id',
+            ignoreDuplicates: true 
+          }
+        );
 
         if (teamError) {
-          console.error("Team insert error:", teamError);
+          console.error("Team upsert error:", teamError);
           toast.error("Failed to create team relationship: " + teamError.message);
           return;
         }
@@ -718,10 +753,13 @@ export default function TeamPage() {
         toast.success("Request declined.");
       }
 
-      loadTeamData();
+      // Reload team data to refresh the pending requests list
+      await loadTeamData();
     } catch (error) {
       console.error("Error responding to request:", error);
       toast.error("Failed to respond to request");
+    } finally {
+      setRespondingToRequest(null);
     }
   }
 
@@ -1168,24 +1206,44 @@ export default function TeamPage() {
                     {node.data.rank} {node.data.full_name}
                   </p>
                   {isManagedMember && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              "text-[8px] px-1 py-0 h-4 shrink-0 cursor-default",
+                              node.data.member_status === "prior_subordinate"
+                                ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300"
+                                : node.data.member_status === "archived"
+                                ? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300"
+                                : isPlaceholder 
+                                ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300"
+                                : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300"
+                            )}
+                          >
+                            {node.data.member_status === "prior_subordinate" 
+                              ? "Prior" 
+                              : node.data.member_status === "archived"
+                              ? "Archived"
+                              : isPlaceholder ? "Managed" : "Linked"}
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          {node.data.createdByName 
+                            ? `Created by ${node.data.createdByName}`
+                            : "Created by you"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {/* Show creator badge if created by someone else in chain */}
+                  {isManagedMember && node.data.createdByName && (
                     <Badge 
                       variant="outline" 
-                      className={cn(
-                        "text-[8px] px-1 py-0 h-4 shrink-0",
-                        node.data.member_status === "prior_subordinate"
-                          ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300"
-                          : node.data.member_status === "archived"
-                          ? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300"
-                          : isPlaceholder 
-                          ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300"
-                          : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300"
-                      )}
+                      className="text-[7px] px-1 py-0 h-3.5 shrink-0 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
                     >
-                      {node.data.member_status === "prior_subordinate" 
-                        ? "Prior" 
-                        : node.data.member_status === "archived"
-                        ? "Archived"
-                        : isPlaceholder ? "Managed" : "Linked"}
+                      via {node.data.createdByName.split(" ").pop() || ""}
                     </Badge>
                   )}
                   {/* Subordinate count inline with name on mobile */}
@@ -1341,7 +1399,8 @@ export default function TeamPage() {
                           </DropdownMenuItem>
                         }
                       />
-                      {isManagedMember && (
+                      {/* Edit option only available to the user who created the managed member */}
+                      {isManagedMember && !node.data.createdBy && (
                         <DropdownMenuItem onClick={() => {
                           // Find the full managed member data
                           const member = managedMembers.find(m => m.id === node.data.id);
@@ -1925,16 +1984,26 @@ export default function TeamPage() {
                     variant="outline"
                     className="flex-1 sm:flex-initial text-red-600 hover:text-red-700 text-xs sm:text-sm"
                     onClick={() => respondToRequest(request.id, false)}
+                    disabled={respondingToRequest === request.id}
                   >
-                    <X className="size-3 sm:size-4 mr-1" />
+                    {respondingToRequest === request.id ? (
+                      <Loader2 className="size-3 sm:size-4 mr-1 animate-spin" />
+                    ) : (
+                      <X className="size-3 sm:size-4 mr-1" />
+                    )}
                     Decline
                   </Button>
                   <Button
                     size="sm"
                     className="flex-1 sm:flex-initial bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
                     onClick={() => respondToRequest(request.id, true)}
+                    disabled={respondingToRequest === request.id}
                   >
-                    <Check className="size-3 sm:size-4 mr-1" />
+                    {respondingToRequest === request.id ? (
+                      <Loader2 className="size-3 sm:size-4 mr-1 animate-spin" />
+                    ) : (
+                      <Check className="size-3 sm:size-4 mr-1" />
+                    )}
                     Accept
                   </Button>
                 </div>

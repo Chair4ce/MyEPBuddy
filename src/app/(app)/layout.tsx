@@ -59,15 +59,21 @@ export default async function AppLayout({
       subordinates = (subProfiles as unknown as Profile[]) || [];
     }
     
-    // Fetch managed members (placeholder subordinates) - exclude archived by default
-    const { data: managedData } = await supabase
-      .from("team_members")
-      .select("*")
-      .eq("supervisor_id", user.id)
-      .neq("member_status", "archived")
-      .order("full_name", { ascending: true });
+    // Fetch managed members visible to this user (includes chain visibility)
+    // Uses get_visible_managed_members function which returns:
+    // - Members user created
+    // - Members reporting to user
+    // - Members created by user's subordinates (rolling up)
+    // - Members reporting to user's subordinates
+    const { data: managedData } = await (supabase.rpc as Function)(
+      "get_visible_managed_members",
+      { viewer_uuid: user.id }
+    ) as { data: ManagedMember[] | null };
     
-    managedMembers = (managedData as unknown as ManagedMember[]) || [];
+    // Filter out archived members and sort by name
+    managedMembers = (managedData || [])
+      .filter((m) => m.member_status !== "archived")
+      .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
   }
 
   return (

@@ -35,8 +35,6 @@ import {
   FileText,
   Camera,
   Plus,
-  PanelLeftClose,
-  PanelLeft,
   RefreshCw,
   Lock,
   CheckCircle2,
@@ -634,11 +632,6 @@ export function MPASectionCard({
     updateSectionState(section.mpa, {
       statement2ActionIds: state.statement2ActionIds.filter((i) => i !== id),
     });
-  };
-
-  // Toggle actions panel
-  const toggleActionsPanel = () => {
-    updateSectionState(section.mpa, { actionsExpanded: !state.actionsExpanded });
   };
 
   // Check if we can generate

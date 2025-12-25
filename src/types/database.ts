@@ -954,6 +954,28 @@ export interface Database {
           updated_at: string;
         }[];
       };
+      get_visible_managed_members: {
+        Args: { viewer_uuid: string };
+        Returns: {
+          id: string;
+          supervisor_id: string;
+          parent_profile_id: string | null;
+          parent_team_member_id: string | null;
+          linked_user_id: string | null;
+          original_profile_id: string | null;
+          full_name: string;
+          email: string | null;
+          rank: string | null;
+          afsc: string | null;
+          unit: string | null;
+          is_placeholder: boolean;
+          member_status: ManagedMemberStatus;
+          supervision_start_date: string | null;
+          supervision_end_date: string | null;
+          created_at: string;
+          updated_at: string;
+        }[];
+      };
       archive_prior_subordinate: {
         Args: { team_member_id: string };
         Returns: { success: boolean };

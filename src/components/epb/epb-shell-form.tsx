@@ -33,7 +33,6 @@ import {
   CheckCircle2,
   Circle,
   Crown,
-  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
