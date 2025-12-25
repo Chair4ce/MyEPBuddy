@@ -552,7 +552,7 @@ export function EPBShellForm({
     addSnapshot(section.id, data as EPBShellSnapshot);
   };
 
-  // Generate a statement using AI
+  // Generate statement(s) using AI (returns multiple versions)
   const handleGenerateStatement = async (
     mpa: string,
     options: {
@@ -562,11 +562,13 @@ export function EPBShellForm({
       usesTwoStatements: boolean;
       statement1Context?: string;
       statement2Context?: string;
+      versionCount?: number;
     }
-  ): Promise<string | null> => {
-    if (!selectedRatee) return null;
+  ): Promise<string[]> => {
+    if (!selectedRatee) return [];
 
     const maxChars = mpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
+    const versionCount = options.versionCount || 1;
     
     // If using accomplishments, filter to selected ones
     const selectedAccs = options.useAccomplishments && options.accomplishmentIds
@@ -586,56 +588,68 @@ export function EPBShellForm({
     }
 
     try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateeId: selectedRatee.id,
-          rateeRank: selectedRatee.rank,
-          rateeAfsc: selectedRatee.afsc,
-          cycleYear,
-          model,
-          writingStyle: "personal",
-          selectedMPAs: [mpa],
-          customContext: context,
-          customContextOptions: {
-            statementCount: options.usesTwoStatements ? 2 : 1,
-          },
-          accomplishments: selectedAccs.map((a) => ({
-            action_verb: a.action_verb,
-            details: a.details,
-            impact: a.impact,
-            metrics: a.metrics,
-          })),
-        }),
-      });
+      // Generate multiple versions in parallel
+      const generateOne = async (): Promise<string | null> => {
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateeId: selectedRatee.id,
+            rateeRank: selectedRatee.rank,
+            rateeAfsc: selectedRatee.afsc,
+            cycleYear,
+            model,
+            writingStyle: "personal",
+            selectedMPAs: [mpa],
+            customContext: context,
+            customContextOptions: {
+              statementCount: options.usesTwoStatements ? 2 : 1,
+            },
+            accomplishments: selectedAccs.map((a) => ({
+              action_verb: a.action_verb,
+              details: a.details,
+              impact: a.impact,
+              metrics: a.metrics,
+            })),
+          }),
+        });
 
-      if (!response.ok) throw new Error("Generation failed");
+        if (!response.ok) throw new Error("Generation failed");
 
-      const result = await response.json();
-      const statements = result.statements?.[0]?.statements || [];
+        const result = await response.json();
+        const statements = result.statements?.[0]?.statements || [];
+        
+        if (statements.length === 0) return null;
+
+        // Combine statements if multiple
+        const combined = statements.length > 1
+          ? `${statements[0]}. ${statements[1]}`
+          : statements[0];
+
+        // Ensure it fits within limit
+        return combined.slice(0, maxChars);
+      };
+
+      // Generate requested number of versions in parallel
+      const results = await Promise.all(
+        Array.from({ length: versionCount }, () => generateOne())
+      );
       
-      if (statements.length === 0) return null;
-
-      // Combine statements if multiple
-      const combined = statements.length > 1
-        ? `${statements[0]}. ${statements[1]}`
-        : statements[0];
-
-      // Ensure it fits within limit
-      return combined.slice(0, maxChars);
+      // Filter out nulls and return
+      return results.filter((r): r is string => r !== null);
     } catch (error) {
       console.error("Generate error:", error);
       throw error;
     }
   };
 
-  // Revise a statement using AI
+  // Revise a statement using AI (returns multiple versions)
   const handleReviseStatement = async (
     mpa: string,
     text: string,
-    context?: string
-  ): Promise<string | null> => {
+    context?: string,
+    versionCount: number = 3
+  ): Promise<string[]> => {
     try {
       const response = await fetch("/api/revise-selection", {
         method: "POST",
@@ -648,13 +662,16 @@ export function EPBShellForm({
           model,
           mode: "general",
           context: context || `Rewrite this ${STANDARD_MGAS.find((m) => m.key === mpa)?.label || mpa} statement with improved flow and action verbs.`,
+          versionCount,
         }),
       });
 
       if (!response.ok) throw new Error("Revision failed");
 
       const result = await response.json();
-      return result.revisions?.[0] || null;
+      // Return all revisions (or slice to requested count)
+      const revisions = result.revisions || [];
+      return revisions.slice(0, versionCount);
     } catch (error) {
       console.error("Revise error:", error);
       throw error;
@@ -1104,7 +1121,7 @@ export function EPBShellForm({
                 onSave={(text) => handleSaveSection(mpa.key, text)}
                 onCreateSnapshot={(text) => handleCreateSnapshot(mpa.key, text)}
                 onGenerateStatement={(opts) => handleGenerateStatement(mpa.key, opts)}
-                onReviseStatement={(text, ctx) => handleReviseStatement(mpa.key, text, ctx)}
+                onReviseStatement={(text, ctx, count) => handleReviseStatement(mpa.key, text, ctx, count)}
                 snapshots={snapshots[section.id] || []}
                 // Lock props for single-user mode
                 isLockedByOther={isLockedByOther}

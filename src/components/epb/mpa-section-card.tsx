@@ -28,7 +28,6 @@ import {
   ChevronDown,
   ChevronUp,
   Crown,
-  Pencil,
   History,
   Save,
   RotateCcw,
@@ -55,8 +54,8 @@ interface MPASectionCardProps {
   onToggleCollapse: () => void;
   onSave: (text: string) => Promise<void>;
   onCreateSnapshot: (text: string) => Promise<void>;
-  onGenerateStatement: (options: GenerateOptions) => Promise<string | null>;
-  onReviseStatement: (text: string, context?: string) => Promise<string | null>;
+  onGenerateStatement: (options: GenerateOptions) => Promise<string[]>;
+  onReviseStatement: (text: string, context?: string, versionCount?: number) => Promise<string[]>;
   snapshots: EPBShellSnapshot[];
   accomplishments: Accomplishment[]; // All available accomplishments
   onOpenAccomplishments: () => void;
@@ -83,6 +82,7 @@ interface GenerateOptions {
   usesTwoStatements: boolean;
   statement1Context?: string;
   statement2Context?: string;
+  versionCount?: number;
 }
 
 // Get MPA display info
@@ -91,73 +91,6 @@ function getMPAInfo(mpaKey: string) {
   const isHLR = mpaKey === "hlr_assessment";
   const maxChars = isHLR ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
   return { mpa, isHLR, maxChars };
-}
-
-// Mode selector component - SIMPLIFIED: Removed Tooltip wrappers to fix ref loop
-function ModeSelector({
-  currentMode,
-  onModeChange,
-  isLockedByOther = false,
-  lockedByInfo,
-}: {
-  currentMode: MPAWorkspaceMode;
-  onModeChange: (mode: MPAWorkspaceMode) => void;
-  isLockedByOther?: boolean;
-  lockedByInfo?: { name: string; rank: string | null } | null;
-}) {
-  const lockedTitle = isLockedByOther && lockedByInfo
-    ? `Locked by ${lockedByInfo.rank || ""} ${lockedByInfo.name}`
-    : "";
-
-  return (
-    <div className="flex items-center gap-0.5 sm:gap-1 p-0.5 rounded-lg bg-muted/50 border">
-      <button
-        onClick={() => onModeChange("view")}
-        title="View current statement"
-        className={cn(
-          "px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs rounded transition-colors",
-          currentMode === "view"
-            ? "bg-background shadow-sm text-foreground"
-            : "text-muted-foreground hover:text-foreground"
-        )}
-      >
-        View
-      </button>
-
-      <button
-        onClick={() => !isLockedByOther && onModeChange("edit")}
-        title={isLockedByOther ? lockedTitle : "Manually edit statement"}
-        disabled={isLockedByOther}
-        className={cn(
-          "px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs rounded transition-colors flex items-center gap-0.5 sm:gap-1",
-          currentMode === "edit"
-            ? "bg-background shadow-sm text-foreground"
-            : "text-muted-foreground hover:text-foreground",
-          isLockedByOther && "opacity-50 cursor-not-allowed"
-        )}
-      >
-        <Pencil className="size-2.5 sm:size-3" />
-        Edit
-      </button>
-
-      <button
-        onClick={() => !isLockedByOther && onModeChange("ai-assist")}
-        title={isLockedByOther ? lockedTitle : "Generate or revise with AI"}
-        disabled={isLockedByOther}
-        className={cn(
-          "px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs rounded transition-colors flex items-center gap-0.5 sm:gap-1",
-          currentMode === "ai-assist"
-            ? "bg-background shadow-sm text-foreground"
-            : "text-muted-foreground hover:text-foreground",
-          isLockedByOther && "opacity-50 cursor-not-allowed"
-        )}
-      >
-        <Sparkles className="size-2.5 sm:size-3" />
-        <span className="hidden sm:inline">AI Assist</span>
-        <span className="sm:hidden">AI</span>
-      </button>
-    </div>
-  );
 }
 
 // Source toggle component
@@ -209,7 +142,7 @@ function SourceToggle({
 
 // Default section state (for use when store state is undefined)
 const DEFAULT_SECTION_STATE = {
-  mode: "view" as MPAWorkspaceMode,
+  mode: "edit" as MPAWorkspaceMode, // Default to edit mode - statement always visible at top
   draftText: "",
   isDirty: false,
   isGenerating: false,
@@ -273,6 +206,17 @@ export function MPASectionCard({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
+  
+  // Revise panel state
+  const [showRevisePanel, setShowRevisePanel] = useState(false);
+  const [reviseVersionCount, setReviseVersionCount] = useState(3);
+  const [reviseContext, setReviseContext] = useState("");
+  const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
+  const [isRevising, setIsRevising] = useState(false);
+  
+  // AI Generate panel state
+  const [generateVersionCount, setGenerateVersionCount] = useState(3);
+  const [generatedStatements, setGeneratedStatements] = useState<string[]>([]);
   
   // LOCAL state for textarea - only syncs to Zustand on blur (like /award page)
   // This prevents constant re-renders during typing which causes ref composition loops
@@ -518,26 +462,26 @@ export function MPASectionCard({
   // Generate statement with AI
   const handleGenerate = async () => {
     updateSectionState(section.mpa, { isGenerating: true });
+    setGeneratedStatements([]);
     try {
       // Combine action IDs from both statements
       const allActionIds = state.usesTwoStatements
         ? [...state.statement1ActionIds, ...state.statement2ActionIds]
         : state.statement1ActionIds;
       
-      const result = await onGenerateStatement({
+      const results = await onGenerateStatement({
         useAccomplishments: state.sourceType === "actions" && allActionIds.length > 0,
         accomplishmentIds: allActionIds,
         customContext: state.sourceType === "custom" ? state.statement1Context : undefined,
         usesTwoStatements: state.usesTwoStatements,
         statement1Context: state.statement1Context,
         statement2Context: state.statement2Context,
+        versionCount: generateVersionCount,
       });
-      if (result) {
-        updateSectionState(section.mpa, {
-          draftText: result,
-          isDirty: true,
-          mode: "edit",
-        });
+      if (results.length > 0) {
+        setGeneratedStatements(results);
+      } else {
+        toast.error("No statements generated");
       }
     } catch (error) {
       console.error(error);
@@ -546,28 +490,59 @@ export function MPASectionCard({
       updateSectionState(section.mpa, { isGenerating: false });
     }
   };
+  
+  // Use a generated statement (replace current statement)
+  const handleUseStatement = (statement: string) => {
+    setLocalText(statement);
+    updateSectionState(section.mpa, {
+      draftText: statement,
+      isDirty: true,
+    });
+    setGeneratedStatements([]);
+    toast.success("Statement applied");
+  };
 
-  // Revise statement with AI
-  const handleRevise = async (context?: string) => {
-    if (!state.draftText.trim()) {
+  // Generate revisions with AI (for revise panel)
+  const handleGenerateRevisions = async () => {
+    if (!localText.trim()) {
       toast.error("No text to revise");
       return;
     }
-    updateSectionState(section.mpa, { isRevising: true });
+    setIsRevising(true);
+    setGeneratedRevisions([]);
     try {
-      const result = await onReviseStatement(state.draftText, context);
-      if (result) {
-        updateSectionState(section.mpa, {
-          draftText: result,
-          isDirty: true,
-        });
+      const revisions = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount);
+      if (revisions.length > 0) {
+        setGeneratedRevisions(revisions);
+      } else {
+        toast.error("No revisions generated");
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to revise statement");
+      toast.error("Failed to generate revisions");
     } finally {
-      updateSectionState(section.mpa, { isRevising: false });
+      setIsRevising(false);
     }
+  };
+  
+  // Cancel revise panel
+  const handleCancelRevise = () => {
+    setShowRevisePanel(false);
+    setGeneratedRevisions([]);
+    setReviseContext("");
+  };
+  
+  // Use a generated revision (replace current statement)
+  const handleUseRevision = (revision: string) => {
+    setLocalText(revision);
+    updateSectionState(section.mpa, {
+      draftText: revision,
+      isDirty: true,
+    });
+    setShowRevisePanel(false);
+    setGeneratedRevisions([]);
+    setReviseContext("");
+    toast.success("Revision applied");
   };
 
   // Handle action selection for statement 1
@@ -734,16 +709,109 @@ export function MPASectionCard({
       {/* Content - conditionally rendered instead of using Collapsible */}
       {!isCollapsed && (
         <CardContent className="pt-0 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 duration-200 px-3 sm:px-6">
-            {/* Mode selector and actions */}
-            <div className="flex items-center justify-between gap-1.5 sm:gap-2 flex-wrap">
-              <ModeSelector
-                currentMode={state.mode}
-                onModeChange={handleModeChange}
-                isLockedByOther={isLockedByOther}
-                lockedByInfo={lockedByInfo}
+            {/* Working Statement Area - ALWAYS at top */}
+            <div className="space-y-3">
+              <textarea
+                ref={textareaRef}
+                value={localText}
+                onChange={(e) => handleTextChange(e.target.value)}
+                onBlur={handleTextBlur}
+                placeholder={`Enter your ${mpa?.label || "statement"} here...`}
+                rows={5}
+                className={cn(
+                  "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
+                  isOverLimit && "border-destructive focus-visible:ring-destructive"
+                )}
               />
+              
+              {/* Action bar below textarea */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
+                    <div
+                      className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
+                      style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
+                    {charCount}/{maxChars}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {hasUnsavedChanges && (
+                    <button 
+                      onClick={handleReset} 
+                      className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+                    >
+                      <RotateCcw className="size-3 mr-1" />
+                      <span className="hidden sm:inline">Reset</span>
+                    </button>
+                  )}
+                  <button 
+                    onClick={handleCopy} 
+                    disabled={!hasContent}
+                    className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    {copied ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                    <span className="hidden sm:inline">Copy</span>
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={state.isSaving || isOverLimit || !hasUnsavedChanges}
+                    className="h-7 px-2.5 rounded-md text-xs bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    {state.isSaving ? <Loader2 className="size-3 animate-spin mr-1" /> : <Save className="size-3 mr-1" />}
+                    <span className="hidden sm:inline">Save</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Options Bar - below working statement */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t">
+              <div className="flex items-center gap-1.5">
+                {/* AI Assist button - always visible */}
+                <button
+                  onClick={() => {
+                    handleModeChange("ai-assist");
+                    setShowRevisePanel(false);
+                  }}
+                  className={cn(
+                    "h-7 px-2.5 rounded-md text-xs inline-flex items-center justify-center transition-colors",
+                    state.mode === "ai-assist" && !showRevisePanel
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  <Sparkles className="size-3 mr-1" />
+                  <span className="hidden sm:inline">AI Generate</span>
+                  <span className="sm:hidden">AI</span>
+                </button>
+
+                {/* Revise button - only visible when text exists */}
+                {hasContent && (
+                  <button
+                    onClick={() => {
+                      setShowRevisePanel(!showRevisePanel);
+                      setGeneratedRevisions([]);
+                    }}
+                    disabled={isRevising}
+                    className={cn(
+                      "h-7 px-2.5 rounded-md text-xs inline-flex items-center justify-center transition-colors",
+                      showRevisePanel
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                        : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <Wand2 className="size-3 mr-1" />
+                    <span className="hidden sm:inline">Revise Statement</span>
+                    <span className="sm:hidden">Revise</span>
+                  </button>
+                )}
+              </div>
+
               <div className="flex items-center gap-1">
-                {/* Refresh button - get latest data */}
+                {/* Refresh button */}
                 {onRefresh && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -758,9 +826,7 @@ export function MPASectionCard({
                         <RefreshCw className="size-3.5" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Refresh to get latest data</p>
-                    </TooltipContent>
+                    <TooltipContent>Refresh</TooltipContent>
                   </Tooltip>
                 )}
 
@@ -777,12 +843,10 @@ export function MPASectionCard({
                       <History className="size-3.5" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>View snapshot history</p>
-                  </TooltipContent>
+                  <TooltipContent>History</TooltipContent>
                 </Tooltip>
 
-                {/* Snapshot button - instantly saves current text to history */}
+                {/* Snapshot button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -796,16 +860,14 @@ export function MPASectionCard({
                       <Camera className="size-3.5" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Save snapshot to history</p>
-                  </TooltipContent>
+                  <TooltipContent>Save snapshot</TooltipContent>
                 </Tooltip>
               </div>
             </div>
 
             {/* History Panel - inline dropdown */}
             {showHistory && (
-              <div className="rounded-lg border bg-card shadow-lg animate-in slide-in-from-top-2 duration-200">
+              <div className="rounded-lg border bg-card shadow-lg animate-in fade-in-0 duration-200">
                 <div className="p-3 border-b">
                   <h4 className="font-medium text-sm">Snapshot History</h4>
                   <p className="text-xs text-muted-foreground">
@@ -852,175 +914,146 @@ export function MPASectionCard({
               </div>
             )}
 
-            {/* View Mode */}
-            {state.mode === "view" && (
-              <div className="space-y-3">
-                {hasContent ? (
-                  <>
-                    <div className="p-4 rounded-lg bg-muted/30 border">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{state.draftText}</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
-                        <div
-                          className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
-                          style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
-                        {charCount}/{maxChars}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="p-6 rounded-lg border-2 border-dashed text-center">
-                    {isLockedByOther && lockedByInfo ? (
-                      <p className="text-sm text-muted-foreground">
-                        🔒 {lockedByInfo.rank || ""} {lockedByInfo.name.split(" ")[0]} is currently editing this section.
-                      </p>
-                    ) : (
-                      <>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          No statement yet. Switch to Edit or AI Assist to add content.
-                        </p>
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleModeChange("edit")}
-                            className="h-8 px-3 rounded-md text-sm font-medium border bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
-                          >
-                            <Pencil className="size-3.5 mr-1.5" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleModeChange("ai-assist")}
-                            className="h-8 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center"
-                          >
-                            <Sparkles className="size-3.5 mr-1.5" />
-                            AI Assist
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Revise Panel - fades in smoothly below */}
+            {showRevisePanel && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <Wand2 className="size-4" />
+                    Revise Current Statement
+                  </h4>
+                  <button
+                    onClick={handleCancelRevise}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
 
-            {/* Edit Mode - with loaded actions sidebar */}
-            {state.mode === "edit" && (
-              <div className="flex gap-4">
-                {/* Main editing area */}
-                <div className="flex-1 space-y-3">
-                  <textarea
-                    ref={textareaRef}
-                    value={localText}
-                    onChange={(e) => handleTextChange(e.target.value)}
-                    onBlur={handleTextBlur}
-                    placeholder={`Enter your ${mpa?.label || "statement"} here...`}
-                    rows={5}
-                    className={cn(
-                      "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
-                      isOverLimit && "border-destructive focus-visible:ring-destructive"
-                    )}
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
-                        <div
-                          className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
-                          style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
-                        {charCount}/{maxChars}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {hasUnsavedChanges && (
-                        <button 
-                          onClick={handleReset} 
-                          className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
+                {/* Options row */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Version count selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Versions:</span>
+                    <div className="flex items-center border rounded-md">
+                      {[1, 2, 3].map((num) => (
+                        <button
+                          key={num}
+                          onClick={() => setReviseVersionCount(num)}
+                          className={cn(
+                            "px-2.5 py-1 text-xs transition-colors",
+                            num === 1 && "rounded-l-md",
+                            num === 3 && "rounded-r-md",
+                            reviseVersionCount === num
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                          )}
                         >
-                          <RotateCcw className="size-3 mr-1" />
-                          Reset
+                          {num}
                         </button>
-                      )}
-                      <button 
-                        onClick={handleCopy} 
-                        disabled={!hasContent}
-                        className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
-                      >
-                        {copied ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
-                        Copy
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        disabled={state.isSaving || isOverLimit || !hasUnsavedChanges}
-                        className="h-7 px-2.5 rounded-md text-xs bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
-                      >
-                        {state.isSaving ? <Loader2 className="size-3 animate-spin mr-1" /> : <Save className="size-3 mr-1" />}
-                        Save
-                      </button>
+                      ))}
                     </div>
+                  </div>
+
+                  {/* Context input */}
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={reviseContext}
+                      onChange={(e) => setReviseContext(e.target.value)}
+                      placeholder="Optional: How should it sound? (e.g., more concise, more impactful...)"
+                      className="w-full h-7 px-2.5 text-xs rounded-md border border-input bg-transparent placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
                   </div>
                 </div>
 
-                {/* Loaded actions panel (collapsible) */}
-                {totalLoadedActions > 0 && (
-                  <div className={cn(
-                    "transition-all duration-200",
-                    state.actionsExpanded ? "w-64" : "w-8"
-                  )}>
-                    {state.actionsExpanded ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Loaded Actions ({totalLoadedActions})
+                {/* Generate button */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleGenerateRevisions}
+                    disabled={isRevising || !localText.trim()}
+                    className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    {isRevising ? (
+                      <Loader2 className="size-4 animate-spin mr-2" />
+                    ) : (
+                      <Wand2 className="size-4 mr-2" />
+                    )}
+                    Generate {reviseVersionCount} Revision{reviseVersionCount > 1 ? "s" : ""}
+                  </button>
+                </div>
+
+                {/* Generated Revisions - fade in below */}
+                {generatedRevisions.length > 0 && (
+                  <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
+                    <h5 className="text-xs font-medium text-muted-foreground">
+                      Generated Revisions ({generatedRevisions.length})
+                    </h5>
+                    {generatedRevisions.map((revision, index) => (
+                      <div
+                        key={index}
+                        className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
+                        style={{ animationDelay: `${index * 100}ms` }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            Version {index + 1}
                           </span>
-                          <button 
-                            onClick={toggleActionsPanel}
-                            className="size-6 rounded-md hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
-                          >
-                            <PanelLeftClose className="size-3" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(revision);
+                                    toast.success("Copied to clipboard");
+                                  }}
+                                  className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center"
+                                >
+                                  <Copy className="size-3 mr-1" />
+                                  Copy
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Copy this revision</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => handleUseRevision(revision)}
+                                  className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                >
+                                  <Check className="size-3 mr-1" />
+                                  Use This
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Replace your statement with this</TooltipContent>
+                            </Tooltip>
+                          </div>
                         </div>
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          {statement1Actions.map((action) => (
-                            <LoadedActionCard
-                              key={action.id}
-                              action={action}
-                              statementNumber={state.usesTwoStatements ? 1 : undefined}
-                              onRemove={() => removeStatement1Action(action.id)}
-                              compact
-                            />
-                          ))}
-                          {statement2Actions.map((action) => (
-                            <LoadedActionCard
-                              key={action.id}
-                              action={action}
-                              statementNumber={2}
-                              onRemove={() => removeStatement2Action(action.id)}
-                              compact
-                            />
-                          ))}
+                        <p className="text-sm select-text cursor-text whitespace-pre-wrap leading-relaxed">
+                          {revision}
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className={cn("text-[10px] tabular-nums", getCharacterCountColor(revision.length, maxChars))}>
+                            {revision.length}/{maxChars} chars
+                          </span>
                         </div>
                       </div>
-                    ) : (
-                      <button
-                        onClick={toggleActionsPanel}
-                        className="size-8 rounded-md hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
-                      >
-                        <PanelLeft className="size-4" />
-                      </button>
-                    )}
+                    ))}
                   </div>
                 )}
               </div>
             )}
 
-            {/* AI Assist Mode */}
-            {state.mode === "ai-assist" && (
-              <div className="space-y-4">
+            {/* AI Generate Panel - shows when AI mode is active and not in revise mode */}
+            {state.mode === "ai-assist" && !showRevisePanel && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <Sparkles className="size-4" />
+                    Generate New Statement from:
+                  </h4>
+                </div>
+
                 {/* Source Toggle */}
                 <SourceToggle
                   sourceType={state.sourceType}
@@ -1029,7 +1062,7 @@ export function MPASectionCard({
                 />
 
                 {/* Two-statement toggle */}
-                <div className="flex items-center justify-between p-2 rounded-lg bg-muted/20">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-background/50 border">
                   <div className="space-y-0.5">
                     <span className="text-xs font-medium">Two Statements</span>
                     <p className="text-[10px] text-muted-foreground">
@@ -1142,7 +1175,7 @@ export function MPASectionCard({
                         onChange={(e) => updateSectionState(section.mpa, { statement1Context: e.target.value })}
                         placeholder="Paste accomplishment details, metrics, impact, or any context for the AI to use..."
                         rows={3}
-                        className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-none"
+                        className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-none"
                       />
                     </div>
                     {state.usesTwoStatements && (
@@ -1153,57 +1186,109 @@ export function MPASectionCard({
                           onChange={(e) => updateSectionState(section.mpa, { statement2Context: e.target.value })}
                           placeholder="Context for the second statement..."
                           rows={3}
-                          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-none"
+                          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-none"
                         />
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Generate button */}
-                <button
-                  onClick={handleGenerate}
-                  disabled={state.isGenerating || !canGenerate}
-                  className="w-full h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  {state.isGenerating ? (
-                    <Loader2 className="size-4 animate-spin mr-2" />
-                  ) : (
-                    <Sparkles className="size-4 mr-2" />
-                  )}
-                  Generate Statement
-                </button>
+                {/* Version count and Generate button */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Version count selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Versions:</span>
+                    <div className="flex items-center border rounded-md">
+                      {[1, 2, 3].map((num) => (
+                        <button
+                          key={num}
+                          onClick={() => setGenerateVersionCount(num)}
+                          className={cn(
+                            "px-2.5 py-1 text-xs transition-colors",
+                            num === 1 && "rounded-l-md",
+                            num === 3 && "rounded-r-md",
+                            generateVersionCount === num
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                          )}
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                {/* Current draft preview */}
-                {hasContent && (
-                  <div className="space-y-2 p-3 rounded-lg bg-muted/30 border">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">Current Draft</span>
-                      <button
-                        onClick={() => handleRevise()}
-                        disabled={state.isRevising}
-                        className="h-6 px-2 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
+                  {/* Generate button */}
+                  <button
+                    onClick={handleGenerate}
+                    disabled={state.isGenerating || !canGenerate}
+                    className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    {state.isGenerating ? (
+                      <Loader2 className="size-4 animate-spin mr-2" />
+                    ) : (
+                      <Sparkles className="size-4 mr-2" />
+                    )}
+                    Generate {generateVersionCount} Statement{generateVersionCount > 1 ? "s" : ""}
+                  </button>
+                </div>
+
+                {/* Generated Statements - fade in below */}
+                {generatedStatements.length > 0 && (
+                  <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
+                    <h5 className="text-xs font-medium text-muted-foreground">
+                      Generated Statements ({generatedStatements.length})
+                    </h5>
+                    {generatedStatements.map((statement, index) => (
+                      <div
+                        key={index}
+                        className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
+                        style={{ animationDelay: `${index * 100}ms` }}
                       >
-                        {state.isRevising ? (
-                          <Loader2 className="size-3 animate-spin mr-1" />
-                        ) : (
-                          <Wand2 className="size-3 mr-1" />
-                        )}
-                        Revise
-                      </button>
-                    </div>
-                    <p className="text-sm">{state.draftText}</p>
-                    <div className="flex items-center gap-2 pt-2 border-t">
-                      <div className={cn("flex-1 h-1 bg-primary/20 rounded-full overflow-hidden")}>
-                        <div
-                          className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
-                          style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
-                        />
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            Version {index + 1}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(statement);
+                                    toast.success("Copied to clipboard");
+                                  }}
+                                  className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center"
+                                >
+                                  <Copy className="size-3 mr-1" />
+                                  Copy
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Copy this statement</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => handleUseStatement(statement)}
+                                  className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                >
+                                  <Check className="size-3 mr-1" />
+                                  Use This
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Use this as your statement</TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </div>
+                        <p className="text-sm select-text cursor-text whitespace-pre-wrap leading-relaxed">
+                          {statement}
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className={cn("text-[10px] tabular-nums", getCharacterCountColor(statement.length, maxChars))}>
+                            {statement.length}/{maxChars} chars
+                          </span>
+                        </div>
                       </div>
-                      <span className={cn("text-xs tabular-nums shrink-0", getCharacterCountColor(charCount, maxChars))}>
-                        {charCount}/{maxChars}
-                      </span>
-                    </div>
+                    ))}
                   </div>
                 )}
               </div>
