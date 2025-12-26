@@ -215,7 +215,7 @@ export interface PendingManagedLink {
 }
 
 // Managed Team Member (placeholder subordinate without an account)
-export type ManagedMemberStatus = "active" | "prior_subordinate" | "archived";
+export type ManagedMemberStatus = "active" | "prior_subordinate" | "archived" | "pending_link";
 
 export interface ManagedMember {
   id: string;

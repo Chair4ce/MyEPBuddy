@@ -130,7 +130,7 @@ interface TreeNodeData {
   isManagedMember: boolean;
   isPlaceholder?: boolean;
   email?: string | null;
-  member_status?: "active" | "prior_subordinate" | "archived";
+  member_status?: "active" | "prior_subordinate" | "archived" | "pending_link";
   supervision_start_date?: string | null;
   supervision_end_date?: string | null;
   // For managed members: who created this record (may be different from parent)
@@ -504,14 +504,79 @@ export default function TeamPage() {
     }
   }, [profile, subordinates, managedMembers, epbConfig, isLoading]);
 
+  // Collect unique creator IDs from managed members for profile lookup
+  const creatorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of managedMembers) {
+      if (m.supervisor_id && m.supervisor_id !== profile?.id) {
+        ids.add(m.supervisor_id);
+      }
+    }
+    return Array.from(ids);
+  }, [managedMembers, profile?.id]);
+
+  // Fetch creator profiles that might not be in allProfiles
+  const [creatorProfiles, setCreatorProfiles] = useState<Record<string, Profile>>({});
+  
+  useEffect(() => {
+    async function fetchCreatorProfiles() {
+      if (!profile || creatorIds.length === 0) return;
+      
+      // Filter out IDs we already have
+      const existingIds = new Set([
+        profile.id,
+        ...allProfiles.map(p => p.id),
+        ...subordinates.map(s => s.id),
+      ]);
+      
+      const missingIds = creatorIds.filter(id => !existingIds.has(id));
+      if (missingIds.length === 0) return;
+      
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, rank")
+        .in("id", missingIds);
+      
+      if (data) {
+        const newCreators: Record<string, Profile> = {};
+        for (const p of data as Profile[]) {
+          newCreators[p.id] = p;
+        }
+        setCreatorProfiles(prev => ({ ...prev, ...newCreators }));
+      }
+    }
+    
+    fetchCreatorProfiles();
+  }, [creatorIds, profile, allProfiles, subordinates, supabase]);
+
   // Build tree structure that includes both real profiles and managed members
   const tree = useMemo(() => {
     if (!profile || allProfiles.length === 0) return null;
 
     // Build a lookup map of profile IDs to names for showing "created by" info
+    // Include: current user, all profiles in chain, direct subordinates, and fetched creators
     const profileNameMap: Record<string, string> = {};
+    
+    // Add current user
+    profileNameMap[profile.id] = `${profile.rank || ""} ${profile.full_name || "You"}`.trim();
+    
+    // Add all profiles from subordinate chain
     for (const p of allProfiles) {
       profileNameMap[p.id] = `${p.rank || ""} ${p.full_name || "Unknown"}`.trim();
+    }
+    
+    // Add direct subordinates (in case they're not in allProfiles yet)
+    for (const s of subordinates) {
+      if (!profileNameMap[s.id]) {
+        profileNameMap[s.id] = `${s.rank || ""} ${s.full_name || "Unknown"}`.trim();
+      }
+    }
+    
+    // Add fetched creator profiles
+    for (const [id, p] of Object.entries(creatorProfiles)) {
+      if (!profileNameMap[id]) {
+        profileNameMap[id] = `${p.rank || ""} ${p.full_name || "Unknown"}`.trim();
+      }
     }
 
     const buildTree = (nodeId: string, isManaged = false): TreeNode | null => {
@@ -598,7 +663,7 @@ export default function TeamPage() {
     };
 
     return buildTree(profile.id, false);
-  }, [profile, allProfiles, teamRelations, managedMembers, expandedNodes, teamSupervisionDates]);
+  }, [profile, allProfiles, teamRelations, managedMembers, expandedNodes, teamSupervisionDates, subordinates, creatorProfiles]);
 
   function toggleExpand(nodeId: string) {
     setExpandedNodes((prev) => {
@@ -1217,6 +1282,8 @@ export default function TeamPage() {
                                 ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300"
                                 : node.data.member_status === "archived"
                                 ? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300"
+                                : node.data.member_status === "pending_link"
+                                ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300"
                                 : isPlaceholder 
                                 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300"
                                 : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300"
@@ -1226,11 +1293,15 @@ export default function TeamPage() {
                               ? "Prior" 
                               : node.data.member_status === "archived"
                               ? "Archived"
+                              : node.data.member_status === "pending_link"
+                              ? "Pending"
                               : isPlaceholder ? "Managed" : "Linked"}
                           </Badge>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">
-                          {node.data.createdByName 
+                        <TooltipContent side="top" className="text-xs max-w-xs">
+                          {node.data.member_status === "pending_link" 
+                            ? "Pending link - waiting for them to accept your supervisor request"
+                            : node.data.createdByName 
                             ? `Created by ${node.data.createdByName}`
                             : "Created by you"}
                         </TooltipContent>
@@ -1239,12 +1310,21 @@ export default function TeamPage() {
                   )}
                   {/* Show creator badge if created by someone else in chain */}
                   {isManagedMember && node.data.createdByName && (
-                    <Badge 
-                      variant="outline" 
-                      className="text-[7px] px-1 py-0 h-3.5 shrink-0 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
-                    >
-                      via {node.data.createdByName.split(" ").pop() || ""}
-                    </Badge>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge 
+                            variant="outline" 
+                            className="text-[7px] px-1 py-0 h-3.5 shrink-0 cursor-default bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                          >
+                            Created by {node.data.createdByName.split(" ").pop() || ""}
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          Created by {node.data.createdByName}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                   {/* Subordinate count inline with name on mobile */}
                   {hasChildren && (

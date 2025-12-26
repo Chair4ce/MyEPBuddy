@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, UserPlus, User } from "lucide-react";
+import { Loader2, UserPlus, User, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
 
 const RANKS: Rank[] = [
@@ -47,6 +47,13 @@ interface ParentOption {
   isPlaceholder?: boolean;
 }
 
+interface ExistingUserMatch {
+  id: string;
+  email: string;
+  full_name: string | null;
+  rank: Rank | null;
+}
+
 interface AddManagedMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,6 +65,8 @@ export function AddManagedMemberDialog({
 }: AddManagedMemberDialogProps) {
   const { profile, subordinates, managedMembers, addManagedMember } = useUserStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [existingUser, setExistingUser] = useState<ExistingUserMatch | null>(null);
   const [chainProfiles, setChainProfiles] = useState<ParentOption[]>([]);
   const [formData, setFormData] = useState({
     full_name: "",
@@ -165,6 +174,52 @@ export function AddManagedMemberDialog({
     loadChainProfiles();
   }, [profile, open, supabase]);
 
+  // Check if email matches an existing user
+  async function checkEmailForExistingUser(email: string) {
+    if (!email || !email.includes("@")) {
+      setExistingUser(null);
+      return null;
+    }
+
+    setIsCheckingEmail(true);
+
+    try {
+      // Check if a profile exists with this email
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, rank")
+        .eq("email", email.toLowerCase())
+        .single() as { data: { id: string; email: string | null; full_name: string | null; rank: string | null } | null };
+
+      if (existingProfile) {
+        const match: ExistingUserMatch = {
+          id: existingProfile.id,
+          email: existingProfile.email || email,
+          full_name: existingProfile.full_name,
+          rank: existingProfile.rank as Rank,
+        };
+        setExistingUser(match);
+        return match;
+      } else {
+        setExistingUser(null);
+        return null;
+      }
+    } catch {
+      setExistingUser(null);
+      return null;
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  }
+
+  // Handle email blur to check for existing users
+  async function handleEmailBlur() {
+    const email = formData.email.trim().toLowerCase();
+    if (email) {
+      await checkEmailForExistingUser(email);
+    }
+  }
+
   function resetForm() {
     setFormData({
       full_name: "",
@@ -174,6 +229,7 @@ export function AddManagedMemberDialog({
       unit: "",
       parentId: profile ? `profile:${profile.id}` : "",
     });
+    setExistingUser(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -195,14 +251,23 @@ export function AddManagedMemberDialog({
     try {
       // Parse the parent ID to determine if it's a profile or managed member
       const [parentType, parentId] = formData.parentId.split(":");
+      const email = formData.email.trim().toLowerCase() || null;
+      
+      // Check for existing user if email provided
+      let existingMatch = existingUser;
+      if (email && !existingUser) {
+        existingMatch = await checkEmailForExistingUser(email);
+      }
       
       const insertData: Record<string, unknown> = {
         supervisor_id: profile.id,
         full_name: formData.full_name.trim(),
-        email: formData.email.trim().toLowerCase() || null,
+        email: email,
         rank: formData.rank || null,
         afsc: formData.afsc.trim().toUpperCase() || null,
         unit: formData.unit.trim() || null,
+        // If user already exists, mark as pending_link; otherwise active
+        member_status: existingMatch ? "pending_link" : "active",
       };
 
       // Set the appropriate parent field
@@ -225,7 +290,7 @@ export function AddManagedMemberDialog({
         if (error.code === "23505") {
           // Unique constraint violation
           if (error.message?.includes("email")) {
-            toast.error("A team member with this email already exists. Try a different email or leave it blank.");
+            toast.error("A team member with this email already exists in your team.");
             return;
           }
           toast.error("This team member already exists.");
@@ -237,7 +302,41 @@ export function AddManagedMemberDialog({
       // Add to store
       addManagedMember(data as unknown as ManagedMember);
 
-      toast.success(`${formData.full_name} added to your team`);
+      // If existing user found, also send a team request
+      if (existingMatch) {
+        // Send a team request to the existing user
+        const { error: requestError } = await supabase.from("team_requests").insert({
+          requester_id: profile.id,
+          target_id: existingMatch.id,
+          request_type: "supervise",
+          message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
+        } as never);
+
+        if (requestError) {
+          // Check if request already exists
+          if (requestError.code === "23505") {
+            toast.success(`${formData.full_name} added as a pending team member`, {
+              description: `A supervisor request has already been sent to ${existingMatch.full_name || existingMatch.email}. They'll appear as linked once they accept.`,
+            });
+          } else {
+            console.error("Error sending team request:", requestError);
+            toast.success(`${formData.full_name} added as a pending team member`, {
+              description: `Couldn't send a supervisor request automatically. You may need to send one manually.`,
+            });
+          }
+        } else {
+          toast.success(`${formData.full_name} added as a pending team member`, {
+            description: `A supervisor request was sent to ${existingMatch.full_name || existingMatch.email}. They'll appear as linked once they accept.`,
+          });
+        }
+      } else {
+        toast.success(`${formData.full_name} added to your team`, {
+          description: email 
+            ? "If they sign up with this email, they'll be prompted to link their account."
+            : undefined,
+        });
+      }
+
       resetForm();
       onOpenChange(false);
     } catch (error) {
@@ -376,22 +475,49 @@ export function AddManagedMemberDialog({
             <Label htmlFor="email">
               Email{" "}
               <span className="text-muted-foreground text-xs">
-                (for future account linking)
+                (for account linking)
               </span>
             </Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) =>
-                setFormData({ ...formData, email: e.target.value })
-              }
-              placeholder="e.g., john.doe@us.af.mil"
-            />
-            <p className="text-xs text-muted-foreground">
-              If they sign up with this email, their entries will be linked to
-              their account.
-            </p>
+            <div className="relative">
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  setExistingUser(null);
+                }}
+                onBlur={handleEmailBlur}
+                placeholder="e.g., john.doe@us.af.mil"
+                className={existingUser ? "pr-10 border-amber-500" : ""}
+              />
+              {isCheckingEmail && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+              )}
+              {existingUser && !isCheckingEmail && (
+                <Link2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-amber-500" />
+              )}
+            </div>
+
+            {existingUser && (
+              <div className="flex items-start gap-2 p-2 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-sm">
+                <AlertCircle className="size-4 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">Account found!</p>
+                  <p className="text-xs opacity-80">
+                    {existingUser.rank} {existingUser.full_name || existingUser.email} already has an account.
+                    A supervisor request will be sent when you add them. Until they accept,
+                    they&apos;ll appear as &quot;Pending&quot; and you can still create entries for them.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!existingUser && !formData.email && (
+              <p className="text-xs text-muted-foreground">
+                If they sign up with this email later, they&apos;ll be prompted to link their account.
+              </p>
+            )}
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
@@ -405,13 +531,18 @@ export function AddManagedMemberDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isCheckingEmail}
               className="w-full sm:w-auto"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin mr-2" />
                   Adding...
+                </>
+              ) : existingUser ? (
+                <>
+                  <Link2 className="size-4 mr-2" />
+                  Add & Send Request
                 </>
               ) : (
                 <>
@@ -426,4 +557,3 @@ export function AddManagedMemberDialog({
     </Dialog>
   );
 }
-

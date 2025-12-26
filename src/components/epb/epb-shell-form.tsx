@@ -43,7 +43,16 @@ import { RealtimeCursors } from "./realtime-cursors";
 import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
 import { useIdleDetection } from "@/hooks/use-idle-detection";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, Profile, ManagedMember, UserLLMSettings } from "@/types/database";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, Profile, ManagedMember, UserLLMSettings, Rank } from "@/types/database";
+
+// Shared EPB info - represents an EPB shell that has been shared with the current user
+interface SharedEPBInfo {
+  shell: EPBShell;
+  // For real user EPBs (team_member_id is null)
+  ownerProfile: Profile | null;
+  // For managed member EPBs (team_member_id is not null)
+  teamMember: { id: string; full_name: string; rank: Rank | null; afsc: string | null } | null;
+}
 
 interface EPBShellFormProps {
   cycleYear: number;
@@ -94,9 +103,21 @@ export function EPBShellForm({
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [isTogglingMode, setIsTogglingMode] = useState(false);
   const [highlightedMpa, setHighlightedMpa] = useState<string | null>(null);
+  const [sharedEPBs, setSharedEPBs] = useState<SharedEPBInfo[]>([]);
+  const [isPageVisible, setIsPageVisible] = useState(true);
   
   // Ref for cursor tracking container
   const contentContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Track page visibility to pause/resume realtime when user leaves/returns
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // Multi-user mode from the shell
   const isMultiUserMode = currentShell?.multi_user_enabled ?? false;
@@ -331,12 +352,105 @@ export function EPBShellForm({
     })),
   ];
 
+  // Build shared EPB options - these are EPBs shared with the current user
+  const sharedEPBOptions: { value: string; label: string; ratee: SelectedRatee }[] = sharedEPBs
+    .filter((shared) => {
+      // Only include shared EPBs for the current cycle year
+      if (shared.shell.cycle_year !== cycleYear) return false;
+      
+      // Exclude EPBs we already have access to (self, subordinates, managed members)
+      if (shared.ownerProfile) {
+        // Real user EPB - check if already in our lists
+        if (shared.ownerProfile.id === profile?.id) return false;
+        if (subordinates.some((sub) => sub.id === shared.ownerProfile?.id)) return false;
+      }
+      if (shared.teamMember) {
+        // Managed member EPB - check if already in our list
+        if (managedMembers.some((m) => m.id === shared.teamMember?.id)) return false;
+      }
+      return true;
+    })
+    .map((shared) => {
+      if (shared.teamMember) {
+        // Managed member EPB
+        return {
+          value: `shared-managed:${shared.teamMember.id}`,
+          label: `${shared.teamMember.rank || ""} ${shared.teamMember.full_name}`.trim(),
+          ratee: {
+            id: shared.teamMember.id,
+            fullName: shared.teamMember.full_name,
+            rank: shared.teamMember.rank as SelectedRatee["rank"],
+            afsc: shared.teamMember.afsc,
+            isManagedMember: true,
+          },
+        };
+      } else if (shared.ownerProfile) {
+        // Real user EPB
+        return {
+          value: `shared:${shared.ownerProfile.id}`,
+          label: `${shared.ownerProfile.rank || ""} ${shared.ownerProfile.full_name}`.trim(),
+          ratee: {
+            id: shared.ownerProfile.id,
+            fullName: shared.ownerProfile.full_name,
+            rank: shared.ownerProfile.rank as SelectedRatee["rank"],
+            afsc: shared.ownerProfile.afsc,
+            isManagedMember: false,
+          },
+        };
+      }
+      return null;
+    })
+    .filter((opt): opt is NonNullable<typeof opt> => opt !== null);
+
+  // LocalStorage key for persisting selected EPB
+  const SELECTED_RATEE_KEY = `epb-selected-ratee-${cycleYear}`;
+
   // Handle ratee selection change
   const handleRateeChange = (value: string) => {
+    // Check regular options first
     const option = rateeOptions.find((o) => o.value === value);
     if (option) {
       setSelectedRatee(option.ratee);
+      // Persist to localStorage
+      localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: option.ratee }));
+      return;
     }
+    // Check shared EPB options
+    const sharedOption = sharedEPBOptions.find((o) => o.value === value);
+    if (sharedOption) {
+      setSelectedRatee(sharedOption.ratee);
+      // Persist to localStorage
+      localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: sharedOption.ratee }));
+    }
+  };
+
+  // Compute the current select value - handles self, subordinates, managed members, and shared EPBs
+  const getSelectedRateeValue = (): string => {
+    if (!selectedRatee) return "self";
+    
+    // Check if it's self
+    if (selectedRatee.id === profile?.id && !selectedRatee.isManagedMember) {
+      return "self";
+    }
+    
+    // Check if it's a subordinate
+    if (!selectedRatee.isManagedMember && subordinates.some((s) => s.id === selectedRatee.id)) {
+      return selectedRatee.id;
+    }
+    
+    // Check if it's a managed member
+    if (selectedRatee.isManagedMember && managedMembers.some((m) => m.id === selectedRatee.id)) {
+      return `managed:${selectedRatee.id}`;
+    }
+    
+    // Check if it's a shared EPB
+    const sharedMatch = sharedEPBOptions.find((o) => o.ratee.id === selectedRatee.id);
+    if (sharedMatch) {
+      return sharedMatch.value;
+    }
+    
+    // Fallback - use the ID pattern based on isManagedMember
+    return selectedRatee.isManagedMember ? `managed:${selectedRatee.id}` : selectedRatee.id;
   };
 
   // Load user settings
@@ -355,18 +469,124 @@ export function EPBShellForm({
     loadSettings();
   }, [profile, supabase]);
 
-  // Initialize with self selected
+  // Load EPBs shared with current user
   useEffect(() => {
-    if (profile && !selectedRatee) {
-      setSelectedRatee({
-        id: profile.id,
-        fullName: profile.full_name,
-        rank: profile.rank as SelectedRatee["rank"],
-        afsc: profile.afsc,
-        isManagedMember: false,
-      });
+    async function loadSharedEPBs() {
+      if (!profile) return;
+
+      // Get all shares where current user is the recipient
+      const { data: sharesData, error } = await supabase
+        .from("epb_shell_shares")
+        .select(`
+          shell_id,
+          shell:epb_shells!inner(
+            id,
+            user_id,
+            team_member_id,
+            created_by,
+            cycle_year,
+            multi_user_enabled,
+            created_at,
+            updated_at
+          )
+        `)
+        .eq("shared_with_id", profile.id);
+
+      if (error) {
+        console.error("Failed to load shared EPBs:", error);
+        return;
+      }
+
+      if (!sharesData || sharesData.length === 0) {
+        setSharedEPBs([]);
+        return;
+      }
+
+      // Process each shared shell to get owner info
+      const sharedInfos: SharedEPBInfo[] = [];
+
+      // Type the shares data to help TypeScript understand the nested join
+      type ShareWithShell = { shell_id: string; shell: EPBShell };
+      const typedShares = sharesData as unknown as ShareWithShell[];
+
+      for (const share of typedShares) {
+        const shell = share.shell;
+        if (!shell) continue;
+
+        // Check if this is a managed member EPB or a real user EPB
+        if (shell.team_member_id) {
+          // Managed member - get team member info
+          const { data: teamMemberData } = await supabase
+            .from("team_members")
+            .select("id, full_name, rank, afsc")
+            .eq("id", shell.team_member_id)
+            .single();
+
+          if (teamMemberData) {
+            sharedInfos.push({
+              shell,
+              ownerProfile: null,
+              teamMember: teamMemberData as { id: string; full_name: string; rank: Rank | null; afsc: string | null },
+            });
+          }
+        } else {
+          // Real user - get profile info
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("id, full_name, rank, afsc, email")
+            .eq("id", shell.user_id)
+            .single();
+
+          if (profileData) {
+            sharedInfos.push({
+              shell,
+              ownerProfile: profileData as Profile,
+              teamMember: null,
+            });
+          }
+        }
+      }
+
+      setSharedEPBs(sharedInfos);
     }
-  }, [profile, selectedRatee, setSelectedRatee]);
+
+    loadSharedEPBs();
+  }, [profile, supabase]);
+
+  // Initialize with previously selected ratee from localStorage, or default to self
+  // This runs once on mount - we trust localStorage and let shell loading handle access errors
+  const hasInitializedRef = useRef(false);
+  
+  useEffect(() => {
+    if (!profile || hasInitializedRef.current) return;
+    
+    // Try to restore from localStorage
+    try {
+      const savedKey = `epb-selected-ratee-${cycleYear}`;
+      const saved = localStorage.getItem(savedKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { value: string; ratee: SelectedRatee };
+        // Trust the saved value - shell loading will handle access errors gracefully
+        if (parsed.ratee && parsed.ratee.id) {
+          setSelectedRatee(parsed.ratee);
+          hasInitializedRef.current = true;
+          return;
+        }
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+    
+    // Default to self
+    setSelectedRatee({
+      id: profile.id,
+      fullName: profile.full_name,
+      rank: profile.rank as SelectedRatee["rank"],
+      afsc: profile.afsc,
+      isManagedMember: false,
+    });
+    hasInitializedRef.current = true;
+  }, [profile, setSelectedRatee, cycleYear]);
 
   // Load shell when ratee or cycle year changes
   useEffect(() => {
@@ -454,6 +674,84 @@ export function EPBShellForm({
 
     loadShell();
   }, [selectedRatee, cycleYear, profile, supabase, setCurrentShell, setIsLoadingShell, setSnapshots]);
+
+  // Realtime subscription for section text updates
+  // This ensures all users viewing the same EPB see text changes immediately
+  // Only active when page is visible to save resources
+  useEffect(() => {
+    if (!currentShell?.id || !profile || !isPageVisible) return;
+
+    // When page becomes visible again, fetch fresh section data to catch any missed updates
+    const refreshSections = async () => {
+      const { data } = await supabase
+        .from("epb_shell_sections")
+        .select("*")
+        .eq("shell_id", currentShell.id);
+      
+      if (data) {
+        (data as EPBShellSection[]).forEach((section) => {
+          // Only update sections we're not actively editing
+          const currentState = sectionStates[section.mpa];
+          if (!currentState?.isDirty) {
+            updateSection(section.mpa, {
+              statement_text: section.statement_text,
+              is_complete: section.is_complete,
+              last_edited_by: section.last_edited_by,
+              updated_at: section.updated_at,
+            });
+            useEPBShellStore.getState().updateSectionState(section.mpa, {
+              draftText: section.statement_text,
+            });
+          }
+        });
+      }
+    };
+    
+    // Refresh on visibility restore
+    refreshSections();
+
+    // Subscribe to section updates for this shell
+    const channel = supabase
+      .channel(`section-updates:${currentShell.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "epb_shell_sections",
+          filter: `shell_id=eq.${currentShell.id}`,
+        },
+        (payload) => {
+          const updatedSection = payload.new as EPBShellSection;
+          
+          // Only update if the change was made by someone else
+          // (we already have the local state updated for our own changes)
+          if (updatedSection.last_edited_by !== profile.id) {
+            // Update the section in our local state
+            updateSection(updatedSection.mpa, {
+              statement_text: updatedSection.statement_text,
+              is_complete: updatedSection.is_complete,
+              last_edited_by: updatedSection.last_edited_by,
+              updated_at: updatedSection.updated_at,
+            });
+
+            // Also update the section state's draftText so the textarea reflects changes
+            // But only if the user is not currently editing that section
+            const currentSectionState = sectionStates[updatedSection.mpa];
+            if (!currentSectionState?.isDirty) {
+              useEPBShellStore.getState().updateSectionState(updatedSection.mpa, {
+                draftText: updatedSection.statement_text,
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentShell?.id, profile, supabase, updateSection, sectionStates, isPageVisible]);
 
   // Load accomplishments for the selected ratee
   useEffect(() => {
@@ -807,15 +1105,7 @@ export function EPBShellForm({
             <div className="flex items-center gap-4">
               <div className="flex-1 max-w-xs">
                 <Select
-                  value={
-                    selectedRatee
-                      ? selectedRatee.isManagedMember
-                        ? `managed:${selectedRatee.id}`
-                        : selectedRatee.id === profile?.id
-                        ? "self"
-                        : selectedRatee.id
-                      : "self"
-                  }
+                  value={getSelectedRateeValue()}
                   onValueChange={handleRateeChange}
                 >
                   <SelectTrigger>
@@ -863,6 +1153,24 @@ export function EPBShellForm({
                         ))}
                       </>
                     )}
+                    {sharedEPBOptions.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          Shared with Me
+                        </div>
+                        {sharedEPBOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <span className="flex items-center gap-2">
+                              <Share2 className="size-4 text-purple-500" />
+                              {opt.label}
+                              <Badge variant="secondary" className="text-[10px] bg-purple-500/10 text-purple-600 border-purple-500/30">
+                                Shared
+                              </Badge>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -902,23 +1210,15 @@ export function EPBShellForm({
   // Shell exists - show full form
   return (
     <div className="space-y-6">
-      {/* Member Selector - Always visible */}
-      {(subordinates.length > 0 || managedMembers.length > 0) && (
+      {/* Member Selector - Visible when user has team members or shared EPBs */}
+      {(subordinates.length > 0 || managedMembers.length > 0 || sharedEPBOptions.length > 0) && (
         <Card className="bg-muted/30 overflow-hidden">
           <CardContent className="py-2 sm:py-3 px-3 sm:px-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <span className="text-xs sm:text-sm text-muted-foreground shrink-0">Viewing EPB for:</span>
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <Select
-                  value={
-                    selectedRatee
-                      ? selectedRatee.isManagedMember
-                        ? `managed:${selectedRatee.id}`
-                        : selectedRatee.id === profile?.id
-                        ? "self"
-                        : selectedRatee.id
-                      : "self"
-                  }
+                  value={getSelectedRateeValue()}
                   onValueChange={handleRateeChange}
                 >
                   <SelectTrigger className="bg-background h-8 sm:h-9 text-xs sm:text-sm max-w-[240px] sm:max-w-sm">
@@ -961,6 +1261,24 @@ export function EPBShellForm({
                                   Managed
                                 </Badge>
                               )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {sharedEPBOptions.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          Shared with Me
+                        </div>
+                        {sharedEPBOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <span className="flex items-center gap-2">
+                              <Share2 className="size-4 text-purple-500" />
+                              {opt.label}
+                              <Badge variant="secondary" className="text-[10px] bg-purple-500/10 text-purple-600 border-purple-500/30">
+                                Shared
+                              </Badge>
                             </span>
                           </SelectItem>
                         ))}

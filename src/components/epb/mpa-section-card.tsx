@@ -242,6 +242,68 @@ export function MPASectionCard({
   // LOCAL state for textarea - only syncs to Zustand on blur (like /award page)
   // This prevents constant re-renders during typing which causes ref composition loops
   const [localText, setLocalText] = useState(state.draftText);
+  
+  // Track if user is currently focused on the textarea
+  const [isEditing, setIsEditing] = useState(false);
+  // Store the original text when user starts editing (for snapshot on focus loss)
+  const originalTextOnFocusRef = useRef<string>("");
+  
+  // Page visibility detection - save and release lock when user leaves the page
+  // This is more reliable than idle detection for preventing long lock holds
+  useEffect(() => {
+    if (!isEditing || isCollaborating) return;
+    
+    const handleVisibilityChange = async () => {
+      if (document.hidden && isEditing && textareaRef.current) {
+        // Page is now hidden while user was editing
+        // Snapshot the original text if it's different from current
+        const originalText = originalTextOnFocusRef.current;
+        if (originalText && originalText !== localText && originalText.trim().length > 0) {
+          try {
+            await onCreateSnapshot(originalText);
+          } catch (err) {
+            console.error("Failed to create snapshot on page hide:", err);
+          }
+        }
+        
+        // Blur to trigger save + lock release (silently)
+        textareaRef.current.blur();
+      }
+    };
+    
+    const handleWindowBlur = async () => {
+      // Window lost focus (user switched apps/tabs)
+      if (isEditing && textareaRef.current) {
+        // Small delay to avoid triggering on brief focus switches (like opening dev tools)
+        const blurTimer = setTimeout(async () => {
+          if (!document.hasFocus() && isEditing && textareaRef.current) {
+            // Snapshot original if different
+            const originalText = originalTextOnFocusRef.current;
+            if (originalText && originalText !== localText && originalText.trim().length > 0) {
+              try {
+                await onCreateSnapshot(originalText);
+              } catch (err) {
+                console.error("Failed to create snapshot on window blur:", err);
+              }
+            }
+            
+            // Blur to trigger save + lock release (silently)
+            textareaRef.current?.blur();
+          }
+        }, 500); // 500ms grace period
+        
+        return () => clearTimeout(blurTimer);
+      }
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [isEditing, isCollaborating, localText, onCreateSnapshot]);
 
   // Get loaded actions
   const statement1Actions = useMemo(() => 
@@ -409,18 +471,28 @@ export function MPASectionCard({
 
   // Acquire lock when textarea gains focus
   const handleTextFocus = async () => {
+    // Store the original text before editing begins (for idle snapshot)
+    originalTextOnFocusRef.current = localText;
+    
     if (onAcquireLock && !isCollaborating) {
       const result = await onAcquireLock();
       if (!result.success) {
         // Lock failed - blur the textarea to prevent editing
         textareaRef.current?.blur();
         toast.error(`This section is locked by ${result.lockedBy || "another user"}`);
+        return;
       }
     }
+    
+    // Mark as editing (enables idle detection)
+    setIsEditing(true);
   };
 
   // Sync local text to Zustand on blur, save, and release lock
   const handleTextBlur = async () => {
+    // Mark as no longer editing (disables idle detection)
+    setIsEditing(false);
+    
     // Clear any pending collab sync
     if (collabSyncTimerRef.current) {
       clearTimeout(collabSyncTimerRef.current);
@@ -448,6 +520,9 @@ export function MPASectionCard({
     if (onReleaseLock && !isCollaborating) {
       await onReleaseLock();
     }
+    
+    // Clear the original text ref
+    originalTextOnFocusRef.current = "";
   };
 
   // Cleanup collab sync timer on unmount
