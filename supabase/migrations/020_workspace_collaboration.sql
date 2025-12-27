@@ -148,3 +148,4 @@ ALTER PUBLICATION supabase_realtime ADD TABLE workspace_sessions;
 ALTER PUBLICATION supabase_realtime ADD TABLE workspace_session_participants;
 
 
+

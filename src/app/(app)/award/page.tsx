@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore, type SelectedNominee } from "@/stores/award-shell-store";
@@ -60,6 +61,7 @@ import {
   Plus,
   Save,
   Share2,
+  UserPlus,
 } from "lucide-react";
 import {
   Tooltip,
@@ -84,6 +86,7 @@ import type {
 // ============================================================================
 
 export default function AwardPage() {
+  const router = useRouter();
   const supabase = createClient();
   const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
   const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
@@ -131,13 +134,21 @@ export default function AwardPage() {
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [copiedAll, setCopiedAll] = useState(false);
+
+  // Handle nominee selection with navigation for "add-member"
+  const handleNomineeChange = useCallback((value: string) => {
+    if (value === "add-member") {
+      router.push("/team");
+    } else {
+      setSelectedNomineeId(value);
+    }
+  }, [router]);
   const [hasUserKey, setHasUserKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Derived
   const isManagedMember = selectedNomineeId.startsWith("managed:");
   const managedMemberId = isManagedMember ? selectedNomineeId.replace("managed:", "") : null;
-  const canManageTeam = subordinates.length > 0 || managedMembers.length > 0;
 
   // ============================================================================
   // Effects
@@ -484,7 +495,7 @@ export default function AwardPage() {
               {/* Row 1: Nominee (constrained width) */}
               <div className="space-y-2 max-w-sm">
                 <Label className="text-xs">Nominee</Label>
-                <Select value={selectedNomineeId} onValueChange={setSelectedNomineeId}>
+                <Select value={selectedNomineeId} onValueChange={handleNomineeChange}>
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select nominee" />
                   </SelectTrigger>
@@ -492,7 +503,7 @@ export default function AwardPage() {
                     <SelectItem value="self">
                       {profile?.rank} {profile?.full_name} (Self)
                     </SelectItem>
-                    {canManageTeam && <Separator className="my-1" />}
+                    {(subordinates.length > 0 || managedMembers.length > 0) && <Separator className="my-1" />}
                     {subordinates.map((sub) => (
                       <SelectItem key={sub.id} value={sub.id}>
                         {sub.rank} {sub.full_name}
@@ -503,6 +514,13 @@ export default function AwardPage() {
                         {member.rank} {member.full_name}
                       </SelectItem>
                     ))}
+                    <Separator className="my-1" />
+                    <SelectItem value="add-member" className="text-primary">
+                      <span className="flex items-center gap-2">
+                        <UserPlus className="size-4" />
+                        Add Team Member
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -666,7 +684,7 @@ export default function AwardPage() {
                 {/* Row 1: Nominee (full width) */}
                 <div className="space-y-2 max-w-sm">
                   <Label className="text-xs">Nominee</Label>
-                  <Select value={selectedNomineeId} onValueChange={setSelectedNomineeId}>
+                  <Select value={selectedNomineeId} onValueChange={handleNomineeChange}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Select nominee" />
                     </SelectTrigger>
@@ -674,7 +692,7 @@ export default function AwardPage() {
                       <SelectItem value="self">
                         {profile?.rank} {profile?.full_name} (Self)
                       </SelectItem>
-                      {canManageTeam && <Separator className="my-1" />}
+                      {(subordinates.length > 0 || managedMembers.length > 0) && <Separator className="my-1" />}
                       {subordinates.map((sub) => (
                         <SelectItem key={sub.id} value={sub.id}>
                           {sub.rank} {sub.full_name}
@@ -685,6 +703,13 @@ export default function AwardPage() {
                           {member.rank} {member.full_name}
                         </SelectItem>
                       ))}
+                      <Separator className="my-1" />
+                      <SelectItem value="add-member" className="text-primary">
+                        <span className="flex items-center gap-2">
+                          <UserPlus className="size-4" />
+                          Add Team Member
+                        </span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

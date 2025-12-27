@@ -7,3 +7,4 @@ ALTER TYPE user_rank ADD VALUE IF NOT EXISTS 'Civilian';
 -- Civilians can be supervisors
 
 
+

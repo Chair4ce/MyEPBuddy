@@ -73,3 +73,4 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 GRANT EXECUTE ON FUNCTION get_all_managed_members(UUID) TO authenticated;
 
 
+

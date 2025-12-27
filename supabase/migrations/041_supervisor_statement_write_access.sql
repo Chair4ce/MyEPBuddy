@@ -73,3 +73,4 @@ CREATE INDEX IF NOT EXISTS idx_refined_statements_team_member_cycle
   WHERE team_member_id IS NOT NULL;
 
 
+

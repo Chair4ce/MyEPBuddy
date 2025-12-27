@@ -18,3 +18,4 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 UPDATE profiles SET role = 'member' WHERE role = 'subordinate';
 
 
+

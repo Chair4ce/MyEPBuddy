@@ -1165,3 +1165,4 @@ CREATE POLICY "workspace_participants_delete_self"
   ON workspace_session_participants FOR DELETE
   USING (user_id = (select auth.uid()));
 
+

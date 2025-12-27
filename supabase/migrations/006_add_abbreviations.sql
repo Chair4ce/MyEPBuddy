@@ -11,3 +11,4 @@ ADD COLUMN IF NOT EXISTS abbreviations JSONB NOT NULL DEFAULT '[]'::jsonb;
 -- ]
 
 
+

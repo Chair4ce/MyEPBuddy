@@ -44,3 +44,4 @@ JOIN profiles p ON rs.user_id = p.id;
 GRANT SELECT ON shared_statements_view TO authenticated;
 
 
+

@@ -10,3 +10,4 @@ COMMENT ON COLUMN user_llm_settings.max_example_statements IS
   'Maximum number of example statements to include in the generation prompt (0-20). Higher values provide more context but increase token usage.';
 
 
+

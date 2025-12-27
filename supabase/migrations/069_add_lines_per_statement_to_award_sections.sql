@@ -7,3 +7,4 @@ CHECK (lines_per_statement IN (2, 3));
 
 COMMENT ON COLUMN award_shell_sections.lines_per_statement IS 'Number of lines per statement (2 or 3) for AI generation';
 
+

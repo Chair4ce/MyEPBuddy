@@ -84,3 +84,4 @@ COMMENT ON COLUMN user_llm_settings.abbreviations IS 'Word abbreviations for EPB
 COMMENT ON COLUMN user_llm_settings.award_abbreviations IS 'Word abbreviations for Award statement generation';
 
 
+

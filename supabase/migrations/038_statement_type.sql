@@ -36,3 +36,4 @@ JOIN statement_shares ss ON ss.statement_id = rs.id
 JOIN profiles p ON p.id = rs.user_id;
 
 
+

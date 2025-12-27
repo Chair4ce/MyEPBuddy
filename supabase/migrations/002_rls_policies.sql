@@ -164,3 +164,4 @@ CREATE POLICY "Users can delete own api keys"
   USING (user_id = auth.uid());
 
 
+

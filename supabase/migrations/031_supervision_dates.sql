@@ -124,3 +124,4 @@ CREATE INDEX IF NOT EXISTS idx_teams_supervision_dates ON teams(supervision_star
 CREATE INDEX IF NOT EXISTS idx_team_members_supervision_dates ON team_members(supervision_start_date, supervision_end_date);
 
 
+

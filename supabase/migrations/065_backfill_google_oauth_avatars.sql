@@ -8,3 +8,4 @@ WHERE p.id = u.id
   AND p.avatar_url IS NULL
   AND u.raw_user_meta_data->>'picture' IS NOT NULL;
 
+
