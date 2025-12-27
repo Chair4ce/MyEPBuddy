@@ -198,6 +198,7 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
       source_type: "actions",
       custom_context: "",
       selected_action_ids: [],
+      lines_per_statement: state.sentencesPerStatement,
       last_edited_by: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

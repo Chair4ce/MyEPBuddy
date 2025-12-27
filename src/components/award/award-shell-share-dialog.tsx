@@ -215,7 +215,7 @@ export function AwardShellShareDialog({
       
       // Filter out users who already have access
       const existingIds = accessList.map((a) => a.id);
-      setSearchResults((data || []).filter((p) => !existingIds.includes(p.id)));
+      setSearchResults(((data || []) as Profile[]).filter((p) => !existingIds.includes(p.id)));
     } catch (error) {
       console.error("Search failed:", error);
       toast.error("Search failed");
@@ -237,7 +237,7 @@ export function AwardShellShareDialog({
           owner_id: currentUserId,
           share_type: "user",
           shared_with_id: userId,
-        });
+        } as never);
 
       if (error) throw error;
       

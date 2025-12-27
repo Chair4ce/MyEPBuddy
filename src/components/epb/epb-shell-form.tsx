@@ -625,6 +625,8 @@ export function EPBShellForm({
     console.log("[EPB Load] Loading shell for:", selectedRatee.id);
     
     async function loadShell() {
+      if (!selectedRatee) return;
+      
       setIsLoadingShell(true);
       try {
         // Build query based on ratee type

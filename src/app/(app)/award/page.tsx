@@ -380,13 +380,14 @@ export default function AwardPage() {
       source_type: "actions" as const,
       custom_context: "",
       selected_action_ids: [],
+      lines_per_statement: sentencesPerStatement,
       last_edited_by: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
     setSections(initialSections);
     toast.success("All statements cleared");
-  }, [currentShell, setSections]);
+  }, [currentShell, setSections, sentencesPerStatement]);
 
   // Combine all statements for preview
   const allStatementsForPreview = useMemo(() => {
@@ -822,8 +823,7 @@ export default function AwardPage() {
                         {cat.statements.map((stmt, idx) => (
                           <div key={idx} className="border-l-2 border-primary/30 pl-3">
                             <BulletCanvasPreview
-                              statement={stmt}
-                              showLineMetrics={true}
+                              text={stmt}
                             />
                           </div>
                         ))}
