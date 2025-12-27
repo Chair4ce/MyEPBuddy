@@ -49,7 +49,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { Accomplishment, UserAPIKeys, WritingStyle, UserLLMSettings, Profile } from "@/types/database";
+import type { Accomplishment, WritingStyle, UserLLMSettings, Profile } from "@/types/database";
+import { getKeyStatus } from "@/app/actions/api-keys";
 import { EPBShellForm } from "@/components/epb/epb-shell-form";
 
 export default function GeneratePage() {
@@ -127,29 +128,20 @@ export default function GeneratePage() {
     async function checkUserKeys() {
       if (!profile) return;
 
-      const { data } = await supabase
-        .from("user_api_keys")
-        .select("*")
-        .eq("user_id", profile.id)
-        .single();
-
+      // Use server action to check key status (never fetches actual keys)
+      const keyStatus = await getKeyStatus();
       const selectedProvider = AI_MODELS.find((m) => m.id === selectedModel)?.provider;
 
-      if (data) {
-        const typedData = data as unknown as UserAPIKeys;
-        const hasKey =
-          (selectedProvider === "openai" && typedData.openai_key) ||
-          (selectedProvider === "anthropic" && typedData.anthropic_key) ||
-          (selectedProvider === "google" && typedData.google_key) ||
-          (selectedProvider === "xai" && typedData.grok_key);
-        setHasUserKey(!!hasKey);
-      } else {
-        setHasUserKey(false);
-      }
+      const hasKey =
+        (selectedProvider === "openai" && keyStatus.openai_key) ||
+        (selectedProvider === "anthropic" && keyStatus.anthropic_key) ||
+        (selectedProvider === "google" && keyStatus.google_key) ||
+        (selectedProvider === "xai" && keyStatus.grok_key);
+      setHasUserKey(hasKey);
     }
 
     checkUserKeys();
-  }, [profile, selectedModel, supabase]);
+  }, [profile, selectedModel]);
 
   // Load accomplishments when ratee changes
   useEffect(() => {

@@ -57,6 +57,7 @@ import {
   DEFAULT_ACTION_VERBS,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { getKeyStatus } from "@/app/actions/api-keys";
 import {
   Sparkles,
   Copy,
@@ -302,33 +303,20 @@ export default function AwardPage() {
   useEffect(() => {
     async function checkUserKeys() {
       if (!profile) return;
-      const { data, error } = await supabase
-        .from("user_api_keys")
-        .select("openai_key, anthropic_key, google_key, grok_key")
-        .eq("user_id", profile.id)
-        .single();
-
-      if (error || !data) {
-        setHasUserKey(false);
-        return;
-      }
-
-      const keys = data as { 
-        openai_key: string | null; 
-        anthropic_key: string | null; 
-        google_key: string | null; 
-        grok_key: string | null; 
-      };
+      
+      // Use server action to check key status (never fetches actual keys)
+      const keyStatus = await getKeyStatus();
       const selectedProvider = AI_MODELS.find((m) => m.id === selectedModel)?.provider;
+      
       const hasKey =
-        (selectedProvider === "openai" && !!keys.openai_key) ||
-        (selectedProvider === "anthropic" && !!keys.anthropic_key) ||
-        (selectedProvider === "google" && !!keys.google_key) ||
-        (selectedProvider === "xai" && !!keys.grok_key);
+        (selectedProvider === "openai" && keyStatus.openai_key) ||
+        (selectedProvider === "anthropic" && keyStatus.anthropic_key) ||
+        (selectedProvider === "google" && keyStatus.google_key) ||
+        (selectedProvider === "xai" && keyStatus.grok_key);
       setHasUserKey(hasKey);
     }
     checkUserKeys();
-  }, [profile, selectedModel, supabase]);
+  }, [profile, selectedModel]);
 
   // Load nominee info and accomplishments
   useEffect(() => {
