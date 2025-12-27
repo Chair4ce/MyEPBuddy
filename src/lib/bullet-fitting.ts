@@ -145,8 +145,8 @@ const DEFAULT_CHAR_WIDTH = 8;
 // AF Form 1206 line width in pixels
 // Based on pdf-bullets project: https://github.com/AF-VCD/pdf-bullets
 // Form width = 202.321mm, DPI = 96, MM_PER_IN = 25.4
-// Width = 202.321 * (96 / 25.4) = 765.33px
-export const AF1206_LINE_WIDTH_PX = 765;
+// Width = 202.321 * (96 / 25.4) ≈ 765.95px (matching pdf-bullets project)
+export const AF1206_LINE_WIDTH_PX = 765.95;
 
 // Unicode special spaces for optimization
 const THIN_SPACE = '\u2006';   // Narrower than normal space
@@ -675,4 +675,83 @@ export function visualizeOptimizedText(text: string): string {
   return text
     .replace(/\u2006/g, '⋅')  // thin space → middle dot
     .replace(/\u2004/g, '·'); // medium space → bullet
+}
+
+/**
+ * Visual line segment representing a portion of text that fits on one line
+ */
+export interface VisualLineSegment {
+  text: string;
+  startIndex: number;
+  endIndex: number;
+  width: number;
+  isCompressed: boolean;
+}
+
+/**
+ * Get visual line segments based on text width wrapping.
+ * This calculates where text would naturally wrap at the given line width.
+ */
+export function getVisualLineSegments(
+  text: string,
+  targetWidthPx: number = AF1206_LINE_WIDTH_PX
+): VisualLineSegment[] {
+  if (!text.trim()) return [];
+  
+  const segments: VisualLineSegment[] = [];
+  let currentLineStart = 0;
+  let currentLineWidth = 0;
+  let lastBreakableIndex = 0;
+  let lastBreakableWidth = 0;
+  
+  // Characters after which we can break (similar to PDF word wrap behavior)
+  const breakableChars = new Set([' ', '-', '/', '|', '?', '!', '\u2006', '\u2004']);
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const charWidth = getCharWidth(char);
+    
+    // Track last breakable position
+    if (breakableChars.has(char)) {
+      lastBreakableIndex = i + 1; // Break after this character
+      lastBreakableWidth = currentLineWidth + charWidth;
+    }
+    
+    // Check if adding this character would overflow
+    if (currentLineWidth + charWidth > targetWidthPx && currentLineStart < i) {
+      // We need to wrap - use last breakable position if available
+      const breakIndex = lastBreakableIndex > currentLineStart ? lastBreakableIndex : i;
+      const lineText = text.substring(currentLineStart, breakIndex);
+      
+      segments.push({
+        text: lineText,
+        startIndex: currentLineStart,
+        endIndex: breakIndex,
+        width: getTextWidthPx(lineText),
+        isCompressed: lineText.includes('\u2006'),
+      });
+      
+      currentLineStart = breakIndex;
+      currentLineWidth = lastBreakableIndex > currentLineStart ? 
+        currentLineWidth + charWidth - lastBreakableWidth : charWidth;
+      lastBreakableIndex = currentLineStart;
+      lastBreakableWidth = 0;
+    } else {
+      currentLineWidth += charWidth;
+    }
+  }
+  
+  // Add the last line
+  if (currentLineStart < text.length) {
+    const lineText = text.substring(currentLineStart);
+    segments.push({
+      text: lineText,
+      startIndex: currentLineStart,
+      endIndex: text.length,
+      width: getTextWidthPx(lineText),
+      isCompressed: lineText.includes('\u2006'),
+    });
+  }
+  
+  return segments;
 }

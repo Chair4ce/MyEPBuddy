@@ -10,9 +10,21 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-
-// Import encryption functions
 import { randomBytes, createCipheriv } from "crypto";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
+
+// Manually load .env.local
+const envPath = join(process.cwd(), ".env.local");
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const match = line.match(/^([^#=]+)=(.+)$/);
+    if (match && !process.env[match[1].trim()]) {
+      process.env[match[1].trim()] = match[2].trim();
+    }
+  }
+}
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;

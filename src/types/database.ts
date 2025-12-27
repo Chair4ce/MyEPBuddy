@@ -509,6 +509,65 @@ export interface EPBSectionLock {
   expires_at: string;
 }
 
+// ============================================
+// AWARD SHELL TYPES (mirrors EPB Shell structure)
+// ============================================
+
+export interface AwardShell {
+  id: string;
+  user_id: string;
+  team_member_id: string | null;
+  created_by: string;
+  cycle_year: number;
+  award_level: AwardLevel;
+  award_category: AwardCategory;
+  sentences_per_statement: 2 | 3;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  sections?: AwardShellSection[];
+  owner_profile?: Profile;
+  owner_team_member?: ManagedMember;
+  creator_profile?: Profile;
+}
+
+export interface AwardShellSection {
+  id: string;
+  shell_id: string;
+  category: string; // 1206 category key
+  slot_index: number;
+  statement_text: string;
+  source_type: 'actions' | 'custom';
+  custom_context: string;
+  selected_action_ids: string[];
+  lines_per_statement: 2 | 3;
+  last_edited_by: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  snapshots?: AwardShellSnapshot[];
+}
+
+export interface AwardShellSnapshot {
+  id: string;
+  section_id: string;
+  statement_text: string;
+  created_by: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface AwardShellShare {
+  id: string;
+  shell_id: string;
+  owner_id: string;
+  share_type: 'user';
+  shared_with_id: string;
+  created_at: string;
+  // Joined fields
+  shared_with_profile?: Profile;
+}
+
 // JSON type for Supabase
 type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 

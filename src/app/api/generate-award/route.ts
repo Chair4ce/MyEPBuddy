@@ -35,7 +35,13 @@ interface GenerateAwardRequest {
   sentencesPerStatement?: 2 | 3;
   categoriesToGenerate?: string[];
   combineEntries?: boolean;
-  accomplishments: AccomplishmentData[];
+  accomplishments?: AccomplishmentData[];
+  // Custom context mode
+  customContext?: string;
+  // Revision mode for existing statements
+  existingStatement?: string;
+  revisionMode?: "add" | "replace";
+  revisionIntensity?: number; // 0-100, controls how much the statement gets rewritten
 }
 
 interface StatementGroup {
@@ -215,11 +221,57 @@ export async function POST(request: Request) {
       categoriesToGenerate,
       combineEntries = false,
       accomplishments,
+      customContext,
+      existingStatement,
+      revisionMode = "add",
+      revisionIntensity = 50,
     } = body;
 
-    if (!nomineeRank || !accomplishments || accomplishments.length === 0) {
+    const isCustomContextMode = !!customContext && customContext.trim().length > 0;
+    const isRevisionMode = !!existingStatement && existingStatement.trim().length > 0;
+    
+    // Map intensity to descriptive guidance
+    const getIntensityGuidance = (intensity: number): string => {
+      if (intensity < 25) {
+        return `MINIMAL REWRITE (${intensity}% intensity):
+- Keep as much of the original wording as possible
+- Only change words/phrases that directly conflict with the new metrics
+- Preserve the original sentence structure completely
+- Make surgical, targeted edits only`;
+      } else if (intensity < 50) {
+        return `LIGHT REWRITE (${intensity}% intensity):
+- Preserve most of the original wording and structure
+- Allow minor rephrasing for better flow when incorporating new data
+- Keep the overall sentence structure similar
+- Focus changes on metric integration, not style`;
+      } else if (intensity < 75) {
+        return `MODERATE REWRITE (${intensity}% intensity):
+- Balance between preserving original content and fresh writing
+- Restructure sentences if it improves clarity or impact
+- Feel free to rephrase for better flow
+- Maintain the core message but improve delivery`;
+      } else {
+        return `AGGRESSIVE REWRITE (${intensity}% intensity):
+- Completely rewrite the statement while incorporating the metrics
+- Use fresh, powerful language and structure
+- Feel free to reorganize and restructure entirely
+- Only the facts/metrics should remain, not the original phrasing`;
+      }
+    };
+    
+    const intensityGuidance = isRevisionMode ? getIntensityGuidance(revisionIntensity) : '';
+
+    if (!nomineeRank) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing nominee rank" },
+        { status: 400 }
+      );
+    }
+
+    // Validate based on mode
+    if (!isCustomContextMode && (!accomplishments || accomplishments.length === 0)) {
+      return NextResponse.json(
+        { error: "Missing accomplishments or custom context" },
         { status: 400 }
       );
     }
@@ -243,6 +295,136 @@ export async function POST(request: Request) {
     const sentencesPerCategory = settings.award_sentences_per_category || 
       DEFAULT_AWARD_SETTINGS.award_sentences_per_category;
 
+    const results: { category: string; statementGroups: StatementGroup[] }[] = [];
+    const levelGuidance = getAwardLevelGuidance(awardLevel);
+
+    // Filter categories to generate
+    const targetCategories = categoriesToGenerate && categoriesToGenerate.length > 0
+      ? AWARD_1206_CATEGORIES.filter(c => categoriesToGenerate.includes(c.key))
+      : AWARD_1206_CATEGORIES;
+
+    // ============================================================
+    // CUSTOM CONTEXT MODE: Generate from raw text input
+    // ============================================================
+    if (isCustomContextMode) {
+      for (const category of targetCategories) {
+        // Build revision-specific instructions if we have existing content
+        const revisionInstructions = isRevisionMode ? `
+EXISTING STATEMENT TO REVISE:
+${existingStatement}
+
+REVISION MODE: ${revisionMode === "add" ? "ADD METRICS" : "REPLACE METRICS"}
+${revisionMode === "add" 
+  ? `**ADDITIVE REVISION INSTRUCTIONS:**
+- The source context contains ADDITIONAL metrics/accomplishments to ADD to the existing statement
+- COMBINE metrics: If existing says "4 hours" and source says "4 hours", the result should be "8 hours"
+- FUSE the content: Keep the best elements of the existing statement while incorporating new metrics
+- Sum up quantities: hours, personnel, dollars, percentages should be TOTALED together
+- Preserve the existing narrative flow while enhancing with additional context
+- The goal is to create a MORE COMPLETE statement with COMBINED metrics`
+  : `**REPLACEMENT REVISION INSTRUCTIONS:**
+- The source context represents the TOTAL/CORRECT metrics for this accomplishment
+- REPLACE any conflicting metrics in the existing statement with the source data
+- The source is authoritative - use its numbers/metrics as the final truth
+- Keep the writing style and structure of the existing statement
+- Update facts/metrics but preserve the narrative quality`
+}
+
+**REWRITE INTENSITY:**
+${intensityGuidance}` : '';
+
+        const customPrompt = `${isRevisionMode ? 'REVISE' : 'Generate'} HIGH-DENSITY AF Form 1206 narrative statement(s) for the "${category.heading}" section.
+Provide ${versionsPerStatement} different versions so the user can choose the best one.
+
+${isRevisionMode 
+  ? 'REVISE the existing statement using the source text below, following the revision mode instructions carefully.'
+  : 'TRANSFORM the following raw text/paragraph into polished, award-worthy narrative statement(s). Extract key accomplishments, quantify where possible, and enhance with mission impact.'}
+
+NOMINEE: ${nomineeRank} ${nomineeName} | AFSC: ${nomineeAfsc || "N/A"}
+AWARD LEVEL: ${awardLevel.toUpperCase()} | CATEGORY: ${awardCategory.toUpperCase()}
+AWARD PERIOD: ${awardPeriod}
+
+LEVEL-SPECIFIC GUIDANCE:
+${levelGuidance}
+${revisionInstructions}
+
+SOURCE TEXT/CONTEXT:
+${customContext}
+
+TRANSFORMATION INSTRUCTIONS:
+- Extract and highlight key actions, achievements, and metrics from the text
+- Infer reasonable mission impacts based on the context (readiness, cost savings, efficiency)
+- Quantify aggressively: if approximate numbers are mentioned, use them; if none, infer reasonable metrics
+- Connect accomplishments to larger organizational impact (flight → squadron → wing → AF)
+- Use your military expertise to enhance with standard AF outcomes and terminology
+
+**LINE COUNT & CHARACTER BUDGET - CRITICAL:**
+Target: ${sentencesPerStatement} lines on AF Form 1206 (Times New Roman 12pt, 765.95px line width)
+${sentencesPerStatement === 2 
+  ? `CHARACTER TARGET: 220-260 characters total (~110-130 per line)
+This is a 2-LINE statement. Write CONCISELY - use impactful, dense phrasing.`
+  : `CHARACTER TARGET: 330-390 characters total (~110-130 per line)  
+This is a 3-LINE statement. You have more room - add additional impacts and metrics.`}
+
+The user will fine-tune character spacing after generation using our fitting tools, so focus on:
+- Hitting the approximate character target range
+- Dense, high-impact content with quantified results
+- Strong action verbs and cascading impacts
+
+CRITICAL 1206 REQUIREMENTS:
+1. EVERY statement MUST start with "- " (dash space) followed by the text
+2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
+3. Typically ${sentencesPerStatement} sentences, but character count matters more than sentence count
+4. Write in narrative-style (complete sentences/paragraphs, not bullet format)
+5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
+6. Start with strong action verbs in active voice
+7. Connect to ${awardLevel}-level mission impact
+8. Include the nominee's name or rank naturally when appropriate
+
+**PUNCTUATION - EXTREMELY IMPORTANT:**
+- NEVER use em-dashes (--) - this is STRICTLY FORBIDDEN
+- NEVER use semicolons (;) or slashes (/)
+- ONLY use commas (,) to connect clauses and chain impacts
+
+Generate EXACTLY 1 statement group with ${versionsPerStatement} alternative versions.
+AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
+
+Format as JSON array (EACH statement must start with "- "):
+["- Version A", "- Version B", "- Version C"]`;
+
+        try {
+          const { text } = await generateText({
+            model: modelProvider,
+            system: systemPrompt,
+            prompt: customPrompt,
+            temperature: 0.8,
+            maxTokens: 2000,
+          });
+
+          // Parse JSON array from response
+          const jsonMatch = text.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            const versions = JSON.parse(jsonMatch[0]) as string[];
+            results.push({
+              category: category.key,
+              statementGroups: [{
+                versions: versions.map(v => v.trim()),
+                sourceAccomplishmentIds: [],
+              }],
+            });
+          }
+        } catch (parseError) {
+          console.error(`Error generating custom context for ${category.key}:`, parseError);
+        }
+      }
+
+      return NextResponse.json({ statements: results });
+    }
+
+    // ============================================================
+    // ACCOMPLISHMENTS MODE: Generate from structured performance actions
+    // ============================================================
+    
     // Map MPAs to 1206 categories
     // Leadership & Job Performance: executing_mission, leading_people, managing_resources
     // Self-Improvement: improving_unit (education/training focused entries)
@@ -259,7 +441,7 @@ export async function POST(request: Request) {
     };
 
     // Group accomplishments by 1206 category
-    const accomplishmentsByCategory = accomplishments.reduce(
+    const accomplishmentsByCategory = (accomplishments || []).reduce(
       (acc, a) => {
         // Map MPA to 1206 category, default to leadership_job_performance
         const category1206 = mpaTo1206Category[a.mpa] || "leadership_job_performance";
@@ -269,14 +451,6 @@ export async function POST(request: Request) {
       },
       {} as Record<string, AccomplishmentData[]>
     );
-
-    const results: { category: string; statementGroups: StatementGroup[] }[] = [];
-    const levelGuidance = getAwardLevelGuidance(awardLevel);
-
-    // Filter categories to generate
-    const targetCategories = categoriesToGenerate && categoriesToGenerate.length > 0
-      ? AWARD_1206_CATEGORIES.filter(c => categoriesToGenerate.includes(c.key))
-      : AWARD_1206_CATEGORIES;
 
     // Generate statements for each 1206 category
     for (const category of targetCategories) {
@@ -290,11 +464,36 @@ export async function POST(request: Request) {
       const categoryResults: StatementGroup[] = [];
 
       if (combineEntries) {
+        // Build revision-specific instructions for accomplishments mode
+        const accomplishmentsRevisionInstructions = isRevisionMode ? `
+EXISTING STATEMENT TO REVISE:
+${existingStatement}
+
+REVISION MODE: ${revisionMode === "add" ? "ADD METRICS" : "REPLACE METRICS"}
+${revisionMode === "add" 
+  ? `**ADDITIVE REVISION INSTRUCTIONS:**
+- The accomplishments below contain ADDITIONAL metrics to ADD to the existing statement
+- COMBINE metrics: Sum up hours, personnel counts, dollar amounts, etc.
+- Example: If existing says "volunteered 4 hours" and actions show "4 more hours", result should be "volunteered 8 hours"
+- FUSE the content: Keep the best elements of the existing statement while incorporating new metrics
+- The goal is to create a MORE COMPLETE statement with COMBINED/TOTALED metrics`
+  : `**REPLACEMENT REVISION INSTRUCTIONS:**
+- The accomplishments below represent the TOTAL/CORRECT metrics for this accomplishment
+- REPLACE any conflicting metrics in the existing statement with the source data
+- The source accomplishments are authoritative - use their numbers/metrics as the final truth
+- Keep the writing style and structure of the existing statement`
+}
+
+**REWRITE INTENSITY:**
+${intensityGuidance}` : '';
+
         // COMBINE MODE: Merge all accomplishments into one powerful statement
-        const combinedPrompt = `Generate ${statementsPerEntry} HIGH-DENSITY AF Form 1206 narrative statement(s) for the "${category.heading}" section.
+        const combinedPrompt = `${isRevisionMode ? 'REVISE' : 'Generate'} ${statementsPerEntry} HIGH-DENSITY AF Form 1206 narrative statement(s) for the "${category.heading}" section.
 For EACH statement, provide ${versionsPerStatement} different versions so the user can choose the best one.
 
-IMPORTANT: COMBINE all the accomplishments below into cohesive, powerful statement(s). If there are similar metrics (like volunteer hours, training counts, etc.), SUM THEM UP and present the aggregated total.
+${isRevisionMode 
+  ? 'REVISE the existing statement using the accomplishments below, following the revision mode instructions carefully.'
+  : 'IMPORTANT: COMBINE all the accomplishments below into cohesive, powerful statement(s). If there are similar metrics (like volunteer hours, training counts, etc.), SUM THEM UP and present the aggregated total.'}
 
 NOMINEE: ${nomineeRank} ${nomineeName} | AFSC: ${nomineeAfsc || "N/A"}
 AWARD LEVEL: ${awardLevel.toUpperCase()} | CATEGORY: ${awardCategory.toUpperCase()}
@@ -302,8 +501,9 @@ AWARD PERIOD: ${awardPeriod}
 
 LEVEL-SPECIFIC GUIDANCE:
 ${levelGuidance}
+${accomplishmentsRevisionInstructions}
 
-SOURCE ACCOMPLISHMENTS TO COMBINE:
+SOURCE ACCOMPLISHMENTS${isRevisionMode ? '/CONTEXT' : ' TO COMBINE'}:
 ${categoryAccomplishments
   .map(
     (a, i) => `
@@ -316,22 +516,28 @@ ${categoryAccomplishments
   )
   .join("")}
 
-COMBINATION INSTRUCTIONS:
+${isRevisionMode && revisionMode === "add" ? `COMBINATION INSTRUCTIONS:
 - Identify similar activities and merge them (e.g., "volunteered 4 hrs" + "volunteered 7 hrs" = "volunteered 11 hrs")
 - Sum up any numerical metrics that can be combined
 - Create a cohesive narrative that covers all the key accomplishments
-- Prioritize the most impactful elements if space is limited
+- Prioritize the most impactful elements if space is limited` : !isRevisionMode ? `COMBINATION INSTRUCTIONS:
+- Identify similar activities and merge them (e.g., "volunteered 4 hrs" + "volunteered 7 hrs" = "volunteered 11 hrs")
+- Sum up any numerical metrics that can be combined
+- Create a cohesive narrative that covers all the key accomplishments
+- Prioritize the most impactful elements if space is limited` : ''}
 
-**SENTENCE COUNT - THIS IS MANDATORY:**
-Each statement MUST contain EXACTLY ${sentencesPerStatement} sentences. Not ${sentencesPerStatement === 2 ? "3" : "2"}, not ${sentencesPerStatement === 2 ? "1" : "4"}. EXACTLY ${sentencesPerStatement} sentences.
+**LINE COUNT & CHARACTER BUDGET - CRITICAL:**
+Target: ${sentencesPerStatement} lines on AF Form 1206 (Times New Roman 12pt, 765.95px line width)
 ${sentencesPerStatement === 2 
-  ? "TWO sentences only. Count them: Sentence 1. Sentence 2. STOP."
-  : "THREE sentences only. Count them: Sentence 1. Sentence 2. Sentence 3. STOP."}
+  ? `CHARACTER TARGET: 220-260 characters total (~110-130 per line)
+This is a 2-LINE statement. Write CONCISELY.`
+  : `CHARACTER TARGET: 330-390 characters total (~110-130 per line)
+This is a 3-LINE statement. You have more room for impacts and metrics.`}
 
 CRITICAL 1206 REQUIREMENTS:
 1. EVERY statement MUST start with "- " (dash space) followed by the text
-2. **EXACTLY ${sentencesPerStatement} SENTENCES** - count periods to verify before outputting
-3. Each statement should be ${sentencesPerStatement === 2 ? "150-280" : "280-420"} characters
+2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
+3. Typically ${sentencesPerStatement} sentences, but character count matters more
 4. Write in narrative-style (complete sentences/paragraphs, not bullet format)
 5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
 6. Start with strong action verbs in active voice
@@ -343,7 +549,7 @@ CRITICAL 1206 REQUIREMENTS:
 - ONLY use commas (,) to connect clauses and chain impacts
 
 Generate EXACTLY ${statementsPerEntry} statement group(s), each with ${versionsPerStatement} alternative versions.
-VERIFY: Each statement has EXACTLY ${sentencesPerStatement} sentences (${sentencesPerStatement} periods).
+AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
 
 Format as JSON array of arrays (EACH statement must start with "- "):
 [
@@ -372,9 +578,34 @@ Format as JSON array of arrays (EACH statement must start with "- "):
         }
       } else {
         // SEPARATE MODE: Generate statements for each entry individually
+        // Build revision-specific instructions for individual accomplishments mode
+        const individualRevisionInstructions = isRevisionMode ? `
+EXISTING STATEMENT TO REVISE:
+${existingStatement}
+
+REVISION MODE: ${revisionMode === "add" ? "ADD METRICS" : "REPLACE METRICS"}
+${revisionMode === "add" 
+  ? `**ADDITIVE REVISION INSTRUCTIONS:**
+- The accomplishment below contains ADDITIONAL metrics to ADD to the existing statement
+- COMBINE metrics: Sum up hours, personnel counts, dollar amounts, etc.
+- FUSE the content: Keep the best elements of the existing statement while incorporating new metrics
+- The goal is to create a MORE COMPLETE statement with COMBINED/TOTALED metrics`
+  : `**REPLACEMENT REVISION INSTRUCTIONS:**
+- The accomplishment below represents the TOTAL/CORRECT metrics for this accomplishment
+- REPLACE any conflicting metrics in the existing statement with the source data
+- Keep the writing style and structure of the existing statement`
+}
+
+**REWRITE INTENSITY:**
+${intensityGuidance}` : '';
+
         for (const accomplishment of categoryAccomplishments) {
-          const individualPrompt = `Generate ${statementsPerEntry} HIGH-DENSITY AF Form 1206 narrative statement(s) for the "${category.heading}" section.
+          const individualPrompt = `${isRevisionMode ? 'REVISE' : 'Generate'} ${statementsPerEntry} HIGH-DENSITY AF Form 1206 narrative statement(s) for the "${category.heading}" section.
 For EACH statement, provide ${versionsPerStatement} different versions so the user can choose the best one.
+
+${isRevisionMode 
+  ? 'REVISE the existing statement using the accomplishment below, following the revision mode instructions carefully.'
+  : ''}
 
 NOMINEE: ${nomineeRank} ${nomineeName} | AFSC: ${nomineeAfsc || "N/A"}
 AWARD LEVEL: ${awardLevel.toUpperCase()} | CATEGORY: ${awardCategory.toUpperCase()}
@@ -382,6 +613,7 @@ AWARD PERIOD: ${awardPeriod}
 
 LEVEL-SPECIFIC GUIDANCE:
 ${levelGuidance}
+${individualRevisionInstructions}
 
 SOURCE ACCOMPLISHMENT:
 Action: ${accomplishment.action_verb}
@@ -390,16 +622,18 @@ Impact: ${accomplishment.impact}
 ${accomplishment.metrics ? `Metrics: ${accomplishment.metrics}` : ""}
 Date: ${new Date(accomplishment.date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
 
-**SENTENCE COUNT - THIS IS MANDATORY:**
-Each statement MUST contain EXACTLY ${sentencesPerStatement} sentences. Not ${sentencesPerStatement === 2 ? "3" : "2"}, not ${sentencesPerStatement === 2 ? "1" : "4"}. EXACTLY ${sentencesPerStatement} sentences.
+**LINE COUNT & CHARACTER BUDGET - CRITICAL:**
+Target: ${sentencesPerStatement} lines on AF Form 1206 (Times New Roman 12pt, 765.95px line width)
 ${sentencesPerStatement === 2 
-  ? "TWO sentences only. Count them: Sentence 1. Sentence 2. STOP."
-  : "THREE sentences only. Count them: Sentence 1. Sentence 2. Sentence 3. STOP."}
+  ? `CHARACTER TARGET: 220-260 characters total (~110-130 per line)
+This is a 2-LINE statement. Write CONCISELY.`
+  : `CHARACTER TARGET: 330-390 characters total (~110-130 per line)
+This is a 3-LINE statement. You have more room for impacts and metrics.`}
 
 CRITICAL 1206 REQUIREMENTS:
 1. EVERY statement MUST start with "- " (dash space) followed by the text
-2. **EXACTLY ${sentencesPerStatement} SENTENCES** - count periods to verify before outputting
-3. Each statement should be ${sentencesPerStatement === 2 ? "150-280" : "280-420"} characters
+2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
+3. Typically ${sentencesPerStatement} sentences, but character count matters more
 4. Write in narrative-style (complete sentences/paragraphs, not bullet format)
 5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
 6. Start with strong action verbs in active voice
@@ -412,7 +646,7 @@ CRITICAL 1206 REQUIREMENTS:
 - ONLY use commas (,) to connect clauses and chain impacts
 
 Generate EXACTLY ${statementsPerEntry} statement group(s), each with ${versionsPerStatement} alternative versions.
-VERIFY: Each statement has EXACTLY ${sentencesPerStatement} sentences (${sentencesPerStatement} periods).
+AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
 
 Format as JSON array of arrays (EACH statement must start with "- "):
 [

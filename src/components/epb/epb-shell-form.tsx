@@ -402,8 +402,8 @@ export function EPBShellForm({
     })
     .filter((opt): opt is NonNullable<typeof opt> => opt !== null);
 
-  // LocalStorage key for persisting selected EPB
-  const SELECTED_RATEE_KEY = `epb-selected-ratee-${cycleYear}`;
+  // LocalStorage key for persisting selected EPB (includes profile ID to prevent cross-user issues)
+  const SELECTED_RATEE_KEY = profile ? `epb-selected-ratee-${profile.id}-${cycleYear}` : null;
 
   // Handle ratee selection change
   const handleRateeChange = (value: string) => {
@@ -412,7 +412,9 @@ export function EPBShellForm({
     if (option) {
       setSelectedRatee(option.ratee);
       // Persist to localStorage
-      localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: option.ratee }));
+      if (SELECTED_RATEE_KEY) {
+        localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: option.ratee }));
+      }
       return;
     }
     // Check shared EPB options
@@ -420,7 +422,9 @@ export function EPBShellForm({
     if (sharedOption) {
       setSelectedRatee(sharedOption.ratee);
       // Persist to localStorage
-      localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: sharedOption.ratee }));
+      if (SELECTED_RATEE_KEY) {
+        localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: sharedOption.ratee }));
+      }
     }
   };
 
@@ -553,46 +557,74 @@ export function EPBShellForm({
     loadSharedEPBs();
   }, [profile, supabase]);
 
-  // Initialize with previously selected ratee from localStorage, or default to self
-  // This runs once on mount - we trust localStorage and let shell loading handle access errors
-  const hasInitializedRef = useRef(false);
+  // Track which profile+cycle we've initialized for
+  const [initializedFor, setInitializedFor] = useState<string | null>(null);
   
+  // Initialize ratee selection when profile or cycle changes
   useEffect(() => {
-    if (!profile || hasInitializedRef.current) return;
+    if (!profile) {
+      console.log("[EPB Init] No profile yet");
+      return;
+    }
     
-    // Try to restore from localStorage
+    const initKey = `${profile.id}-${cycleYear}`;
+    console.log("[EPB Init] Check:", { initKey, initializedFor, match: initializedFor === initKey });
+    
+    // Only initialize if this is a new profile/cycle combination
+    if (initializedFor === initKey) return;
+    
+    // Try to restore from localStorage (key includes profile ID to prevent cross-user issues)
+    let rateeToUse: SelectedRatee | null = null;
     try {
-      const savedKey = `epb-selected-ratee-${cycleYear}`;
+      const savedKey = `epb-selected-ratee-${profile.id}-${cycleYear}`;
       const saved = localStorage.getItem(savedKey);
       if (saved) {
         const parsed = JSON.parse(saved) as { value: string; ratee: SelectedRatee };
-        // Trust the saved value - shell loading will handle access errors gracefully
         if (parsed.ratee && parsed.ratee.id) {
-          setSelectedRatee(parsed.ratee);
-          hasInitializedRef.current = true;
-          return;
+          rateeToUse = parsed.ratee;
         }
       }
     } catch {
       // Ignore localStorage errors
     }
     
-    // Default to self
-    setSelectedRatee({
-      id: profile.id,
-      fullName: profile.full_name,
-      rank: profile.rank as SelectedRatee["rank"],
-      afsc: profile.afsc,
-      isManagedMember: false,
-    });
-    hasInitializedRef.current = true;
-  }, [profile, setSelectedRatee, cycleYear]);
+    // Default to self if nothing in localStorage
+    if (!rateeToUse) {
+      rateeToUse = {
+        id: profile.id,
+        fullName: profile.full_name,
+        rank: profile.rank as SelectedRatee["rank"],
+        afsc: profile.afsc,
+        isManagedMember: false,
+      };
+    }
+    
+    setSelectedRatee(rateeToUse);
+    setInitializedFor(initKey);
+  }, [profile, cycleYear, initializedFor, setSelectedRatee]);
 
-  // Load shell when ratee or cycle year changes
+  // Load shell when ratee changes - only after initialization is complete
   useEffect(() => {
+    console.log("[EPB Load] Check:", { 
+      hasRatee: !!selectedRatee, 
+      rateeId: selectedRatee?.id,
+      hasProfile: !!profile,
+      initializedFor,
+      initKey: profile ? `${profile.id}-${cycleYear}` : null
+    });
+    
+    if (!selectedRatee || !profile) return;
+    
+    // Only load if we've completed initialization for this profile/cycle
+    const initKey = `${profile.id}-${cycleYear}`;
+    if (initializedFor !== initKey) {
+      console.log("[EPB Load] Skipping - not initialized yet");
+      return;
+    }
+    
+    console.log("[EPB Load] Loading shell for:", selectedRatee.id);
+    
     async function loadShell() {
-      if (!selectedRatee || !profile) return;
-
       setIsLoadingShell(true);
       try {
         // Build query based on ratee type
@@ -673,7 +705,7 @@ export function EPBShellForm({
     }
 
     loadShell();
-  }, [selectedRatee, cycleYear, profile, supabase, setCurrentShell, setIsLoadingShell, setSnapshots]);
+  }, [initializedFor, selectedRatee, cycleYear, profile, supabase, setCurrentShell, setIsLoadingShell, setSnapshots, setSavedExamples]);
 
   // Track previous visibility state to detect transitions
   const prevPageVisibleRef = useRef(isPageVisible);
