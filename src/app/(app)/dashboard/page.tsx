@@ -20,14 +20,15 @@ import {
   FileText,
   Users,
   Sparkles,
-  Calendar,
-  Target,
   Plus,
+  TrendingUp,
 } from "lucide-react";
-import { ENTRY_MGAS } from "@/lib/constants";
+import { ENTRY_MGAS, SUPERVISOR_RANKS } from "@/lib/constants";
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
 import { EPBStatementStatusCard } from "@/components/epb/epb-statement-status-card";
+import { TeamAccomplishmentsFeed } from "@/components/dashboard/team-accomplishments-feed";
+import type { Rank } from "@/types/database";
 
 export default function DashboardPage() {
   const { profile, subordinates, epbConfig } = useUserStore();
@@ -41,6 +42,10 @@ export default function DashboardPage() {
 
   const supabase = createClient();
   const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
+
+  // Check if user is a supervisor rank
+  const isSupervisorRank =
+    profile?.rank && SUPERVISOR_RANKS.includes(profile.rank as Rank);
 
   useEffect(() => {
     async function loadAccomplishments() {
@@ -93,7 +98,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-6xl mx-auto space-y-6">
       {/* Welcome Section */}
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight">
@@ -134,63 +139,6 @@ export default function DashboardPage() {
       {/* Pending Prior Data Reviews */}
       <PendingPriorDataCard />
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Entries</CardTitle>
-            <FileText className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalEntries}</div>
-            <p className="text-xs text-muted-foreground">
-              For {cycleYear} cycle
-            </p>
-          </CardContent>
-        </Card> */}
-{/* 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">This Month</CardTitle>
-            <Calendar className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.thisMonth}</div>
-            <p className="text-xs text-muted-foreground">New entries added</p>
-          </CardContent>
-        </Card> */}
-
-        {/* {(subordinates.length > 0 || profile?.role === "admin") && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                Team Members
-              </CardTitle>
-              <Users className="size-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{subordinates.length}</div>
-              <p className="text-xs text-muted-foreground">
-                Under your supervision
-              </p>
-            </CardContent>
-          </Card>
-        )} */}
-
-        {/* <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Coverage</CardTitle>
-            <Target className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Object.keys(stats.byMPA).length}/{mgas.length}
-            </div>
-            <p className="text-xs text-muted-foreground">MPAs with entries</p>
-          </CardContent>
-        </Card> */}
-      </div>
-
       {/* EPB Progress - Statement status */}
       {profile && (
         <EPBStatementStatusCard
@@ -199,49 +147,11 @@ export default function DashboardPage() {
           isManagedMember={false}
           managedMemberId={null}
           cycleYear={cycleYear}
-          title="EPB Progress"
+          title="My EPB Progress"
         />
       )}
 
-      {/* Team Summary - For civilians or supervisors with subordinates */}
-      {profile?.rank === "Civilian" && subordinates.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="size-5" />
-              Team Overview
-            </CardTitle>
-            <CardDescription>
-              Quick view of your team&apos;s performance tracking status
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg border bg-muted/50 text-center">
-                <div className="text-3xl font-bold">{subordinates.length}</div>
-                <p className="text-sm text-muted-foreground">Direct Reports</p>
-              </div>
-              <div className="p-4 rounded-lg border bg-muted/50 text-center">
-                <div className="text-3xl font-bold">—</div>
-                <p className="text-sm text-muted-foreground">Entries This Month</p>
-              </div>
-            </div>
-            <div className="text-center pt-2">
-              <Button variant="outline" asChild>
-                <Link href="/team">
-                  <Users className="size-4 mr-2" />
-                  View Full Team Status
-                </Link>
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground text-center">
-              Civilian performance tracking coming soon. For now, use the Team page to manage your subordinates&apos; EPB progress.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Recent Entries */}
+      {/* Recent Entries - Personal accomplishments */}
       <Card>
         <CardHeader>
           <CardTitle>Recent Entries</CardTitle>
@@ -304,13 +214,69 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Team Activity Feed - For Supervisors */}
+      {isSupervisorRank && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="size-5 text-primary" />
+              Team Activity Feed
+            </CardTitle>
+            <CardDescription>
+              Recent accomplishments from your subordinates and their teams
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TeamAccomplishmentsFeed cycleYear={cycleYear} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Team Summary - For civilians or supervisors with subordinates */}
+      {profile?.rank === "Civilian" && subordinates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="size-5" />
+              Team Overview
+            </CardTitle>
+            <CardDescription>
+              Quick view of your team&apos;s performance tracking status
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                <div className="text-3xl font-bold">{subordinates.length}</div>
+                <p className="text-sm text-muted-foreground">Direct Reports</p>
+              </div>
+              <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                <div className="text-3xl font-bold">—</div>
+                <p className="text-sm text-muted-foreground">Entries This Month</p>
+              </div>
+            </div>
+            <div className="text-center pt-2">
+              <Button variant="outline" asChild>
+                <Link href="/team">
+                  <Users className="size-4 mr-2" />
+                  View Full Team Status
+                </Link>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Civilian performance tracking coming soon. For now, use the Team page to manage your subordinates&apos; EPB progress.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-6xl mx-auto space-y-6">
       <div className="space-y-2">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-48" />
@@ -321,20 +287,7 @@ function DashboardSkeleton() {
         <Skeleton className="h-10 w-36" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <Skeleton className="h-4 w-24" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-12 mb-1" />
-              <Skeleton className="h-3 w-20" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
+      {/* EPB Progress Skeleton */}
       <Card>
         <CardHeader>
           <Skeleton className="h-6 w-32" />
@@ -352,7 +305,49 @@ function DashboardSkeleton() {
           ))}
         </CardContent>
       </Card>
+
+      {/* Team Feed Skeleton */}
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-72" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex gap-3 p-4 border rounded-lg">
+              <Skeleton className="size-10 rounded-full shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+                <Skeleton className="h-4 w-full" />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Recent Entries Skeleton */}
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-64" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="p-4 border rounded-lg space-y-2">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
