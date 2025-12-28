@@ -92,8 +92,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
             .in("id", subordinateIds);
 
           if (profiles) {
-            profiles.forEach((p) => {
-              profilesMap[p.id] = p as unknown as Profile;
+            (profiles as unknown as Profile[]).forEach((p) => {
+              profilesMap[p.id] = p;
             });
           }
         }
@@ -341,8 +341,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
           .in("id", missingIds);
 
         if (missingProfiles) {
-          missingProfiles.forEach((p) => {
-            profilesMap[p.id] = p as unknown as Profile;
+          (missingProfiles as unknown as Profile[]).forEach((p) => {
+            profilesMap[p.id] = p;
           });
         }
       }

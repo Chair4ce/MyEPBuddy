@@ -256,7 +256,7 @@ function buildExamplesSection(examples: AwardExampleStatement[], category: strin
   // Prioritize winning examples
   const sortedExamples = [...categoryExamples].sort((a, b) => {
     // Winning at higher levels first
-    const levelOrder: Record<WinLevel, number> = { haf: 5, majcom: 4, wing: 3, group: 2, squadron: 1 };
+    const levelOrder: Record<WinLevel, number> = { haf: 5, tenant_unit: 4, wing: 3, group: 2, squadron: 1 };
     const aScore = a.is_winning ? (levelOrder[a.win_level as WinLevel] || 0) + 10 : 0;
     const bScore = b.is_winning ? (levelOrder[b.win_level as WinLevel] || 0) + 10 : 0;
     return bScore - aScore;

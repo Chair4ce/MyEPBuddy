@@ -527,6 +527,8 @@ export interface EPBSectionLock {
 // AWARD SHELL TYPES (mirrors EPB Shell structure)
 // ============================================
 
+export type AwardPeriodType = 'annual' | 'quarterly' | 'special';
+
 export interface AwardShell {
   id: string;
   user_id: string;
@@ -536,6 +538,12 @@ export interface AwardShell {
   award_level: AwardLevel;
   award_category: AwardCategory;
   sentences_per_statement: 2 | 3;
+  // Award period fields
+  award_period_type: AwardPeriodType;
+  quarter: 1 | 2 | 3 | 4 | null;
+  is_fiscal_year: boolean;
+  period_start_date: string | null;
+  period_end_date: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
