@@ -167,7 +167,8 @@ export async function getAccomplishmentCommentCounts(accomplishmentIds: string[]
     return { error: "Not authenticated" };
   }
 
-  const { data, error } = await supabase.rpc("get_accomplishment_comment_counts", {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.rpc as any)("get_accomplishment_comment_counts", {
     acc_ids: accomplishmentIds,
   });
 
