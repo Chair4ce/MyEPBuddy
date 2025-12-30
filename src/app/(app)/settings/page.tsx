@@ -260,6 +260,7 @@ export default function SettingsPage() {
     }
   }
 
+  // Sync form with profile data when profile loads
   useEffect(() => {
     if (profile) {
       setForm({
@@ -470,7 +471,7 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="rank">Rank</Label>
                 <Select
-                  value={form.rank}
+                  value={form.rank || profile?.rank || ""}
                   onValueChange={(value) =>
                     setForm({ ...form, rank: value as Rank })
                   }
