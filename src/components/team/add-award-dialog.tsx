@@ -34,6 +34,7 @@ import {
   AWARD_CATEGORIES,
   AWARD_QUARTERS,
   getQuarterDateRange,
+  SPECIAL_AWARDS_CATALOG,
 } from "@/lib/constants";
 import type {
   AwardType,
@@ -109,10 +110,14 @@ export function AddAwardDialog({
   // Special award name
   const [awardName, setAwardName] = useState("");
   const [selectedCatalogAward, setSelectedCatalogAward] = useState<string>("");
+  const [selectedAwardCategory, setSelectedAwardCategory] = useState<string>("");
+  const [isCustomAward, setIsCustomAward] = useState(false);
 
-  // Team award
-  const [isTeamAward, setIsTeamAward] = useState(false);
+  // Team award - derived from category selection
   const [selectedTeamMembers, setSelectedTeamMembers] = useState<Set<string>>(new Set());
+  
+  // Team award is determined by category selection
+  const isTeamAward = awardCategory === "team";
 
   const supabase = createClient();
   const currentYear = new Date().getFullYear();
@@ -141,7 +146,8 @@ export function AddAwardDialog({
       setAwardCategory("nco");
       setAwardName("");
       setSelectedCatalogAward("");
-      setIsTeamAward(false);
+      setSelectedAwardCategory("");
+      setIsCustomAward(false);
       setSelectedTeamMembers(new Set());
     }
   }, [open, recipientProfileId, recipientTeamMemberId]);
@@ -230,9 +236,15 @@ export function AddAwardDialog({
       }
     }
 
-    if (awardType === "special" && !awardName.trim() && !selectedCatalogAward) {
-      toast.error("Please select or enter an award name");
-      return;
+    if (awardType === "special") {
+      if (isCustomAward && !awardName.trim()) {
+        toast.error("Please enter an award name");
+        return;
+      }
+      if (!isCustomAward && !selectedCatalogAward) {
+        toast.error("Please select an award");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -273,8 +285,8 @@ export function AddAwardDialog({
             award_year: ["quarterly", "annual", "special"].includes(awardType) ? awardYear : null,
             period_start: periodStart,
             period_end: periodEnd,
-            award_level: ["quarterly", "annual", "special"].includes(awardType) ? awardLevel : null,
-            award_category: ["quarterly", "annual", "special"].includes(awardType) ? awardCategory : null,
+            award_level: ["quarterly", "annual"].includes(awardType) ? awardLevel : null,
+            award_category: ["quarterly", "annual"].includes(awardType) ? awardCategory : null,
             is_team_award: isTeamAward,
             cycle_year: cycleYear,
           } as never)
@@ -319,8 +331,8 @@ export function AddAwardDialog({
             award_year: ["quarterly", "annual", "special"].includes(awardType) ? awardYear : null,
             period_start: periodStart,
             period_end: periodEnd,
-            award_level: ["quarterly", "annual", "special"].includes(awardType) ? awardLevel : null,
-            award_category: ["quarterly", "annual", "special"].includes(awardType) ? awardCategory : null,
+            award_level: ["quarterly", "annual"].includes(awardType) ? awardLevel : null,
+            award_category: ["quarterly", "annual"].includes(awardType) ? awardCategory : null,
             is_team_award: isTeamAward,
             cycle_year: cycleYear,
           } as never)
@@ -495,43 +507,90 @@ export function AddAwardDialog({
             {/* Quarterly/Annual/Special fields */}
             {["quarterly", "annual", "special"].includes(awardType) && (
               <>
-                {/* Award Name (for special) or Catalog Selection */}
+                {/* Special Award Selection */}
                 {awardType === "special" && (
-                  <div className="space-y-2">
-                    <Label>Award Name</Label>
-                    {loadingCatalog ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="size-4 animate-spin" />
-                        Loading awards...
-                      </div>
-                    ) : filteredCatalog.length > 0 ? (
-                      <Select
-                        value={selectedCatalogAward}
-                        onValueChange={(val) => {
-                          setSelectedCatalogAward(val);
-                          setAwardName("");
+                  <div className="space-y-3">
+                    {/* Custom Award Toggle */}
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="isCustomAward"
+                        checked={isCustomAward}
+                        onCheckedChange={(checked) => {
+                          setIsCustomAward(checked as boolean);
+                          if (checked) {
+                            setSelectedCatalogAward("");
+                            setSelectedAwardCategory("");
+                          } else {
+                            setAwardName("");
+                          }
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select from catalog or enter custom" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {filteredCatalog.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.name}>
-                              {cat.name}
-                              {cat.short_name && ` (${cat.short_name})`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : null}
-                    {!selectedCatalogAward && (
-                      <Input
-                        placeholder="Or enter custom award name"
-                        value={awardName}
-                        onChange={(e) => setAwardName(e.target.value)}
-                        className="mt-2"
                       />
+                      <Label htmlFor="isCustomAward" className="cursor-pointer text-sm">
+                        Enter custom award name
+                      </Label>
+                    </div>
+
+                    {isCustomAward ? (
+                      <div className="space-y-2">
+                        <Label>Custom Award Name *</Label>
+                        <Input
+                          placeholder="Enter award name..."
+                          value={awardName}
+                          onChange={(e) => setAwardName(e.target.value)}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Category Selection */}
+                        <div className="space-y-2">
+                          <Label>Award Category *</Label>
+                          <Select
+                            value={selectedAwardCategory}
+                            onValueChange={(val) => {
+                              setSelectedAwardCategory(val);
+                              setSelectedCatalogAward("");
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SPECIAL_AWARDS_CATALOG.map((category) => (
+                                <SelectItem key={category.key} value={category.key}>
+                                  {category.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Award Name Selection (filtered by category) */}
+                        {selectedAwardCategory && (
+                          <div className="space-y-2">
+                            <Label>Award Name *</Label>
+                            <Select
+                              value={selectedCatalogAward}
+                              onValueChange={(val) => {
+                                setSelectedCatalogAward(val);
+                                setAwardName("");
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select an award" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {SPECIAL_AWARDS_CATALOG.find(
+                                  (c) => c.key === selectedAwardCategory
+                                )?.awards.map((award) => (
+                                  <SelectItem key={award} value={award}>
+                                    {award}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -599,114 +658,108 @@ export function AddAwardDialog({
                   </div>
                 )}
 
-                {/* Award Level */}
-                <div className="space-y-2">
-                  <Label>Highest Level Won At</Label>
-                  <Select
-                    value={awardLevel}
-                    onValueChange={(v) => setAwardLevel(v as AwardLevel)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AWARD_LEVELS.map((level) => (
-                        <SelectItem key={level.value} value={level.value}>
-                          {level.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Award Level - Only for quarterly/annual, not special */}
+                {["quarterly", "annual"].includes(awardType) && (
+                  <div className="space-y-2">
+                    <Label>Highest Level Won At</Label>
+                    <Select
+                      value={awardLevel}
+                      onValueChange={(v) => setAwardLevel(v as AwardLevel)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AWARD_LEVELS.map((level) => (
+                          <SelectItem key={level.value} value={level.value}>
+                            {level.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-                {/* Award Category */}
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select
-                    value={awardCategory}
-                    onValueChange={(v) => setAwardCategory(v as AwardCategory)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AWARD_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Award Category - Only for quarterly/annual, not special */}
+                {["quarterly", "annual"].includes(awardType) && (
+                  <div className="space-y-2">
+                    <Label>Category</Label>
+                    <Select
+                      value={awardCategory}
+                      onValueChange={(v) => {
+                        setAwardCategory(v as AwardCategory);
+                        // Clear team members when switching away from team category
+                        if (v !== "team") {
+                          setSelectedTeamMembers(new Set());
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AWARD_CATEGORIES.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </>
             )}
 
-            {/* Team Award Toggle */}
-            {["quarterly", "annual", "special"].includes(awardType) && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="isTeamAward"
-                    checked={isTeamAward}
-                    onCheckedChange={(checked) => setIsTeamAward(checked as boolean)}
-                  />
-                  <Label htmlFor="isTeamAward" className="cursor-pointer">
-                    <span className="flex items-center gap-1">
-                      <Users className="size-3" />
-                      This is a team award
-                    </span>
+            {/* Team member selection - shown when "Team" category is selected */}
+            {["quarterly", "annual"].includes(awardType) && isTeamAward && teamMemberOptions.length > 0 && (
+              <div className="space-y-2 p-3 border rounded-lg bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm flex items-center gap-1">
+                    <Users className="size-3" />
+                    Team Members
                   </Label>
-                </div>
-
-                {/* Team member selection */}
-                {isTeamAward && teamMemberOptions.length > 0 && (
-                  <div className="space-y-2 p-3 border rounded-lg bg-muted/20">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm">Team Members</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 text-xs"
-                          onClick={selectAllTeamMembers}
-                        >
-                          Select All
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 text-xs"
-                          onClick={clearTeamMembers}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                      {teamMemberOptions.map((member) => (
-                        <Badge
-                          key={member.id}
-                          variant={selectedTeamMembers.has(member.id) ? "default" : "outline"}
-                          className={cn(
-                            "cursor-pointer transition-colors",
-                            selectedTeamMembers.has(member.id)
-                              ? "bg-primary"
-                              : "hover:bg-primary/10"
-                          )}
-                          onClick={() => toggleTeamMember(member.id)}
-                        >
-                          {member.rank} {member.name}
-                        </Badge>
-                      ))}
-                    </div>
-                    {selectedTeamMembers.size > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {selectedTeamMembers.size} team member(s) selected
-                      </p>
-                    )}
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={selectAllTeamMembers}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={clearTeamMembers}
+                    >
+                      Clear
+                    </Button>
                   </div>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {teamMemberOptions.map((member) => (
+                    <Badge
+                      key={member.id}
+                      variant={selectedTeamMembers.has(member.id) ? "default" : "outline"}
+                      className={cn(
+                        "cursor-pointer transition-colors",
+                        selectedTeamMembers.has(member.id)
+                          ? "bg-primary"
+                          : "hover:bg-primary/10"
+                      )}
+                      onClick={() => toggleTeamMember(member.id)}
+                    >
+                      {member.rank} {member.name}
+                    </Badge>
+                  ))}
+                </div>
+                {selectedTeamMembers.size > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedTeamMembers.size} team member(s) selected
+                  </p>
                 )}
               </div>
             )}

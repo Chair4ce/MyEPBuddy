@@ -93,9 +93,9 @@ function ImpactButton({
   const configs: Record<ImpactFocus, { label: string; icon: React.ReactNode; activeClass: string }> = {
     none: { label: "Auto", icon: null, activeClass: "bg-primary text-primary-foreground border-primary" },
     time: { label: compact ? "Time" : "Time Saved", icon: <Clock className="size-3" />, activeClass: "bg-emerald-600 text-white border-emerald-600" },
-    cost: { label: compact ? "Cost" : "Cost Savings", icon: <DollarSign className="size-3" />, activeClass: "bg-blue-600 text-white border-blue-600" },
-    resources: { label: compact ? "Resources" : "Resource Efficiency", icon: <Boxes className="size-3" />, activeClass: "bg-purple-600 text-white border-purple-600" },
-    custom: { label: customValue || "Custom", icon: <Pencil className="size-3" />, activeClass: "bg-orange-600 text-white border-orange-600" },
+    cost: { label: compact ? "Cost" : "Cost Savings", icon: <DollarSign className="size-3" />, activeClass: "bg-primary text-primary-foreground border-primary" },
+    resources: { label: compact ? "Resources" : "Resource Efficiency", icon: <Boxes className="size-3" />, activeClass: "bg-primary/80 text-primary-foreground border-primary/80" },
+    custom: { label: customValue || "Custom", icon: <Pencil className="size-3" />, activeClass: "bg-amber-600 text-white border-amber-600" },
   };
 
   const config = configs[focus];

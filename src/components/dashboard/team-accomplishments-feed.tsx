@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import {
@@ -8,10 +8,19 @@ import {
   type FeedAccomplishment,
   type ChainMember,
 } from "@/stores/team-feed-store";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import {
   Users,
   Calendar,
@@ -20,11 +29,29 @@ import {
   TrendingUp,
   UserCheck,
   Award,
-  AlertCircle,
+  MessageSquare,
+  Filter,
+  X,
+  LayoutList,
+  CalendarDays,
 } from "lucide-react";
-import { ENTRY_MGAS, SUPERVISOR_RANKS } from "@/lib/constants";
+import { ENTRY_MGAS, SUPERVISOR_RANKS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange } from "@/lib/constants";
+import { cn } from "@/lib/utils";
+import type { AwardQuarter } from "@/types/database";
 import { AccomplishmentDetailDialog } from "./accomplishment-detail-dialog";
+import { getAccomplishmentCommentCounts } from "@/app/actions/accomplishment-comments";
 import type { Accomplishment, Profile, ManagedMember, Rank } from "@/types/database";
+
+// Time period filter options
+const TIME_PERIODS = [
+  { value: "all", label: "All Time" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "quarter", label: "This Quarter" },
+  { value: "year", label: "This Year" },
+] as const;
+
+type TimePeriod = typeof TIME_PERIODS[number]["value"];
 
 interface TeamAccomplishmentsFeedProps {
   cycleYear: number;
@@ -38,6 +65,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     isLoading,
     hasSubordinates,
     setFeedAccomplishments,
+    updateAccomplishmentCommentCounts,
+    updateAccomplishment,
     setIsLoading,
     setHasSubordinates,
   } = useTeamFeedStore();
@@ -45,6 +74,15 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
   const [selectedAccomplishment, setSelectedAccomplishment] =
     useState<FeedAccomplishment | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Filter states
+  const [memberFilter, setMemberFilter] = useState<string>("all");
+  const [mpaFilter, setMpaFilter] = useState<string>("all");
+  const [timePeriodFilter, setTimePeriodFilter] = useState<TimePeriod>("all");
+  
+  // View mode: list or quarterly
+  const [viewMode, setViewMode] = useState<"list" | "quarterly">("list");
+  const [useFiscalYear, setUseFiscalYear] = useState(false);
 
   // Check if user can have subordinates based on rank
   const canHaveSubordinates =
@@ -220,6 +258,15 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         );
 
         setFeedAccomplishments(feedItems);
+
+        // Load comment counts for all accomplishments
+        if (feedItems.length > 0) {
+          const accIds = feedItems.map((a) => a.id);
+          const countsResult = await getAccomplishmentCommentCounts(accIds);
+          if (countsResult.data) {
+            updateAccomplishmentCommentCounts(countsResult.data);
+          }
+        }
       } catch (error) {
         console.error("Error loading team feed:", error);
       } finally {
@@ -235,6 +282,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     managedMembers,
     supabase,
     setFeedAccomplishments,
+    updateAccomplishmentCommentCounts,
     setIsLoading,
     setHasSubordinates,
   ]);
@@ -390,6 +438,187 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     });
   };
 
+  // Get unique team members for filter dropdown
+  const uniqueMembers = useMemo(() => {
+    const membersMap = new Map<string, { id: string; name: string; rank: Rank | null }>();
+    feedAccomplishments.forEach((acc) => {
+      const memberId = acc.is_managed_member ? acc.managed_member_id : acc.user_id;
+      if (memberId && !membersMap.has(memberId)) {
+        membersMap.set(memberId, {
+          id: memberId,
+          name: acc.author_name,
+          rank: acc.author_rank,
+        });
+      }
+    });
+    return Array.from(membersMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [feedAccomplishments]);
+
+  // Get unique MPAs that exist in accomplishments
+  const availableMpas = useMemo(() => {
+    const mpaSet = new Set(feedAccomplishments.map((acc) => acc.mpa));
+    return ENTRY_MGAS.filter((mpa) => mpaSet.has(mpa.key));
+  }, [feedAccomplishments]);
+
+  // Filter accomplishments
+  const filteredAccomplishments = useMemo(() => {
+    let filtered = feedAccomplishments;
+
+    // Member filter
+    if (memberFilter !== "all") {
+      filtered = filtered.filter((acc) => {
+        const memberId = acc.is_managed_member ? acc.managed_member_id : acc.user_id;
+        return memberId === memberFilter;
+      });
+    }
+
+    // MPA filter
+    if (mpaFilter !== "all") {
+      filtered = filtered.filter((acc) => acc.mpa === mpaFilter);
+    }
+
+    // Time period filter
+    if (timePeriodFilter !== "all") {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (timePeriodFilter) {
+        case "week":
+          // Start of current week (Sunday)
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - now.getDay());
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case "month":
+          // Start of current month
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case "quarter":
+          // Start of current quarter
+          const currentQuarter = Math.floor(now.getMonth() / 3);
+          startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+          break;
+        case "year":
+          // Start of current year
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        default:
+          startDate = new Date(0);
+      }
+
+      filtered = filtered.filter((acc) => new Date(acc.date) >= startDate);
+    }
+
+    return filtered;
+  }, [feedAccomplishments, memberFilter, mpaFilter, timePeriodFilter]);
+
+  // Check if any filters are active
+  const hasActiveFilters = memberFilter !== "all" || mpaFilter !== "all" || timePeriodFilter !== "all";
+
+  // Clear all filters
+  const clearFilters = () => {
+    setMemberFilter("all");
+    setMpaFilter("all");
+    setTimePeriodFilter("all");
+  };
+
+  // Helper to get month key from date string
+  const getMonthKey = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  // Group entries by month for list view with dividers
+  interface MonthGroup {
+    key: string;
+    label: string;
+    shortLabel: string;
+    entries: FeedAccomplishment[];
+  }
+
+  const monthGroups = useMemo((): MonthGroup[] => {
+    const groups: Map<string, MonthGroup> = new Map();
+    
+    filteredAccomplishments.forEach((entry) => {
+      const monthKey = getMonthKey(entry.date);
+      const date = new Date(entry.date);
+      
+      if (!groups.has(monthKey)) {
+        groups.set(monthKey, {
+          key: monthKey,
+          label: date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+          shortLabel: date.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+          entries: [],
+        });
+      }
+      groups.get(monthKey)!.entries.push(entry);
+    });
+
+    // Sort groups by date (most recent first)
+    return Array.from(groups.values()).sort((a, b) => b.key.localeCompare(a.key));
+  }, [filteredAccomplishments]);
+
+  // Group entries by quarter for quarterly view
+  interface QuarterGroup {
+    quarter: AwardQuarter;
+    label: string;
+    dateRange: { start: string; end: string };
+    entries: FeedAccomplishment[];
+    monthGroups: MonthGroup[];
+  }
+
+  const quarterGroups = useMemo((): QuarterGroup[] => {
+    const groups: QuarterGroup[] = AWARD_QUARTERS.map((q) => {
+      const dateRange = useFiscalYear
+        ? getFiscalQuarterDateRange(q.value, cycleYear)
+        : getQuarterDateRange(q.value, cycleYear);
+
+      return {
+        quarter: q.value,
+        label: useFiscalYear ? `FY${cycleYear.toString().slice(-2)} ${q.value}` : `${q.value} ${cycleYear}`,
+        dateRange,
+        entries: [],
+        monthGroups: [],
+      };
+    });
+
+    // Assign filtered entries to quarters based on date
+    filteredAccomplishments.forEach((entry) => {
+      const entryDate = entry.date;
+      for (const group of groups) {
+        if (entryDate >= group.dateRange.start && entryDate <= group.dateRange.end) {
+          group.entries.push(entry);
+          break;
+        }
+      }
+    });
+
+    // Group entries within each quarter by month
+    groups.forEach((group) => {
+      const monthMap: Map<string, MonthGroup> = new Map();
+      
+      group.entries.forEach((entry) => {
+        const monthKey = getMonthKey(entry.date);
+        const date = new Date(entry.date);
+        
+        if (!monthMap.has(monthKey)) {
+          monthMap.set(monthKey, {
+            key: monthKey,
+            label: date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+            shortLabel: date.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+            entries: [],
+          });
+        }
+        monthMap.get(monthKey)!.entries.push(entry);
+      });
+
+      // Sort months within quarter (most recent first)
+      group.monthGroups = Array.from(monthMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+    });
+
+    return groups;
+  }, [filteredAccomplishments, useFiscalYear, cycleYear]);
+
   if (isLoading) {
     return <TeamFeedSkeleton />;
   }
@@ -451,107 +680,346 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
   return (
     <>
       <div className="space-y-4">
-        {/* Feed Stats Header */}
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <Badge variant="secondary" className="gap-1.5">
-            <Award className="size-3.5" />
-            {feedAccomplishments.length} Accomplishments
-          </Badge>
-          <Badge variant="outline" className="gap-1.5">
-            <Users className="size-3.5" />
-            {new Set(feedAccomplishments.map((a) => a.is_managed_member ? a.managed_member_id : a.user_id)).size} Team Members
-          </Badge>
+        {/* Filters & View Controls */}
+        <div className="space-y-3">
+          {/* Primary Filters Row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Member Filter */}
+            <Select value={memberFilter} onValueChange={setMemberFilter}>
+              <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs">
+                <Users className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
+                <SelectValue placeholder="All Members" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Members</SelectItem>
+                {uniqueMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.rank ? `${member.rank} ` : ""}{member.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* MPA Filter */}
+            <Select value={mpaFilter} onValueChange={setMpaFilter}>
+              <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs">
+                <Filter className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
+                <SelectValue placeholder="All MPAs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All MPAs</SelectItem>
+                {availableMpas.map((mpa) => (
+                  <SelectItem key={mpa.key} value={mpa.key}>
+                    {mpa.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Time Period Filter - only show in list view */}
+            {viewMode === "list" && (
+              <Select value={timePeriodFilter} onValueChange={(v) => setTimePeriodFilter(v as TimePeriod)}>
+                <SelectTrigger className="w-full sm:w-[140px] h-8 text-xs">
+                  <Calendar className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="All Time" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_PERIODS.map((period) => (
+                    <SelectItem key={period.value} value={period.value}>
+                      {period.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5 mr-1" />
+                Clear
+              </Button>
+            )}
+
+            <div className="flex-1" />
+
+            {/* View Mode Tabs */}
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "quarterly")}>
+              <TabsList className="h-8">
+                <TabsTrigger value="list" className="gap-1.5 px-2.5 text-xs h-7">
+                  <LayoutList className="size-3.5" />
+                  <span className="hidden sm:inline">List</span>
+                </TabsTrigger>
+                <TabsTrigger value="quarterly" className="gap-1.5 px-2.5 text-xs h-7">
+                  <CalendarDays className="size-3.5" />
+                  <span className="hidden sm:inline">Quarterly</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {/* Fiscal Year Toggle - only show in quarterly view */}
+            {viewMode === "quarterly" && (
+              <div className="flex items-center gap-2 h-8 px-2.5 rounded-md border bg-background text-xs">
+                <span className={cn(!useFiscalYear && "font-medium")}>Cal</span>
+                <Switch
+                  checked={useFiscalYear}
+                  onCheckedChange={setUseFiscalYear}
+                  aria-label="Toggle fiscal year"
+                  className="scale-75"
+                />
+                <span className={cn(useFiscalYear && "font-medium")}>FY</span>
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="gap-1.5 text-xs">
+              <Award className="size-3" />
+              {filteredAccomplishments.length}
+              {hasActiveFilters && ` of ${feedAccomplishments.length}`} Entries
+            </Badge>
+            <Badge variant="outline" className="gap-1.5 text-xs">
+              <Users className="size-3" />
+              {new Set(filteredAccomplishments.map((a) => a.is_managed_member ? a.managed_member_id : a.user_id)).size} Members
+            </Badge>
+          </div>
         </div>
 
         {/* Feed Items */}
-        <div className="space-y-3">
-          {feedAccomplishments.map((acc) => {
-            const mpaLabel =
-              ENTRY_MGAS.find((m) => m.key === acc.mpa)?.label || acc.mpa;
-
-            return (
-              <Card
-                key={acc.id}
-                className="cursor-pointer hover:bg-muted/50 transition-all hover:shadow-md group"
-                onClick={() => handleAccomplishmentClick(acc)}
-                tabIndex={0}
-                role="button"
-                aria-label={`View accomplishment from ${acc.author_name}`}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleAccomplishmentClick(acc);
-                  }
-                }}
-              >
+        {filteredAccomplishments.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground">
+            <Filter className="size-8 mx-auto mb-2 opacity-50" />
+            <p>No accomplishments match the current filters</p>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={clearFilters}
+              className="mt-2"
+            >
+              Clear filters
+            </Button>
+          </div>
+        ) : viewMode === "quarterly" ? (
+          /* Quarterly View */
+          <div className="space-y-4">
+            {quarterGroups.map((group) => (
+              <Card key={group.quarter}>
                 <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    {/* Avatar */}
-                    <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-medium text-primary">
-                      {acc.author_name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .slice(0, 2)
-                        .toUpperCase()}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      {/* Header */}
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div className="min-w-0">
-                          <span className="font-medium text-sm">
-                            {acc.author_rank && (
-                              <span className="text-muted-foreground">
-                                {acc.author_rank}{" "}
-                              </span>
-                            )}
-                            {acc.author_name}
-                          </span>
-                          {acc.chain_depth > 0 && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              • Level {acc.chain_depth}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-                          <Clock className="size-3" />
-                          {formatTimeAgo(acc.created_at)}
-                        </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "flex items-center justify-center size-9 rounded-lg font-bold text-sm",
+                        group.entries.length > 0 
+                          ? "bg-primary text-primary-foreground" 
+                          : "bg-muted text-muted-foreground"
+                      )}>
+                        {group.quarter}
                       </div>
-
-                      {/* MPA and Action */}
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Badge variant="outline" className="text-xs">
-                          {mpaLabel}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {acc.action_verb}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Calendar className="size-3" />
-                          {new Date(acc.date).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
+                      <div>
+                        <p className="font-medium text-sm">{group.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(group.dateRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })} - {new Date(group.dateRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </p>
                       </div>
-
-                      {/* Preview */}
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {acc.details}
-                      </p>
                     </div>
-
-                    {/* Arrow indicator */}
-                    <ChevronRight className="size-5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0 transition-colors mt-2" />
+                    <Badge variant={group.entries.length > 0 ? "default" : "secondary"} className="text-xs">
+                      {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}
+                    </Badge>
                   </div>
+                  
+                  {group.entries.length > 0 && (
+                    <div className="border-t pt-3 space-y-1">
+                      {group.monthGroups.map((monthGroup) => (
+                        <div key={monthGroup.key}>
+                          {/* Month Divider within Quarter */}
+                          <div className="flex items-center gap-2 py-1.5">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              <span className="hidden sm:inline">{monthGroup.label.split(" ")[0]}</span>
+                              <span className="sm:hidden">{monthGroup.shortLabel.split(" ")[0]}</span>
+                            </span>
+                            <div className="h-px flex-1 bg-border/50" />
+                          </div>
+                          
+                          {/* Entries for this month */}
+                          <div className="space-y-2">
+                            {monthGroup.entries.map((acc) => {
+                              const mpaLabel = ENTRY_MGAS.find((m) => m.key === acc.mpa)?.label || acc.mpa;
+                              return (
+                                <div 
+                                  key={acc.id} 
+                                  className="group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
+                                  onClick={() => handleAccomplishmentClick(acc)}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      handleAccomplishmentClick(acc);
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    {/* Avatar */}
+                                    <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-xs font-medium text-primary">
+                                      {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                                    </div>
+                                    
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                        <span className="font-medium text-sm">
+                                          {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
+                                          {acc.author_name}
+                                        </span>
+                                        <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>
+                                        {(acc.unresolved_comment_count ?? 0) > 0 && (
+                                          <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                            <MessageSquare className="size-3" />
+                                            {acc.unresolved_comment_count}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-xs text-muted-foreground">
+                                        {new Date(acc.date).toLocaleDateString("en-US", { day: "numeric" })}
+                                      </span>
+                                      <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          /* List View with Month Dividers */
+          <div className="space-y-2">
+            {monthGroups.map((monthGroup, monthIndex) => (
+              <div key={monthGroup.key}>
+                {/* Month Divider */}
+                <div className="flex items-center gap-3 py-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs font-medium text-muted-foreground px-2">
+                    <span className="hidden sm:inline">{monthGroup.label}</span>
+                    <span className="sm:hidden">{monthGroup.shortLabel}</span>
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                
+                {/* Entries for this month */}
+                <div className="space-y-2">
+                  {monthGroup.entries.map((acc) => {
+                    const mpaLabel =
+                      ENTRY_MGAS.find((m) => m.key === acc.mpa)?.label || acc.mpa;
+
+                    return (
+                      <Card
+                        key={acc.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-all hover:shadow-md group"
+                        onClick={() => handleAccomplishmentClick(acc)}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`View accomplishment from ${acc.author_name}`}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleAccomplishmentClick(acc);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            {/* Avatar */}
+                            <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-medium text-primary">
+                              {acc.author_name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              {/* Header */}
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <div className="min-w-0">
+                                  <span className="font-medium text-sm">
+                                    {acc.author_rank && (
+                                      <span className="text-muted-foreground">
+                                        {acc.author_rank}{" "}
+                                      </span>
+                                    )}
+                                    {acc.author_name}
+                                  </span>
+                                  {acc.chain_depth > 0 && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      • Level {acc.chain_depth}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                                  <Clock className="size-3" />
+                                  {formatTimeAgo(acc.created_at)}
+                                </div>
+                              </div>
+
+                              {/* MPA and Action */}
+                              <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <Badge variant="outline" className="text-xs">
+                                  {mpaLabel}
+                                </Badge>
+                                <Badge variant="secondary" className="text-xs">
+                                  {acc.action_verb}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Calendar className="size-3" />
+                                  {new Date(acc.date).toLocaleDateString("en-US", {
+                                    day: "numeric",
+                                  })}
+                                </span>
+                                {/* RFI Indicator */}
+                                {(acc.unresolved_comment_count ?? 0) > 0 && (
+                                  <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                                    <MessageSquare className="size-3" />
+                                    {acc.unresolved_comment_count} RFI
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {/* Preview */}
+                              <p className="text-sm text-muted-foreground line-clamp-2">
+                                {acc.details}
+                              </p>
+                            </div>
+
+                            {/* Arrow indicator */}
+                            <ChevronRight className="size-5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0 transition-colors mt-2" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Detail Dialog */}
@@ -559,6 +1027,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         accomplishment={selectedAccomplishment}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        onAccomplishmentUpdated={updateAccomplishment}
       />
     </>
   );

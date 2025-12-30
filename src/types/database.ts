@@ -70,6 +70,28 @@ export interface Accomplishment {
   updated_at: string;
 }
 
+// Accomplishment Comments / Request for Information
+export interface AccomplishmentComment {
+  id: string;
+  accomplishment_id: string;
+  author_id: string;
+  comment_text: string;
+  is_resolved: boolean;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Comment with author info (from view)
+export interface AccomplishmentCommentWithAuthor extends AccomplishmentComment {
+  author_name: string | null;
+  author_rank: Rank | null;
+  author_avatar_url: string | null;
+  resolved_by_name: string | null;
+  resolved_by_rank: Rank | null;
+}
+
 export interface MajorGradedArea {
   key: string;
   label: string;

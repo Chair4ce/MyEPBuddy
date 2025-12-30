@@ -270,7 +270,7 @@ export const AWARD_LEVELS: { value: AwardLevel; label: string; shortLabel: strin
 ];
 
 export const AWARD_CATEGORIES: { value: AwardCategory; label: string }[] = [
-  { value: "snco", label: "SNCO (Senior NCO)" },
+  { value: "snco", label: "SNCO" },
   { value: "nco", label: "NCO" },
   { value: "amn", label: "Airman" },
   { value: "jr_tech", label: "Junior Technician" },
@@ -332,6 +332,118 @@ export function getFiscalQuarterDateRange(quarter: AwardQuarter, fiscalYear: num
     start: start.toISOString().split("T")[0],
     end: end.toISOString().split("T")[0],
   };
+}
+
+// ============================================
+// SPECIAL AWARDS CATALOG BY CATEGORY
+// ============================================
+
+export interface SpecialAwardCategory {
+  key: string;
+  label: string;
+  awards: string[];
+}
+
+export const SPECIAL_AWARDS_CATALOG: SpecialAwardCategory[] = [
+  {
+    key: "named_military",
+    label: "Named Military Awards",
+    awards: [
+      "Cheney Award",
+      "Mackay Trophy",
+      "12 Outstanding Airmen of the Year (12 OAY) Award",
+      "Lance P. Sijan USAF Leadership Award",
+      "Lt Gen Claire Lee Chennault Award",
+      "USAF First Sergeant of the Year Award",
+      "General and Mrs. Jerome F. O'Malley Award",
+      "Joan Orr Air Force Spouse of the Year Award",
+      "Koren Kolligian Jr. Trophy",
+      "General Thomas D. White Space Award",
+      "Aviator Valor Award",
+      "American Legion Spirit of Service Award",
+      "Arthur S. Flemming Award",
+      "Department of Defense David O. Cooke Excellence in Public Administration Award",
+      "Bob Hope Trophy",
+    ],
+  },
+  {
+    key: "maintenance_logistics",
+    label: "Maintenance & Logistics Awards",
+    awards: [
+      "General Wilbur L. Creech Maintenance Excellence Award",
+      "Dr. James G. Roche Sustainment Excellence Award",
+      "Lieutenant General Leo Marquez Award",
+      "General Lew Allen, Jr. Trophy",
+    ],
+  },
+  {
+    key: "communications",
+    label: "Communications Awards",
+    awards: [
+      "Lieutenant General Harold W. Grant Award",
+      "Major General Harold M. McClelland Award",
+      "General Edwin W. Rawlings Award",
+    ],
+  },
+  {
+    key: "space_operations",
+    label: "Space Operations Awards",
+    awards: [
+      "General Robert T. Herres Award",
+    ],
+  },
+  {
+    key: "force_support",
+    label: "Force Support & Services Awards",
+    awards: [
+      "General Curtis E. LeMay Award",
+      "Major General Eugene L. Eubank Award",
+      "John L. Hennessy Trophy Awards",
+    ],
+  },
+  {
+    key: "medical",
+    label: "Medical Awards",
+    awards: [
+      "Brigadier General Sarah P. Wells Award",
+    ],
+  },
+  {
+    key: "warfighting",
+    label: "Warfighting & Integration Awards",
+    awards: [
+      "General John P. Jumper Awards for Excellence in Warfighting Integration",
+    ],
+  },
+  {
+    key: "civilian_awards",
+    label: "Civilian Awards & Decorations",
+    awards: [
+      "Air Force Decoration for Exceptional Civilian Service",
+      "Air Force Valor Award",
+      "Air Force Meritorious Civilian Service Award",
+      "Air Force Exemplary Civilian Service Award",
+      "Air and Space Civilian Achievement Award",
+      "Air Force Outstanding Civilian Career Service Award",
+      "Air Force Command Civilian Award for Valor",
+    ],
+  },
+  {
+    key: "public_service",
+    label: "Public Service Awards",
+    awards: [
+      "Secretary of the Air Force Distinguished Public Service Award",
+      "Chief of Staff of the Air Force Award for Exceptional Public Service",
+      "Air Force Exceptional Service Award",
+      "Air Force Scroll of Appreciation",
+      "Air Force Commander's Award for Public Service",
+    ],
+  },
+];
+
+// Flatten all special awards for validation/search
+export function getAllSpecialAwards(): string[] {
+  return SPECIAL_AWARDS_CATALOG.flatMap((category) => category.awards);
 }
 
 // ============================================

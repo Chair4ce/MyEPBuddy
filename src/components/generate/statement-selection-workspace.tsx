@@ -493,22 +493,20 @@ export function StatementSelectionWorkspace({
                     variant={selectionMode === "stmt1" ? "default" : "outline"}
                     size="sm"
                     onClick={() => toggleMode("stmt1")}
-                    className={cn(selectionMode === "stmt1" && "bg-blue-500 hover:bg-blue-600")}
                   >
                     Statement 1
                     {workspaceState.slot1Ids.length > 0 && (
-                      <Badge className="ml-2 bg-blue-700">{workspaceState.slot1Ids.length}</Badge>
+                      <Badge className="ml-2 bg-primary/80">{workspaceState.slot1Ids.length}</Badge>
                     )}
                   </Button>
                   <Button
                     variant={selectionMode === "stmt2" ? "default" : "outline"}
                     size="sm"
                     onClick={() => toggleMode("stmt2")}
-                    className={cn(selectionMode === "stmt2" && "bg-purple-500 hover:bg-purple-600")}
                   >
                     Statement 2
                     {workspaceState.slot2Ids.length > 0 && (
-                      <Badge className="ml-2 bg-purple-700">{workspaceState.slot2Ids.length}</Badge>
+                      <Badge className="ml-2 bg-primary/80">{workspaceState.slot2Ids.length}</Badge>
                     )}
                   </Button>
                   {selectionMode && (
@@ -531,8 +529,8 @@ export function StatementSelectionWorkspace({
                         onClick={() => handleAccomplishmentClick(acc.id)}
                         className={cn(
                           "p-3 rounded-lg border cursor-pointer transition-all",
-                          inSlot1 && "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 ring-2 ring-blue-400",
-                          inSlot2 && "bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700 ring-2 ring-purple-400",
+                          inSlot1 && "bg-primary/5 dark:bg-primary/10 border-primary/30 ring-2 ring-primary/40",
+                          inSlot2 && "bg-primary/5 dark:bg-primary/10 border-primary/30 ring-2 ring-primary/40",
                           !inSlot1 && !inSlot2 && "bg-card hover:bg-muted/50",
                           !selectionMode && "cursor-default opacity-70"
                         )}
@@ -542,8 +540,8 @@ export function StatementSelectionWorkspace({
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <Badge variant="outline" className="text-xs">{acc.action_verb}</Badge>
                               <Badge variant="secondary" className="text-[10px]">{mpaLabel}</Badge>
-                              {inSlot1 && <Badge className="bg-blue-500 text-xs">Stmt 1</Badge>}
-                              {inSlot2 && <Badge className="bg-purple-500 text-xs">Stmt 2</Badge>}
+                              {inSlot1 && <Badge className="bg-primary text-xs">Stmt 1</Badge>}
+                              {inSlot2 && <Badge className="bg-primary/80 text-xs">Stmt 2</Badge>}
                             </div>
                             <p className="text-sm line-clamp-2">{acc.details}</p>
                           </div>
@@ -597,7 +595,7 @@ export function StatementSelectionWorkspace({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-sm font-medium flex items-center gap-2">
-                          <Badge className="bg-blue-500">Statement 1</Badge>
+                          <Badge className="bg-primary">Statement 1</Badge>
                           <span className="text-xs font-mono text-muted-foreground">
                             {workspaceState.generatedStatement1.length} chars
                           </span>
@@ -629,7 +627,7 @@ export function StatementSelectionWorkspace({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-sm font-medium flex items-center gap-2">
-                          <Badge className="bg-purple-500">Statement 2</Badge>
+                          <Badge className="bg-primary/80">Statement 2</Badge>
                           <span className="text-xs font-mono text-muted-foreground">
                             {workspaceState.generatedStatement2.length} chars
                           </span>
