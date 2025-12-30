@@ -125,6 +125,7 @@ export const DEFAULT_ACTION_VERBS = [
 
 export const MAX_STATEMENT_CHARACTERS = 350;
 export const MAX_HLR_CHARACTERS = 250;
+export const MAX_DUTY_DESCRIPTION_CHARACTERS = 450;
 
 // ============================================
 // EPB STATIC CLOSE-OUT DATES BY RANK
@@ -895,7 +896,8 @@ export const ACA_RUBRIC_SENIOR = {
 export function buildACAAssessmentPrompt(
   rateeRank: string,
   rateeAfsc: string | null,
-  statements: { mpa: string; text: string }[]
+  statements: { mpa: string; text: string }[],
+  dutyDescription?: string
 ): string {
   // Determine which rubric to use based on rank
   const rubricTier = getRubricTierForRank(rateeRank as Rank);
@@ -939,13 +941,25 @@ export function buildACAAssessmentPrompt(
 - **Exceeds** (Some Airmen): Above-average performance
 - **Far Exceeds** (Very Few Airmen): Exceptional performance; sets the standard`;
 
+  // Build duty description section if provided
+  const dutyDescriptionSection = dutyDescription && dutyDescription.trim().length > 0
+    ? `
+## MEMBER'S DUTY DESCRIPTION (USE AS CONTEXT)
+The following describes the member's primary duty position and key responsibilities. Use this context to better understand the scope and relevance of their accomplishments:
+
+${dutyDescription}
+
+Consider whether the statements appropriately reflect the member's assigned duties and responsibilities when scoring.
+`
+    : "";
+
   return `You are an expert evaluator assessing written performance statements for a U.S. Air Force Airman (${rankRange}) using the Airman Comprehensive Assessment (ACA) Worksheet (${formUsed}) as your rubric.
 
 ## RATEE INFORMATION
 - Rank: ${rateeRank}
 - AFSC: ${rateeAfsc || "Not specified"}
 - Rubric: ${formUsed} (${rankRange})
-
+${dutyDescriptionSection}
 ## PERFORMANCE STATEMENTS TO ASSESS
 ${formattedStatements}
 

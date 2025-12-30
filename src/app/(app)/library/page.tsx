@@ -26,7 +26,19 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
-import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS } from "@/lib/constants";
+import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AWARD_1206_CATEGORIES } from "@/lib/constants";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import type { Rank, StatementType, WinLevel } from "@/types/database";
+
+const WIN_LEVELS: { value: WinLevel; label: string }[] = [
+  { value: "squadron", label: "Squadron" },
+  { value: "group", label: "Group" },
+  { value: "wing", label: "Wing" },
+  { value: "tenant_unit", label: "Tenant Unit" },
+  { value: "haf", label: "HAF" },
+];
 import {
   Search,
   Loader2,
@@ -36,6 +48,9 @@ import {
   Globe,
   Plus,
   Combine,
+  FileText,
+  Award,
+  Sparkles,
 } from "lucide-react";
 import { StatementCard } from "@/components/library/statement-card";
 import { ShareStatementDialog } from "@/components/library/share-statement-dialog";
@@ -62,11 +77,19 @@ export default function LibraryPage() {
   const [votingId, setVotingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
-  // Edit dialog
+  // Edit dialog - comprehensive state for all fields
   const [editingStatement, setEditingStatement] = useState<RefinedStatement | null>(null);
   const [editedText, setEditedText] = useState("");
   const [editedMpa, setEditedMpa] = useState("");
   const [editedCycleYear, setEditedCycleYear] = useState<number>(new Date().getFullYear());
+  const [editedStatementType, setEditedStatementType] = useState<"epb" | "award">("epb");
+  const [editedAfsc, setEditedAfsc] = useState("");
+  const [editedRank, setEditedRank] = useState<string>("");
+  const [editedApplicableMpas, setEditedApplicableMpas] = useState<string[]>([]);
+  const [editedAwardCategory, setEditedAwardCategory] = useState("");
+  const [editedIsWinningPackage, setEditedIsWinningPackage] = useState(false);
+  const [editedWinLevel, setEditedWinLevel] = useState<string>("");
+  const [editedUseAsLlmExample, setEditedUseAsLlmExample] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Copy dialog (for shared/community statements)
@@ -264,34 +287,84 @@ export default function LibraryPage() {
 
   async function saveEditedStatement() {
     if (!editingStatement) return;
+    
+    // Validation
+    if (!editedText.trim()) {
+      toast.error("Statement text is required");
+      return;
+    }
+    if (!editedAfsc) {
+      toast.error("AFSC is required");
+      return;
+    }
+    if (!editedRank) {
+      toast.error("Rank is required");
+      return;
+    }
+    if (editedStatementType === "epb" && editedApplicableMpas.length === 0) {
+      toast.error("Please select at least one MPA");
+      return;
+    }
+    if (editedStatementType === "award" && !editedAwardCategory) {
+      toast.error("Please select an award category");
+      return;
+    }
+    if (editedStatementType === "award" && editedIsWinningPackage && !editedWinLevel) {
+      toast.error("Please select the win level");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
+      // Determine primary MPA
+      const primaryMpa = editedStatementType === "epb" 
+        ? (editedApplicableMpas[0] || editedMpa)
+        : editedAwardCategory;
+
+      const updateData = { 
+        statement: editedText.trim(),
+        mpa: primaryMpa,
+        cycle_year: editedCycleYear,
+        statement_type: editedStatementType as StatementType,
+        afsc: editedAfsc.toUpperCase(),
+        rank: editedRank as Rank,
+        applicable_mpas: editedStatementType === "epb" ? editedApplicableMpas : [],
+        award_category: editedStatementType === "award" ? editedAwardCategory : null,
+        is_winning_package: editedStatementType === "award" ? editedIsWinningPackage : false,
+        win_level: (editedStatementType === "award" && editedIsWinningPackage ? editedWinLevel : null) as WinLevel | null,
+        use_as_llm_example: editedUseAsLlmExample,
+      };
+
       await supabase
         .from("refined_statements")
-        .update({ 
-          statement: editedText,
-          mpa: editedMpa,
-          cycle_year: editedCycleYear,
-        } as never)
+        .update(updateData as never)
         .eq("id", editingStatement.id);
 
       setMyStatements((prev) =>
         prev.map((s) => (s.id === editingStatement.id ? { 
           ...s, 
-          statement: editedText,
-          mpa: editedMpa,
-          cycle_year: editedCycleYear,
-        } : s))
+          ...updateData,
+        } as RefinedStatement : s))
       );
 
       toast.success("Statement updated");
       setEditingStatement(null);
     } catch (error) {
+      console.error("Save error:", error);
       toast.error("Failed to update statement");
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Toggle MPA selection for edit dialog multi-select
+  function toggleEditMpa(mpaKey: string) {
+    setEditedApplicableMpas(prev => 
+      prev.includes(mpaKey) 
+        ? prev.filter(m => m !== mpaKey)
+        : [...prev, mpaKey]
+    );
   }
 
   function openCopyDialog(statement: SharedStatementView | CommunityStatement) {
@@ -645,6 +718,14 @@ export default function LibraryPage() {
                     setEditedText(s.statement);
                     setEditedMpa(s.mpa);
                     setEditedCycleYear(s.cycle_year);
+                    setEditedStatementType(s.statement_type || "epb");
+                    setEditedAfsc(s.afsc || "");
+                    setEditedRank(s.rank || "");
+                    setEditedApplicableMpas(s.applicable_mpas || [s.mpa]);
+                    setEditedAwardCategory(s.award_category || "");
+                    setEditedIsWinningPackage(s.is_winning_package || false);
+                    setEditedWinLevel(s.win_level || "");
+                    setEditedUseAsLlmExample(s.use_as_llm_example || false);
                   }}
                   onShare={setSharingStatement}
                   onDelete={deleteStatement}
@@ -721,73 +802,284 @@ export default function LibraryPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Dialog */}
+      {/* Edit Dialog - Comprehensive */}
       <Dialog open={!!editingStatement} onOpenChange={() => setEditingStatement(null)}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg mx-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg mx-auto h-[85vh] max-h-[85vh] p-0 gap-0 flex flex-col">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b">
             <DialogTitle className="text-lg">Edit Statement</DialogTitle>
             <DialogDescription className="text-sm">
-              Update your saved statement, MPA, and performance cycle
+              Update all details for this statement
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4">
-            {/* MPA and Cycle Year selectors */}
-            <div className="grid grid-cols-2 gap-3">
+          {/* Scrollable content */}
+          <ScrollArea className="flex-1 px-6 py-4">
+            <div className="space-y-4 pb-2">
+              {/* Statement Type Selector */}
               <div className="space-y-2">
-                <Label htmlFor="edit-mpa" className="text-sm">MPA</Label>
-                <Select value={editedMpa} onValueChange={setEditedMpa}>
-                  <SelectTrigger id="edit-mpa" className="w-full">
-                    <SelectValue placeholder="Select MPA" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mgas.map((mpa) => (
-                      <SelectItem key={mpa.key} value={mpa.key}>
-                        {mpa.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm font-medium">Statement Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditedStatementType("epb")}
+                    className={cn(
+                      "flex items-center gap-2 p-3 rounded-lg border text-left transition-colors",
+                      editedStatementType === "epb"
+                        ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20"
+                        : "bg-card hover:bg-muted/50"
+                    )}
+                  >
+                    <FileText className={cn("size-5", editedStatementType === "epb" ? "text-primary" : "text-muted-foreground")} />
+                    <div>
+                      <div className="text-sm font-medium">EPB</div>
+                      <div className="text-xs text-muted-foreground">Performance</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditedStatementType("award")}
+                    className={cn(
+                      "flex items-center gap-2 p-3 rounded-lg border text-left transition-colors",
+                      editedStatementType === "award"
+                        ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20"
+                        : "bg-card hover:bg-muted/50"
+                    )}
+                  >
+                    <Award className={cn("size-5", editedStatementType === "award" ? "text-primary" : "text-muted-foreground")} />
+                    <div>
+                      <div className="text-sm font-medium">Award</div>
+                      <div className="text-xs text-muted-foreground">1206</div>
+                    </div>
+                  </button>
+                </div>
               </div>
+
+              {/* Statement Textarea */}
               <div className="space-y-2">
-                <Label htmlFor="edit-cycle" className="text-sm">Performance Cycle</Label>
-                <Select 
-                  value={editedCycleYear.toString()} 
-                  onValueChange={(v) => setEditedCycleYear(parseInt(v))}
-                >
-                  <SelectTrigger id="edit-cycle" className="w-full">
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-                      <SelectItem key={year} value={year.toString()}>
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="edit-text" className="text-sm font-medium">Statement</Label>
+                  <span className={cn("text-xs", getCharacterCountColor(editedText.length, maxChars))}>
+                    {editedText.length}/{maxChars}
+                  </span>
+                </div>
+                <Textarea
+                  id="edit-text"
+                  value={editedText}
+                  onChange={(e) => setEditedText(e.target.value)}
+                  rows={5}
+                  className="resize-none text-sm"
+                  aria-label="Edit statement text"
+                />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="edit-text" className="text-sm">Statement</Label>
-                <span className={cn("text-xs", getCharacterCountColor(editedText.length, maxChars))}>
-                  {editedText.length}/{maxChars}
-                </span>
-              </div>
-              <Textarea
-                id="edit-text"
-                value={editedText}
-                onChange={(e) => setEditedText(e.target.value)}
-                rows={6}
-                className="resize-none text-sm"
-                aria-label="Edit statement text"
-              />
-            </div>
-          </div>
+              {/* Type-specific options */}
+              {editedStatementType === "epb" ? (
+                <>
+                  {/* MPA Multi-Select */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Applicable MPAs
+                      <span className="text-xs text-muted-foreground ml-1">(select all that apply)</span>
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {mgas.filter(m => m.key !== "hlr_assessment").map((mpa) => (
+                        <button
+                          key={mpa.key}
+                          type="button"
+                          onClick={() => toggleEditMpa(mpa.key)}
+                          className={cn(
+                            "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors",
+                            editedApplicableMpas.includes(mpa.key)
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-muted/50 hover:bg-muted border-border"
+                          )}
+                        >
+                          {mpa.label}
+                        </button>
+                      ))}
+                    </div>
+                    {editedApplicableMpas.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {editedApplicableMpas.length} MPA{editedApplicableMpas.length !== 1 ? "s" : ""} selected
+                      </p>
+                    )}
+                  </div>
 
-          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+                  {/* EPB Details Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-cycle" className="text-sm">Cycle Year</Label>
+                      <Select 
+                        value={editedCycleYear.toString()} 
+                        onValueChange={(v) => setEditedCycleYear(parseInt(v))}
+                      >
+                        <SelectTrigger id="edit-cycle" className="w-full">
+                          <SelectValue placeholder="Select year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-rank" className="text-sm">Rank</Label>
+                      <Select value={editedRank} onValueChange={setEditedRank}>
+                        <SelectTrigger id="edit-rank" className="w-full">
+                          <SelectValue placeholder="Select rank" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RANKS.map((rank) => (
+                            <SelectItem key={rank.value} value={rank.value}>
+                              {rank.value}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 col-span-2">
+                      <Label htmlFor="edit-afsc" className="text-sm">AFSC</Label>
+                      <Input
+                        id="edit-afsc"
+                        value={editedAfsc}
+                        onChange={(e) => setEditedAfsc(e.target.value.toUpperCase())}
+                        placeholder="e.g., 1A8X2"
+                        className="uppercase"
+                        aria-label="AFSC"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Award Category */}
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-award-category" className="text-sm font-medium">1206 Category</Label>
+                    <Select value={editedAwardCategory} onValueChange={setEditedAwardCategory}>
+                      <SelectTrigger id="edit-award-category" className="w-full">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AWARD_1206_CATEGORIES.map((cat) => (
+                          <SelectItem key={cat.key} value={cat.key}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Winning Package Toggle */}
+                  <label
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                      editedIsWinningPackage
+                        ? "bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800"
+                        : "bg-card hover:bg-muted/50"
+                    )}
+                  >
+                    <Checkbox
+                      checked={editedIsWinningPackage}
+                      onCheckedChange={(checked) => {
+                        setEditedIsWinningPackage(!!checked);
+                        if (!checked) setEditedWinLevel("");
+                      }}
+                      aria-label="Part of winning package"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Trophy className={cn("size-4", editedIsWinningPackage ? "text-amber-600" : "text-muted-foreground")} />
+                        <span className="text-sm font-medium">Part of Winning Package</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This statement was used in an award package that won
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Win Level */}
+                  {editedIsWinningPackage && (
+                    <div className="space-y-2 ml-8">
+                      <Label htmlFor="edit-win-level" className="text-sm">Win Level</Label>
+                      <Select value={editedWinLevel} onValueChange={setEditedWinLevel}>
+                        <SelectTrigger id="edit-win-level" className="w-full">
+                          <SelectValue placeholder="Select level" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {WIN_LEVELS.map((level) => (
+                            <SelectItem key={level.value} value={level.value}>
+                              {level.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Award Details Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-rank-award" className="text-sm">Rank</Label>
+                      <Select value={editedRank} onValueChange={setEditedRank}>
+                        <SelectTrigger id="edit-rank-award" className="w-full">
+                          <SelectValue placeholder="Select rank" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RANKS.map((rank) => (
+                            <SelectItem key={rank.value} value={rank.value}>
+                              {rank.value}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-afsc-award" className="text-sm">AFSC</Label>
+                      <Input
+                        id="edit-afsc-award"
+                        value={editedAfsc}
+                        onChange={(e) => setEditedAfsc(e.target.value.toUpperCase())}
+                        placeholder="e.g., 1A8X2"
+                        className="uppercase"
+                        aria-label="AFSC"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Use as AI Example Toggle */}
+              <label
+                className={cn(
+                  "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                  editedUseAsLlmExample
+                    ? "bg-violet-50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-800"
+                    : "bg-card hover:bg-muted/50"
+                )}
+              >
+                <Checkbox
+                  checked={editedUseAsLlmExample}
+                  onCheckedChange={(checked) => setEditedUseAsLlmExample(!!checked)}
+                  aria-label="Use as AI example"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className={cn("size-4", editedUseAsLlmExample ? "text-violet-600" : "text-muted-foreground")} />
+                    <span className="text-sm font-medium">Include in AI Prompt as Example</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use this statement as an example when generating new {editedStatementType === "epb" ? "EPB" : "award"} statements
+                  </p>
+                </div>
+              </label>
+            </div>
+          </ScrollArea>
+
+          {/* Fixed Footer */}
+          <div className="shrink-0 px-6 py-4 border-t bg-background flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
             <Button variant="outline" onClick={() => setEditingStatement(null)} className="w-full sm:w-auto">
               Cancel
             </Button>
@@ -795,7 +1087,7 @@ export default function LibraryPage() {
               {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
               Save Changes
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 

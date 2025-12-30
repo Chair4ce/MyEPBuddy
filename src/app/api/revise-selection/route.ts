@@ -177,7 +177,10 @@ CRITICAL RULES:
 4. Maintain the same general meaning but with FRESH phrasing
 5. Maintain grammatical coherence with surrounding text
 6. NEVER use em-dashes (--) - use COMMAS instead to connect clauses
-7. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix`;
+7. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix
+8. READABILITY: Revised text should flow naturally when read aloud
+9. PARALLELISM: Use consistent verb tense throughout (all past tense OR all present participles)
+10. AVOID creating run-on laundry lists of 5+ actions - keep it focused`;
 
     const userPrompt = `FULL STATEMENT FOR CONTEXT:
 "${fullStatement}"

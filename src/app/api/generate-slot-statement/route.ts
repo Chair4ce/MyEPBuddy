@@ -112,20 +112,26 @@ export async function POST(request: Request) {
 
     const modelProvider = getModelProvider(model, userKeys);
 
-    const systemPrompt = `You are an expert Air Force EPB statement writer. Generate ONE high-density EPB narrative statement from the provided accomplishments.
+    const systemPrompt = `You are an expert Air Force EPB statement writer. Generate ONE high-quality EPB narrative statement from the provided accomplishments.
 
 CRITICAL RULES:
 1. The statement MUST be ${targetChars} characters or LESS - this is a hard limit
-2. If multiple accomplishments are provided, synthesize them into ONE cohesive statement
-3. Preserve the most important metrics and impacts
-4. Use strong action verbs - NEVER use: ${BANNED_VERBS.map(v => `"${v}"`).join(", ")}
-5. Use alternatives like: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated
-6. Structure: [Action] + [Details with metrics] + [Impact chain]
-7. Do NOT use bullet points or numbered lists
-8. Do NOT end with a period (the system will add one when combining statements)
-9. Output ONLY the statement text, no quotes or explanation
+2. READABILITY IS #1 PRIORITY: Statement must be scannable in 2-3 seconds
+3. SENTENCE STRUCTURE (CRITICAL):
+   - Maximum 3-4 action clauses - NO laundry lists of 5+ actions
+   - Use PARALLEL verb structure (consistent verb tense throughout)
+   - Place the STRONGEST IMPACT at the END of the statement
+   - If it sounds like a run-on when read aloud, rewrite it more concisely
+4. If multiple accomplishments are provided, synthesize into ONE cohesive statement
+5. Preserve the most important metrics and impacts
+6. NEVER use banned verbs: ${BANNED_VERBS.map(v => `"${v}"`).join(", ")}
+7. Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated
+8. Structure: [Action] + [Scope/Details] + [BIGGEST IMPACT LAST]
+9. Do NOT use bullet points or numbered lists
+10. Do NOT end with a period (system adds one when combining)
+11. Output ONLY the statement text, no quotes or explanation
 
-CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.9)}-${targetChars})`;
+CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})`;
 
     const accomplishmentText = accomplishments.map((a, i) => 
       `[${i + 1}] Action: ${a.action_verb}
@@ -142,11 +148,22 @@ SOURCE ACCOMPLISHMENTS:
 ${accomplishmentText}
 
 ${accomplishments.length > 1 ? `
-IMPORTANT: Synthesize ALL ${accomplishments.length} accomplishments into ONE flowing statement. 
-Combine related actions and chain the impacts together.
+IMPORTANT: Synthesize ALL ${accomplishments.length} accomplishments into ONE flowing statement.
+- Maximum 3-4 action clauses total - do NOT create a laundry list
+- Use PARALLEL verb structure throughout
+- Place the STRONGEST IMPACT at the END
+- If source has 5+ distinct actions, prioritize the most impactful ones
 ` : ""}
 
-TARGET LENGTH: ${targetChars} characters maximum (aim for ${Math.floor(targetChars * 0.9)}-${targetChars})
+STRUCTURE: [Action] + [Scope/Details] + [BIGGEST IMPACT LAST]
+
+GOOD EXAMPLE (readable, strong ending):
+"Led 12 Airmen in rapid overhaul of 8 authentication servers, delivering wing directive 29 days ahead of schedule, ensuring uninterrupted network access for 58K users"
+
+BAD EXAMPLE (run-on, laundry list):
+"Directed 12 Amn rebuilding 8 servers, advancing completion by 29 days, crafted assessment, fixed errors, purged data, averting outage, streamlining access"
+
+TARGET LENGTH: ${targetChars} characters maximum (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})
 
 Output ONLY the statement (no period at the end).`;
 

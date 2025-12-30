@@ -44,6 +44,7 @@ interface GenerateRequest {
   customContextOptions?: CustomContextOptions; // Options for custom context generation
   usedVerbs?: string[]; // Verbs already used in this cycle - avoid repeating
   generatePerAccomplishment?: boolean; // When true, generate one full statement per accomplishment
+  dutyDescription?: string; // Optional - member's duty description for context
 }
 
 // Overused/cliché verbs that should be avoided
@@ -99,20 +100,37 @@ const DEFAULT_SETTINGS: Partial<UserLLMSettings> = {
   base_system_prompt: `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant with deep knowledge of Air Force operations, programs, and terminology. Your sole purpose is to generate impactful, narrative-style performance statements that strictly comply with AFI 36-2406 (22 Aug 2025).
 
 CRITICAL RULES - NEVER VIOLATE THESE:
-- Every statement MUST be a single, standalone sentence.
-- NEVER use semi-colons (;). Use commas or em-dashes (--) to connect clauses into flowing sentences.
-- Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
-- Character range: AIM for {{max_characters_per_statement}} characters. Minimum 280 characters, maximum {{max_characters_per_statement}}.
-- Generate exactly 2–3 strong statements per Major Performance Area.
-- Output pure, clean text only — no formatting.
+1. Every statement MUST be a single, standalone sentence that flows naturally when read aloud.
+2. NEVER use semi-colons (;). Use commas to connect clauses into flowing sentences.
+3. Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
+4. Character range: AIM for {{max_characters_per_statement}} characters. Minimum 220 characters, maximum {{max_characters_per_statement}}.
+5. Generate exactly 2–3 strong statements per Major Performance Area.
+6. Output pure, clean text only — no formatting.
 
-CHARACTER UTILIZATION STRATEGY (CRITICAL):
-You are UNDERUTILIZING available space. Statements should be DENSE with impact. To maximize character usage:
-1. EXPAND impacts: Show cascading effects (individual → team → squadron → wing → AF/DoD)
-2. ADD context: Connect actions to larger mission objectives, readiness, or strategic goals
-3. CHAIN results: "improved X, enabling Y, which drove Z"
-4. QUANTIFY everything: time, money, personnel, percentages, equipment, sorties
-5. USE military knowledge: Infer standard AF outcomes (readiness rates, deployment timelines, inspection results)
+SENTENCE STRUCTURE (CRITICAL - THE #1 RULE):
+Board members scan quickly—they need clear, punchy statements digestible in 2-3 seconds. Avoid the "laundry list" problem:
+
+BAD (run-on, too many clauses):
+"Directed 12 Amn in rebuilding 8 authentication servers, advancing squadron's wing directive completion by 29 days, crafted server health assessment, fixed 27 domain errors, purged 9.6TB data, averting 220-node outage, streamlining network access for 58K users."
+
+GOOD (focused, readable, impactful):
+"Led 12 Airmen in rapid overhaul of 8 authentication servers, delivering wing directive 29 days ahead of schedule and averting 220-node outage, ensuring uninterrupted network access for 58K users across enterprise."
+
+STRUCTURE RULES:
+- Maximum 3-4 action clauses per statement (not 5+)
+- Use parallel verb structure (consistent tense/form throughout)
+- Place the BIGGEST IMPACT at the END for punch
+- If accomplishment has 4+ distinct actions, SPLIT into 2 separate statements
+- Read aloud test: If it sounds breathless or like a bullet list, rewrite it
+
+PARALLELISM (REQUIRED):
+BAD: "crafted assessment, fixed errors, purging data, averting outage" (inconsistent verb forms)
+GOOD: "developed assessment, resolved errors, purged data, averted outage" (all past tense)
+
+IMPACT PLACEMENT:
+Put the strongest, most impressive result at the END of the statement:
+BAD: "...averting 220-node outage, streamlining network access for 58K users" (weaker ending)
+GOOD: "...sustaining uninterrupted network access for 58K users across the enterprise" (strong finish)
 
 VERB VARIETY (CRITICAL - MUST FOLLOW):
 BANNED VERBS - NEVER USE THESE (overused clichés that make all EPBs sound the same):
@@ -137,7 +155,7 @@ When given limited input, ENHANCE statements using your knowledge of:
 
 Example transformation:
 - INPUT: "Volunteered at USO for 4 hrs, served 200 Airmen"
-- OUTPUT: "Led USO volunteer initiative, dedicating 4 hrs to restore lounge facilities and replenish refreshment stations--directly boosted morale for 200 deploying Amn, reinforcing vital quality-of-life support that sustained mission focus during high-tempo ops"
+- OUTPUT: "Led USO volunteer initiative, dedicating 4 hrs to restore lounge facilities, directly boosting morale for 200 deploying Amn during high-tempo operations."
 
 ACRONYM & ABBREVIATION POLICY:
 - Use standard AF acronyms to maximize character efficiency (Amn, NCO, SNCO, DoD, AF, sq, flt, hrs)
@@ -151,7 +169,7 @@ RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
 - MSgt–CMSgt: Strategic leadership with wing/MAJCOM/AF impact
 
 STATEMENT STRUCTURE:
-[Strong action verb] + [specific accomplishment with context] + [immediate result] + [cascading mission impact]
+[Strong action verb] + [specific accomplishment with scope] + [immediate result] + [BIGGEST impact at END]
 
 IMPACT AMPLIFICATION TECHNIQUES:
 - Connect to readiness: "ensured 100% combat readiness"
@@ -167,7 +185,7 @@ MAJOR PERFORMANCE AREAS:
 ADDITIONAL STYLE GUIDANCE:
 {{style_guidelines}}
 
-Using the provided accomplishment entries, generate 2–3 HIGH-DENSITY statements for each MPA. Use your military expertise to EXPAND limited inputs into comprehensive statements that approach the character limit. Infer reasonable military context and standard AF outcomes.
+Using the provided accomplishment entries, generate 2–3 HIGH-QUALITY statements for each MPA. Prioritize READABILITY and FLOW over raw character density. Each statement should be scannable in 2-3 seconds.
 
 WORD ABBREVIATIONS (AUTO-APPLY):
 {{abbreviations_list}}`,
@@ -316,7 +334,8 @@ async function fetchExampleStatements(
 function buildSystemPrompt(
   settings: Partial<UserLLMSettings>,
   rateeRank: Rank,
-  examples: ExampleStatement[]
+  examples: ExampleStatement[],
+  dutyDescription?: string
 ): string {
   const rankVerbs = settings.rank_verb_progression?.[rateeRank] || {
     primary: ["Led", "Managed"],
@@ -366,6 +385,16 @@ ${examples
   .join("\n")}
 
 Maintain a similar voice and quality in your generated statements.`;
+  }
+
+  // Add duty description context if provided
+  if (dutyDescription && dutyDescription.trim().length > 0) {
+    prompt += `\n\n=== MEMBER'S DUTY DESCRIPTION (USE AS CONTEXT) ===
+The following describes the member's primary duty position and key responsibilities. Use this context to understand what the member does and tailor statements to accurately reflect their role, scope, and impact areas:
+
+${dutyDescription}
+
+IMPORTANT: Reference the duty description when generating statements to ensure accuracy and relevance to the member's actual job responsibilities. Statements should align with the scope and scale of their duties.`;
   }
 
   return prompt;
@@ -429,7 +458,7 @@ export async function POST(request: Request) {
     }
 
     const body: GenerateRequest = await request.json();
-    const { rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, communityMpaFilter, communityAfscFilter, accomplishments, selectedMPAs, customContext, customContextOptions, generatePerAccomplishment } = body;
+    const { rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, communityMpaFilter, communityAfscFilter, accomplishments, selectedMPAs, customContext, customContextOptions, generatePerAccomplishment, dutyDescription } = body;
 
     // Either accomplishments or customContext must be provided
     const hasAccomplishments = accomplishments && accomplishments.length > 0;
@@ -470,7 +499,7 @@ export async function POST(request: Request) {
       communityMpaFilter
     );
 
-    const systemPrompt = buildSystemPrompt(settings, rateeRank, examples);
+    const systemPrompt = buildSystemPrompt(settings, rateeRank, examples, dutyDescription);
     const modelProvider = getModelProvider(model, userKeys);
 
     // Group accomplishments by MPA (only if not using custom context)
@@ -578,7 +607,7 @@ Assess how well the input aligns with this MPA. After generating statements, pro
           const impact2Instruction = buildImpactInstruction(impactFocus2, 2);
           
           if (isHLR) {
-            userPrompt = `REWRITE and TRANSFORM 2 pieces of raw input into HIGH-DENSITY Higher Level Reviewer (HLR) Assessment statements from the Commander's perspective.
+            userPrompt = `REWRITE and TRANSFORM 2 pieces of raw input into HIGH-QUALITY Higher Level Reviewer (HLR) Assessment statements from the Commander's perspective.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
@@ -596,16 +625,19 @@ HLR TRANSFORMATION REQUIREMENTS:
 1. DO NOT copy input verbatim - REWRITE with Commander's voice and improved structure
 2. Generate 2 DISTINCT statements - one from each source context
 3. Both statements COMBINED must fit within ${effectiveMaxChars} characters (~${charLimitPerStatement} each)
-4. Write from the Commander's perspective - strategic endorsement
-5. Use definitive language: "My top performer", "Ready for immediate promotion"
-6. Convert any dashes (--) to commas for proper format
-7. Each statement: [Strategic assessment] + [Accomplishment] + [Impact] + [Recommendation]
+4. READABILITY IS KEY: Each statement must be scannable in 2-3 seconds
+5. Maximum 3-4 action clauses per statement - avoid laundry lists
+6. Place the STRONGEST IMPACT at the END of each statement
+7. Use PARALLEL verb structure throughout each statement
+8. Write from Commander's perspective - strategic endorsement
+9. Use definitive language: "My top performer", "Ready for immediate promotion"
+10. Convert any dashes (--) to commas for proper format
 
 Format as JSON array:
 ["Rewritten statement 1", "Rewritten statement 2"]`;
           } else {
             // Regular MPA with 2 statements
-            userPrompt = `REWRITE and TRANSFORM 2 pieces of raw input into HIGH-DENSITY EPB narrative statements for the "${mpa.label}" Major Performance Area.
+            userPrompt = `REWRITE and TRANSFORM 2 pieces of raw input into HIGH-QUALITY EPB narrative statements for the "${mpa.label}" Major Performance Area.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
@@ -620,31 +652,32 @@ ${customContext2}
 ${impact2Instruction}
 ${customDirInstruction}
 ${mpaExamples.length > 0 ? `
-EXAMPLE STATEMENTS (match this density and transformation style):
+EXAMPLE STATEMENTS (match this flow and readability):
 ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 ` : ""}
 
 CRITICAL TRANSFORMATION REQUIREMENTS:
-1. DO NOT copy the input verbatim - you MUST rewrite and improve each statement
-2. TRANSFORM the raw input into polished EPB narrative format
+1. READABILITY IS #1 PRIORITY: Each statement must be scannable in 2-3 seconds
+2. DO NOT copy input verbatim - REWRITE with improved structure
 3. Both statements COMBINED must fit within ${effectiveMaxChars} characters (~${charLimitPerStatement} each)
-4. Restructure content: [Strong action verb] + [Specific scope/scale] + [Immediate result] + [Strategic mission impact]
-5. Replace weak phrasing with powerful action-oriented language
+4. SENTENCE STRUCTURE (CRITICAL):
+   - Maximum 3-4 action clauses per statement - NO laundry lists of 5+ actions
+   - Use PARALLEL verb structure (consistent tense throughout)
+   - Place the STRONGEST IMPACT at the END of each statement
+   - If it sounds like a run-on when read aloud, it needs rewriting
+5. STRUCTURE: [Action verb] + [Scope/Details] + [Result] + [BIGGEST IMPACT LAST]
 6. Convert any dashes (--) to commas for proper EPB format
-7. Enhance metrics presentation IF metrics exist in input - DO NOT INVENT metrics
-8. Even if input looks polished, REWRITE it with improved structure and flow
 
 CRITICAL - DO NOT FABRICATE:
 - NEVER invent numbers, dollar amounts, percentages, or quantities not in the input
 - NEVER make up specific details, unit names, project names, or timelines
-- If input is vague (e.g., "I did stuff"), output should reflect that vagueness
-- Only enhance structure and language, not content
+- If input is vague, output should reflect that vagueness - enhance structure only
 
 BANNED VERBS - NEVER USE:
 "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized", "Impacted"
-Use strong alternatives: Led, Directed, Managed, Drove, Championed, Transformed, Pioneered, Accelerated, Streamlined, Secured, Fortified
+Use alternatives: Led, Directed, Managed, Drove, Championed, Transformed, Pioneered, Accelerated
 
-VERB VARIETY: Each statement MUST start with a DIFFERENT action verb. Never repeat verbs.
+VERB VARIETY: Each statement MUST start with a DIFFERENT action verb.
 
 RELEVANCY: Rate how well this accomplishment fits "${mpa.label}" on a scale of 0-100.
 
@@ -656,7 +689,7 @@ Format as JSON object:
           const impactInstruction = buildImpactInstruction(impactFocus);
           
           if (isHLR) {
-            userPrompt = `REWRITE and TRANSFORM the raw input into a HIGH-DENSITY Higher Level Reviewer (HLR) Assessment statement from the Commander's perspective.
+            userPrompt = `REWRITE and TRANSFORM the raw input into a HIGH-QUALITY Higher Level Reviewer (HLR) Assessment statement from the Commander's perspective.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
@@ -667,10 +700,13 @@ ${customDirInstruction}
 HLR TRANSFORMATION REQUIREMENTS:
 1. DO NOT copy input verbatim - REWRITE with Commander's voice and improved structure
 2. ${charLimitText}
-3. Write from the Commander's perspective - strategic endorsement
-4. Synthesize performance into a cohesive narrative
-5. Use definitive language: "My top performer", "Ready for immediate promotion"
-6. Convert any dashes (--) to commas for proper format
+3. READABILITY IS KEY: Statement must be scannable in 2-3 seconds
+4. Maximum 3-4 action clauses - avoid laundry lists of 5+ actions
+5. Place STRONGEST IMPACT at the END of the statement
+6. Use PARALLEL verb structure throughout
+7. Write from Commander's perspective - strategic endorsement
+8. Use definitive language: "My top performer", "Ready for immediate promotion"
+9. Convert any dashes (--) to commas for proper format
 
 CRITICAL - DO NOT FABRICATE:
 - NEVER invent numbers, dollar amounts, or metrics not in the input
@@ -679,13 +715,13 @@ CRITICAL - DO NOT FABRICATE:
 BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
 
 STRUCTURE:
-[Strategic assessment] + [Key accomplishment synthesis] + [Cascading impact] + [Promotion recommendation]
+[Strategic assessment] + [Key accomplishment] + [BIGGEST IMPACT LAST]
 
 Format as JSON array:
 ["Rewritten HLR statement"]`;
           } else {
             // Regular MPA with single statement
-            userPrompt = `REWRITE and TRANSFORM the raw input into a HIGH-DENSITY EPB narrative statement for the "${mpa.label}" Major Performance Area.
+            userPrompt = `REWRITE and TRANSFORM the raw input into a HIGH-QUALITY EPB narrative statement for the "${mpa.label}" Major Performance Area.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 ${mpaContextSection}
@@ -695,27 +731,30 @@ ${impactInstruction}
 ${customDirInstruction}
 
 ${mpaExamples.length > 0 ? `
-EXAMPLE STATEMENT (match this transformation quality):
+EXAMPLE STATEMENT (match this flow and readability):
 ${mpaExamples[0].statement}
 ` : ""}
 
 TRANSFORMATION REQUIREMENTS:
 1. ${charLimitText}
-2. DO NOT copy input verbatim - REWRITE with improved structure and stronger action verbs
-3. Convert any dashes (--) to commas for proper EPB format
-4. Focus on accomplishments that relate to "${mpa.label}"
-5. STRUCTURE: [Strong action verb] + [Specific scope/scale] + [Immediate result] + [Strategic mission impact]
-6. CHAIN impacts: "achieved X, enabling Y, which drove Z"
-7. Enhance metrics IF they exist in input - DO NOT INVENT metrics
+2. READABILITY IS #1 PRIORITY: Statement must be scannable in 2-3 seconds
+3. SENTENCE STRUCTURE (CRITICAL):
+   - Maximum 3-4 action clauses - NO laundry lists of 5+ actions
+   - Use PARALLEL verb structure (consistent tense throughout)
+   - Place STRONGEST IMPACT at the END of the statement
+   - If it sounds like a run-on when read aloud, rewrite it
+4. DO NOT copy input verbatim - REWRITE with improved structure
+5. Convert any dashes (--) to commas for proper EPB format
+6. STRUCTURE: [Action verb] + [Scope/Details] + [Result] + [BIGGEST IMPACT LAST]
+7. Chain max 2-3 impacts naturally: "achieved X, enabling Y"
 
 CRITICAL - DO NOT FABRICATE:
 - NEVER invent numbers, dollar amounts, percentages, or quantities not in the input
 - NEVER make up specific details, unit names, project names, or timelines
 - If input is vague, output should reflect that vagueness - enhance structure only
-- Only enhance language and structure, not content substance
 
-BANNED VERBS - NEVER USE: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized"
-Use strong alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated, Streamlined
+BANNED VERBS: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized"
+Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated
 
 RELEVANCY: Rate how well this accomplishment fits "${mpa.label}" on a scale of 0-100.
 
@@ -725,7 +764,7 @@ Format as JSON object:
         }
       } else if (isHLR) {
         // HLR-specific prompt - Commander's perspective, holistic assessment
-        userPrompt = `Generate 2-3 HIGH-DENSITY Higher Level Reviewer (HLR) Assessment statements from the Commander's perspective.
+        userPrompt = `Generate 2-3 HIGH-QUALITY Higher Level Reviewer (HLR) Assessment statements from the Commander's perspective.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
@@ -740,24 +779,29 @@ ${accomplishments
   .join("")}
 
 HLR ASSESSMENT REQUIREMENTS:
-1. TARGET: Each statement should be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters. MAXIMIZE character usage.
-2. Write from the Commander's perspective - this is the senior leader's strategic endorsement
-3. Synthesize OVERALL performance across all MPAs into a cohesive narrative
-4. Use your Air Force knowledge to:
-   - Connect individual achievements to wing/MAJCOM/AF-level mission success
-   - Infer reasonable strategic outcomes from tactical accomplishments
-   - Add promotion justification language (ready for increased responsibility, etc.)
-5. Use definitive language: "My top performer", "Ready for immediate promotion", "Future senior leader"
+1. TARGET: ${Math.floor(effectiveMaxChars * 0.65)}-${effectiveMaxChars} characters per statement. PRIORITIZE READABILITY.
+2. READABILITY IS #1 PRIORITY: Each statement must be scannable in 2-3 seconds by board members
+3. SENTENCE STRUCTURE (CRITICAL):
+   - Maximum 3-4 action clauses per statement - NO laundry lists of 5+ actions
+   - Use PARALLEL verb structure (consistent tense throughout)
+   - Place STRONGEST IMPACT and PROMOTION RECOMMENDATION at the END
+   - If it sounds like a run-on when read aloud, rewrite it
+4. Write from Commander's perspective - strategic endorsement
+5. Synthesize OVERALL performance across all MPAs into cohesive narrative
+6. Use definitive language: "My top performer", "Ready for immediate promotion"
 
 STRUCTURE EACH STATEMENT:
-[Strategic assessment] + [Key accomplishment synthesis] + [Cascading organizational impact] + [Promotion recommendation]
+[Strategic assessment] + [Key accomplishment synthesis] + [BIGGEST IMPACT + PROMOTION REC LAST]
 
-EXAMPLE (328 chars):
-"My #1 of 47 SSgts--unmatched technical expertise and leadership acumen drove 100% mission success rate across 12 contingency ops; mentored 8 Amn to BTZ while directing $2.3M equipment modernization that enhanced sq combat capability 40%--my strongest recommendation for TSgt, ready to lead at flight level"
+GOOD EXAMPLE (readable, strong ending):
+"My #1 of 47 SSgts, drove 100% mission success across 12 contingency ops, mentored 8 Amn to BTZ, directed $2.3M equipment modernization, ready to lead at flight level."
 
-BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated" - Use varied alternatives
+BAD EXAMPLE (run-on, laundry list):
+"My top performer, drove mission success, mentored Amn, directed modernization, enhanced capability, improved readiness, supported operations, my strongest recommendation."
 
-Generate EXACTLY 2-3 statements. Each MUST be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters.
+BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
+
+Generate EXACTLY 2-3 statements. Each must be READABLE in 2-3 seconds.
 
 Format as JSON array only:
 ["Statement 1", "Statement 2", "Statement 3"]`;
@@ -771,7 +815,7 @@ Format as JSON array only:
         for (let accIdx = 0; accIdx < mpaAccomplishments.length; accIdx++) {
           const acc = mpaAccomplishments[accIdx];
           
-          const perAccPrompt = `Generate ONE HIGH-DENSITY EPB narrative statement for the "${mpa.label}" Major Performance Area.
+          const perAccPrompt = `Generate ONE HIGH-QUALITY EPB narrative statement for the "${mpa.label}" Major Performance Area.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
@@ -782,22 +826,24 @@ Impact: ${acc.impact}
 ${acc.metrics ? `Metrics: ${acc.metrics}` : ""}
 
 ${mpaExamples.length > 0 ? `
-EXAMPLE STATEMENTS (match this density and style):
+EXAMPLE STATEMENTS (match this flow and readability):
 ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 ` : ""}
 
 CRITICAL REQUIREMENTS:
-1. TARGET: Statement MUST be ${Math.floor(effectiveMaxChars * 0.45)}-${Math.floor(effectiveMaxChars * 0.55)} characters (aim for ~${Math.floor(effectiveMaxChars / 2)} chars).
+1. TARGET: ${Math.floor(effectiveMaxChars * 0.45)}-${Math.floor(effectiveMaxChars * 0.55)} characters (~${Math.floor(effectiveMaxChars / 2)} chars).
    This statement may be combined with another, so keep it focused but complete.
-2. EXPAND the input using your Air Force knowledge:
-   - Infer standard military outcomes (readiness, compliance, mission success)
-   - Add organizational context (flight, squadron, wing impact)
-   - Include reasonable metrics if none provided
-3. STRUCTURE: [Action] + [Accomplishment with context] + [Impact chain]
-4. This is a COMPLETE statement on its own - not a fragment
+2. READABILITY IS #1 PRIORITY: Statement must be scannable in 2-3 seconds
+3. SENTENCE STRUCTURE (CRITICAL):
+   - Maximum 2-3 action clauses (this is a shorter statement)
+   - Use PARALLEL verb structure (consistent tense)
+   - Place STRONGEST IMPACT at the END
+   - If it sounds like a run-on, rewrite it
+4. STRUCTURE: [Action] + [Scope/Details] + [BIGGEST IMPACT LAST]
+5. This is a COMPLETE statement on its own - not a fragment
 
 BANNED VERBS: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
-Use strong alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered
+Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered
 
 Output ONLY the statement text, no quotes or JSON.`;
 
@@ -857,7 +903,7 @@ Output ONLY the statement text, no quotes or JSON.`;
         continue; // Skip the normal generation flow below
       } else {
         // Regular MPA prompt - combine accomplishments into 2-3 statements
-        userPrompt = `Generate 2-3 HIGH-DENSITY EPB narrative statements for the "${mpa.label}" Major Performance Area.
+        userPrompt = `Generate 2-3 HIGH-QUALITY EPB narrative statements for the "${mpa.label}" Major Performance Area.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
@@ -874,25 +920,30 @@ ${mpaAccomplishments
   .join("")}
 
 ${mpaExamples.length > 0 ? `
-EXAMPLE STATEMENTS (match this density and style):
+EXAMPLE STATEMENTS (match this flow and readability):
 ${mpaExamples.map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 ` : ""}
 
 CRITICAL REQUIREMENTS:
-1. TARGET: Each statement should be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters. DO NOT write short statements.
-2. EXPAND limited inputs using your Air Force knowledge:
-   - Infer standard military outcomes (readiness, compliance, mission success)
-   - Add organizational context (flight, squadron, wing impact)
-   - Include reasonable metrics if none provided (time saved, personnel impacted, etc.)
-   - Connect actions to larger mission objectives
-3. STRUCTURE: [Action] + [Accomplishment with context] + [Immediate result] + [Mission impact]
-4. CHAIN impacts: "achieved X, enabling Y, which drove Z"
+1. TARGET: ${Math.floor(effectiveMaxChars * 0.65)}-${effectiveMaxChars} characters per statement. PRIORITIZE READABILITY over raw length.
+2. SENTENCE STRUCTURE (MOST IMPORTANT):
+   - Each statement must read naturally when spoken aloud
+   - Maximum 3-4 action clauses per statement (NOT a laundry list of 5+ actions)
+   - Use PARALLEL verb structure (all past tense OR all present participles, not mixed)
+   - Place the STRONGEST IMPACT at the END of each statement
+   - If source has 4+ distinct accomplishments, split across multiple statements
+3. STRUCTURE: [Action] + [Scope/Details] + [Result] + [BIGGEST IMPACT LAST]
+4. CHAIN impacts naturally: "achieved X, enabling Y" (max 2-3 chained results)
 
-TRANSFORMATION EXAMPLE:
-- Input: "Volunteered at USO, served snacks"
-- Output (320 chars): "Orchestrated USO volunteer support operations, dedicating off-duty hours to revitalize lounge facilities and replenish refreshment stations--bolstered morale for 200+ transiting Amn during peak deployment cycle, directly supporting installation's quality-of-life mission"
+GOOD EXAMPLE (readable, focused, strong ending):
+"Led 12 Airmen in rapid overhaul of 8 authentication servers, delivering wing directive 29 days ahead of schedule, ensuring uninterrupted network access for 58K users."
 
-Generate EXACTLY 2-3 statements. Each MUST be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters.
+BAD EXAMPLE (run-on, laundry list, weak ending):
+"Directed 12 Amn in rebuilding 8 servers, advancing directive completion by 29 days, crafted assessment, fixed 27 errors, purged 9.6TB data, averting outage, streamlining access."
+
+BANNED VERBS: Spearheaded, Orchestrated, Synergized, Leveraged, Facilitated, Utilized, Impacted
+
+Generate EXACTLY 2-3 statements. Each must be READABLE in 2-3 seconds.
 
 Format as JSON array only:
 ["Statement 1", "Statement 2", "Statement 3"]`;

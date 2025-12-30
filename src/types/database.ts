@@ -458,6 +458,7 @@ export interface EPBShell {
   created_by: string;
   cycle_year: number;
   multi_user_enabled: boolean; // Toggle for multi-user collaboration mode
+  duty_description: string; // Description of member's duty position (max 450 chars)
   created_at: string;
   updated_at: string;
   // Joined fields

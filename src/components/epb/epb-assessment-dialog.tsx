@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -34,7 +33,6 @@ import {
   TrendingUp,
   AlertCircle,
   CheckCircle2,
-  X,
   FileText,
 } from "lucide-react";
 import type { EPBAssessmentResult, ACAProficiencyLevel, CategoryAssessment } from "@/lib/constants";
@@ -215,21 +213,16 @@ export function EPBAssessmentDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-6 py-4 border-b bg-muted/30">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Target className="size-5 text-primary" />
-              </div>
-              <div>
-                <DialogTitle className="text-lg">EPB Assessment Report</DialogTitle>
-                <DialogDescription className="text-xs">
-                  AI-powered analysis using the ACA rubric ({assessment?.formUsed || "AF Form 931/932"})
-                </DialogDescription>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Target className="size-5 text-primary" />
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="size-8 -mt-1 -mr-2">
-              <X className="size-4" />
-            </Button>
+            <div>
+              <DialogTitle className="text-lg">EPB Assessment Report</DialogTitle>
+              <DialogDescription className="text-xs">
+                AI-powered analysis using the ACA rubric ({assessment?.formUsed || "AF Form 931/932"})
+              </DialogDescription>
+            </div>
           </div>
         </DialogHeader>
 

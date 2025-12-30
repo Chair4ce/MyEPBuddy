@@ -65,6 +65,11 @@ interface EPBShellState {
   // Collapsed state for each MPA section
   collapsedSections: Record<string, boolean>;
   
+  // Duty description draft state
+  dutyDescriptionDraft: string;
+  isDutyDescriptionDirty: boolean;
+  isSavingDutyDescription: boolean;
+  
   // Loading states
   isLoadingShell: boolean;
   isCreatingShell: boolean;
@@ -107,6 +112,11 @@ interface EPBShellState {
   setAutosaveTimer: (mpa: string, timer: NodeJS.Timeout | null) => void;
   clearAutosaveTimer: (mpa: string) => void;
   
+  // Duty description management
+  setDutyDescriptionDraft: (text: string) => void;
+  setIsDutyDescriptionDirty: (dirty: boolean) => void;
+  setIsSavingDutyDescription: (saving: boolean) => void;
+  
   // Reset
   reset: () => void;
 }
@@ -145,6 +155,9 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   savedExamples: {},
   sectionStates: {},
   collapsedSections: {},
+  dutyDescriptionDraft: "",
+  isDutyDescriptionDirty: false,
+  isSavingDutyDescription: false,
   isLoadingShell: false,
   isCreatingShell: false,
   autosaveTimers: {},
@@ -177,6 +190,11 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
     } else {
       set({ sections: {} });
     }
+    // Initialize duty description from shell
+    set({ 
+      dutyDescriptionDraft: shell?.duty_description || "",
+      isDutyDescriptionDirty: false,
+    });
   },
 
   setSections: (sections) => {
@@ -353,6 +371,16 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
     }));
   },
 
+  // Duty description management
+  setDutyDescriptionDraft: (text) => set({ 
+    dutyDescriptionDraft: text,
+    isDutyDescriptionDirty: text !== (get().currentShell?.duty_description || ""),
+  }),
+  
+  setIsDutyDescriptionDirty: (dirty) => set({ isDutyDescriptionDirty: dirty }),
+  
+  setIsSavingDutyDescription: (saving) => set({ isSavingDutyDescription: saving }),
+
   reset: () => {
     // Clear all autosave timers
     const timers = get().autosaveTimers;
@@ -368,6 +396,9 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       savedExamples: {},
       sectionStates: {},
       collapsedSections: {},
+      dutyDescriptionDraft: "",
+      isDutyDescriptionDirty: false,
+      isSavingDutyDescription: false,
       isLoadingShell: false,
       isCreatingShell: false,
       autosaveTimers: {},

@@ -299,15 +299,17 @@ export function AddStatementDialog({
       if (!value) resetForm();
       onOpenChange(value);
     }}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg mx-auto max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg mx-auto h-[85vh] max-h-[85vh] p-0 gap-0 flex flex-col">
+        <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b">
           <DialogTitle className="text-lg">Add Statement</DialogTitle>
           <DialogDescription className="text-sm">
             Manually add a statement to your library
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="space-y-4">
           {/* 1. Statement Type Selector - FIRST */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Statement Type</Label>
@@ -722,10 +724,12 @@ export function AddStatementDialog({
               </div>
             </label>
 
+            </div>
           </div>
         </div>
 
-        <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+        {/* Fixed Footer */}
+        <div className="shrink-0 px-6 py-4 border-t bg-background flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -741,7 +745,7 @@ export function AddStatementDialog({
             {isSaving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
             Add Statement
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

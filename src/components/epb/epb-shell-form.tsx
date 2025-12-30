@@ -46,6 +46,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
 import { MPASectionCard } from "./mpa-section-card";
+import { DutyDescriptionCard } from "./duty-description-card";
 import { RealtimeCursors } from "./realtime-cursors";
 import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
@@ -110,11 +111,20 @@ export function EPBShellForm({
   const [isTogglingMode, setIsTogglingMode] = useState(false);
   const [sharedEPBs, setSharedEPBs] = useState<SharedEPBInfo[]>([]);
   const [isPageVisible, setIsPageVisible] = useState(true);
+  const [isDutyDescriptionCollapsed, setIsDutyDescriptionCollapsed] = useState(false);
   
   // EPB Assessment state
   const [showAssessmentDialog, setShowAssessmentDialog] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<EPBAssessmentResult | null>(null);
+  
+  // One-time tip for duty description
+  const [hasDismissedDutyDescriptionTip, setHasDismissedDutyDescriptionTip] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("epb_duty_description_tip_dismissed") === "true";
+    }
+    return false;
+  });
   
   // Ref for cursor tracking container
   const contentContainerRef = useRef<HTMLDivElement>(null);
@@ -880,6 +890,24 @@ export function EPBShellForm({
     });
   };
 
+  // Save duty description
+  const handleSaveDutyDescription = async (text: string) => {
+    if (!currentShell || !profile) return;
+
+    const { error } = await supabase
+      .from("epb_shells")
+      .update({
+        duty_description: text,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", currentShell.id);
+
+    if (error) throw error;
+
+    // Update local state
+    setCurrentShell({ ...currentShell, duty_description: text });
+  };
+
   // Create a snapshot (max 10 per section, oldest gets deleted when 11th is added)
   const handleCreateSnapshot = async (mpa: string, text: string) => {
     const section = sections[mpa];
@@ -967,6 +995,12 @@ export function EPBShellForm({
     removeSavedExample(section.id, exampleId);
   };
 
+  // Helper to dismiss the duty description tip
+  const dismissDutyDescriptionTip = useCallback(() => {
+    setHasDismissedDutyDescriptionTip(true);
+    localStorage.setItem("epb_duty_description_tip_dismissed", "true");
+  }, []);
+
   // Generate statement(s) using AI (returns multiple versions)
   const handleGenerateStatement = async (
     mpa: string,
@@ -981,6 +1015,20 @@ export function EPBShellForm({
     }
   ): Promise<string[]> => {
     if (!selectedRatee) return [];
+
+    // Show one-time tip if duty description is empty
+    const dutyDescription = currentShell?.duty_description?.trim();
+    if (!dutyDescription && !hasDismissedDutyDescriptionTip) {
+      toast.info("Tip: Add a Duty Description", {
+        description: "Statement quality improves when you include a duty description. It helps the AI understand your role and responsibilities.",
+        duration: 8000,
+        action: {
+          label: "Got it",
+          onClick: () => dismissDutyDescriptionTip(),
+        },
+      });
+      dismissDutyDescriptionTip();
+    }
 
     const maxChars = mpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
     const versionCount = options.versionCount || 1;
@@ -1026,6 +1074,7 @@ export function EPBShellForm({
               impact: a.impact,
               metrics: a.metrics,
             })),
+            dutyDescription: currentShell?.duty_description || "",
           }),
         });
 
@@ -1140,6 +1189,7 @@ export function EPBShellForm({
           shellId: currentShell.id,
           rateeRank: selectedRatee.rank,
           rateeAfsc: selectedRatee.afsc,
+          dutyDescription: currentShell.duty_description || "",
         }),
       });
 
@@ -1467,6 +1517,14 @@ export function EPBShellForm({
             containerRef={contentContainerRef}
           />
         )}
+
+        {/* Duty Description Card - Placed at the top above MPAs */}
+        <DutyDescriptionCard
+          currentDutyDescription={currentShell?.duty_description || ""}
+          isCollapsed={isDutyDescriptionCollapsed}
+          onToggleCollapse={() => setIsDutyDescriptionCollapsed(!isDutyDescriptionCollapsed)}
+          onSave={handleSaveDutyDescription}
+        />
 
         {STANDARD_MGAS.map((mpa) => {
           const section = sections[mpa.key];

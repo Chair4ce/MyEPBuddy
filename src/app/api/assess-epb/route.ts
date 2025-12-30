@@ -15,6 +15,7 @@ interface AssessEPBRequest {
   rateeRank: Rank;
   rateeAfsc: string | null;
   model?: string;
+  dutyDescription?: string; // Optional - member's duty description for context
 }
 
 function getModelProvider(
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
     }
 
     const body: AssessEPBRequest = await request.json();
-    const { shellId, rateeRank, rateeAfsc, model = "gemini-2.0-flash" } = body;
+    const { shellId, rateeRank, rateeAfsc, model = "gemini-2.0-flash", dutyDescription } = body;
 
     if (!shellId || !rateeRank) {
       return NextResponse.json(
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
       id: string;
       user_id: string;
       created_by: string;
+      duty_description: string;
       sections: EPBShellSection[];
     }
     
@@ -104,6 +106,7 @@ export async function POST(request: Request) {
         id,
         user_id,
         created_by,
+        duty_description,
         sections:epb_shell_sections(mpa, statement_text, is_complete)
       `)
       .eq("id", shellId)
@@ -161,10 +164,14 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
 
     // Build the assessment prompt
+    // Use duty description from request or fall back to what's stored in the shell
+    const effectiveDutyDescription = dutyDescription || shell.duty_description || "";
+    
     const assessmentPrompt = buildACAAssessmentPrompt(
       rateeRank,
       rateeAfsc,
-      statements
+      statements,
+      effectiveDutyDescription
     );
 
     // Get model provider
