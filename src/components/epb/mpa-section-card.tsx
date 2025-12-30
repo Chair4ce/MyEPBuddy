@@ -752,7 +752,7 @@ export function MPASectionCard({
             {isLockedByOther && lockedByInfo && (
               <Badge
                 variant="outline"
-                className="text-[9px] sm:text-[10px] shrink-0 bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 gap-0.5 sm:gap-1 hidden sm:flex"
+                className="text-[9px] sm:text-[10px] shrink-0 text-muted-foreground border-border gap-0.5 sm:gap-1 hidden sm:flex"
                 title={`${lockedByInfo.rank || ""} ${lockedByInfo.name} is also editing this section`}
               >
                 <Users className="size-2.5 sm:size-3" />
@@ -862,13 +862,13 @@ export function MPASectionCard({
             <div className="space-y-3">
               {/* Presence indicator - shows who else is editing (collaborative) */}
               {isLockedByOther && lockedByInfo && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 text-xs animate-in fade-in-0 duration-200">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-muted-foreground text-xs animate-in fade-in-0 duration-200">
                   <div className="flex items-center gap-1.5">
-                    <span className="relative flex size-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full size-2 bg-blue-500"></span>
+                    <span className="relative flex size-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-muted-foreground/50 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full size-1.5 bg-muted-foreground"></span>
                     </span>
-                    <span className="font-medium">
+                    <span>
                       {lockedByInfo.rank ? `${lockedByInfo.rank} ${lockedByInfo.name}` : lockedByInfo.name} is also editing
                     </span>
                   </div>
@@ -885,8 +885,7 @@ export function MPASectionCard({
                 rows={5}
                 className={cn(
                   "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
-                  isOverLimit && "border-destructive focus-visible:ring-destructive",
-                  isLockedByOther && "border-blue-500/30 ring-1 ring-blue-500/20"
+                  isOverLimit && "border-destructive focus-visible:ring-destructive"
                 )}
               />
               
@@ -1352,7 +1351,7 @@ export function MPASectionCard({
                         Generated Revisions ({generatedRevisions.length})
                       </h5>
                       {isLockedByOther && lockedByInfo && (
-                        <span className="text-[10px] text-blue-600 flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                           <Users className="size-3" />
                           Collaborative editing
                         </span>
@@ -1638,7 +1637,7 @@ export function MPASectionCard({
                         Generated Statements ({generatedStatements.length})
                       </h5>
                       {isLockedByOther && lockedByInfo && (
-                        <span className="text-[10px] text-blue-600 flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                           <Users className="size-3" />
                           Collaborative editing
                         </span>
