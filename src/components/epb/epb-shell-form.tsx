@@ -1651,6 +1651,7 @@ export function EPBShellForm({
 
         {/* Duty Description Card - Placed at the top above MPAs */}
         <DutyDescriptionCard
+          key={`duty-desc-${currentShell?.id || 'new'}`}
           currentDutyDescription={currentShell?.duty_description || ""}
           isCollapsed={isDutyDescriptionCollapsed}
           onToggleCollapse={() => setIsDutyDescriptionCollapsed(!isDutyDescriptionCollapsed)}
@@ -1672,7 +1673,7 @@ export function EPBShellForm({
           const isLockedByOther = !isMultiUserMode && sectionLocks.isLockedByOther(mpa.key);
 
           return (
-            <div key={mpa.key} data-mpa-key={mpa.key}>
+            <div key={`${currentShell?.id || 'new'}-${mpa.key}`} data-mpa-key={mpa.key}>
               <MPASectionCard
                 section={section}
                 isCollapsed={collapsedSections[mpa.key] ?? false}
