@@ -20,3 +20,4 @@ UPDATE profiles SET role = 'member' WHERE role = 'subordinate';
 
 
 
+

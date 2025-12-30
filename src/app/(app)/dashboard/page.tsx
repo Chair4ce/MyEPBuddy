@@ -140,7 +140,7 @@ export default function DashboardPage() {
       <PendingPriorDataCard />
 
       {/* EPB Progress - Statement status */}
-      {profile && (
+      {/* {profile && (
         <EPBStatementStatusCard
           profileId={profile.id}
           selectedUser="self"
@@ -149,13 +149,12 @@ export default function DashboardPage() {
           cycleYear={cycleYear}
           title="My EPB Progress"
         />
-      )}
+      )} */}
 
       {/* Recent Entries - Personal accomplishments */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Entries</CardTitle>
-          <CardDescription>Your latest accomplishment entries</CardDescription>
+          <CardTitle>Recent Actions</CardTitle>
         </CardHeader>
         <CardContent>
           {accomplishments.length === 0 ? (

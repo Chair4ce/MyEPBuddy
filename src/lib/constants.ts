@@ -452,3 +452,554 @@ export function formatMPAContext(mpaKey: string, descriptions: MPADescriptions =
   return context;
 }
 
+// ============================================
+// ACA (AIRMAN COMPREHENSIVE ASSESSMENT) RUBRICS
+// ============================================
+// Based on AF Form 931 (AB-TSgt) and AF Form 932 (MSgt-SMSgt)
+
+// Proficiency levels for AB through TSgt (AF Form 931)
+export type ACAJuniorProficiencyLevel = 
+  | "does_not_meet"
+  | "meets" 
+  | "exceeds"
+  | "far_exceeds"
+  | "not_applicable";
+
+// Proficiency levels for MSgt through SMSgt (AF Form 932)
+export type ACASeniorProficiencyLevel = 
+  | "does_not_meet"
+  | "meets" 
+  | "exceeds"
+  | "significantly_exceeds"
+  | "not_applicable";
+
+// Union type for all proficiency levels
+export type ACAProficiencyLevel = ACAJuniorProficiencyLevel | ACASeniorProficiencyLevel;
+
+// Rank tier for rubric selection
+export type ACARubricTier = "junior" | "senior";
+
+export interface ALQScore {
+  alqKey: string;
+  alqLabel: string;
+  level: ACAProficiencyLevel;
+  justification: string;
+}
+
+export interface CategoryAssessment {
+  categoryKey: string;
+  categoryLabel: string;
+  overallLevel: ACAProficiencyLevel;
+  subcategoryScores: ALQScore[];
+  summary: string;
+}
+
+export interface EPBAssessmentResult {
+  overallSummary: string;
+  overallStrength: ACAProficiencyLevel;
+  rubricTier: ACARubricTier;
+  formUsed: string; // "AF Form 931" or "AF Form 932"
+  categoryAssessments: CategoryAssessment[];
+  recommendations: string[];
+  timestamp: string;
+}
+
+// Legacy alias for backward compatibility
+export type MPAAssessment = CategoryAssessment;
+
+// Rubric structure types for type safety
+interface RubricSubcategory {
+  label: string;
+  description: string;
+  levels: Record<string, string>;
+}
+
+interface RubricCategory {
+  title: string;
+  focus: string;
+  subcategories: Record<string, RubricSubcategory>;
+}
+
+export type ACARubric = Record<string, RubricCategory>;
+
+// Proficiency levels for AB-TSgt (AF Form 931)
+export const ACA_JUNIOR_PROFICIENCY_LEVELS: { value: ACAJuniorProficiencyLevel; label: string; description: string; color: string }[] = [
+  { 
+    value: "does_not_meet", 
+    label: "Does Not Meet", 
+    description: "Few Airmen - Insufficient performance; fails to meet basic expectations.",
+    color: "destructive" 
+  },
+  { 
+    value: "meets", 
+    label: "Meets", 
+    description: "Majority of Airmen - Acceptable, consistent performance; meets standards reliably.",
+    color: "default" 
+  },
+  { 
+    value: "exceeds", 
+    label: "Exceeds", 
+    description: "Some Airmen - Above-average performance; exceeds expectations.",
+    color: "secondary" 
+  },
+  { 
+    value: "far_exceeds", 
+    label: "Far Exceeds", 
+    description: "Very Few Airmen - Exceptional performance; sets the standard.",
+    color: "primary" 
+  },
+  { 
+    value: "not_applicable", 
+    label: "Not Applicable", 
+    description: "Insufficient information to assess.",
+    color: "muted" 
+  },
+];
+
+// Proficiency levels for MSgt-SMSgt (AF Form 932)
+export const ACA_SENIOR_PROFICIENCY_LEVELS: { value: ACASeniorProficiencyLevel; label: string; description: string; color: string }[] = [
+  { 
+    value: "does_not_meet", 
+    label: "Does Not Meet", 
+    description: "Insufficient performance; fails to meet expectations or has negative impact.",
+    color: "destructive" 
+  },
+  { 
+    value: "meets", 
+    label: "Meets", 
+    description: "Solid performance; meets standards reliably and ensures compliance.",
+    color: "default" 
+  },
+  { 
+    value: "exceeds", 
+    label: "Exceeds", 
+    description: "Above-average; exceeds expectations through innovation and positive influence.",
+    color: "secondary" 
+  },
+  { 
+    value: "significantly_exceeds", 
+    label: "Significantly Exceeds", 
+    description: "Exceptional; sets benchmarks, drives broad organizational impact.",
+    color: "primary" 
+  },
+  { 
+    value: "not_applicable", 
+    label: "Not Applicable", 
+    description: "Insufficient information to assess.",
+    color: "muted" 
+  },
+];
+
+// Combined levels for UI display (matches both tiers)
+export const ACA_PROFICIENCY_LEVELS = [
+  ...ACA_JUNIOR_PROFICIENCY_LEVELS.filter(l => l.value !== "far_exceeds"),
+  { 
+    value: "far_exceeds" as ACAProficiencyLevel, 
+    label: "Far Exceeds", 
+    description: "Very Few Airmen - Exceptional performance; sets the standard.",
+    color: "primary" 
+  },
+  { 
+    value: "significantly_exceeds" as ACAProficiencyLevel, 
+    label: "Significantly Exceeds", 
+    description: "Exceptional; sets benchmarks, drives broad organizational impact.",
+    color: "primary" 
+  },
+];
+
+// Get proficiency levels based on rank tier
+export function getProficiencyLevelsForTier(tier: ACARubricTier) {
+  return tier === "junior" ? ACA_JUNIOR_PROFICIENCY_LEVELS : ACA_SENIOR_PROFICIENCY_LEVELS;
+}
+
+// Determine rubric tier based on rank
+export function getRubricTierForRank(rank: Rank | string | null): ACARubricTier {
+  if (!rank) return "junior";
+  const seniorRanks = ["MSgt", "SMSgt", "CMSgt"];
+  return seniorRanks.includes(rank) ? "senior" : "junior";
+}
+
+// ============================================
+// ACA RUBRIC FOR AB THROUGH TSGT (AF FORM 931)
+// ============================================
+export const ACA_RUBRIC_JUNIOR = {
+  performance: {
+    title: "VI. Performance: Leadership/Primary Duties/Followership/Training",
+    focus: "Execution of duties, skill development, and training impact.",
+    subcategories: {
+      task_knowledge: {
+        label: "Task Knowledge/Proficiency",
+        description: "Consider the quality, quantity, results, and impact of the Airman's knowledge and ability to accomplish tasks.",
+        levels: {
+          does_not_meet: "Demonstrated insufficient ability, required re-accomplishment of tasks, requires more guidance/experience.",
+          meets: "Demonstrated acceptable ability and consistently produced good quality, quantity, results, and impact.",
+          exceeds: "Routinely delivered high-quality work early, produced more than expected of current grade.",
+          far_exceeds: "Knowledge and skills impact far beyond those of peers; efforts directly elevated unit's impact on mission success.",
+        },
+      },
+      initiative_motivation: {
+        label: "Initiative/Motivation",
+        description: "Describes the degree of willingness to execute duties, motivate colleagues, and develop innovative new processes.",
+        levels: {
+          does_not_meet: "Displayed little to no effort in accomplishing duties, lacked motivation and did not display initiative.",
+          meets: "Displayed good effort in performance of assigned tasks; mindful of others' needs and developed new processes.",
+          exceeds: "Self-starter on task completion, proactively assisted colleagues, routinely sought out new ways to execute mission.",
+          far_exceeds: "Inspired work ethic, aggressively sought to improve others' motivation, drove innovative environments.",
+        },
+      },
+      skill_level_training: {
+        label: "Skill Level Upgrade Training",
+        description: "Consider skill level awarding course, CDC timeliness completion, course exam results, and completion of core task training.",
+        levels: {
+          does_not_meet: "Did not complete or took excessive time to obtain required skill level.",
+          meets: "Progressed in or obtained skill level within prescribed time and standard.",
+          exceeds: "Progressed in or obtained skill level ahead of time and above standard.",
+          far_exceeds: "Completed CDCs and core task training requirements far ahead of schedule and obtained excellent course exam score.",
+        },
+      },
+      duty_position_requirements: {
+        label: "Duty Position Requirements, Qualifications, and Certifications",
+        description: "Consider duty position qualifications, career field certifications (if applicable), and readiness requirements.",
+        levels: {
+          does_not_meet: "Did not complete or took excessive time to obtain required training.",
+          meets: "Progressed in or obtained training within prescribed time and standards.",
+          exceeds: "Progressed in or obtained training ahead of time and above standards.",
+          far_exceeds: "Completed training requirements far ahead of schedule and if tested obtained excellent scores.",
+        },
+      },
+      training_of_others: {
+        label: "Training of Others",
+        description: "Consider the impact the Airman made to train others.",
+        levels: {
+          does_not_meet: "When tasked to train, Airman made minimal to no effort to train others; did not meet expectations.",
+          meets: "Effectively imparts skills and knowledge to others.",
+          exceeds: "Consistently seized opportunities to train subordinates and peers; trainees became highly skilled.",
+          far_exceeds: "Peerless teacher, selflessly imparts expertise to subordinates, peers and superiors with significant impact on mission.",
+        },
+      },
+    },
+  },
+  followership_leadership: {
+    title: "VII. Followership/Leadership",
+    focus: "Resource management, standards enforcement, communication, and environment building.",
+    subcategories: {
+      resource_utilization: {
+        label: "Resource Utilization",
+        description: "Consider how effectively the Airman utilizes resources (time management, equipment, manpower and budget) to accomplish the mission.",
+        levels: {
+          does_not_meet: "Improperly or inconsistently managed time and other resources.",
+          meets: "Made good use of available time and other resources within Airman's control.",
+          exceeds: "Sought better ways to more effectively utilize time and other resources.",
+          far_exceeds: "Sought after utilization expert in saving time, equipment, manpower, and budget with impact outside of work center or unit.",
+        },
+      },
+      standards_compliance: {
+        label: "Comply with/Enforce Standards",
+        description: "Consider personal adherence and enforcement of fitness standards, dress and personal appearance, customs and courtesies, and professional conduct.",
+        levels: {
+          does_not_meet: "Failed to meet some or all standards.",
+          meets: "Consistently met all standards, exceeded some.",
+          exceeds: "Exceeded all standards of fitness, conduct, appearance and behavior, influenced others by example.",
+          far_exceeds: "Is the model Airman, raised the standard in all areas for others to emulate; coached others.",
+        },
+      },
+      communication_skills: {
+        label: "Communication Skills",
+        description: "Describes how well the Airman receives and relays information, thoughts, and ideas up and down the chain of command; fosters an environment for open dialogue.",
+        levels: {
+          does_not_meet: "Not articulate; does not assimilate or convey information in a clear and concise manner.",
+          meets: "Able to convey most information in an understandable manner, makes some effort to improve communication skills.",
+          exceeds: "Clearly conveyed complex information in a concise manner, improved communication skills in themselves and others; encouraged and considered others' input.",
+          far_exceeds: "Remarkable communicator; mentor and teacher; has the presence and confidence in any setting; sought out by leaders for various communication forums.",
+        },
+      },
+      dignified_environment: {
+        label: "Caring, Respectful and Dignified Environment (Teamwork)",
+        description: "Rate how well the Airman's selfless consideration promotes a healthy organizational climate and value of diversity, setting the stage for an environment of dignity and respect.",
+        levels: {
+          does_not_meet: "Airman displayed little to no respect for others and/or themselves.",
+          meets: "Fostered a dignified environment by consistently treating Airmen and themselves with respect.",
+          exceeds: "Displayed strong interpersonal skills by proactively meeting others' needs, held others accountable for professional conduct to enhance a dignified environment.",
+          far_exceeds: "Unmatched interpersonal skills; always displayed exemplary conduct and behavior with actions that are uplifting, resulting in increases in teamwork and unit effectiveness.",
+        },
+      },
+    },
+  },
+  whole_airman: {
+    title: "VIII. Whole Airman Concept",
+    focus: "Embodiment of Air Force values, development, and community involvement.",
+    subcategories: {
+      core_values: {
+        label: "Air Force Core Values",
+        description: "Consider how well the Airman adopts, internalizes and demonstrates our Air Force Core Values of Integrity First, Service Before Self, and Excellence in All We Do.",
+        levels: {
+          does_not_meet: "Airman failed to adhere to the Air Force Core Values.",
+          meets: "Consistently demonstrated the Air Force Core Values, both on and off duty.",
+          exceeds: "Embodiment of Integrity, Service Before Self, and Excellence; encouraged others to uphold Air Force Core Values.",
+          far_exceeds: "Airman for others to emulate; personal conduct exudes Air Force Core Values; influential leader who inspired others to embody Core Values.",
+        },
+      },
+      personal_professional_development: {
+        label: "Personal and Professional Development",
+        description: "Consider the amount of effort the Airman devoted to improve themselves and their work center/unit through education and involvement.",
+        levels: {
+          does_not_meet: "Made little to no effort to complete expected professional and/or personal development.",
+          meets: "Established goals and progressed to meet those goals for professional and/or personal development.",
+          exceeds: "Driven Airman; exceeded both professional and personal development goals with positive impact on individual performance or mission accomplishment.",
+          far_exceeds: "Relentlessly pursued personal and professional development of themselves and others; efforts resulted in significant positive impact to unit and/or Air Force.",
+        },
+      },
+      esprit_de_corps: {
+        label: "Esprit de Corps and Community Relations",
+        description: "Consider how well Airman promotes camaraderie, embraces esprit de corps, and acts as an Air Force ambassador.",
+        levels: {
+          does_not_meet: "Made little to no effort to promote esprit de corps or community involvement.",
+          meets: "Fostered esprit de corps through volunteerism and actively involved in base and community events.",
+          exceeds: "Active participant; organized and occasionally led team building and community events.",
+          far_exceeds: "Epitomizes an Air Force ambassador, Airman consistently and selflessly led efforts that inspired esprit de corps with significant impact to the mission and community.",
+        },
+      },
+    },
+  },
+};
+
+// ============================================
+// ACA RUBRIC FOR MSGT THROUGH SMSGT (AF FORM 932)
+// ============================================
+export const ACA_RUBRIC_SENIOR = {
+  performance: {
+    title: "VI. Performance: Leadership/Primary Duties/Followership/Training",
+    focus: "Senior NCO leadership in mission execution, resource management, team development, and standards enforcement.",
+    subcategories: {
+      mission_accomplishment: {
+        label: "Mission Accomplishment",
+        description: "Consider the Airman's ability to lead and produce timely, high quality/quantity, mission-oriented results.",
+        levels: {
+          does_not_meet: "Displayed little to no aptitude or competence to complete task; failed to lead team to effective results.",
+          meets: "Consistently led team(s) to produce quality results; accomplished all assigned tasks.",
+          exceeds: "Mission-oriented leader; repeatedly led team to execute high-quality work early; efforts directly elevated work center performance.",
+          significantly_exceeds: "Widely recognized and emulated as a producer and leader; drove significant improvement toward mission accomplishment beyond assigned unit.",
+        },
+      },
+      resource_utilization: {
+        label: "Resource Utilization",
+        description: "Consider how effectively the Airman leads their team to utilize resources (time management, equipment, manpower and budget) to accomplish the mission.",
+        levels: {
+          does_not_meet: "Ineffectively managed manpower, time and other resources.",
+          meets: "Ensured proper and effective use of all resources under their control to ensure mission accomplishment.",
+          exceeds: "Innovatively led team to continuously improve efficient use of assigned resources.",
+          significantly_exceeds: "Recognized expert; generated new innovators that saved resources while enhancing mission accomplishment.",
+        },
+      },
+      team_building: {
+        label: "Team Building",
+        description: "Consider the amount of innovation, initiative and motivation displayed by the Airman and their subordinates (collaboration).",
+        levels: {
+          does_not_meet: "Displayed little to no effort in building team; subordinate capability hindered.",
+          meets: "Effective collaborator; promoted relationships among team members and sought to accomplish mission in ways that support team cohesion.",
+          exceeds: "Aggressively partnered to achieve goals; promoted highly creative and energetic team that increased mission capability.",
+          significantly_exceeds: "Widely recognized and emulated as a trainer, coach and leader; drove team to significant mission capability improvements beyond unit.",
+        },
+      },
+      mentorship: {
+        label: "Mentorship",
+        description: "Consider how well Airman knows their subordinates, accepts personal responsibility for them, and is accountable for their professional development.",
+        levels: {
+          does_not_meet: "Displayed little to no effort to mentor subordinates, took no accountability, abdicated responsibility for subordinate development.",
+          meets: "Active, visible leader; deliberately developed Airmen into better followers, leaders, and supervisors.",
+          exceeds: "Develops and institutes innovative programs; challenges subordinates to exceed their perceived potential thereby enhancing mission capability.",
+          significantly_exceeds: "Sought after mentor; subordinate and unit performance far surpassed expected results due to their mentorship skill.",
+        },
+      },
+      communication_skills: {
+        label: "Communication Skills",
+        description: "Describes how well the Airman communicates, translates superiors' direction into specific tasks, fosters an environment for open dialogue, and enhances communication skills of subordinates.",
+        levels: {
+          does_not_meet: "Lacks ability to effectively communicate.",
+          meets: "Able to receive information and effectively communicate up/down the chain of command; fosters approachable environment.",
+          exceeds: "Expert communicator; clearly conveyed complex information to subordinates and superiors; fostered enhanced communication skills in others; encouraged candid environment.",
+          significantly_exceeds: "Dynamic communicator and astute listener; has presence and confidence in any setting; Airman and subordinates sought out by leaders for various communication forums.",
+        },
+      },
+      standards_compliance: {
+        label: "Comply with/Enforce Standards",
+        description: "Consider personal adherence and how the Airman fosters an environment where everyone enforces fitness standards, dress and personal appearance, customs and courtesies, and professional conduct.",
+        levels: {
+          does_not_meet: "Failed to meet some or all standards and/or failed to address subordinates non-compliance.",
+          meets: "Consistently met and enforced standards in all areas; influenced others by example.",
+          exceeds: "Met all/surpassed some standards of fitness, conduct, appearance, and behavior; proactively coached others to meet standards.",
+          significantly_exceeds: "Is the Airman emulated by others, raised the standard in all areas; persistently drove Airmen to exceed standards.",
+        },
+      },
+      duty_environments: {
+        label: "Duty Environments",
+        description: "Rate how well the Airman establishes and maintains caring, respectful, and dignified environments to include promoting a healthy organizational climate.",
+        levels: {
+          does_not_meet: "Actions failed to engender a respectful atmosphere.",
+          meets: "Produced work center marked by mindful consideration and absent of negative treatment of others.",
+          exceeds: "Generated energetic, positive environments people seek to work at, demanded equal and dignified treatment for all.",
+          significantly_exceeds: "Model supervisor and leader who coached others to duplicate vibrant and highly productive teams marked by respectful treatment of others.",
+        },
+      },
+      training: {
+        label: "Training",
+        description: "Describes how well the Airman and their team complies with upgrade, duty position, and certification requirements.",
+        levels: {
+          does_not_meet: "Consistently failed to produce qualified team members and/or adhere to training requirements.",
+          meets: "Produced Airmen who successfully progressed and obtained training qualifications on-time; met personal training requirements.",
+          exceeds: "Generated high-performance team(s) that developed and instituted innovative training programs; challenged self, subordinates and other trainees to exceed requirements.",
+          significantly_exceeds: "Sought after training leader, continually refined team training techniques to enhance productivity; mentored other team leads to replicate benchmark training environment.",
+        },
+      },
+    },
+  },
+  whole_airman: {
+    title: "VII. Whole Airman Concept",
+    focus: "Embodiment of Air Force values, development of self and others, and fostering unit cohesion.",
+    subcategories: {
+      core_values: {
+        label: "Air Force Core Values",
+        description: "Consider how well the Airman adopts, internalizes, demonstrates and insists on adherence of our Air Force Core Values of Integrity First, Service Before Self and Excellence in All We Do.",
+        levels: {
+          does_not_meet: "Airman failed to adhere to and enforce the Air Force Core Values.",
+          meets: "Ensured subordinates and self consistently demonstrated the Air Force Core Values on and off duty.",
+          exceeds: "Embodiment of Integrity, Service Before Self, and Excellence; demanded others uphold and live by the Core Values.",
+          significantly_exceeds: "Airman for others to emulate; personal conduct exudes Air Force Core Values; influential leader who inspired others to embody the Core Values.",
+        },
+      },
+      personal_professional_development: {
+        label: "Personal and Professional Development",
+        description: "Consider effort the Airman devoted to improve their subordinates, their work center/unit and themselves.",
+        levels: {
+          does_not_meet: "Made little or no effort to pursue professional and personal development goals, nor encouraged subordinates to do the same.",
+          meets: "Established attainable development goals for themselves and subordinates; ensured progress to meet those goals.",
+          exceeds: "Driven leader; led others and self to pursue professional and personal development goals with distinctive impact on work performance.",
+          significantly_exceeds: "Tenaciously led others and self to exceed development goals, resulting in significant positive impact on unit performance and beyond; benchmarked by other work centers.",
+        },
+      },
+      esprit_de_corps: {
+        label: "Esprit de Corps and Community Relations",
+        description: "Consider how well Airman promotes camaraderie, enhances esprit de corps, and develops Air Force ambassadors.",
+        levels: {
+          does_not_meet: "Made little to no effort to enhance esprit de corps or community.",
+          meets: "Required subordinates to foster esprit de corps through involvement in base and/or community events.",
+          exceeds: "Organized and led team building and/or community events; increased work center esprit de corps and morale and improved community relations.",
+          significantly_exceeds: "Consistently and selflessly cultivated leaders that inspired esprit de corps with significant positive impact to the mission and/or community.",
+        },
+      },
+    },
+  },
+};
+
+// Build the assessment prompt with the appropriate ACA rubric based on rank
+export function buildACAAssessmentPrompt(
+  rateeRank: string,
+  rateeAfsc: string | null,
+  statements: { mpa: string; text: string }[]
+): string {
+  // Determine which rubric to use based on rank
+  const rubricTier = getRubricTierForRank(rateeRank as Rank);
+  const rubric: ACARubric = rubricTier === "senior" ? ACA_RUBRIC_SENIOR : ACA_RUBRIC_JUNIOR;
+  const formUsed = rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
+  const rankRange = rubricTier === "senior" ? "MSgt through SMSgt" : "AB through TSgt";
+  const proficiencyLevels = rubricTier === "senior" 
+    ? ["does_not_meet", "meets", "exceeds", "significantly_exceeds"]
+    : ["does_not_meet", "meets", "exceeds", "far_exceeds"];
+
+  // Build formatted statements section
+  const formattedStatements = statements
+    .map((s) => {
+      const mpaLabel = ENTRY_MGAS.find(m => m.key === s.mpa)?.label || s.mpa;
+      return `### ${mpaLabel}\n${s.text}`;
+    })
+    .join("\n\n");
+
+  // Build rubric reference section
+  let rubricSection = "";
+  for (const [categoryKey, category] of Object.entries(rubric)) {
+    rubricSection += `\n## ${category.title}\nFocus: ${category.focus}\n`;
+    for (const [subKey, sub] of Object.entries(category.subcategories)) {
+      rubricSection += `\n### ${sub.label}\n${sub.description}\n`;
+      rubricSection += "Proficiency Levels:\n";
+      for (const [level, desc] of Object.entries(sub.levels)) {
+        const levelLabel = level.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+        rubricSection += `- **${levelLabel}**: ${desc}\n`;
+      }
+    }
+  }
+
+  // Build the level guidance based on tier
+  const levelGuidance = rubricTier === "senior"
+    ? `- **Does Not Meet**: Insufficient performance; fails to meet expectations
+- **Meets**: Solid performance; meets standards reliably
+- **Exceeds**: Above-average; exceeds expectations through innovation
+- **Significantly Exceeds**: Exceptional; sets benchmarks, drives broad organizational impact`
+    : `- **Does Not Meet** (Few Airmen): Insufficient performance
+- **Meets** (Majority of Airmen): Acceptable, consistent performance
+- **Exceeds** (Some Airmen): Above-average performance
+- **Far Exceeds** (Very Few Airmen): Exceptional performance; sets the standard`;
+
+  return `You are an expert evaluator assessing written performance statements for a U.S. Air Force Airman (${rankRange}) using the Airman Comprehensive Assessment (ACA) Worksheet (${formUsed}) as your rubric.
+
+## RATEE INFORMATION
+- Rank: ${rateeRank}
+- AFSC: ${rateeAfsc || "Not specified"}
+- Rubric: ${formUsed} (${rankRange})
+
+## PERFORMANCE STATEMENTS TO ASSESS
+${formattedStatements}
+
+## KEY GUIDELINES
+
+1. **Whole-Person Concept**: Evaluate holistically, considering the Airman's rank (${rateeRank}), AFSC, assigned duties, and context. Integrate how actions align with Air Force standards per AFI 36-2618 (Enlisted Force Structure).
+
+2. **Proficiency Levels**:
+${levelGuidance}
+
+## ACA RUBRIC REFERENCE (${formUsed})
+${rubricSection}
+
+## SCORING PROCESS
+
+1. Read each performance statement carefully.
+2. For each category and subcategory, identify relevant elements from the statements.
+3. Match described behaviors to the closest proficiency level. If not addressed, note as "not_applicable".
+4. Provide justification for each score, quoting or referencing parts of the statement.
+5. Assign an overall score for each category by summarizing subcategory scores.
+6. End with an overall performance strength summary.
+
+**Objectivity**: Base scores on rubric descriptions only. Avoid bias; use evidence. If ambiguous, err toward lower level and explain.
+
+## OUTPUT FORMAT (JSON)
+Respond with a valid JSON object in this exact structure:
+{
+  "overallSummary": "Summary of overall performance strength (e.g., 'Overall: Exceeds – Solid in primary duties with exceptional leadership')",
+  "overallStrength": "${proficiencyLevels[1]}",
+  "rubricTier": "${rubricTier}",
+  "formUsed": "${formUsed}",
+  "categoryAssessments": [
+    {
+      "categoryKey": "performance",
+      "categoryLabel": "VI. Performance: Leadership/Primary Duties/Followership/Training",
+      "overallLevel": "${proficiencyLevels[1]}",
+      "subcategoryScores": [
+        {
+          "alqKey": "task_knowledge",
+          "alqLabel": "Task Knowledge/Proficiency",
+          "level": "${proficiencyLevels[2]}",
+          "justification": "Statement demonstrates... [quote relevant text]"
+        }
+      ],
+      "summary": "Brief summary of this category's assessment"
+    }
+  ],
+  "recommendations": [
+    "Actionable recommendation to strengthen statements",
+    "Another specific improvement suggestion"
+  ],
+  "timestamp": "${new Date().toISOString()}"
+}
+
+Assess ALL categories from the rubric. For subcategories not addressed by the statements, mark as "not_applicable" with brief explanation.`
+}
+

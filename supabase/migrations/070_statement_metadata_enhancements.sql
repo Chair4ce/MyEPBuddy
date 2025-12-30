@@ -75,3 +75,4 @@ COMMENT ON COLUMN refined_statements.is_winning_package IS 'Whether this stateme
 COMMENT ON COLUMN refined_statements.win_level IS 'The level at which the award was won (squadron, group, wing, tenant_unit, haf)';
 COMMENT ON COLUMN refined_statements.use_as_llm_example IS 'Whether to include this statement as an example in LLM prompts for generation';
 
+

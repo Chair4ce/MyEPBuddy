@@ -152,3 +152,4 @@ CREATE POLICY "Users can insert snapshots for chain award sections"
     )
   );
 
+

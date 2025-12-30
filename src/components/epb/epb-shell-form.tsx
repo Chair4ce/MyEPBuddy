@@ -19,8 +19,15 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { STANDARD_MGAS, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
+import { STANDARD_MGAS, ENTRY_MGAS, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
+import type { EPBAssessmentResult } from "@/lib/constants";
+import { EPBAssessmentDialog } from "./epb-assessment-dialog";
 import {
   FileText,
   Plus,
@@ -31,6 +38,8 @@ import {
   User,
   UserPlus,
   Share2,
+  Sparkles,
+  ClipboardCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -101,6 +110,11 @@ export function EPBShellForm({
   const [isTogglingMode, setIsTogglingMode] = useState(false);
   const [sharedEPBs, setSharedEPBs] = useState<SharedEPBInfo[]>([]);
   const [isPageVisible, setIsPageVisible] = useState(true);
+  
+  // EPB Assessment state
+  const [showAssessmentDialog, setShowAssessmentDialog] = useState(false);
+  const [isAssessing, setIsAssessing] = useState(false);
+  const [assessmentResult, setAssessmentResult] = useState<EPBAssessmentResult | null>(null);
   
   // Ref for cursor tracking container
   const contentContainerRef = useRef<HTMLDivElement>(null);
@@ -1084,6 +1098,68 @@ export function EPBShellForm({
     return accomplishments.filter((a) => a.mpa === mpa).length;
   };
 
+  // Check if EPB is ready for assessment (at least one MPA has content)
+  // Available to: the user on their own EPB, or supervisors on subordinates' EPBs
+  const isEPBReadyForAssessment = useCallback(() => {
+    if (!currentShell) return false;
+    
+    // Check if at least one core MPA section has meaningful content (>10 chars)
+    const coreMPAs = ENTRY_MGAS.map((m) => m.key);
+    const sectionsWithContent = Object.values(sections).filter(
+      (s) => coreMPAs.includes(s.mpa) && s.statement_text && s.statement_text.trim().length > 10
+    );
+    
+    return sectionsWithContent.length > 0;
+  }, [currentShell, sections]);
+
+  // Check if all core MPAs are complete
+  const isEPBComplete = useCallback(() => {
+    if (!currentShell) return false;
+    
+    const coreMPAs = ENTRY_MGAS.map((m) => m.key);
+    const completedSections = Object.values(sections).filter(
+      (s) => coreMPAs.includes(s.mpa) && s.is_complete
+    );
+    
+    return completedSections.length === coreMPAs.length;
+  }, [currentShell, sections]);
+
+  // Handle EPB assessment
+  const handleAssessEPB = useCallback(async () => {
+    if (!currentShell || !selectedRatee) return;
+    
+    setShowAssessmentDialog(true);
+    setIsAssessing(true);
+    setAssessmentResult(null);
+    
+    try {
+      const response = await fetch("/api/assess-epb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shellId: currentShell.id,
+          rateeRank: selectedRatee.rank,
+          rateeAfsc: selectedRatee.afsc,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to assess EPB");
+      }
+
+      const data = await response.json();
+      setAssessmentResult(data.assessment);
+      toast.success("EPB assessment complete!");
+    } catch (error) {
+      console.error("Assessment error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to assess EPB");
+      setShowAssessmentDialog(false);
+    } finally {
+      setIsAssessing(false);
+    }
+  }, [currentShell, selectedRatee]);
+
   // Loading state
   if (isLoadingShell) {
     return (
@@ -1316,8 +1392,8 @@ export function EPBShellForm({
         </div>
       )}
 
-      {/* Toggle All Sections Button */}
-      <div className="flex items-center gap-2">
+      {/* Toggle All Sections Button + Assessment Button */}
+      <div className="flex items-center gap-2 flex-wrap">
         <Button 
           variant="outline" 
           size="sm" 
@@ -1336,6 +1412,39 @@ export function EPBShellForm({
             </>
           )}
         </Button>
+        
+        {/* Assessment Button - Top */}
+        {isEPBReadyForAssessment() && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={isEPBComplete() ? "default" : "outline"}
+                size="sm"
+                onClick={handleAssessEPB}
+                disabled={isAssessing}
+                className={cn(
+                  "h-8 px-3 text-sm gap-1.5",
+                  isEPBComplete() && "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700"
+                )}
+              >
+                {isAssessing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <ClipboardCheck className="size-3.5" />
+                )}
+                <span className="hidden sm:inline">AI Review</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[280px]">
+              <p className="font-medium text-xs">AI Performance Assessment</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Analyze this EPB using the ACA rubric (AF Form 724A). Get detailed scores for each 
+                Airman Leadership Quality with actionable recommendations.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
         <div className="flex-1" />
         <Badge variant="secondary" className="text-xs">
           {accomplishments.length} Performance Actions
@@ -1400,7 +1509,50 @@ export function EPBShellForm({
             </div>
           );
         })}
+
+        {/* Bottom Assessment Button - Shows when EPB is ready */}
+        {isEPBReadyForAssessment() && (
+          <div className="flex justify-center pt-6 pb-4">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isEPBComplete() ? "default" : "outline"}
+                  size="lg"
+                  onClick={handleAssessEPB}
+                  disabled={isAssessing}
+                  className={cn(
+                    "gap-2 px-6",
+                    isEPBComplete() && "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700"
+                  )}
+                >
+                  {isAssessing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-4" />
+                  )}
+                  AI Performance Review
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[300px]">
+                <p className="font-medium text-xs">AI Performance Assessment</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Generate a comprehensive assessment using the ACA rubric (AF Form 724A). 
+                  Each MPA is scored against Airman Leadership Qualities with specific feedback 
+                  to strengthen statements before submission.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </div>
+
+      {/* EPB Assessment Dialog */}
+      <EPBAssessmentDialog
+        isOpen={showAssessmentDialog}
+        onClose={() => setShowAssessmentDialog(false)}
+        assessment={assessmentResult}
+        isLoading={isAssessing}
+      />
     </div>
   );
 }
