@@ -330,19 +330,21 @@ export function MPASectionCard({
     [accomplishments, section.mpa]
   );
 
-  // Initialize state when section loads
+  // Sync local text with section.statement_text when it changes (from shell load or realtime)
+  // This is the source of truth - always sync unless user is actively editing
   useEffect(() => {
-    if (!state.draftText && section.statement_text) {
-      initializeSectionState(section.mpa, section.statement_text);
-      lastSavedRef.current = section.statement_text;
-      setLocalText(section.statement_text);
+    const isFocused = document.activeElement === textareaRef.current;
+    if (!isFocused) {
+      setLocalText(section.statement_text || "");
+      initializeSectionState(section.mpa, section.statement_text || "");
+      lastSavedRef.current = section.statement_text || "";
     }
-  }, [section.mpa, section.statement_text, state.draftText, initializeSectionState]);
+  }, [section.statement_text, section.mpa, initializeSectionState]);
 
-  // Sync localText when state.draftText changes from external sources (collaboration, AI generation)
-  // but only when NOT focused (user is typing)
+  // Also sync when state.draftText changes from external sources (AI generation, collaboration)
   useEffect(() => {
-    if (document.activeElement !== textareaRef.current && state.draftText !== localText) {
+    const isFocused = document.activeElement === textareaRef.current;
+    if (!isFocused && state.draftText !== localText) {
       setLocalText(state.draftText);
     }
   }, [state.draftText]); // eslint-disable-line react-hooks/exhaustive-deps

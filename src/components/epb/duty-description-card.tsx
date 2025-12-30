@@ -102,20 +102,14 @@ export function DutyDescriptionCard({
   // Style learning feedback (non-blocking, fire-and-forget)
   const styleFeedback = useStyleFeedback();
 
-  // Initialize local text when store changes
+  // Sync local text with prop when it changes (from shell load or realtime update)
+  // This is the source of truth - always sync unless user is actively editing
   useEffect(() => {
-    if (!isEditing && dutyDescriptionDraft !== localText) {
-      setLocalText(dutyDescriptionDraft || currentDutyDescription || "");
+    if (!isEditing) {
+      setLocalText(currentDutyDescription || "");
+      setDutyDescriptionDraft(currentDutyDescription || "");
     }
-  }, [dutyDescriptionDraft, currentDutyDescription, isEditing, localText]);
-
-  // Sync with current duty description on mount
-  useEffect(() => {
-    if (currentDutyDescription && !dutyDescriptionDraft) {
-      setLocalText(currentDutyDescription);
-      setDutyDescriptionDraft(currentDutyDescription);
-    }
-  }, [currentDutyDescription, dutyDescriptionDraft, setDutyDescriptionDraft]);
+  }, [currentDutyDescription]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const displayText = localText;
   const charCount = displayText.length;
