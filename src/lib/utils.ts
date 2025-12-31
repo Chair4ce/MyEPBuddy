@@ -19,11 +19,12 @@ export function truncateText(text: string, maxLength: number): string {
 }
 
 export function getCharacterCountColor(count: number, max: number): string {
-  const percentage = count / max;
-  if (percentage >= 1) return "text-destructive";
-  if (percentage >= 0.9) return "text-orange-500";
-  if (percentage >= 0.75) return "text-yellow-500";
-  return "text-muted-foreground";
+  const remaining = max - count;
+  if (count > max) return "text-destructive"; // Over limit
+  if (remaining <= 10) return "text-green-500"; // Within 10 of max - great
+  if (remaining <= 20) return "text-yellow-500"; // 10-20 away - good
+  if (remaining <= 40) return "text-orange-400"; // 20-40 away - getting there
+  return "text-orange-300"; // More than 40 away - needs more
 }
 
 export function sleep(ms: number): Promise<void> {

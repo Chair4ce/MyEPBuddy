@@ -83,11 +83,11 @@ export function AccomplishmentDetailDialog({
   const [showComments, setShowComments] = useState(true);
   const commentsEndRef = useRef<HTMLDivElement>(null);
   
-  // Private comment state
+  // Visibility selection state (for private comments)
   const [chainMembers, setChainMembers] = useState<ChainMember[]>([]);
   const [isLoadingChainMembers, setIsLoadingChainMembers] = useState(false);
-  const [selectedRecipient, setSelectedRecipient] = useState<string>("public");
-  const [showRecipientSelect, setShowRecipientSelect] = useState(false);
+  const [selectedVisibleTo, setSelectedVisibleTo] = useState<string[]>([]);
+  const [showVisibilitySelect, setShowVisibilitySelect] = useState(false);
   
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -110,9 +110,9 @@ export function AccomplishmentDetailDialog({
     if (open && accomplishment) {
       loadComments();
       loadChainMembers();
-      // Reset recipient selection
-      setSelectedRecipient("public");
-      setShowRecipientSelect(false);
+      // Reset visibility selection
+      setSelectedVisibleTo([]);
+      setShowVisibilitySelect(false);
     }
   }, [open, accomplishment?.id]);
 
@@ -189,22 +189,31 @@ export function AccomplishmentDetailDialog({
     if (!accomplishment || !newComment.trim()) return;
 
     setIsSubmittingComment(true);
-    const recipientId = selectedRecipient === "public" ? null : selectedRecipient;
-    const result = await createAccomplishmentComment(accomplishment.id, newComment.trim(), recipientId);
+    const visibleTo = selectedVisibleTo.length > 0 ? selectedVisibleTo : null;
+    const result = await createAccomplishmentComment(accomplishment.id, newComment.trim(), visibleTo);
     
     if (result.error) {
       toast.error(result.error);
     } else {
       setNewComment("");
-      setSelectedRecipient("public");
-      setShowRecipientSelect(false);
+      setSelectedVisibleTo([]);
+      setShowVisibilitySelect(false);
       await loadComments();
       setTimeout(() => {
         commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
-      toast.success(recipientId ? "Private comment sent" : "Comment added");
+      toast.success(visibleTo ? "Private comment sent" : "Comment added");
     }
     setIsSubmittingComment(false);
+  }
+
+  // Toggle a user in the visibility list
+  function toggleVisibility(userId: string) {
+    setSelectedVisibleTo((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
   }
 
   async function handleResolveComment(commentId: string, isResolved: boolean) {
@@ -266,7 +275,7 @@ export function AccomplishmentDetailDialog({
           <DialogHeader className="text-left space-y-0">
             {/* Mobile: Stack vertically */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-start gap-3">
                 <div className="size-10 sm:size-12 rounded-full bg-primary/20 flex items-center justify-center text-base sm:text-lg font-semibold text-primary shrink-0">
                   {accomplishment.author_name
                     .split(" ")
@@ -275,8 +284,8 @@ export function AccomplishmentDetailDialog({
                     .slice(0, 2)
                     .toUpperCase()}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="text-base sm:text-lg truncate pr-8">
+                <div className="flex-1">
+                  <DialogTitle className="text-base sm:text-lg break-words">
                     {accomplishment.author_rank && (
                       <span className="text-muted-foreground">
                         {accomplishment.author_rank}{" "}
@@ -579,7 +588,7 @@ export function AccomplishmentDetailDialog({
 
                   {showComments && (
                     <div className="space-y-3">
-                      {/* Comments List */}
+                      {/* Comments List - Scrollable */}
                       {isLoadingComments ? (
                         <div className="flex items-center justify-center py-6">
                           <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -590,7 +599,7 @@ export function AccomplishmentDetailDialog({
                           <p className="text-xs">No comments yet</p>
                         </div>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="max-h-[200px] sm:max-h-[250px] overflow-y-auto space-y-2 pr-1">
                           {comments.map((comment) => (
                             <CommentItem
                               key={comment.id}
@@ -606,21 +615,21 @@ export function AccomplishmentDetailDialog({
 
                       {/* New Comment Form */}
                       <div className="space-y-2">
-                        {/* Recipient Selector */}
-                        <div className="flex items-center gap-2">
+                        {/* Visibility Toggle */}
+                        <div className="space-y-2">
                           <Button
                             type="button"
-                            variant={showRecipientSelect ? "secondary" : "ghost"}
+                            variant={showVisibilitySelect ? "secondary" : "ghost"}
                             size="sm"
                             className="h-7 text-xs gap-1.5"
                             onClick={() => {
-                              setShowRecipientSelect(!showRecipientSelect);
-                              if (showRecipientSelect) {
-                                setSelectedRecipient("public");
+                              setShowVisibilitySelect(!showVisibilitySelect);
+                              if (showVisibilitySelect) {
+                                setSelectedVisibleTo([]);
                               }
                             }}
                           >
-                            {selectedRecipient === "public" ? (
+                            {selectedVisibleTo.length === 0 ? (
                               <>
                                 <Eye className="size-3" />
                                 <span className="hidden sm:inline">Visible to Chain</span>
@@ -629,53 +638,67 @@ export function AccomplishmentDetailDialog({
                             ) : (
                               <>
                                 <Lock className="size-3" />
-                                <span className="hidden sm:inline">Private Message</span>
-                                <span className="sm:hidden">Private</span>
+                                <span className="hidden sm:inline">
+                                  Private ({selectedVisibleTo.length} selected)
+                                </span>
+                                <span className="sm:hidden">
+                                  Private ({selectedVisibleTo.length})
+                                </span>
                               </>
                             )}
                           </Button>
                           
-                          {showRecipientSelect && (
-                            <Select
-                              value={selectedRecipient}
-                              onValueChange={setSelectedRecipient}
-                            >
-                              <SelectTrigger className="h-7 text-xs flex-1 max-w-[200px]">
-                                <SelectValue placeholder="Select recipient..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="public">
-                                  <span className="flex items-center gap-1.5">
-                                    <Eye className="size-3" />
-                                    Everyone in Chain
-                                  </span>
-                                </SelectItem>
-                                {isLoadingChainMembers ? (
-                                  <SelectItem value="loading" disabled>
-                                    <span className="flex items-center gap-1.5">
-                                      <Loader2 className="size-3 animate-spin" />
-                                      Loading...
-                                    </span>
-                                  </SelectItem>
-                                ) : chainMembers.length === 0 ? (
-                                  <SelectItem value="none" disabled>
-                                    No recipients available
-                                  </SelectItem>
-                                ) : (
-                                  chainMembers.map((member) => (
-                                    <SelectItem key={member.user_id} value={member.user_id}>
-                                      <span className="flex items-center gap-1.5">
-                                        <Lock className="size-3" />
-                                        {member.rank ? `${member.rank} ` : ""}{member.full_name}
+                          {/* Visibility Toggle List */}
+                          {showVisibilitySelect && (
+                            <div className="rounded-lg border bg-muted/30 p-2">
+                              <p className="text-xs text-muted-foreground px-1 pb-1">
+                                Select who can see this comment:
+                              </p>
+                              {isLoadingChainMembers ? (
+                                <div className="flex items-center gap-2 py-2 px-1 text-xs text-muted-foreground">
+                                  <Loader2 className="size-3 animate-spin" />
+                                  Loading...
+                                </div>
+                              ) : chainMembers.length === 0 ? (
+                                <p className="text-xs text-muted-foreground py-2 px-1">
+                                  No recipients available
+                                </p>
+                              ) : (
+                                <div className="max-h-[150px] overflow-y-auto space-y-1">
+                                  {chainMembers.map((member) => {
+                                    const isSelected = selectedVisibleTo.includes(member.user_id);
+                                    return (
+                                      <button
+                                        key={member.user_id}
+                                        type="button"
+                                        onClick={() => toggleVisibility(member.user_id)}
+                                        className={`w-full flex items-center gap-2 p-2 rounded-md text-left text-xs transition-colors ${
+                                          isSelected 
+                                            ? "bg-primary/10 text-primary" 
+                                            : "hover:bg-muted"
+                                        }`}
+                                      >
+                                        <div className={`size-4 rounded border flex items-center justify-center shrink-0 ${
+                                          isSelected 
+                                            ? "bg-primary border-primary text-primary-foreground" 
+                                            : "border-muted-foreground/30"
+                                        }`}>
+                                          {isSelected && <Check className="size-3" />}
+                                        </div>
+                                        <span className="flex-1">
+                                          {member.rank ? `${member.rank} ` : ""}{member.full_name}
+                                        </span>
                                         {member.is_owner && (
-                                          <Badge variant="outline" className="h-4 text-[10px] px-1 ml-1">Owner</Badge>
+                                          <Badge variant="outline" className="h-4 text-[10px] px-1 shrink-0">
+                                            Owner
+                                          </Badge>
                                         )}
-                                      </span>
-                                    </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
 
@@ -683,9 +706,9 @@ export function AccomplishmentDetailDialog({
                         <div className="flex gap-2 items-start">
                           <div className="flex-1 min-w-0">
                             <Textarea
-                              placeholder={selectedRecipient === "public" 
+                              placeholder={selectedVisibleTo.length === 0 
                                 ? "Add a comment..." 
-                                : `Private message to ${chainMembers.find(m => m.user_id === selectedRecipient)?.full_name || "recipient"}...`
+                                : `Private message to ${selectedVisibleTo.length} selected...`
                               }
                               value={newComment}
                               onChange={(e) => setNewComment(e.target.value)}
@@ -734,8 +757,8 @@ interface CommentItemProps {
 
 function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentItemProps) {
   const isAuthor = comment.author_id === currentUserId;
-  const isPrivate = !!comment.recipient_id;
-  const isRecipient = comment.recipient_id === currentUserId;
+  const isPrivate = comment.visible_to && comment.visible_to.length > 0;
+  const isInVisibleTo = isPrivate && currentUserId && comment.visible_to?.includes(currentUserId);
   
   const formatCommentDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -790,7 +813,12 @@ function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentIte
                 <Badge variant="secondary" className="text-xs gap-1 h-5 px-1.5 bg-primary/10 text-primary border-primary/20">
                   <Lock className="size-3" />
                   <span className="hidden sm:inline">
-                    {isAuthor ? `To ${comment.recipient_name}` : isRecipient ? "Private to you" : "Private"}
+                    {isAuthor 
+                      ? `To ${comment.visible_to_names.slice(0, 2).join(", ")}${comment.visible_to_names.length > 2 ? ` +${comment.visible_to_names.length - 2}` : ""}`
+                      : isInVisibleTo 
+                        ? "Private to you" 
+                        : "Private"
+                    }
                   </span>
                 </Badge>
               )}

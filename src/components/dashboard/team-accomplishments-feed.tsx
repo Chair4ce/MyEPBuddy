@@ -684,67 +684,70 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         <div className="space-y-3">
           {/* Primary Filters Row */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Member Filter */}
-            <Select value={memberFilter} onValueChange={setMemberFilter}>
-              <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs">
-                <Users className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
-                <SelectValue placeholder="All Members" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Members</SelectItem>
-                {uniqueMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.rank ? `${member.rank} ` : ""}{member.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* MPA Filter */}
-            <Select value={mpaFilter} onValueChange={setMpaFilter}>
-              <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs">
-                <Filter className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
-                <SelectValue placeholder="All MPAs" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All MPAs</SelectItem>
-                {availableMpas.map((mpa) => (
-                  <SelectItem key={mpa.key} value={mpa.key}>
-                    {mpa.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Time Period Filter - only show in list view */}
-            {viewMode === "list" && (
-              <Select value={timePeriodFilter} onValueChange={(v) => setTimePeriodFilter(v as TimePeriod)}>
-                <SelectTrigger className="w-full sm:w-[140px] h-8 text-xs">
-                  <Calendar className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
-                  <SelectValue placeholder="All Time" />
+            {/* Filters Group */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Member Filter */}
+              <Select value={memberFilter} onValueChange={setMemberFilter}>
+                <SelectTrigger className="w-[140px] sm:w-[160px] h-8 text-xs">
+                  <Users className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="All Members" />
                 </SelectTrigger>
                 <SelectContent>
-                  {TIME_PERIODS.map((period) => (
-                    <SelectItem key={period.value} value={period.value}>
-                      {period.label}
+                  <SelectItem value="all">All Members</SelectItem>
+                  {uniqueMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.rank ? `${member.rank} ` : ""}{member.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            )}
 
-            {/* Clear Filters */}
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFilters}
-                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-3.5 mr-1" />
-                Clear
-              </Button>
-            )}
+              {/* MPA Filter */}
+              <Select value={mpaFilter} onValueChange={setMpaFilter}>
+                <SelectTrigger className="w-[120px] sm:w-[140px] h-8 text-xs">
+                  <Filter className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="All MPAs" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All MPAs</SelectItem>
+                  {availableMpas.map((mpa) => (
+                    <SelectItem key={mpa.key} value={mpa.key}>
+                      {mpa.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Time Period Filter - only show in list view */}
+              {viewMode === "list" && (
+                <Select value={timePeriodFilter} onValueChange={(v) => setTimePeriodFilter(v as TimePeriod)}>
+                  <SelectTrigger className="w-[110px] sm:w-[130px] h-8 text-xs">
+                    <Calendar className="size-3.5 mr-1.5 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="All Time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_PERIODS.map((period) => (
+                      <SelectItem key={period.value} value={period.value}>
+                        {period.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Clear Filters */}
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-3.5 mr-1" />
+                  Clear
+                </Button>
+              )}
+            </div>
 
             <div className="flex-1" />
 
@@ -880,7 +883,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                         {(acc.unresolved_comment_count ?? 0) > 0 && (
                                           <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                                             <MessageSquare className="size-3" />
-                                            {acc.unresolved_comment_count}
+                                            {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
                                           </Badge>
                                         )}
                                       </div>
@@ -993,11 +996,11 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                     day: "numeric",
                                   })}
                                 </span>
-                                {/* RFI Indicator */}
+                                {/* Comment Indicator */}
                                 {(acc.unresolved_comment_count ?? 0) > 0 && (
                                   <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
                                     <MessageSquare className="size-3" />
-                                    {acc.unresolved_comment_count} RFI
+                                    {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
                                   </Badge>
                                 )}
                               </div>

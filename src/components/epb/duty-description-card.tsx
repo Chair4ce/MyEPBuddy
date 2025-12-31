@@ -23,12 +23,13 @@ import {
   ChevronDown,
   ChevronUp,
   RotateCcw,
-  Briefcase,
   History,
   Camera,
   Bookmark,
   BookMarked,
   Trash2,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import { useEPBShellStore } from "@/stores/epb-shell-store";
 import type { DutyDescriptionSnapshot, DutyDescriptionExample } from "@/types/database";
@@ -40,6 +41,9 @@ interface DutyDescriptionCardProps {
   onToggleCollapse: () => void;
   onSave: (text: string) => Promise<void>;
   onReviseStatement?: (text: string, context?: string, versionCount?: number, aggressiveness?: number, fillToMax?: boolean) => Promise<string[]>;
+  // Completion status
+  isComplete?: boolean;
+  onToggleComplete?: () => void;
   // Snapshots (history)
   snapshots?: DutyDescriptionSnapshot[];
   onCreateSnapshot?: (text: string) => Promise<void>;
@@ -60,6 +64,8 @@ export function DutyDescriptionCard({
   onToggleCollapse,
   onSave,
   onReviseStatement,
+  isComplete = false,
+  onToggleComplete,
   snapshots = [],
   onCreateSnapshot,
   savedExamples = [],
@@ -122,11 +128,10 @@ export function DutyDescriptionCard({
     }
   }, [currentDutyDescription]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const displayText = localText;
-  const charCount = displayText.length;
+  const charCount = localText.length;
   const isOverLimit = charCount > maxChars;
-  const hasContent = displayText.trim().length > 0;
-  const hasUnsavedChanges = displayText !== currentDutyDescription;
+  const hasContent = localText.trim().length > 0;
+  const hasUnsavedChanges = localText !== currentDutyDescription;
 
   // Handle text change
   const handleTextChange = (value: string) => {
@@ -174,7 +179,7 @@ export function DutyDescriptionCard({
 
   // Copy to clipboard
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(displayText);
+    await navigator.clipboard.writeText(localText);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
@@ -189,10 +194,10 @@ export function DutyDescriptionCard({
 
   // Create snapshot
   const handleCreateSnapshot = async () => {
-    if (!onCreateSnapshot || !displayText.trim()) return;
+    if (!onCreateSnapshot || !localText.trim()) return;
     setIsCreatingSnapshot(true);
     try {
-      await onCreateSnapshot(displayText);
+      await onCreateSnapshot(localText);
       toast.success("Snapshot saved");
     } catch (error) {
       console.error(error);
@@ -213,9 +218,9 @@ export function DutyDescriptionCard({
 
   // Save current as example
   const handleSaveAsExample = async () => {
-    if (!onSaveExample || !displayText.trim()) return;
+    if (!onSaveExample || !localText.trim()) return;
     try {
-      await onSaveExample(displayText);
+      await onSaveExample(localText);
       toast.success("Saved to examples");
     } catch (error) {
       console.error(error);
@@ -282,7 +287,8 @@ export function DutyDescriptionCard({
       className={cn(
         "transition-all duration-300 ease-in-out overflow-hidden",
         "border-indigo-300/30 dark:border-indigo-700/30 bg-indigo-50/20 dark:bg-indigo-950/10",
-        hasUnsavedChanges && "ring-1 ring-amber-400/50"
+        hasUnsavedChanges && "ring-1 ring-amber-400/50",
+        isComplete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10"
       )}
     >
       {/* Header */}
@@ -292,21 +298,9 @@ export function DutyDescriptionCard({
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
             onClick={onToggleCollapse}
           >
-            <Briefcase className="size-3.5 sm:size-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
             <span className="font-medium text-xs sm:text-sm truncate">
               Duty Description
             </span>
-            {hasContent && (
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "text-[9px] sm:text-[10px] shrink-0 px-1 sm:px-1.5",
-                  isOverLimit && "bg-destructive/10 text-destructive"
-                )}
-              >
-                {charCount}/{maxChars}
-              </Badge>
-            )}
             {isSavingDutyDescription && (
               <Badge variant="outline" className="text-[9px] sm:text-[10px] text-blue-600 border-blue-600/30 shrink-0 animate-pulse px-1 sm:px-1.5">
                 <span className="hidden sm:inline">Saving...</span>
@@ -325,6 +319,34 @@ export function DutyDescriptionCard({
               <ChevronUp className="size-3.5 sm:size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
             )}
           </button>
+          {/* Completion toggle button */}
+          {onToggleComplete && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-md size-6 shrink-0 transition-colors",
+                    isComplete
+                      ? "text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleComplete();
+                  }}
+                >
+                  {isComplete ? (
+                    <CheckCircle2 className="size-4" />
+                  ) : (
+                    <Circle className="size-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isComplete ? "Mark as incomplete" : "Mark as complete"}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
           {/* Copy button when collapsed */}
           {isCollapsed && hasContent && (
             <Tooltip>
@@ -344,7 +366,7 @@ export function DutyDescriptionCard({
         </div>
         {isCollapsed && hasContent && (
           <p className="text-xs text-muted-foreground line-clamp-1 mt-1 pl-6">
-            {displayText.slice(0, 100)}...
+            {localText.slice(0, 100)}...
           </p>
         )}
       </CardHeader>
@@ -380,17 +402,9 @@ export function DutyDescriptionCard({
 
             {/* Action bar */}
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
-                  <div
-                    className={cn("h-full bg-indigo-500 transition-all", isOverLimit && "bg-destructive")}
-                    style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
-                  />
-                </div>
-                <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
-                  {charCount}/{maxChars}
-                </span>
-              </div>
+              <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
+                {charCount}/{maxChars}
+              </span>
               <div className="flex items-center gap-1">
                 {hasUnsavedChanges && (
                   <button

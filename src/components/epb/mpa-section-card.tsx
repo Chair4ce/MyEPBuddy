@@ -29,7 +29,6 @@ import {
   ChevronUp,
   Crown,
   History,
-  Save,
   RotateCcw,
   Zap,
   FileText,
@@ -402,16 +401,15 @@ export function MPASectionCard({
     };
   }, [localText, state.mode, enableAutosave, autosaveDelayMs, performAutosave]);
 
-  // Use localText for display when in edit mode (for responsive character counting)
-  const displayText = state.mode === "edit" ? localText : state.draftText;
-  const charCount = displayText.length;
+  // Always use localText for character counting since that's what's in the textarea
+  const charCount = localText.length;
   const isOverLimit = charCount > maxChars;
-  const hasContent = displayText.trim().length > 0;
-  const hasUnsavedChanges = displayText !== section.statement_text;
+  const hasContent = localText.trim().length > 0;
+  const hasUnsavedChanges = localText !== section.statement_text;
 
   // Copy to clipboard
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(displayText);
+    await navigator.clipboard.writeText(localText);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
@@ -779,27 +777,6 @@ export function MPASectionCard({
             {isLockedByOther && (
               <Lock className="size-3 text-amber-600 shrink-0 sm:hidden" />
             )}
-            {hasContent && (
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "text-[9px] sm:text-[10px] shrink-0 px-1 sm:px-1.5",
-                  isOverLimit && "bg-destructive/10 text-destructive"
-                )}
-              >
-                {charCount}/{maxChars}
-              </Badge>
-            )}
-            {/* Completion status badge - icon only on mobile */}
-            {section.is_complete && (
-              <Badge
-                variant="secondary"
-                className="text-[9px] sm:text-[10px] shrink-0 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 px-1 sm:px-1.5"
-              >
-                <CheckCircle2 className="size-3" />
-                <span className="hidden sm:inline ml-0.5">Complete</span>
-              </Badge>
-            )}
             {isAutosaving && (
               <Badge variant="outline" className="text-[9px] sm:text-[10px] text-blue-600 border-blue-600/30 shrink-0 animate-pulse px-1 sm:px-1.5">
                 <span className="hidden sm:inline">Saving...</span>
@@ -906,17 +883,9 @@ export function MPASectionCard({
               
               {/* Action bar below textarea */}
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className={cn("w-24 h-1.5 bg-primary/20 rounded-full overflow-hidden")}>
-                    <div
-                      className={cn("h-full bg-primary transition-all", isOverLimit && "bg-destructive")}
-                      style={{ width: `${Math.min((charCount / maxChars) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
-                    {charCount}/{maxChars}
-                  </span>
-                </div>
+                <span className={cn("text-xs tabular-nums", getCharacterCountColor(charCount, maxChars))}>
+                  {charCount}/{maxChars}
+                </span>
                 <div className="flex items-center gap-1">
                   {hasUnsavedChanges && (
                     <button 
@@ -934,14 +903,6 @@ export function MPASectionCard({
                   >
                     {copied ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
                     <span className="hidden sm:inline">Copy</span>
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={state.isSaving || isOverLimit || !hasUnsavedChanges}
-                    className="h-7 px-2.5 rounded-md text-xs bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    {state.isSaving ? <Loader2 className="size-3 animate-spin mr-1" /> : <Save className="size-3 mr-1" />}
-                    <span className="hidden sm:inline">Save</span>
                   </button>
                 </div>
               </div>

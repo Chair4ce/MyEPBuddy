@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { STANDARD_MGAS, ENTRY_MGAS, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS, MAX_DUTY_DESCRIPTION_CHARACTERS } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import { EPBAssessmentDialog } from "./epb-assessment-dialog";
+import { ArchiveEPBDialog } from "./archive-epb-dialog";
 import {
   FileText,
   Plus,
@@ -40,6 +41,7 @@ import {
   Share2,
   Sparkles,
   ClipboardCheck,
+  Archive,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -119,6 +121,9 @@ export function EPBShellForm({
   const [showAssessmentDialog, setShowAssessmentDialog] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<EPBAssessmentResult | null>(null);
+  
+  // EPB Archive state
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   
   // One-time tip for duty description
   const [hasDismissedDutyDescriptionTip, setHasDismissedDutyDescriptionTip] = useState(() => {
@@ -312,6 +317,31 @@ export function EPBShellForm({
       updateSection(mpa, { is_complete: !newValue });
       toast.error("Failed to update completion status");
       console.error("Toggle complete error:", error);
+    }
+  };
+
+  // Toggle completion status for duty description
+  const handleToggleDutyDescriptionComplete = async () => {
+    if (!currentShell || !profile) return;
+
+    const newValue = !currentShell.duty_description_complete;
+    
+    // Optimistically update local state
+    setCurrentShell({ ...currentShell, duty_description_complete: newValue });
+
+    const { error } = await supabase
+      .from("epb_shells")
+      .update({
+        duty_description_complete: newValue,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", currentShell.id);
+
+    if (error) {
+      // Revert on error
+      setCurrentShell({ ...currentShell, duty_description_complete: !newValue });
+      toast.error("Failed to update completion status");
+      console.error("Toggle duty description complete error:", error);
     }
   };
 
@@ -1560,14 +1590,16 @@ export function EPBShellForm({
     );
   }
 
-  // Track if all sections are expanded (for toggle state)
-  const allExpanded = STANDARD_MGAS.every((mpa) => !collapsedSections[mpa.key]);
+  // Track if all sections are expanded (for toggle state) - includes duty description
+  const allExpanded = STANDARD_MGAS.every((mpa) => !collapsedSections[mpa.key]) && !isDutyDescriptionCollapsed;
   
   const toggleAllSections = () => {
     if (allExpanded) {
       collapseAll();
+      setIsDutyDescriptionCollapsed(true);
     } else {
       expandAll();
+      setIsDutyDescriptionCollapsed(false);
     }
   };
 
@@ -1680,14 +1712,11 @@ export function EPBShellForm({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant={isEPBComplete() ? "default" : "outline"}
+                variant="outline"
                 size="sm"
                 onClick={handleAssessEPB}
                 disabled={isAssessing}
-                className={cn(
-                  "h-8 px-3 text-sm gap-1.5",
-                  isEPBComplete() && "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700"
-                )}
+                className="h-8 px-3 text-sm gap-1.5"
               >
                 {isAssessing ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -1702,6 +1731,29 @@ export function EPBShellForm({
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 Analyze this EPB using the ACA rubric (AF Form 724A). Get detailed scores for each 
                 Airman Leadership Quality with actionable recommendations.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
+        {/* Archive EPB Button - Only show for active shells with content */}
+        {currentShell && currentShell.status !== 'archived' && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowArchiveDialog(true)}
+                className="h-8 px-3 text-sm gap-1.5"
+              >
+                <Archive className="size-3.5" />
+                <span className="hidden sm:inline">Archive</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[280px]">
+              <p className="font-medium text-xs">Archive EPB</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Save all statements to your library and optionally start fresh for the next cycle.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -1738,6 +1790,9 @@ export function EPBShellForm({
           onToggleCollapse={() => setIsDutyDescriptionCollapsed(!isDutyDescriptionCollapsed)}
           onSave={handleSaveDutyDescription}
           onReviseStatement={handleReviseDutyDescription}
+          // Completion toggle
+          isComplete={currentShell?.duty_description_complete || false}
+          onToggleComplete={handleToggleDutyDescriptionComplete}
           snapshots={dutyDescriptionSnapshots}
           onCreateSnapshot={handleCreateDutyDescriptionSnapshot}
           savedExamples={dutyDescriptionExamples}
@@ -1798,14 +1853,11 @@ export function EPBShellForm({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={isEPBComplete() ? "default" : "outline"}
+                  variant="outline"
                   size="lg"
                   onClick={handleAssessEPB}
                   disabled={isAssessing}
-                  className={cn(
-                    "gap-2 px-6",
-                    isEPBComplete() && "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700"
-                  )}
+                  className="gap-2 px-6"
                 >
                   {isAssessing ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -1835,6 +1887,24 @@ export function EPBShellForm({
         assessment={assessmentResult}
         isLoading={isAssessing}
       />
+
+      {/* EPB Archive Dialog */}
+      {currentShell && (
+        <ArchiveEPBDialog
+          isOpen={showArchiveDialog}
+          onClose={() => setShowArchiveDialog(false)}
+          shell={currentShell}
+          sections={sections}
+          ratee={selectedRatee}
+          cycleYear={cycleYear}
+          onArchiveComplete={() => {
+            // Reset the shell to null so user sees "create new EPB" state
+            setCurrentShell(null);
+            // Increment load version to force re-render of components
+            setLoadVersion((v) => v + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

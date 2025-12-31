@@ -392,6 +392,11 @@ export default function GeneratePage() {
                 <Badge variant="outline" className="shrink-0 text-[10px] sm:text-xs">
                   {cycleYear}
                 </Badge>
+                {currentShell?.status === 'archived' && (
+                  <Badge variant="secondary" className="shrink-0 text-[10px] sm:text-xs bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                    Archived
+                  </Badge>
+                )}
               </div>
             </div>
           </CardContent>

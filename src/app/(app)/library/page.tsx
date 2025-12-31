@@ -51,14 +51,23 @@ import {
   FileText,
   Award,
   Sparkles,
+  Archive,
 } from "lucide-react";
 import { StatementCard } from "@/components/library/statement-card";
 import { ShareStatementDialog } from "@/components/library/share-statement-dialog";
 import { AddStatementDialog } from "@/components/library/add-statement-dialog";
 import { StatementWorkspaceDialog } from "@/components/library/statement-workspace-dialog";
-import type { RefinedStatement, StatementHistory, CommunityStatement, SharedStatementView, StatementShare } from "@/types/database";
+import { ArchivedEPBHeader } from "@/components/library/archived-epb-header";
+import type { RefinedStatement, StatementHistory, CommunityStatement, SharedStatementView, StatementShare, ArchivedEPBView } from "@/types/database";
 
 type UserVotes = Record<string, "up" | "down">;
+
+// Archived EPB option for filter dropdown
+interface ArchivedEPBOption {
+  id: string;
+  label: string;
+  statementCount: number;
+}
 
 export default function LibraryPage() {
   const { profile, epbConfig } = useUserStore();
@@ -74,6 +83,8 @@ export default function LibraryPage() {
   const [filterAfsc, setFilterAfsc] = useState<string>("all");
   const [filterCycleYear, setFilterCycleYear] = useState<string>("all");
   const [filterStatementType, setFilterStatementType] = useState<string>("all");
+  const [filterArchivedEPB, setFilterArchivedEPB] = useState<string>("all");
+  const [archivedEPBs, setArchivedEPBs] = useState<ArchivedEPBOption[]>([]);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
@@ -249,6 +260,22 @@ export default function LibraryPage() {
           votesMap[v.statement_id] = v.vote_type;
         });
         setUserVotes(votesMap);
+      }
+
+      // Load archived EPBs for the filter dropdown
+      const { data: archivedData } = await supabase
+        .from("archived_epbs_view")
+        .select("*")
+        .order("archived_at", { ascending: false });
+
+      if (archivedData) {
+        const typedArchivedData = archivedData as unknown as ArchivedEPBView[];
+        const archivedOptions: ArchivedEPBOption[] = typedArchivedData.map((epb) => ({
+          id: epb.id,
+          label: epb.archive_name || `${epb.ratee_rank || ""} ${epb.ratee_name || "Unknown"} - ${epb.cycle_year}`.trim(),
+          statementCount: Number(epb.statement_count) || 0,
+        }));
+        setArchivedEPBs(archivedOptions);
       }
     } catch (error) {
       console.error("Error loading statements:", error);
@@ -502,7 +529,7 @@ export default function LibraryPage() {
     return mgas.find((m) => m.key === key)?.label || key;
   }
 
-  function filterStatements<T extends { mpa: string; afsc?: string; statement?: string; cycle_year?: number; statement_type?: string }>(
+  function filterStatements<T extends { mpa: string; afsc?: string; statement?: string; cycle_year?: number; statement_type?: string; source_epb_shell_id?: string | null }>(
     statements: T[]
   ): T[] {
     return statements.filter((s) => {
@@ -510,9 +537,10 @@ export default function LibraryPage() {
       const matchesAfsc = filterAfsc === "all" || s.afsc === filterAfsc;
       const matchesCycle = filterCycleYear === "all" || s.cycle_year?.toString() === filterCycleYear;
       const matchesType = filterStatementType === "all" || (s.statement_type || "epb") === filterStatementType;
+      const matchesArchivedEPB = filterArchivedEPB === "all" || s.source_epb_shell_id === filterArchivedEPB;
       const text = s.statement || "";
       const matchesSearch = !searchQuery || text.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesMpa && matchesAfsc && matchesCycle && matchesType && matchesSearch;
+      return matchesMpa && matchesAfsc && matchesCycle && matchesType && matchesArchivedEPB && matchesSearch;
     });
   }
 
@@ -666,6 +694,32 @@ export default function LibraryPage() {
                 ))}
               </SelectContent>
             </Select>
+            {archivedEPBs.length > 0 && (
+              <Select value={filterArchivedEPB} onValueChange={setFilterArchivedEPB}>
+                <SelectTrigger className="w-full sm:w-[180px]" aria-label="Filter by archived EPB">
+                  <div className="flex items-center gap-1.5">
+                    <Archive className="size-3.5 text-muted-foreground shrink-0" />
+                    <SelectValue placeholder="Archived EPB" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statements</SelectItem>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                    Archived EPBs
+                  </div>
+                  {archivedEPBs.map((epb) => (
+                    <SelectItem key={epb.id} value={epb.id}>
+                      <div className="flex items-center justify-between gap-2 w-full">
+                        <span className="truncate">{epb.label}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          ({epb.statementCount})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
       </div>
@@ -699,6 +753,16 @@ export default function LibraryPage() {
         {/* My Statements */}
         <TabsContent value="my" className="w-full mt-4 focus-visible:outline-none focus-visible:ring-0">
           <div className="w-full space-y-3">
+            {/* Archived EPB Header - Shows when filtering by a specific archived EPB */}
+            {filterArchivedEPB !== "all" && (
+              <ArchivedEPBHeader
+                epbId={filterArchivedEPB}
+                epbLabel={archivedEPBs.find((e) => e.id === filterArchivedEPB)?.label || "Archived EPB"}
+                statementCount={filteredMy.length}
+                onClearFilter={() => setFilterArchivedEPB("all")}
+                onBulkShareComplete={loadStatements}
+              />
+            )}
             {filteredMy.length === 0 ? (
               <div className="w-full py-12 text-center text-muted-foreground text-sm sm:text-base rounded-lg border bg-card">
                 No saved statements yet. Generate statements and save them to your library.

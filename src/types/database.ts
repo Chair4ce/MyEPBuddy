@@ -79,20 +79,19 @@ export interface AccomplishmentComment {
   is_resolved: boolean;
   resolved_at: string | null;
   resolved_by: string | null;
-  recipient_id: string | null; // For private comments
+  visible_to: string[] | null; // Array of user IDs who can see private comments
   created_at: string;
   updated_at: string;
 }
 
-// Comment with author info (from view)
+// Comment with author info and visibility details
 export interface AccomplishmentCommentWithAuthor extends AccomplishmentComment {
   author_name: string | null;
   author_rank: Rank | null;
   author_avatar_url: string | null;
   resolved_by_name: string | null;
   resolved_by_rank: Rank | null;
-  recipient_name: string | null;
-  recipient_rank: Rank | null;
+  visible_to_names: string[]; // Names of users who can see (for display)
 }
 
 // Chain member for recipient selection in private comments
@@ -177,6 +176,7 @@ export interface RefinedStatement {
   is_winning_package: boolean; // Whether this was part of a winning award package
   win_level: WinLevel | null; // Level at which the award was won
   use_as_llm_example: boolean; // Include as example in LLM prompts
+  source_epb_shell_id: string | null; // Reference to the EPB shell this statement was archived from
   created_at: string;
   updated_at: string;
 }
@@ -222,6 +222,7 @@ export interface SharedStatementView {
   is_winning_package: boolean;
   win_level: WinLevel | null;
   use_as_llm_example: boolean;
+  source_epb_shell_id: string | null;
   created_at: string;
   updated_at: string;
   share_type: ShareType;
@@ -229,6 +230,20 @@ export interface SharedStatementView {
   share_id: string;
   owner_name: string | null;
   owner_rank: Rank | null;
+}
+
+// Archived EPB view type (for library filtering)
+export interface ArchivedEPBView {
+  id: string;
+  user_id: string;
+  team_member_id: string | null;
+  cycle_year: number;
+  archive_name: string | null;
+  archived_at: string;
+  created_at: string;
+  ratee_name: string | null;
+  ratee_rank: Rank | null;
+  statement_count: number;
 }
 
 export interface Acronym {
@@ -484,6 +499,8 @@ export interface AwardCatalog {
 // EPB SHELL SYSTEM TYPES
 // ============================================
 
+export type EPBShellStatus = 'active' | 'archived';
+
 export interface EPBShell {
   id: string;
   user_id: string;
@@ -492,6 +509,10 @@ export interface EPBShell {
   cycle_year: number;
   multi_user_enabled: boolean; // Toggle for multi-user collaboration mode
   duty_description: string; // Description of member's duty position (max 450 chars)
+  duty_description_complete: boolean; // Whether duty description is marked complete
+  status: EPBShellStatus; // 'active' or 'archived'
+  archived_at: string | null; // Timestamp when archived
+  archive_name: string | null; // Custom name for the archived EPB
   created_at: string;
   updated_at: string;
   // Joined fields

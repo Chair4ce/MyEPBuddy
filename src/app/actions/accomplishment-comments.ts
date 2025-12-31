@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { AccomplishmentCommentWithAuthor, ChainMember } from "@/types/database";
 
@@ -22,8 +21,7 @@ export async function getAccomplishmentComments(accomplishmentId: string) {
     .select(`
       *,
       author:profiles!accomplishment_comments_author_id_fkey(full_name, rank, avatar_url),
-      resolved_by_profile:profiles!accomplishment_comments_resolved_by_fkey(full_name, rank),
-      recipient:profiles!accomplishment_comments_recipient_id_fkey(full_name, rank)
+      resolved_by_profile:profiles!accomplishment_comments_resolved_by_fkey(full_name, rank)
     `)
     .eq("accomplishment_id", accomplishmentId)
     .order("created_at", { ascending: true });
@@ -31,6 +29,30 @@ export async function getAccomplishmentComments(accomplishmentId: string) {
   if (error) {
     console.error("Get accomplishment comments error:", error);
     return { error: error.message };
+  }
+
+  // Get names for visible_to users if needed
+  const allVisibleToIds = new Set<string>();
+  (data || []).forEach((comment: { visible_to: string[] | null }) => {
+    if (comment.visible_to) {
+      comment.visible_to.forEach((id: string) => allVisibleToIds.add(id));
+    }
+  });
+
+  // Fetch profiles for visible_to users
+  let visibleToProfiles: Record<string, string> = {};
+  if (allVisibleToIds.size > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", Array.from(allVisibleToIds));
+    
+    if (profiles) {
+      visibleToProfiles = profiles.reduce((acc: Record<string, string>, p: { id: string; full_name: string | null }) => {
+        acc[p.id] = p.full_name || "Unknown";
+        return acc;
+      }, {});
+    }
   }
 
   // Transform the nested data to match AccomplishmentCommentWithAuthor interface
@@ -42,12 +64,11 @@ export async function getAccomplishmentComments(accomplishmentId: string) {
     is_resolved: boolean;
     resolved_at: string | null;
     resolved_by: string | null;
-    recipient_id: string | null;
+    visible_to: string[] | null;
     created_at: string;
     updated_at: string;
     author: { full_name: string | null; rank: string | null; avatar_url: string | null } | null;
     resolved_by_profile: { full_name: string | null; rank: string | null } | null;
-    recipient: { full_name: string | null; rank: string | null } | null;
   }) => ({
     id: comment.id,
     accomplishment_id: comment.accomplishment_id,
@@ -56,7 +77,7 @@ export async function getAccomplishmentComments(accomplishmentId: string) {
     is_resolved: comment.is_resolved,
     resolved_at: comment.resolved_at,
     resolved_by: comment.resolved_by,
-    recipient_id: comment.recipient_id,
+    visible_to: comment.visible_to,
     created_at: comment.created_at,
     updated_at: comment.updated_at,
     author_name: comment.author?.full_name || null,
@@ -64,8 +85,9 @@ export async function getAccomplishmentComments(accomplishmentId: string) {
     author_avatar_url: comment.author?.avatar_url || null,
     resolved_by_name: comment.resolved_by_profile?.full_name || null,
     resolved_by_rank: comment.resolved_by_profile?.rank || null,
-    recipient_name: comment.recipient?.full_name || null,
-    recipient_rank: comment.recipient?.rank || null,
+    visible_to_names: comment.visible_to 
+      ? comment.visible_to.map((id: string) => visibleToProfiles[id] || "Unknown")
+      : [],
   }));
 
   return { data: transformedData };
@@ -74,7 +96,7 @@ export async function getAccomplishmentComments(accomplishmentId: string) {
 export async function createAccomplishmentComment(
   accomplishmentId: string,
   commentText: string,
-  recipientId?: string | null
+  visibleTo?: string[] | null
 ) {
   const supabase = await createClient();
 
@@ -93,7 +115,7 @@ export async function createAccomplishmentComment(
       accomplishment_id: accomplishmentId,
       author_id: user.id,
       comment_text: commentText,
-      recipient_id: recipientId || null,
+      visible_to: visibleTo && visibleTo.length > 0 ? visibleTo : null,
     })
     .select()
     .single();
@@ -103,7 +125,6 @@ export async function createAccomplishmentComment(
     return { error: error.message };
   }
 
-  revalidatePath("/dashboard");
   return { data };
 }
 
@@ -134,7 +155,6 @@ export async function updateAccomplishmentComment(
     return { error: error.message };
   }
 
-  revalidatePath("/dashboard");
   return { data };
 }
 
@@ -169,7 +189,6 @@ export async function resolveAccomplishmentComment(
     return { error: error.message };
   }
 
-  revalidatePath("/dashboard");
   return { data };
 }
 
@@ -195,7 +214,6 @@ export async function deleteAccomplishmentComment(commentId: string) {
     return { error: error.message };
   }
 
-  revalidatePath("/dashboard");
   return { success: true };
 }
 
