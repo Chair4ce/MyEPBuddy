@@ -298,7 +298,7 @@ export function DutyDescriptionCard({
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
             onClick={onToggleCollapse}
           >
-            <span className="font-medium text-xs sm:text-sm truncate">
+            <span className="font-semibold text-base sm:text-lg truncate">
               Duty Description
             </span>
             {isSavingDutyDescription && (

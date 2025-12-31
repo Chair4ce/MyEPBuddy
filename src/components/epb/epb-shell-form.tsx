@@ -342,13 +342,17 @@ export function EPBShellForm({
   };
 
   // Toggle completion status for duty description
+  // NOTE: We update currentShell directly via useEPBShellStore.setState to avoid
+  // triggering setCurrentShell which would re-initialize sections from stale data
   const handleToggleDutyDescriptionComplete = async () => {
     if (!currentShell || !profile) return;
 
     const newValue = !currentShell.duty_description_complete;
     
-    // Optimistically update local state
-    setCurrentShell({ ...currentShell, duty_description_complete: newValue });
+    // Optimistically update local state - directly mutate currentShell without re-initializing sections
+    useEPBShellStore.setState({
+      currentShell: { ...currentShell, duty_description_complete: newValue },
+    });
 
     const { error } = await supabase
       .from("epb_shells")
@@ -359,8 +363,10 @@ export function EPBShellForm({
       .eq("id", currentShell.id);
 
     if (error) {
-      // Revert on error
-      setCurrentShell({ ...currentShell, duty_description_complete: !newValue });
+      // Revert on error - directly mutate currentShell without re-initializing sections
+      useEPBShellStore.setState({
+        currentShell: { ...currentShell, duty_description_complete: !newValue },
+      });
       toast.error("Failed to update completion status");
       console.error("Toggle duty description complete error:", error);
     }
@@ -2152,8 +2158,6 @@ export function EPBShellForm({
           onArchiveComplete={() => {
             // Reset the shell to null so user sees "create new EPB" state
             setCurrentShell(null);
-            // Increment load version to force re-render of components
-            setLoadVersion((v) => v + 1);
           }}
         />
       )}

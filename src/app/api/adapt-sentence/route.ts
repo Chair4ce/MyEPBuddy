@@ -83,9 +83,9 @@ export async function POST(req: NextRequest) {
     .from("user_settings")
     .select("preferred_model")
     .eq("user_id", user.id)
-    .single();
+    .single<{ preferred_model: string | null }>();
   
-  const userKeys = await getDecryptedApiKeys(user.id);
+  const userKeys = await getDecryptedApiKeys();
   const model = userSettings?.preferred_model || "gpt-4o-mini";
   const modelProvider = getModelProvider(model, userKeys);
 

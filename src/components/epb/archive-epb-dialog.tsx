@@ -93,7 +93,8 @@ export function ArchiveEPBDialog({
   const handleArchive = async () => {
     setIsArchiving(true);
     try {
-      const { data, error } = await supabase.rpc("archive_epb_shell", {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)("archive_epb_shell", {
         p_shell_id: shell.id,
         p_archive_name: archiveName.trim() || null,
         p_clear_after_archive: true, // Always clear after archive

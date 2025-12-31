@@ -777,8 +777,8 @@ export function MPASectionCard({
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
             onClick={onToggleCollapse}
           >
-            {isHLR && <Crown className="size-3.5 sm:size-4 text-amber-600 shrink-0" />}
-            <span className="font-medium text-xs sm:text-sm truncate">
+            {isHLR && <Crown className="size-4 sm:size-5 text-amber-600 shrink-0" />}
+            <span className="font-semibold text-base sm:text-lg truncate">
               {mpa?.label || section.mpa}
             </span>
             {/* Presence indicator for collaborative editing - hide on mobile */}
@@ -941,7 +941,7 @@ export function MPASectionCard({
                     <SentenceDropOverlay
                       statementText={localText}
                       mpaKey={section.mpa}
-                      draggedSentence={draggedSentence}
+                      draggedSentence={draggedSentence ?? null}
                       onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
                     />
                   )}

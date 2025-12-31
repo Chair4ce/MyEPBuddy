@@ -67,7 +67,8 @@ export function ArchivedEPBHeader({
     setShareResult(null);
 
     try {
-      const { data, error } = await supabase.rpc("bulk_share_epb_statements", {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)("bulk_share_epb_statements", {
         p_shell_id: epbId,
         p_share_type: target,
         p_shared_with_id: target === "user" ? userId : null,
