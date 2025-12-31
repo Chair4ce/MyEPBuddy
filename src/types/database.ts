@@ -79,6 +79,7 @@ export interface AccomplishmentComment {
   is_resolved: boolean;
   resolved_at: string | null;
   resolved_by: string | null;
+  recipient_id: string | null; // For private comments
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +91,16 @@ export interface AccomplishmentCommentWithAuthor extends AccomplishmentComment {
   author_avatar_url: string | null;
   resolved_by_name: string | null;
   resolved_by_rank: Rank | null;
+  recipient_name: string | null;
+  recipient_rank: Rank | null;
+}
+
+// Chain member for recipient selection in private comments
+export interface ChainMember {
+  user_id: string;
+  full_name: string;
+  rank: Rank | null;
+  is_owner: boolean;
 }
 
 export interface MajorGradedArea {

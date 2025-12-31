@@ -42,6 +42,8 @@ import {
   Loader2,
   CheckCircle2,
   Clock,
+  Lock,
+  Eye,
 } from "lucide-react";
 import { ENTRY_MGAS, DEFAULT_ACTION_VERBS } from "@/lib/constants";
 import { ChainOfCommandDisplay } from "./chain-of-command-display";
@@ -51,8 +53,9 @@ import {
   createAccomplishmentComment,
   resolveAccomplishmentComment,
   deleteAccomplishmentComment,
+  getAccomplishmentChainMembers,
 } from "@/app/actions/accomplishment-comments";
-import type { AccomplishmentCommentWithAuthor } from "@/types/database";
+import type { AccomplishmentCommentWithAuthor, ChainMember } from "@/types/database";
 
 interface AccomplishmentDetailDialogProps {
   accomplishment: FeedAccomplishment | null;
@@ -80,6 +83,12 @@ export function AccomplishmentDetailDialog({
   const [showComments, setShowComments] = useState(true);
   const commentsEndRef = useRef<HTMLDivElement>(null);
   
+  // Private comment state
+  const [chainMembers, setChainMembers] = useState<ChainMember[]>([]);
+  const [isLoadingChainMembers, setIsLoadingChainMembers] = useState(false);
+  const [selectedRecipient, setSelectedRecipient] = useState<string>("public");
+  const [showRecipientSelect, setShowRecipientSelect] = useState(false);
+  
   // Edit form state
   const [editForm, setEditForm] = useState({
     date: "",
@@ -96,10 +105,14 @@ export function AccomplishmentDetailDialog({
     (member) => member.id === profile?.id
   ) ?? false;
 
-  // Load comments when dialog opens
+  // Load comments and chain members when dialog opens
   useEffect(() => {
     if (open && accomplishment) {
       loadComments();
+      loadChainMembers();
+      // Reset recipient selection
+      setSelectedRecipient("public");
+      setShowRecipientSelect(false);
     }
   }, [open, accomplishment?.id]);
 
@@ -127,6 +140,16 @@ export function AccomplishmentDetailDialog({
       setComments(result.data);
     }
     setIsLoadingComments(false);
+  }
+
+  async function loadChainMembers() {
+    if (!accomplishment) return;
+    setIsLoadingChainMembers(true);
+    const result = await getAccomplishmentChainMembers(accomplishment.id);
+    if (result.data) {
+      setChainMembers(result.data);
+    }
+    setIsLoadingChainMembers(false);
   }
 
   async function handleSubmitEdit() {
@@ -166,17 +189,20 @@ export function AccomplishmentDetailDialog({
     if (!accomplishment || !newComment.trim()) return;
 
     setIsSubmittingComment(true);
-    const result = await createAccomplishmentComment(accomplishment.id, newComment.trim());
+    const recipientId = selectedRecipient === "public" ? null : selectedRecipient;
+    const result = await createAccomplishmentComment(accomplishment.id, newComment.trim(), recipientId);
     
     if (result.error) {
       toast.error(result.error);
     } else {
       setNewComment("");
+      setSelectedRecipient("public");
+      setShowRecipientSelect(false);
       await loadComments();
       setTimeout(() => {
         commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
-      toast.success("Comment added");
+      toast.success(recipientId ? "Private comment sent" : "Comment added");
     }
     setIsSubmittingComment(false);
   }
@@ -579,33 +605,112 @@ export function AccomplishmentDetailDialog({
                       )}
 
                       {/* New Comment Form */}
-                      <div className="flex gap-2 items-start">
-                        <div className="flex-1 min-w-0">
-                          <Textarea
-                            placeholder="Add a comment..."
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                            className="min-h-[50px] text-sm resize-none"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                                e.preventDefault();
-                                handleSubmitComment();
+                      <div className="space-y-2">
+                        {/* Recipient Selector */}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant={showRecipientSelect ? "secondary" : "ghost"}
+                            size="sm"
+                            className="h-7 text-xs gap-1.5"
+                            onClick={() => {
+                              setShowRecipientSelect(!showRecipientSelect);
+                              if (showRecipientSelect) {
+                                setSelectedRecipient("public");
                               }
                             }}
-                          />
-                        </div>
-                        <Button
-                          size="icon"
-                          onClick={handleSubmitComment}
-                          disabled={!newComment.trim() || isSubmittingComment}
-                          className="shrink-0 size-9"
-                        >
-                          {isSubmittingComment ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Send className="size-4" />
+                          >
+                            {selectedRecipient === "public" ? (
+                              <>
+                                <Eye className="size-3" />
+                                <span className="hidden sm:inline">Visible to Chain</span>
+                                <span className="sm:hidden">Public</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="size-3" />
+                                <span className="hidden sm:inline">Private Message</span>
+                                <span className="sm:hidden">Private</span>
+                              </>
+                            )}
+                          </Button>
+                          
+                          {showRecipientSelect && (
+                            <Select
+                              value={selectedRecipient}
+                              onValueChange={setSelectedRecipient}
+                            >
+                              <SelectTrigger className="h-7 text-xs flex-1 max-w-[200px]">
+                                <SelectValue placeholder="Select recipient..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="public">
+                                  <span className="flex items-center gap-1.5">
+                                    <Eye className="size-3" />
+                                    Everyone in Chain
+                                  </span>
+                                </SelectItem>
+                                {isLoadingChainMembers ? (
+                                  <SelectItem value="loading" disabled>
+                                    <span className="flex items-center gap-1.5">
+                                      <Loader2 className="size-3 animate-spin" />
+                                      Loading...
+                                    </span>
+                                  </SelectItem>
+                                ) : chainMembers.length === 0 ? (
+                                  <SelectItem value="none" disabled>
+                                    No recipients available
+                                  </SelectItem>
+                                ) : (
+                                  chainMembers.map((member) => (
+                                    <SelectItem key={member.user_id} value={member.user_id}>
+                                      <span className="flex items-center gap-1.5">
+                                        <Lock className="size-3" />
+                                        {member.rank ? `${member.rank} ` : ""}{member.full_name}
+                                        {member.is_owner && (
+                                          <Badge variant="outline" className="h-4 text-[10px] px-1 ml-1">Owner</Badge>
+                                        )}
+                                      </span>
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
                           )}
-                        </Button>
+                        </div>
+
+                        {/* Comment Input */}
+                        <div className="flex gap-2 items-start">
+                          <div className="flex-1 min-w-0">
+                            <Textarea
+                              placeholder={selectedRecipient === "public" 
+                                ? "Add a comment..." 
+                                : `Private message to ${chainMembers.find(m => m.user_id === selectedRecipient)?.full_name || "recipient"}...`
+                              }
+                              value={newComment}
+                              onChange={(e) => setNewComment(e.target.value)}
+                              className="min-h-[50px] text-sm resize-none"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                  e.preventDefault();
+                                  handleSubmitComment();
+                                }
+                              }}
+                            />
+                          </div>
+                          <Button
+                            size="icon"
+                            onClick={handleSubmitComment}
+                            disabled={!newComment.trim() || isSubmittingComment}
+                            className="shrink-0 size-9"
+                          >
+                            {isSubmittingComment ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Send className="size-4" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -629,6 +734,9 @@ interface CommentItemProps {
 
 function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentItemProps) {
   const isAuthor = comment.author_id === currentUserId;
+  const isPrivate = !!comment.recipient_id;
+  const isRecipient = comment.recipient_id === currentUserId;
+  
   const formatCommentDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -648,14 +756,18 @@ function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentIte
   return (
     <div
       className={`group rounded-lg border p-2.5 sm:p-3 transition-colors ${
-        comment.is_resolved
-          ? "bg-muted/30 border-muted"
-          : "bg-card border-border"
+        isPrivate 
+          ? "bg-primary/5 border-primary/20" 
+          : comment.is_resolved
+            ? "bg-muted/30 border-muted"
+            : "bg-card border-border"
       }`}
     >
       <div className="flex items-start gap-2 sm:gap-3">
         {/* Avatar */}
-        <div className="size-7 sm:size-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0">
+        <div className={`size-7 sm:size-8 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
+          isPrivate ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+        }`}>
           {(comment.author_name || "?")
             .split(" ")
             .map((n) => n[0])
@@ -674,6 +786,14 @@ function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentIte
                 )}
                 {comment.author_name}
               </span>
+              {isPrivate && (
+                <Badge variant="secondary" className="text-xs gap-1 h-5 px-1.5 bg-primary/10 text-primary border-primary/20">
+                  <Lock className="size-3" />
+                  <span className="hidden sm:inline">
+                    {isAuthor ? `To ${comment.recipient_name}` : isRecipient ? "Private to you" : "Private"}
+                  </span>
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                 <Clock className="size-3" />
                 {formatCommentDate(comment.created_at)}
