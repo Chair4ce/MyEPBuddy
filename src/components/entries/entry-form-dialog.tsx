@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ComboboxInput } from "@/components/ui/combobox-input";
 import { toast } from "@/components/ui/sonner";
 import {
   createAccomplishment,
@@ -224,35 +225,13 @@ export function EntryFormDialog({
 
           <div className="space-y-1.5 sm:space-y-2">
             <Label htmlFor="action_verb" className="text-sm">Action Verb *</Label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Select
-                value={form.action_verb}
-                onValueChange={(value) =>
-                  setForm({ ...form, action_verb: value })
-                }
-              >
-                <SelectTrigger className="w-full sm:w-[180px] h-9 sm:h-10 shrink-0" aria-label="Select action verb">
-                  <SelectValue placeholder="Select or type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEFAULT_ACTION_VERBS.map((verb) => (
-                    <SelectItem key={verb} value={verb}>
-                      {verb}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                id="action_verb"
-                placeholder="Or type custom verb"
-                value={form.action_verb}
-                onChange={(e) =>
-                  setForm({ ...form, action_verb: e.target.value })
-                }
-                className="flex-1 h-9 sm:h-10"
-                aria-label="Custom action verb"
-              />
-            </div>
+            <ComboboxInput
+              value={form.action_verb}
+              onChange={(value) => setForm((prev) => ({ ...prev, action_verb: value }))}
+              options={DEFAULT_ACTION_VERBS}
+              placeholder="Select or type a verb..."
+              aria-label="Action verb"
+            />
           </div>
 
           <div className="space-y-1.5 sm:space-y-2">

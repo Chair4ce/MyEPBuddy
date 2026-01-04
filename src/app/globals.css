@@ -213,3 +213,11 @@
   animation: pulse-highlight 0.6s ease-out 1;
 }
 
+/* Fix cmdk list scrolling */
+[cmdk-list] {
+  max-height: 200px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+}
+
