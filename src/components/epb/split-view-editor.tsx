@@ -25,6 +25,8 @@ interface SplitViewEditorProps {
   onDragEnd?: () => void;
   onDrop?: (data: DraggedSentence, targetIndex: number) => void;
   draggedSentence?: DraggedSentence | null;
+  // Animation props
+  isClosing?: boolean;
 }
 
 // Strip ALL periods from text (periods are added automatically when combining)
@@ -49,6 +51,7 @@ export function SplitViewEditor({
   onDragEnd,
   onDrop,
   draggedSentence,
+  isClosing = false,
 }: SplitViewEditorProps) {
   // Local state for each sentence (stored WITHOUT trailing periods)
   const [sentence1, setSentence1] = useState("");
@@ -238,11 +241,12 @@ export function SplitViewEditor({
   };
   
   return (
-    <div className="space-y-2">
-      {/* Sentence 1 */}
+    <div className="space-y-2 overflow-hidden">
+      {/* Sentence 1 - slides up like elevator door opening/closing */}
       <div 
         className={cn(
           "space-y-1 rounded-lg p-2 -m-2 transition-all",
+          isClosing ? "animate-elevator-close-up" : "animate-elevator-up",
           isValidDropTarget && dragOverIndex === 0 && "bg-primary/10 ring-2 ring-primary ring-dashed",
           isValidDropTarget && dragOverIndex !== 0 && "bg-muted/30"
         )}
@@ -252,28 +256,7 @@ export function SplitViewEditor({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            {/* Drag handle - only show when sentence has content and mpaKey is provided */}
-            {mpaKey && s1Trimmed && !disabled && (
-              <div
-                draggable={true}
-                onDragStart={(e) => handleDragStart(e, 0)}
-                onDragEnd={handleDragEnd}
-                className={cn(
-                  "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-grab active:cursor-grabbing transition-all select-none",
-                  "border bg-background hover:bg-accent hover:border-primary/40",
-                  isDraggingFrom === 0 && "opacity-50 border-dashed border-primary/60"
-                )}
-                title={`Drag S1 to swap with another MPA`}
-              >
-                <GripVertical className="size-2.5 text-muted-foreground" />
-                <span className="text-primary">S1</span>
-              </div>
-            )}
-            {(!mpaKey || !s1Trimmed || disabled) && (
-              <span className="text-xs font-medium text-primary">
-                Sentence 1
-              </span>
-            )}
+          
             {/* Drop indicator */}
             {isValidDropTarget && dragOverIndex === 0 && (
               <span className="text-[10px] text-primary font-medium animate-pulse">
@@ -281,46 +264,62 @@ export function SplitViewEditor({
               </span>
             )}
           </div>
-          <span className={cn(
-            "text-xs tabular-nums",
-            s1Length > suggestedPerSentence ? "text-amber-500" : "text-muted-foreground"
-          )}>
-            {s1Length} chars
-          </span>
+    
         </div>
-        <div className="relative">
-          <textarea
-            value={sentence1}
-            onChange={(e) => handleS1Change(e.target.value)}
-            disabled={disabled}
-            placeholder={placeholder}
-            rows={2}
-            className={cn(
-              "flex w-full rounded-md border border-input bg-transparent pl-3 pr-6 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
-              s1Length > suggestedPerSentence && "border-amber-400/50",
-              isValidDropTarget && dragOverIndex === 0 && "border-primary"
-            )}
-          />
-          {/* Locked period indicator - bottom right */}
-          {sentence1.trim() && (
-            <span className="absolute right-2.5 bottom-2 text-sm font-medium text-foreground pointer-events-none select-none">
-              .
-            </span>
+        <div className="flex items-center gap-2">
+          {/* Drag handle - left of textarea, centered vertically */}
+          {mpaKey && s1Trimmed && !disabled && (
+            <div
+              draggable={true}
+              onDragStart={(e) => handleDragStart(e, 0)}
+              onDragEnd={handleDragEnd}
+              className={cn(
+                "flex items-center justify-center py-1 rounded-sm cursor-grab active:cursor-grabbing transition-all select-none shrink-0",
+                "btn btn-ghost hover:bg-primary/10 border border-transparent hover:border-primary/30",
+                "text-muted-foreground hover:text-primary",
+                isDraggingFrom === 0 && "opacity-50 bg-primary/10 border-primary/30 text-primary"
+              )}
+              title="Drag to swap with another MPA"
+            >
+              <GripVertical className="size-5" />
+            </div>
           )}
+          <div className="relative flex-1">
+            <textarea
+              value={sentence1}
+              onChange={(e) => handleS1Change(e.target.value)}
+              disabled={disabled}
+              placeholder={placeholder}
+              rows={2}
+              className={cn(
+                "flex w-full rounded-md border border-input bg-transparent pl-3 pr-6 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
+                s1Length > suggestedPerSentence && "border-amber-400/50",
+                isValidDropTarget && dragOverIndex === 0 && "border-primary"
+              )}
+            />
+            {/* Locked period indicator - bottom right */}
+            {sentence1.trim() && (
+              <span className="absolute right-2.5 bottom-2 text-sm font-medium text-foreground pointer-events-none select-none">
+                .
+              </span>
+            )}
+          </div>
         </div>
       </div>
       
-      {/* Divider */}
-      <div className="flex items-center gap-2 pt-4 w-full justify-center">
-     
-        <span className="text-[20px] text-muted-foreground">+</span>
-      
+      {/* Divider - expands/collapses from center */}
+      <div className={cn(
+        "flex items-center gap-2 w-full justify-center mb-0",
+        isClosing ? "animate-elevator-divider-close" : "animate-elevator-divider"
+      )}>
+        <span className="text-[15px] text-muted-foreground">+</span>
       </div>
       
-      {/* Sentence 2 */}
+      {/* Sentence 2 - slides down like elevator door opening/closing */}
       <div 
         className={cn(
           "space-y-1 rounded-lg p-2 -m-2 transition-all",
+          isClosing ? "animate-elevator-close-down" : "animate-elevator-down",
           isValidDropTarget && dragOverIndex === 1 && "bg-primary/10 ring-2 ring-primary ring-dashed",
           isValidDropTarget && dragOverIndex !== 1 && "bg-muted/30"
         )}
@@ -330,28 +329,7 @@ export function SplitViewEditor({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            {/* Drag handle - only show when sentence has content and mpaKey is provided */}
-            {mpaKey && s2Trimmed && !disabled && (
-              <div
-                draggable={true}
-                onDragStart={(e) => handleDragStart(e, 1)}
-                onDragEnd={handleDragEnd}
-                className={cn(
-                  "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-grab active:cursor-grabbing transition-all select-none",
-                  "border bg-background hover:bg-accent hover:border-primary/40",
-                  isDraggingFrom === 1 && "opacity-50 border-dashed border-primary/60"
-                )}
-                title={`Drag S2 to swap with another MPA`}
-              >
-                <GripVertical className="size-2.5 text-muted-foreground" />
-                <span className="text-primary">S2</span>
-              </div>
-            )}
-            {(!mpaKey || !s2Trimmed || disabled) && (
-              <span className="text-xs font-medium text-primary">
-                Sentence 2
-              </span>
-            )}
+           
             {/* Drop indicator */}
             {isValidDropTarget && dragOverIndex === 1 && (
               <span className="text-[10px] text-primary font-medium animate-pulse">
@@ -359,32 +337,45 @@ export function SplitViewEditor({
               </span>
             )}
           </div>
-          <span className={cn(
-            "text-xs tabular-nums",
-            s2Length > suggestedPerSentence ? "text-amber-500" : "text-muted-foreground"
-          )}>
-            {s2Length} chars
-          </span>
         </div>
-        <div className="relative">
-          <textarea
-            value={sentence2}
-            onChange={(e) => handleS2Change(e.target.value)}
-            disabled={disabled}
-            placeholder="Second sentence (optional)..."
-            rows={2}
-            className={cn(
-              "flex w-full rounded-md border border-input bg-transparent pl-3 pr-6 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
-              s2Length > suggestedPerSentence && "border-amber-400/50",
-              isValidDropTarget && dragOverIndex === 1 && "border-primary"
-            )}
-          />
-          {/* Locked period indicator - bottom right (same as S1) */}
-          {sentence2.trim() && (
-            <span className="absolute right-2.5 bottom-2 text-sm font-medium text-foreground pointer-events-none select-none">
-              .
-            </span>
+        <div className="flex items-center gap-1">
+          {/* Drag handle - left of textarea, centered vertically */}
+          {mpaKey && s2Trimmed && !disabled && (
+            <div
+              draggable={true}
+              onDragStart={(e) => handleDragStart(e, 1)}
+              onDragEnd={handleDragEnd}
+              className={cn(
+                "flex items-center justify-center py-1 rounded-sm cursor-grab active:cursor-grabbing transition-all select-none shrink-0",
+                "btn btn-ghost hover:bg-primary/10 border border-transparent hover:border-primary/30",
+                "text-muted-foreground hover:text-primary",
+                isDraggingFrom === 1 && "opacity-50 bg-primary/10 border-primary/30 text-primary"
+              )}
+              title="Drag to swap with another MPA"
+            >
+              <GripVertical className="size-5" />
+            </div>
           )}
+          <div className="relative flex-1">
+            <textarea
+              value={sentence2}
+              onChange={(e) => handleS2Change(e.target.value)}
+              disabled={disabled}
+              placeholder="Second sentence (optional)..."
+              rows={2}
+              className={cn(
+                "flex w-full rounded-md border border-input bg-transparent pl-3 pr-6 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
+                s2Length > suggestedPerSentence && "border-amber-400/50",
+                isValidDropTarget && dragOverIndex === 1 && "border-primary"
+              )}
+            />
+            {/* Locked period indicator - bottom right (same as S1) */}
+            {sentence2.trim() && (
+              <span className="absolute right-2.5 bottom-2 text-sm font-medium text-foreground pointer-events-none select-none">
+                .
+              </span>
+            )}
+          </div>
         </div>
       </div>
       

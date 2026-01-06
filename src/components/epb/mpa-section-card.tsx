@@ -320,6 +320,7 @@ export function MPASectionCard({
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSplitViewClosing, setIsSplitViewClosing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
   
@@ -914,8 +915,19 @@ export function MPASectionCard({
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onToggleSplitView();
+                    // If closing split view, animate first then toggle
+                    if (isSplitView && !isSplitViewClosing) {
+                      setIsSplitViewClosing(true);
+                      // Wait for close animation to complete (300ms)
+                      setTimeout(() => {
+                        setIsSplitViewClosing(false);
+                        onToggleSplitView();
+                      }, 300);
+                    } else if (!isSplitView) {
+                      onToggleSplitView();
+                    }
                   }}
+                  disabled={isSplitViewClosing}
                 >
                   <Rows2 className="size-4" />
                 </button>
@@ -1010,6 +1022,7 @@ export function MPASectionCard({
                   onDragEnd={onSentenceDragEnd}
                   onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
                   draggedSentence={draggedSentence}
+                  isClosing={isSplitViewClosing}
                 />
               ) : (
                 <div className="relative">
