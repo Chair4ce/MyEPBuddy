@@ -724,7 +724,7 @@ export function EPBShellForm({
         .from("user_llm_settings")
         .select("*")
         .eq("user_id", profile.id)
-        .single();
+        .maybeSingle();
       if (data) {
         setUserSettings(data as unknown as UserLLMSettings);
       }
@@ -906,7 +906,7 @@ export function EPBShellForm({
           query = query.eq("user_id", selectedRatee.id).is("team_member_id", null);
         }
 
-        const { data, error } = await query.single();
+        const { data, error } = await query.maybeSingle();
         
         // Check if this load was aborted (user switched to another ratee)
         if (aborted) {
@@ -914,8 +914,7 @@ export function EPBShellForm({
           return;
         }
 
-        if (error && error.code !== "PGRST116") {
-          // PGRST116 = no rows returned (not an error for us)
+        if (error) {
           console.error("Error loading shell:", error);
         }
 

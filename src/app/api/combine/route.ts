@@ -100,7 +100,7 @@ export async function POST(request: Request) {
       .from("user_llm_settings")
       .select("abbreviations")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     const abbreviations = (userSettings as unknown as UserLLMSettings)?.abbreviations || [];
     const abbreviationsList = abbreviations.length > 0 

@@ -482,7 +482,7 @@ export async function POST(request: Request) {
       .from("user_llm_settings")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     const settings: Partial<UserLLMSettings> = userSettings
       ? (userSettings as unknown as UserLLMSettings)

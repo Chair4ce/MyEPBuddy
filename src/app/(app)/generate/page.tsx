@@ -185,7 +185,7 @@ export default function GeneratePage() {
         .from("user_llm_settings")
         .select("*")
         .eq("user_id", profile.id)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setUserSettings(data as unknown as UserLLMSettings);
