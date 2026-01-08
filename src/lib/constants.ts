@@ -152,12 +152,12 @@ export const RANK_TO_TIER: Record<Rank, RankTier | null> = {
 
 // Static close-out dates (month and day) for each rank tier
 export const STATIC_CLOSEOUT_DATES: Record<RankTier, { month: number; day: number; label: string }> = {
-  airman: { month: 3, day: 31, label: "March 31" },     // AB-SrA
-  ssgt: { month: 9, day: 30, label: "September 30" },   // SSgt
+  airman: { month: 3, day: 31, label: "March 31" },     // SrA (AB-SrA)
+  ssgt: { month: 1, day: 31, label: "January 31" },     // SSgt
   tsgt: { month: 11, day: 30, label: "November 30" },   // TSgt
-  msgt: { month: 1, day: 31, label: "January 31" },     // MSgt
-  smsgt: { month: 5, day: 31, label: "May 31" },        // SMSgt
-  cmsgt: { month: 7, day: 31, label: "July 31" },       // CMSgt
+  msgt: { month: 9, day: 30, label: "September 30" },   // MSgt
+  smsgt: { month: 7, day: 31, label: "July 31" },       // SMSgt
+  cmsgt: { month: 5, day: 31, label: "May 31" },        // CMSgt
 };
 
 // Get the static close-out date for a given rank

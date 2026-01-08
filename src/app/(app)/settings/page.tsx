@@ -570,6 +570,17 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
   const closeout = getStaticCloseoutDate(rank);
   const daysUntil = getDaysUntilCloseout(rank);
   const cycleProgress = getCycleProgress(rank);
+  
+  // Calculate submission deadline (60 days before closeout)
+  const submissionDeadline = closeout ? new Date(closeout.date) : null;
+  if (submissionDeadline) {
+    submissionDeadline.setDate(submissionDeadline.getDate() - 60);
+  }
+  const daysUntilSubmission = submissionDeadline ? (() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return Math.ceil((submissionDeadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  })() : null;
 
   // Civilians don't have EPBs - don't show this card
   if (rank === "Civilian") {
@@ -645,11 +656,46 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Submission deadline display (60 days before closeout) */}
+        {submissionDeadline && (
+          <div className={`flex items-center justify-between p-4 rounded-lg border ${
+            daysUntilSubmission !== null && daysUntilSubmission <= 14 
+              ? "bg-amber-500/10 border-amber-500/30" 
+              : daysUntilSubmission !== null && daysUntilSubmission <= 0 
+                ? "bg-destructive/10 border-destructive/30"
+                : "bg-primary/5 border-primary/20"
+          }`}>
+            <div>
+              <p className="text-sm text-muted-foreground">Submit EPB by</p>
+              <p className="text-2xl font-bold">
+                {submissionDeadline.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, {submissionDeadline.getFullYear()}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">60 days before close-out</p>
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-1.5 justify-end text-foreground">
+                <Clock className="size-4" />
+                <span className="text-sm font-medium">
+                  {daysUntilSubmission !== null ? (
+                    daysUntilSubmission === 0 ? "Today!" : 
+                    daysUntilSubmission === 1 ? "Tomorrow" :
+                    daysUntilSubmission < 0 ? `${Math.abs(daysUntilSubmission)} days overdue` :
+                    `${daysUntilSubmission} days`
+                  ) : "—"}
+                </span>
+              </div>
+              <p className="text-xs mt-0.5 opacity-80">
+                {daysUntilSubmission !== null && daysUntilSubmission > 0 ? "until deadline" : daysUntilSubmission === 0 ? "" : "past deadline"}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Close-out date display */}
         <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
           <div>
-            <p className="text-sm text-muted-foreground">Your EPB Close-out</p>
-            <p className="text-2xl font-bold">
+            <p className="text-sm text-muted-foreground">Official Close-out Date</p>
+            <p className="text-xl font-semibold">
               {closeout.label}, {closeout.date.getFullYear()}
             </p>
           </div>
@@ -691,8 +737,8 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
 
         {/* Info about dates */}
         <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-1">
-          <p><strong>Note:</strong> This is the official AF static close-out date for your rank tier.</p>
-          <p>Typically, units require your finalized EPB 60 days before close-out.</p>
+          <p><strong>Note:</strong> These are the official AF static dates for your rank tier.</p>
+          <p>Your EPB should be submitted to your supervisor 60 days before the official close-out date.</p>
         </div>
       </CardContent>
     </Card>
