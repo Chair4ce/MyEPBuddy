@@ -203,12 +203,11 @@ export function getEPBMilestones(rank: Rank | null): { label: string; date: Date
   now.setHours(0, 0, 0, 0);
   
   const milestones = [
-    { label: "EPB due to immediate supervisor", daysBefore: 67 },    // ~1 week before 60
-    { label: "EPB due to next tier", daysBefore: 60 },               // 60 days
-    { label: "EPB due to MSgt/Flight Chief", daysBefore: 40 },       // 40 days
-    { label: "EPB due to SMSgt/Superintendent", daysBefore: 30 },    // 30 days
-    { label: "EPB due to CMSgt/Chief", daysBefore: 20 },             // 20 days
-    { label: "Final EPB due to AF in MyEval", daysBefore: 0 },       // Closeout
+    { label: "EPB draft due to immediate supervisor", daysBefore: 60 },  // 60 days - submit to supervisor for review
+    { label: "EPB due to MSgt/Flight Chief", daysBefore: 40 },           // 40 days
+    { label: "EPB due to SMSgt/Superintendent", daysBefore: 30 },        // 30 days
+    { label: "EPB due to CMSgt/Chief", daysBefore: 20 },                 // 20 days
+    { label: "Final EPB due to AF in MyEval", daysBefore: 0 },           // Closeout
   ];
   
   return milestones.map(m => {

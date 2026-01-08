@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageSpinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -219,7 +219,7 @@ function EntriesContent() {
   const hasSubordinates = subordinates.length > 0 || managedMembers.length > 0;
 
   if (isLoading) {
-    return <EntriesSkeleton />;
+    return <PageSpinner />;
   }
 
   return (
@@ -329,7 +329,7 @@ function EntriesContent() {
         <Card>
           <CardContent className="py-12">
             <div className="text-center">
-              <FileText className="size-12 mx-auto text-muted-foreground/50 mb-4" />
+              <FileText className="size-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="font-medium mb-2">No entries found</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {selectedMPA !== "all"
@@ -603,62 +603,9 @@ function EntriesContent() {
 
 export default function EntriesPage() {
   return (
-    <Suspense fallback={<EntriesSkeleton />}>
+    <Suspense fallback={<PageSpinner />}>
       <EntriesContent />
     </Suspense>
-  );
-}
-
-function EntriesSkeleton() {
-  return (
-    <div className="space-y-6 w-full max-w-7xl">
-      <div className="flex justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-32" />
-          <Skeleton className="h-4 w-64" />
-        </div>
-        <Skeleton className="h-10 w-28" />
-      </div>
-      {/* Progress card skeleton */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <Skeleton className="h-6 w-48" />
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      {/* Filters skeleton */}
-      <div className="flex gap-3">
-        <Skeleton className="h-9 w-40" />
-        <Skeleton className="h-9 w-36" />
-        <div className="flex-1" />
-        <Skeleton className="h-9 w-48" />
-      </div>
-      {/* Entries list skeleton */}
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <Card key={i}>
-            <CardHeader>
-              <div className="flex gap-2 mb-2">
-                <Skeleton className="h-5 w-24" />
-                <Skeleton className="h-5 w-20" />
-              </div>
-              <Skeleton className="h-6 w-48" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
   );
 }
 

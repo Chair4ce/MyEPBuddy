@@ -45,7 +45,6 @@ export function SentencePills({
   }
 
   const handleDragStart = (e: React.DragEvent, sentence: ParsedSentence, index: number) => {
-    console.log(`[SentencePills] Drag started from ${mpaKey}, sentence ${index + 1}`);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("application/json", JSON.stringify({
       sentence,

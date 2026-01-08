@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   Award,
@@ -223,41 +223,11 @@ export function AwardListTable({
     );
   };
 
-  // Loading skeleton
+  // Loading state
   if (isLoading) {
     return (
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[250px]">Nominee</TableHead>
-              <TableHead>Level</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Progress</TableHead>
-              <TableHead>Created By</TableHead>
-              <TableHead>Last Updated</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {[...Array(5)].map((_, i) => (
-              <TableRow key={i}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="size-8 rounded-full" />
-                    <Skeleton className="h-4 w-32" />
-                  </div>
-                </TableCell>
-                <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                <TableCell><Skeleton className="h-5 w-12" /></TableCell>
-                <TableCell><Skeleton className="h-2 w-20" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                <TableCell><Skeleton className="h-8 w-16" /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="flex items-center justify-center py-12">
+        <Spinner size="lg" />
       </div>
     );
   }

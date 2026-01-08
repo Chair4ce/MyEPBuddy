@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageSpinner } from "@/components/ui/spinner";
 import {
   Users,
   Sparkles,
@@ -68,7 +68,7 @@ export default function DashboardPage() {
   }, [profile, cycleYear, supabase, setAccomplishments, setIsLoading]);
 
   if (isLoading) {
-    return <DashboardSkeleton />;
+    return <PageSpinner />;
   }
 
   return (
@@ -172,60 +172,3 @@ export default function DashboardPage() {
   );
 }
 
-function DashboardSkeleton() {
-  return (
-    <div className="w-full max-w-6xl mx-auto space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-4 w-48" />
-      </div>
-
-      <div className="flex gap-3">
-        <Skeleton className="h-10 w-32" />
-        <Skeleton className="h-10 w-36" />
-      </div>
-
-      {/* EPB Progress Skeleton */}
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-32" />
-          <Skeleton className="h-4 w-64" />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="flex justify-between">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-5 w-20" />
-              </div>
-              <Skeleton className="h-2 w-full" />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Team Feed Skeleton */}
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-4 w-72" />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex gap-3 p-4 border rounded-lg">
-              <Skeleton className="size-10 rounded-full shrink-0" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <div className="flex gap-2">
-                  <Skeleton className="h-5 w-20" />
-                  <Skeleton className="h-5 w-16" />
-                </div>
-                <Skeleton className="h-4 w-full" />
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}

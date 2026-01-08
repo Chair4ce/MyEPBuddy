@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -753,10 +753,8 @@ export function AwardWorkspaceDialog({
 
               {/* Loading State */}
               {isLoadingShell ? (
-                <div className="space-y-4">
-                  {AWARD_1206_CATEGORIES.map((cat) => (
-                    <Skeleton key={cat.key} className="h-40 w-full" />
-                  ))}
+                <div className="flex items-center justify-center py-12">
+                  <Spinner size="lg" />
                 </div>
               ) : (
                 /* Category Sections */

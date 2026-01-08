@@ -11,7 +11,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -620,7 +620,11 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
   }, [filteredAccomplishments, useFiscalYear, cycleYear]);
 
   if (isLoading) {
-    return <TeamFeedSkeleton />;
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   // No subordinates and rank doesn't allow supervision
@@ -628,7 +632,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     return (
       <Card className="border-dashed">
         <CardContent className="py-10 text-center">
-          <UserCheck className="size-12 mx-auto text-muted-foreground/50 mb-4" />
+          <UserCheck className="size-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="font-semibold text-lg mb-2">Your Personal Feed</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             As an E-1 through E-4, you&apos;ll see your own accomplishments here. Once you reach
@@ -644,7 +648,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     return (
       <Card className="border-dashed">
         <CardContent className="py-10 text-center">
-          <Users className="size-12 mx-auto text-muted-foreground/50 mb-4" />
+          <Users className="size-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="font-semibold text-lg mb-2">No Team Members Yet</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
             Add subordinates to your team to see their accomplishments in this feed.
@@ -666,7 +670,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     return (
       <Card className="border-dashed">
         <CardContent className="py-10 text-center">
-          <TrendingUp className="size-12 mx-auto text-muted-foreground/50 mb-4" />
+          <TrendingUp className="size-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="font-semibold text-lg mb-2">No Team Activity Yet</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             Your team members haven&apos;t logged any accomplishments for the {cycleYear} cycle
@@ -1036,35 +1040,4 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
   );
 }
 
-function TeamFeedSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-3">
-        <Skeleton className="h-6 w-36" />
-        <Skeleton className="h-6 w-28" />
-      </div>
-      {[...Array(5)].map((_, i) => (
-        <Card key={i}>
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Skeleton className="size-10 rounded-full shrink-0" />
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center justify-between">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-3 w-16" />
-                </div>
-                <div className="flex gap-2">
-                  <Skeleton className="h-5 w-24" />
-                  <Skeleton className="h-5 w-16" />
-                </div>
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
 

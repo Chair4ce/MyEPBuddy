@@ -666,7 +666,7 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
                 : "bg-primary/5 border-primary/20"
           }`}>
             <div>
-              <p className="text-sm text-muted-foreground">Submit EPB by</p>
+              <p className="text-sm text-muted-foreground">EPB draft due to immediate supervisor</p>
               <p className="text-2xl font-bold">
                 {submissionDeadline.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, {submissionDeadline.getFullYear()}
               </p>
@@ -738,7 +738,7 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
         {/* Info about dates */}
         <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-1">
           <p><strong>Note:</strong> These are the official AF static dates for your rank tier.</p>
-          <p>Your EPB should be submitted to your supervisor 60 days before the official close-out date.</p>
+          <p>Have your EPB draft ready and submitted to your immediate supervisor 60 days before close-out so they can begin the review and editing process up the chain.</p>
         </div>
       </CardContent>
     </Card>

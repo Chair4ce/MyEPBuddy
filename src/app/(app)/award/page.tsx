@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageSpinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/sonner";
 import {
   Dialog,
@@ -493,12 +493,7 @@ export default function AwardPage() {
   // ============================================================================
 
   if (!profile) {
-    return (
-      <div className="container max-w-5xl mx-auto py-6 px-4">
-        <Skeleton className="h-10 w-64 mb-4" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   return (

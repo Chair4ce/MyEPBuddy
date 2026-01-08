@@ -20,6 +20,14 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -131,6 +139,12 @@ export function EPBShellForm({
   
   // EPB Archive state
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  
+  // Archived shell conflict state - when user tries to create a shell but one is archived for current cycle
+  const [archivedShellConflict, setArchivedShellConflict] = useState<{
+    shellId: string;
+    cycleYear: number;
+  } | null>(null);
   
   // Sentence drag-drop state
   const [draggedSentence, setDraggedSentence] = useState<DraggedSentence | null>(null);
@@ -821,13 +835,9 @@ export function EPBShellForm({
   
   // Initialize ratee selection when profile or cycle changes
   useEffect(() => {
-    if (!profile) {
-      console.log("[EPB Init] No profile yet");
-      return;
-    }
+    if (!profile) return;
     
     const initKey = `${profile.id}-${cycleYear}`;
-    console.log("[EPB Init] Check:", { initKey, initializedFor, match: initializedFor === initKey });
     
     // Only initialize if this is a new profile/cycle combination
     if (initializedFor === initKey) return;
@@ -864,24 +874,11 @@ export function EPBShellForm({
 
   // Load shell when ratee changes - only after initialization is complete
   useEffect(() => {
-    console.log("[EPB Load] Check:", { 
-      hasRatee: !!selectedRatee, 
-      rateeId: selectedRatee?.id,
-      hasProfile: !!profile,
-      initializedFor,
-      initKey: profile ? `${profile.id}-${cycleYear}` : null
-    });
-    
     if (!selectedRatee || !profile) return;
     
     // Only load if we've completed initialization for this profile/cycle
     const initKey = `${profile.id}-${cycleYear}`;
-    if (initializedFor !== initKey) {
-      console.log("[EPB Load] Skipping - not initialized yet");
-      return;
-    }
-    
-    console.log("[EPB Load] Loading shell for:", selectedRatee.id);
+    if (initializedFor !== initKey) return;
     
     // Abort flag to cancel this load if selectedRatee changes
     let aborted = false;
@@ -914,10 +911,7 @@ export function EPBShellForm({
         const { data, error } = await query.limit(1).maybeSingle();
         
         // Check if this load was aborted (user switched to another ratee)
-        if (aborted) {
-          console.log("[EPB Load] Aborted - ratee changed");
-          return;
-        }
+        if (aborted) return;
 
         if (error) {
           console.error("Error loading shell:", error);
@@ -1006,8 +1000,6 @@ export function EPBShellForm({
           if (dutyExamples) {
             setDutyDescriptionExamples(dutyExamples as DutyDescriptionExample[]);
           }
-          
-          console.log("[EPB Load] Completed for:", selectedRatee.id);
         } else {
           setCurrentShell(null);
         }
@@ -1176,16 +1168,55 @@ export function EPBShellForm({
     loadAccomplishments();
   }, [selectedRatee, cycleYear, profile, supabase]);
 
-  // Create a new shell
-  const handleCreateShell = async () => {
+  // Create a new shell (or handle conflicts with archived shells)
+  const handleCreateShell = async (forceNextCycle = false) => {
     if (!selectedRatee || !profile) return;
 
     setIsCreatingShell(true);
     try {
       // Calculate the correct cycle year based on the ratee's rank and SCOD
-      // EPB cycles are ~12 months based on SCOD, not calendar years
       const activeCycleYear = getActiveCycleYear(selectedRatee.rank);
+      const targetCycleYear = forceNextCycle ? activeCycleYear + 1 : activeCycleYear;
       
+      // Check if there's an existing shell (including archived) for the target cycle
+      let existingQuery = supabase
+        .from("epb_shells")
+        .select("id, status, cycle_year")
+        .eq("cycle_year", targetCycleYear);
+      
+      if (selectedRatee.isManagedMember) {
+        existingQuery = existingQuery.eq("team_member_id", selectedRatee.id);
+      } else {
+        existingQuery = existingQuery.eq("user_id", selectedRatee.id).is("team_member_id", null);
+      }
+      
+      const { data: existingShell } = await existingQuery.maybeSingle();
+      
+      if (existingShell) {
+        if (existingShell.status === "archived") {
+          // Archived shell for this cycle - show conflict dialog
+          setArchivedShellConflict({
+            shellId: existingShell.id,
+            cycleYear: existingShell.cycle_year,
+          });
+          setIsCreatingShell(false);
+          return;
+        } else {
+          // Active shell exists - reload it (shouldn't normally happen)
+          const { data, error } = await supabase
+            .from("epb_shells")
+            .select(`*, sections:epb_shell_sections(*)`)
+            .eq("id", existingShell.id)
+            .single();
+          
+          if (error) throw error;
+          setCurrentShell(data as EPBShell);
+          toast.info("Loaded existing EPB Shell");
+          return;
+        }
+      }
+      
+      // No conflict - create the new shell
       const insertData: {
         user_id: string;
         team_member_id?: string;
@@ -1194,14 +1225,13 @@ export function EPBShellForm({
       } = {
         user_id: selectedRatee.isManagedMember ? profile.id : selectedRatee.id,
         created_by: profile.id,
-        cycle_year: activeCycleYear,
+        cycle_year: targetCycleYear,
       };
 
       if (selectedRatee.isManagedMember) {
         insertData.team_member_id = selectedRatee.id;
       }
 
-      // Insert the shell
       const { data: insertedShell, error: insertError } = await supabase
         .from("epb_shells")
         .insert(insertData as never)
@@ -1211,24 +1241,20 @@ export function EPBShellForm({
       if (insertError) throw insertError;
       if (!insertedShell) throw new Error("No shell returned from insert");
 
-      // Wait a small moment for the trigger to complete, then fetch with sections
+      // Wait for trigger to complete, then fetch with sections
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Reload the shell with sections (trigger creates sections after insert)
       const shellId = (insertedShell as { id: string }).id;
       const { data, error } = await supabase
         .from("epb_shells")
-        .select(`
-          *,
-          sections:epb_shell_sections(*)
-        `)
+        .select(`*, sections:epb_shell_sections(*)`)
         .eq("id", shellId)
         .single();
 
       if (error) throw error;
 
       setCurrentShell(data as EPBShell);
-      toast.success("EPB Shell created successfully!");
+      toast.success(`${targetCycleYear} EPB Shell created successfully!`);
     } catch (error: unknown) {
       console.error("Failed to create shell:", error);
       const errMsg = error instanceof Error ? error.message : "Failed to create EPB Shell";
@@ -1236,6 +1262,44 @@ export function EPBShellForm({
     } finally {
       setIsCreatingShell(false);
     }
+  };
+  
+  // Unarchive an existing archived shell
+  const handleUnarchiveShell = async (shellId: string) => {
+    if (!profile) return;
+    
+    setIsCreatingShell(true);
+    try {
+      const { error: unarchiveError } = await supabase
+        .from("epb_shells")
+        .update({ status: "active", archived_at: null, updated_at: new Date().toISOString() } as never)
+        .eq("id", shellId);
+      
+      if (unarchiveError) throw unarchiveError;
+      
+      const { data, error } = await supabase
+        .from("epb_shells")
+        .select(`*, sections:epb_shell_sections(*)`)
+        .eq("id", shellId)
+        .single();
+      
+      if (error) throw error;
+      
+      setCurrentShell(data as EPBShell);
+      setArchivedShellConflict(null);
+      toast.success("EPB Shell restored!");
+    } catch (error: unknown) {
+      console.error("Failed to unarchive shell:", error);
+      toast.error("Failed to restore EPB Shell");
+    } finally {
+      setIsCreatingShell(false);
+    }
+  };
+  
+  // Create shell for next cycle (keeping current archived)
+  const handleCreateNextCycleShell = async () => {
+    setArchivedShellConflict(null);
+    await handleCreateShell(true);
   };
 
   // Save a section's statement
@@ -2197,6 +2261,58 @@ export function EPBShellForm({
           }}
         />
       )}
+
+      {/* Archived Shell Conflict Dialog */}
+      <Dialog open={!!archivedShellConflict} onOpenChange={(open) => !open && setArchivedShellConflict(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="size-5" />
+              Archived EPB Found
+            </DialogTitle>
+            <DialogDescription>
+              You have an archived EPB for the {archivedShellConflict?.cycleYear} cycle. 
+              What would you like to do?
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3 py-4">
+            <Button
+              variant="outline"
+              className="w-full justify-start h-auto py-3 px-4"
+              onClick={() => archivedShellConflict && handleUnarchiveShell(archivedShellConflict.shellId)}
+              disabled={isCreatingShell}
+            >
+              <div className="flex flex-col items-start text-left">
+                <span className="font-medium">Restore Archived EPB</span>
+                <span className="text-xs text-muted-foreground">
+                  Unarchive and continue working on your {archivedShellConflict?.cycleYear} EPB
+                </span>
+              </div>
+            </Button>
+            
+            <Button
+              variant="outline"
+              className="w-full justify-start h-auto py-3 px-4"
+              onClick={handleCreateNextCycleShell}
+              disabled={isCreatingShell}
+            >
+              <div className="flex flex-col items-start text-left">
+                <span className="font-medium">Create {(archivedShellConflict?.cycleYear || 0) + 1} EPB</span>
+                <span className="text-xs text-muted-foreground">
+                  Keep the archived EPB and start fresh for the next cycle
+                </span>
+              </div>
+            </Button>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setArchivedShellConflict(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Sentence Drop Confirmation Dialog */}
       {pendingDrop && (
