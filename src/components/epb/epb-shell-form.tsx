@@ -1190,7 +1190,8 @@ export function EPBShellForm({
         existingQuery = existingQuery.eq("user_id", selectedRatee.id).is("team_member_id", null);
       }
       
-      const { data: existingShell } = await existingQuery.maybeSingle();
+      const { data: existingShellData } = await existingQuery.maybeSingle();
+      const existingShell = existingShellData as { id: string; status: string; cycle_year: number } | null;
       
       if (existingShell) {
         if (existingShell.status === "archived") {
@@ -1903,7 +1904,7 @@ export function EPBShellForm({
                 ? "Create an EPB Shell to start building your performance narrative statements for this cycle."
                 : `Create an EPB Shell for ${selectedRatee?.rank} ${selectedRatee?.fullName} to manage their performance narrative statements.`}
             </p>
-            <Button onClick={handleCreateShell} disabled={isCreatingShell} size="lg">
+            <Button onClick={() => handleCreateShell()} disabled={isCreatingShell} size="lg">
               {isCreatingShell ? (
                 <Loader2 className="size-4 animate-spin mr-2" />
               ) : (
