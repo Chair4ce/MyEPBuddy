@@ -277,4 +277,3 @@ export async function getAccomplishmentChainMembers(accomplishmentId: string) {
 
   return { data: data as ChainMember[] };
 }
-

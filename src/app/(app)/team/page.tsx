@@ -70,6 +70,7 @@ import {
   Plus,
   Pencil,
   FileText,
+  Settings,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -186,6 +187,7 @@ export default function TeamPage() {
   const [teamRelations, setTeamRelations] = useState<{ supervisor_id: string; subordinate_id: string }[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [rankColors, setRankColors] = useState<RankColors>({});
+  const [showRankColorsDialog, setShowRankColorsDialog] = useState(false);
   
   // Invite dialog state
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -2176,13 +2178,26 @@ export default function TeamPage() {
         <TabsContent value="chain" className="mt-3 sm:mt-4 space-y-4">
           <Card>
             <CardHeader className="px-3 sm:px-6 pb-2 sm:pb-4">
-              <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
-                <Users className="size-4 sm:size-5" />
-                Supervision Tree
-              </CardTitle>
-              <CardDescription className="text-[11px] sm:text-xs md:text-sm">
-                Tap to expand/collapse. Your position is highlighted.
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
+                    <Users className="size-4 sm:size-5" />
+                    Supervision Tree
+                  </CardTitle>
+                  <CardDescription className="text-[11px] sm:text-xs md:text-sm">
+                    Tap to expand/collapse. Your position is highlighted.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setShowRankColorsDialog(true)}
+                  aria-label="Rank color settings"
+                >
+                  <Settings className="size-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="px-2 sm:px-4 md:px-6 pt-1.5 pb-3 sm:pb-4 md:pb-6">
               {!canSupervise(profile?.rank) ? (
@@ -2206,90 +2221,6 @@ export default function TeamPage() {
             </CardContent>
           </Card>
 
-          {/* Rank Color Settings */}
-          <Card className="md:max-w-xl lg:max-w-2xl">
-            <CardHeader className="px-3 sm:px-6 pb-2 sm:pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <CardTitle className="text-xs sm:text-sm">Rank Colors</CardTitle>
-                  <CardDescription className="text-[10px] sm:text-xs">
-                    Customize colors for the tree
-                  </CardDescription>
-                </div>
-                {Object.keys(rankColors).length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setRankColors({});
-                      localStorage.removeItem(STORAGE_KEY);
-                    }}
-                    className="text-[10px] sm:text-xs text-muted-foreground shrink-0 h-7 px-2"
-                  >
-                    Reset
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-4">
-              <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
-                {RANK_ORDER.map((rank) => {
-                  const color = rankColors[rank];
-                  return (
-                    <Popover key={rank}>
-                      <PopoverTrigger asChild>
-                        <button
-                          className={cn(
-                            "px-2 sm:px-3 py-1.5 rounded border-2 text-[10px] sm:text-xs font-medium transition-all hover:shadow-md cursor-pointer",
-                            !color && "bg-card border-border hover:border-muted-foreground"
-                          )}
-                          style={color ? { backgroundColor: `${color}20`, borderColor: color } : undefined}
-                        >
-                          {rank}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-3" align="center" side="top">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-sm font-medium">{rank} Color</span>
-                            {color && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-6"
-                                onClick={() => updateRankColor(rank, null)}
-                              >
-                                <X className="size-3" />
-                              </Button>
-                            )}
-                          </div>
-                          <input
-                            type="color"
-                            value={color || "#6b7280"}
-                            onChange={(e) => updateRankColor(rank, e.target.value)}
-                            className="w-full h-10 rounded cursor-pointer border-0"
-                          />
-                          <div className="grid grid-cols-4 gap-1.5">
-                            {["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"].map((preset) => (
-                              <button
-                                key={preset}
-                                onClick={() => updateRankColor(rank, preset)}
-                                className={cn(
-                                  "size-7 rounded-full border-2 transition-transform hover:scale-110",
-                                  color === preset ? "border-foreground ring-2 ring-offset-2 ring-foreground" : "border-transparent"
-                                )}
-                                style={{ backgroundColor: preset }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* Subordinates Tab */}
@@ -2882,6 +2813,102 @@ export default function TeamPage() {
           setAwardRecipient(null);
         }}
       />
+
+      {/* Rank Colors Settings Dialog */}
+      <Dialog open={showRankColorsDialog} onOpenChange={setShowRankColorsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="size-4" />
+              Rank Colors
+            </DialogTitle>
+            <DialogDescription>
+              Customize the colors used to highlight ranks in your supervision tree.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              {RANK_ORDER.map((rank) => {
+                const color = rankColors[rank];
+                return (
+                  <Popover key={rank}>
+                    <PopoverTrigger asChild>
+                      <button
+                        className={cn(
+                          "px-3 py-2 rounded border-2 text-xs font-medium transition-all hover:shadow-md cursor-pointer",
+                          !color && "bg-card border-border hover:border-muted-foreground"
+                        )}
+                        style={color ? { backgroundColor: `${color}20`, borderColor: color } : undefined}
+                      >
+                        {rank}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-3" align="center" side="top">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-sm font-medium">{rank} Color</span>
+                          {color && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6"
+                              onClick={() => updateRankColor(rank, null)}
+                            >
+                              <X className="size-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <input
+                          type="color"
+                          value={color || "#6b7280"}
+                          onChange={(e) => updateRankColor(rank, e.target.value)}
+                          className="w-full h-10 rounded cursor-pointer border-0"
+                        />
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"].map((preset) => (
+                            <button
+                              key={preset}
+                              onClick={() => updateRankColor(rank, preset)}
+                              className={cn(
+                                "size-7 rounded-full border-2 transition-transform hover:scale-110",
+                                color === preset ? "border-foreground ring-2 ring-offset-2 ring-foreground" : "border-transparent"
+                              )}
+                              style={{ backgroundColor: preset }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter className="flex-row justify-between sm:justify-between gap-2">
+            {Object.keys(rankColors).length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRankColors({});
+                  localStorage.removeItem(STORAGE_KEY);
+                }}
+                className="text-muted-foreground"
+              >
+                Reset All
+              </Button>
+            )}
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setShowRankColorsDialog(false)}
+              className="ml-auto"
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

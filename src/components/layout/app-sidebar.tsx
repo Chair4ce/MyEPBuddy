@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import {
   Wand2,
   Heart,
   Award,
+  Loader2,
 } from "lucide-react";
 import { AppLogo } from "@/components/layout/app-logo";
 import type { Profile } from "@/types/database";
@@ -98,7 +99,21 @@ const settingsItems = [
 export function AppSidebar({ profile }: AppSidebarProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [loadingHref, setLoadingHref] = useState<string | null>(null);
   const userRole = profile?.role || "subordinate";
+
+  // Clear loading state when navigation completes (pathname changes)
+  useEffect(() => {
+    setLoadingHref(null);
+  }, [pathname]);
+
+  const handleNavClick = (href: string) => {
+    // Only show loading if navigating to a different page
+    if (href !== pathname) {
+      setLoadingHref(href);
+    }
+    setIsOpen(false);
+  };
 
   const filteredNavItems = navItems.filter((item) =>
     item.roles.includes(userRole)
@@ -163,11 +178,12 @@ export function AppSidebar({ profile }: AppSidebarProps) {
             <nav className="space-y-1">
               {filteredNavItems.map((item) => {
                 const isActive = pathname === item.href;
+                const isLoading = loadingHref === item.href;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => handleNavClick(item.href)}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                       isActive
@@ -175,7 +191,11 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                         : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                     )}
                   >
-                    <item.icon className="size-4" />
+                    {isLoading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <item.icon className="size-4" />
+                    )}
                     <span>{item.title}</span>
                   </Link>
                 );
@@ -190,11 +210,12 @@ export function AppSidebar({ profile }: AppSidebarProps) {
             <nav className="space-y-1">
               {filteredSettingsItems.map((item) => {
                 const isActive = pathname === item.href;
+                const isLoading = loadingHref === item.href;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => handleNavClick(item.href)}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                       isActive
@@ -202,7 +223,11 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                         : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                     )}
                   >
-                    <item.icon className="size-4" />
+                    {isLoading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <item.icon className="size-4" />
+                    )}
                     {item.title}
                   </Link>
                 );
@@ -214,7 +239,7 @@ export function AppSidebar({ profile }: AppSidebarProps) {
             {/* Support Link */}
             <Link
               href="/support"
-              onClick={() => setIsOpen(false)}
+              onClick={() => handleNavClick("/support")}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                 pathname === "/support"
@@ -222,7 +247,11 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                   : "text-sidebar-foreground hover:bg-sidebar-accent/50"
               )}
             >
-              <Heart className="size-4 text-pink-500" />
+              {loadingHref === "/support" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Heart className="size-4 text-pink-500" />
+              )}
               <span>Support</span>
             </Link>
           </ScrollArea>
