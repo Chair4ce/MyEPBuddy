@@ -851,7 +851,8 @@ export function MPASectionCard({
     <Card
       className={cn(
         "transition-all duration-300 ease-in-out overflow-hidden",
-        isHLR && "border-amber-300/30 dark:border-amber-700/30",
+        "border-primary-300/30 dark:border-primary-700/30 bg-background dark:bg-muted/30",
+        isHLR && "border-primary-300/30 dark:border-primary-700/30",
         hasUnsavedChanges && "ring-1 ring-amber-400/50",
         section.is_complete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10",
         isHighlighted && "animate-pulse-highlight"

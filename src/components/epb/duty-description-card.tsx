@@ -286,7 +286,7 @@ export function DutyDescriptionCard({
     <Card
       className={cn(
         "transition-all duration-300 ease-in-out overflow-hidden",
-        "border-indigo-300/30 dark:border-indigo-700/30 bg-indigo-50/20 dark:bg-indigo-950/10",
+        "border-primary-300/30 dark:border-primary-700/30 bg-background dark:bg-muted/30",
         hasUnsavedChanges && "ring-1 ring-amber-400/50",
         isComplete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10"
       )}
