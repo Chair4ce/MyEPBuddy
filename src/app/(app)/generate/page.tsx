@@ -86,12 +86,12 @@ export default function GeneratePage() {
   const cycleYear = getActiveCycleYear(profile?.rank as import("@/types/database").Rank | null);
   
   // Check if current user is an officer (officers can't generate EPBs for themselves)
-  const userIsOfficer = isOfficer(profile?.rank);
+  const userIsOfficer = isOfficer(profile?.rank ?? null);
   
   // Check if the selected ratee can have EPB generated (must be enlisted)
   const selectedRateeIsEnlisted = selectedRatee 
     ? isEnlisted(selectedRatee.rank) 
-    : isEnlisted(profile?.rank);
+    : isEnlisted(profile?.rank ?? null);
   
   // Officers can only generate EPBs for enlisted members, not themselves
   const canGenerateForSelf = !userIsOfficer;

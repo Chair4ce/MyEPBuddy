@@ -274,12 +274,10 @@ export function EntryFormDialog({
           mpa: form.mpa,
           tags,
           cycle_year: cycleYear,
-          // Include assessment if pre-assessed
-          ...(hasPreAssessment && {
-            assessment_scores: previewAssessment,
-            assessed_at: new Date().toISOString(),
-            assessment_model: assessmentModel,
-          }),
+          // Include assessment if pre-assessed, otherwise null
+          assessment_scores: hasPreAssessment ? previewAssessment : null,
+          assessed_at: hasPreAssessment ? new Date().toISOString() : null,
+          assessment_model: hasPreAssessment ? assessmentModel : null,
         });
 
         if (result.error) {

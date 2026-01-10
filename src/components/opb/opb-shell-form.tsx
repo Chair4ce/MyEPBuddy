@@ -89,6 +89,7 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
     if (!profile) return;
 
     async function loadSettings() {
+      if (!profile) return;
       const { data, error } = await supabase
         .from("user_llm_settings")
         .select("opb_system_prompt, opb_style_guidelines, abbreviations, acronyms")
@@ -108,6 +109,7 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
     if (!profile) return;
 
     async function loadAccomplishments() {
+      if (!profile) return;
       const { data, error } = await supabase
         .from("accomplishments")
         .select("*")
@@ -142,7 +144,9 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
       setIsLoadingShell(true);
       try {
         // Check for existing shell
-        const { data: existing, error } = await supabase
+        if (!profile) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: existing, error } = await (supabase as any)
           .from("opb_shells")
           .select(`
             *,
@@ -179,7 +183,8 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
 
     setIsCreatingShell(true);
     try {
-      const { data, error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
         .from("opb_shells")
         .insert({
           user_id: profile.id,
@@ -211,7 +216,8 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
       const section = sections[mpa];
       if (!section) return;
 
-      const { error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
         .from("opb_shell_sections")
         .update({
           statement_text: text,
@@ -236,7 +242,8 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
       const section = sections[mpa];
       if (!section || !profile) return;
 
-      const { data, error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
         .from("opb_shell_snapshots")
         .insert({
           section_id: section.id,
@@ -374,7 +381,8 @@ ${contextForGeneration}`;
 
     setIsSavingDutyDescription(true);
     try {
-      const { error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
         .from("opb_shells")
         .update({ duty_description: dutyDescriptionDraft })
         .eq("id", currentShell.id);

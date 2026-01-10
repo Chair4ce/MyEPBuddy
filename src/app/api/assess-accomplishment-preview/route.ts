@@ -13,8 +13,8 @@ import {
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
   type ACARubric,
-  type Rank
 } from "@/lib/constants";
+import type { Rank } from "@/types/database";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 
 interface AssessPreviewRequest {
@@ -238,7 +238,8 @@ export async function POST(request: Request) {
     }
 
     // Get user's profile for rank context
-    const { data: profile } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profile } = await (supabase as any)
       .from("profiles")
       .select("rank")
       .eq("id", user.id)

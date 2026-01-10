@@ -110,6 +110,7 @@ export default function SignupPage() {
       // Update profile with additional info
       // The profile is created by a database trigger, so we may need to wait briefly
       if (data.user) {
+        const userId = data.user.id;
         // Helper function to update profile with retry
         const updateProfileWithRetry = async (retries = 3, delay = 200): Promise<boolean> => {
           for (let attempt = 0; attempt < retries; attempt++) {
@@ -128,7 +129,7 @@ export default function SignupPage() {
                 unit,
                 role,
               })
-              .eq("id", data.user.id);
+              .eq("id", userId);
 
             if (!profileError) {
               return true; // Success

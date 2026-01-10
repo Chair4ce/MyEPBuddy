@@ -13,8 +13,8 @@ import {
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
   type ACARubric,
-  type Rank
 } from "@/lib/constants";
+import type { Rank } from "@/types/database";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 
 interface AssessAccomplishmentRequest {
@@ -234,7 +234,8 @@ export async function POST(request: Request) {
     }
 
     // Fetch the accomplishment
-    const { data: accomplishment, error: fetchError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: accomplishment, error: fetchError } = await (supabase as any)
       .from("accomplishments")
       .select("*")
       .eq("id", accomplishmentId)
@@ -253,7 +254,8 @@ export async function POST(request: Request) {
     
     if (!isOwner && !isCreator) {
       // Check if user is in the supervisor chain
-      const { data: subordinateChain } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: subordinateChain } = await (supabase as any)
         .rpc("get_subordinate_chain", { supervisor_uuid: user.id });
       
       const isInChain = subordinateChain?.some(
@@ -269,7 +271,8 @@ export async function POST(request: Request) {
     }
 
     // Get the profile of the accomplishment owner for rank context
-    const { data: profile } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profile } = await (supabase as any)
       .from("profiles")
       .select("rank")
       .eq("id", accomplishment.user_id)
@@ -332,7 +335,8 @@ export async function POST(request: Request) {
     }
 
     // Update the accomplishment with assessment scores
-    const { error: updateError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateError } = await (supabase as any)
       .from("accomplishments")
       .update({
         assessment_scores: assessment,

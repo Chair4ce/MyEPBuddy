@@ -44,7 +44,7 @@ export default function DashboardPage() {
     profile?.rank && SUPERVISOR_RANKS.includes(profile.rank as Rank);
   
   // Check if user is an officer (officers don't have EPBs for themselves)
-  const userIsOfficer = isOfficer(profile?.rank);
+  const userIsOfficer = isOfficer(profile?.rank ?? null);
 
   useEffect(() => {
     async function loadAccomplishments() {
