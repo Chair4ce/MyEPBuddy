@@ -294,12 +294,15 @@ export function EntryFormDialog({
             </Label>
             <Input
               id="tags"
-              placeholder="e.g., leadership, training"
+              placeholder="e.g., Project Alpha, LOE 1, Training"
               value={form.tags}
               onChange={(e) => setForm({ ...form, tags: e.target.value })}
               aria-label="Tags"
               className="h-9 sm:h-10 text-sm"
             />
+            <p className="text-xs text-muted-foreground">
+              Use tags to organize accomplishments by projects or Lines of Effort (LOE)
+            </p>
           </div>
 
           <DialogFooter className="pt-2 sm:pt-4 gap-4">

@@ -34,6 +34,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
+import { TagFilterPopover } from "@/components/entries/tag-filter-popover";
 import { toast } from "@/components/ui/sonner";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
 import { Plus, Pencil, Trash2, Filter, FileText, LayoutList, CalendarDays, Calendar } from "lucide-react";
@@ -73,6 +74,7 @@ function EntriesContent() {
   // View mode: list (chronological) or quarterly
   const [viewMode, setViewMode] = useState<"list" | "quarterly">("list");
   const [useFiscalYear, setUseFiscalYear] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   
   const supabase = createClient();
   // Cycle year is computed from the user's rank and SCOD
@@ -191,6 +193,60 @@ function EntriesContent() {
     return groups;
   }, [accomplishments, useFiscalYear, cycleYear]);
 
+  // Extract all unique tags from accomplishments for the filter
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    accomplishments.forEach((entry) => {
+      if (Array.isArray(entry.tags)) {
+        entry.tags.forEach((tag) => tagSet.add(tag));
+      }
+    });
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [accomplishments]);
+
+  // Filter accomplishments by selected tags
+  const filteredAccomplishments = useMemo(() => {
+    if (selectedTags.length === 0) {
+      return accomplishments;
+    }
+    return accomplishments.filter((entry) => {
+      if (!Array.isArray(entry.tags) || entry.tags.length === 0) {
+        return false;
+      }
+      // Entry matches if it has ANY of the selected tags
+      return selectedTags.some((tag) => entry.tags.includes(tag));
+    });
+  }, [accomplishments, selectedTags]);
+
+  // Re-compute quarter groups with filtered accomplishments
+  const filteredQuarterGroups = useMemo((): QuarterGroup[] => {
+    const groups: QuarterGroup[] = AWARD_QUARTERS.map((q) => {
+      const dateRange = useFiscalYear
+        ? getFiscalQuarterDateRange(q.value, cycleYear)
+        : getQuarterDateRange(q.value, cycleYear);
+
+      return {
+        quarter: q.value,
+        label: useFiscalYear ? `FY${cycleYear.toString().slice(-2)} ${q.value}` : `${q.value} ${cycleYear}`,
+        dateRange,
+        entries: [],
+      };
+    });
+
+    // Assign filtered entries to quarters based on date
+    filteredAccomplishments.forEach((entry) => {
+      const entryDate = entry.date;
+      for (const group of groups) {
+        if (entryDate >= group.dateRange.start && entryDate <= group.dateRange.end) {
+          group.entries.push(entry);
+          break;
+        }
+      }
+    });
+
+    return groups;
+  }, [filteredAccomplishments, useFiscalYear, cycleYear]);
+
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
@@ -295,6 +351,12 @@ function EntriesContent() {
           </SelectContent>
         </Select>
 
+        <TagFilterPopover
+          availableTags={availableTags}
+          selectedTags={selectedTags}
+          onSelectedTagsChange={setSelectedTags}
+        />
+
         <div className="flex-1" />
 
         <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "quarterly")}>
@@ -325,28 +387,42 @@ function EntriesContent() {
       </div>
 
       {/* Entries List or Quarterly View */}
-      {accomplishments.length === 0 ? (
+      {filteredAccomplishments.length === 0 ? (
         <Card>
           <CardContent className="py-12">
             <div className="text-center">
               <FileText className="size-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="font-medium mb-2">No entries found</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                {selectedMPA !== "all"
+                {selectedTags.length > 0
+                  ? "No entries match the selected tags. Try adjusting your filters."
+                  : selectedMPA !== "all"
                   ? "No entries for this MPA. Try a different filter."
                   : "Start tracking accomplishments by creating your first entry."}
               </p>
-              <Button onClick={() => setDialogOpen(true)}>
-                <Plus className="size-4 mr-2" />
-                Create Entry
-              </Button>
+              {selectedTags.length > 0 || selectedMPA !== "all" ? (
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedTags([]);
+                    setSelectedMPA("all");
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              ) : (
+                <Button onClick={() => setDialogOpen(true)}>
+                  <Plus className="size-4 mr-2" />
+                  Create Entry
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
       ) : viewMode === "quarterly" ? (
         /* Quarterly View */
         <div className="space-y-6">
-          {quarterGroups.map((group) => (
+          {filteredQuarterGroups.map((group) => (
             <Card key={group.quarter}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -466,7 +542,7 @@ function EntriesContent() {
       ) : (
         /* List View */
         <div className="space-y-4">
-          {accomplishments.map((entry) => (
+          {filteredAccomplishments.map((entry) => (
             <Card key={entry.id} className="group">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-4">
