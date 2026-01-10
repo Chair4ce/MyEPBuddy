@@ -53,6 +53,30 @@ export interface TeamRequest {
   target?: Profile;
 }
 
+// Assessment scores structure for accomplishments
+export interface AccomplishmentMPARelevancy {
+  executing_mission: number; // 0-100
+  leading_people: number;
+  managing_resources: number;
+  improving_unit: number;
+}
+
+export interface AccomplishmentQualityIndicators {
+  action_clarity: number; // 0-100 - How clearly the action is described
+  impact_significance: number; // Significance of the impact
+  metrics_quality: number; // Quality of quantifiable metrics
+  scope_definition: number; // How well scope/scale is defined
+  [key: string]: number; // Extensible for future indicators
+}
+
+export interface AccomplishmentAssessmentScores {
+  mpa_relevancy: AccomplishmentMPARelevancy;
+  overall_score: number; // 0-100 composite quality score
+  quality_indicators: AccomplishmentQualityIndicators;
+  primary_mpa: string; // Best matching MPA key
+  secondary_mpa: string | null; // Second best match if close
+}
+
 export interface Accomplishment {
   id: string;
   user_id: string;
@@ -66,6 +90,10 @@ export interface Accomplishment {
   mpa: string;
   tags: string[];
   cycle_year: number;
+  // Assessment fields (populated by AI after save)
+  assessment_scores: AccomplishmentAssessmentScores | null;
+  assessed_at: string | null;
+  assessment_model: string | null;
   created_at: string;
   updated_at: string;
 }

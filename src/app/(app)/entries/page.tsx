@@ -247,6 +247,14 @@ function EntriesContent() {
     return groups;
   }, [filteredAccomplishments, useFiscalYear, cycleYear]);
 
+  // Helper to get score color for display
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-600 bg-green-500/10 border-green-500/30";
+    if (score >= 60) return "text-blue-600 bg-blue-500/10 border-blue-500/30";
+    if (score >= 40) return "text-amber-600 bg-amber-500/10 border-amber-500/30";
+    return "text-muted-foreground bg-muted border-border";
+  };
+
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
@@ -450,7 +458,11 @@ function EntriesContent() {
               {group.entries.length > 0 && (
                 <CardContent className="pt-0">
                   <div className="space-y-3">
-                    {group.entries.map((entry) => (
+                    {group.entries.map((entry) => {
+                      const hasScore = entry.assessment_scores?.overall_score != null;
+                      const overallScore = entry.assessment_scores?.overall_score || 0;
+                      
+                      return (
                       <div 
                         key={entry.id} 
                         className="group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
@@ -464,6 +476,15 @@ function EntriesContent() {
                               <span className="text-xs text-muted-foreground">
                                 {new Date(entry.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                               </span>
+                              {/* Score badge - compact for quarterly view */}
+                              {hasScore && (
+                                <span className={cn(
+                                  "text-[10px] font-semibold px-1.5 py-0.5 rounded",
+                                  getScoreColor(overallScore)
+                                )}>
+                                  {overallScore}
+                                </span>
+                              )}
                               {entry.created_by && entry.created_by !== entry.user_id && creatorProfiles[entry.created_by] && (
                                 <TooltipProvider delayDuration={200}>
                                   <Tooltip>
@@ -532,7 +553,8 @@ function EntriesContent() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 </CardContent>
               )}
@@ -542,7 +564,11 @@ function EntriesContent() {
       ) : (
         /* List View */
         <div className="space-y-4">
-          {filteredAccomplishments.map((entry) => (
+          {filteredAccomplishments.map((entry) => {
+            const hasScore = entry.assessment_scores?.overall_score != null;
+            const overallScore = entry.assessment_scores?.overall_score || 0;
+            
+            return (
             <Card key={entry.id} className="group">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-4">
@@ -579,7 +605,39 @@ function EntriesContent() {
                       {entry.action_verb}
                     </CardTitle>
                   </div>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  
+                  {/* Score Display - Prominent on the right */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {hasScore ? (
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className={cn(
+                              "px-3 py-1.5 rounded-lg border font-semibold text-lg cursor-default",
+                              getScoreColor(overallScore)
+                            )}>
+                              {overallScore}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-xs">
+                            <div className="space-y-1">
+                              <p className="font-medium">Quality Score: {overallScore}/100</p>
+                              {entry.assessment_scores?.primary_mpa && (
+                                <p className="text-xs text-muted-foreground">
+                                  Best fit: {mgas.find(m => m.key === entry.assessment_scores?.primary_mpa)?.label || entry.assessment_scores.primary_mpa}
+                                </p>
+                              )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <div className="px-3 py-1.5 rounded-lg border border-dashed text-muted-foreground text-sm opacity-50">
+                        --
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -625,6 +683,7 @@ function EntriesContent() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -662,7 +721,8 @@ function EntriesContent() {
                 )}
               </CardContent>
             </Card>
-          ))}
+          );
+          })}
         </div>
       )}
 

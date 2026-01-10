@@ -30,9 +30,10 @@ import {
 } from "@/app/actions/accomplishments";
 import { DEFAULT_ACTION_VERBS, ENTRY_MGAS, getActiveCycleYear } from "@/lib/constants";
 import type { Rank } from "@/types/database";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Target, BarChart3 } from "lucide-react";
 import { celebrateEntry } from "@/lib/confetti";
-import type { Accomplishment } from "@/types/database";
+import { cn } from "@/lib/utils";
+import type { Accomplishment, AccomplishmentAssessmentScores } from "@/types/database";
 
 interface EntryFormDialogProps {
   open: boolean;
@@ -54,6 +55,11 @@ export function EntryFormDialog({
     useAccomplishmentsStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAssessing, setIsAssessing] = useState(false);
+  const [previewAssessment, setPreviewAssessment] = useState<AccomplishmentAssessmentScores | null>(null);
+  const [assessmentModel, setAssessmentModel] = useState<string | null>(null);
+  const [assessmentFormUsed, setAssessmentFormUsed] = useState<string | null>(null);
+  const [assessmentRateeRank, setAssessmentRateeRank] = useState<string | null>(null);
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
     action_verb: "",
@@ -69,6 +75,87 @@ export function EntryFormDialog({
   // Cycle year is computed from the user's rank and SCOD
   const cycleYear = getActiveCycleYear(profile?.rank as Rank | null);
 
+  // Trigger background assessment for an accomplishment
+  // This runs asynchronously and updates the store when complete
+  const triggerAssessment = async (accomplishmentId: string) => {
+    try {
+      const response = await fetch("/api/assess-accomplishment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accomplishmentId }),
+      });
+
+      if (response.ok) {
+        const { assessment, assessed_at, model } = await response.json();
+        // Update the store with the assessment results
+        updateStore(accomplishmentId, {
+          assessment_scores: assessment as AccomplishmentAssessmentScores,
+          assessed_at,
+          assessment_model: model,
+        });
+      }
+    } catch (error) {
+      // Silent fail - assessment is optional enhancement
+      console.error("Background assessment failed:", error);
+    }
+  };
+
+  // Preview assessment before saving
+  const handleRateAccomplishment = async () => {
+    if (!form.action_verb || !form.details) {
+      toast.error("Please fill in the action verb and details first");
+      return;
+    }
+
+    setIsAssessing(true);
+    try {
+      const response = await fetch("/api/assess-accomplishment-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action_verb: form.action_verb,
+          details: form.details,
+          impact: form.impact || null,
+          metrics: form.metrics || null,
+          mpa: form.mpa,
+        }),
+      });
+
+      if (response.ok) {
+        const { assessment, model, formUsed, rateeRank } = await response.json();
+        setPreviewAssessment(assessment);
+        setAssessmentModel(model);
+        setAssessmentFormUsed(formUsed);
+        setAssessmentRateeRank(rateeRank);
+        toast.success("Assessment complete!");
+      } else {
+        const { error } = await response.json();
+        toast.error(error || "Failed to assess accomplishment");
+      }
+    } catch (error) {
+      console.error("Preview assessment failed:", error);
+      toast.error("Failed to assess accomplishment");
+    } finally {
+      setIsAssessing(false);
+    }
+  };
+
+  // Helper to get score color
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-600 bg-green-500/10 border-green-500/30";
+    if (score >= 60) return "text-blue-600 bg-blue-500/10 border-blue-500/30";
+    if (score >= 40) return "text-amber-600 bg-amber-500/10 border-amber-500/30";
+    return "text-muted-foreground bg-muted border-border";
+  };
+
+  // Helper to get score label
+  const getScoreLabel = (score: number) => {
+    if (score >= 80) return "Excellent";
+    if (score >= 60) return "Good";
+    if (score >= 40) return "Fair";
+    return "Needs Work";
+  };
+
   // Reset form when dialog opens/closes or edit entry changes
   useEffect(() => {
     if (editEntry) {
@@ -81,6 +168,11 @@ export function EntryFormDialog({
         mpa: editEntry.mpa || "miscellaneous", // Default to Miscellaneous if null
         tags: Array.isArray(editEntry.tags) ? editEntry.tags.join(", ") : "",
       });
+      // Load existing assessment if available
+      setPreviewAssessment(editEntry.assessment_scores || null);
+      setAssessmentModel(editEntry.assessment_model || null);
+      setAssessmentFormUsed(null);
+      setAssessmentRateeRank(null);
     } else {
       setForm({
         date: new Date().toISOString().split("T")[0],
@@ -91,6 +183,11 @@ export function EntryFormDialog({
         mpa: "executing_mission", // Default to Executing the Mission
         tags: "",
       });
+      // Clear assessment preview
+      setPreviewAssessment(null);
+      setAssessmentModel(null);
+      setAssessmentFormUsed(null);
+      setAssessmentRateeRank(null);
     }
   }, [editEntry, open]);
 
@@ -117,9 +214,12 @@ export function EntryFormDialog({
       return;
     }
 
+    // Check if we have a pre-assessed result to include
+    const hasPreAssessment = previewAssessment !== null;
+
     try {
       if (editEntry) {
-        const result = await updateAccomplishment(editEntry.id, {
+        const updateData: Parameters<typeof updateAccomplishment>[1] = {
           date: form.date,
           action_verb: form.action_verb,
           details: form.details,
@@ -127,7 +227,16 @@ export function EntryFormDialog({
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
-        });
+        };
+
+        // Include assessment if pre-assessed
+        if (hasPreAssessment) {
+          updateData.assessment_scores = previewAssessment;
+          updateData.assessed_at = new Date().toISOString();
+          updateData.assessment_model = assessmentModel;
+        }
+
+        const result = await updateAccomplishment(editEntry.id, updateData);
 
         if (result.error) {
           toast.error(result.error);
@@ -135,8 +244,22 @@ export function EntryFormDialog({
         }
 
         if (result.data) {
-          updateStore(editEntry.id, result.data);
+          // If pre-assessed, update store with assessment data
+          if (hasPreAssessment) {
+            updateStore(editEntry.id, {
+              ...result.data,
+              assessment_scores: previewAssessment,
+              assessed_at: new Date().toISOString(),
+              assessment_model: assessmentModel,
+            });
+          } else {
+            updateStore(editEntry.id, result.data);
+          }
           toast.success("Entry updated");
+          // Only trigger background assessment if not pre-assessed
+          if (!hasPreAssessment) {
+            triggerAssessment(editEntry.id);
+          }
         }
       } else {
         const result = await createAccomplishment({
@@ -151,6 +274,12 @@ export function EntryFormDialog({
           mpa: form.mpa,
           tags,
           cycle_year: cycleYear,
+          // Include assessment if pre-assessed
+          ...(hasPreAssessment && {
+            assessment_scores: previewAssessment,
+            assessed_at: new Date().toISOString(),
+            assessment_model: assessmentModel,
+          }),
         });
 
         if (result.error) {
@@ -159,7 +288,17 @@ export function EntryFormDialog({
         }
 
         if (result.data) {
-          addAccomplishment(result.data);
+          // If pre-assessed, add with assessment data to store
+          if (hasPreAssessment) {
+            addAccomplishment({
+              ...result.data,
+              assessment_scores: previewAssessment,
+              assessed_at: new Date().toISOString(),
+              assessment_model: assessmentModel,
+            });
+          } else {
+            addAccomplishment(result.data);
+          }
           
           // Celebrate the new entry!
           celebrateEntry();
@@ -167,6 +306,11 @@ export function EntryFormDialog({
             description: "Great job tracking your accomplishment!",
             duration: 3000,
           });
+          
+          // Only trigger background assessment if not pre-assessed
+          if (!hasPreAssessment) {
+            triggerAssessment(result.data.id);
+          }
         }
       }
 
@@ -303,6 +447,141 @@ export function EntryFormDialog({
             <p className="text-xs text-muted-foreground">
               Use tags to organize accomplishments by projects or Lines of Effort (LOE)
             </p>
+          </div>
+
+          {/* Rate My Accomplishment Section */}
+          <div className="pt-2 border-t">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="size-4 text-muted-foreground" />
+                <span className="text-sm font-medium">AI Assessment</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRateAccomplishment}
+                disabled={isAssessing || !form.action_verb || !form.details}
+                className="h-8 text-xs"
+              >
+                {isAssessing ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin mr-1.5" />
+                    Analyzing...
+                  </>
+                ) : previewAssessment ? (
+                  "Re-analyze"
+                ) : (
+                  "Rate My Accomplishment"
+                )}
+              </Button>
+            </div>
+
+            {/* Assessment Results */}
+            {previewAssessment && (
+              <div className="space-y-3 p-3 rounded-lg bg-muted/50 border">
+                {/* ACA Form Info */}
+                {assessmentFormUsed && (
+                  <div className="flex items-center justify-between text-xs border-b pb-2 mb-1">
+                    <span className="text-muted-foreground">
+                      Assessed using <span className="font-medium">{assessmentFormUsed}</span>
+                      {assessmentRateeRank && <> for {assessmentRateeRank}</>}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Overall Score - Prominent */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Overall Quality</span>
+                  <div className={cn(
+                    "flex items-center gap-2 px-3 py-1 rounded-full border font-semibold",
+                    getScoreColor(previewAssessment.overall_score)
+                  )}>
+                    <span className="text-lg">{previewAssessment.overall_score}</span>
+                    <span className="text-xs opacity-80">{getScoreLabel(previewAssessment.overall_score)}</span>
+                  </div>
+                </div>
+
+                {/* MPA Relevancy Scores */}
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Target className="size-3" />
+                    MPA Fit Scores
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(previewAssessment.mpa_relevancy).map(([mpaKey, score]) => {
+                      const mpaLabel = mgas.find(m => m.key === mpaKey)?.label || mpaKey;
+                      const shortLabel = mpaLabel.split(" ")[0];
+                      const isPrimary = previewAssessment.primary_mpa === mpaKey;
+                      return (
+                        <div 
+                          key={mpaKey}
+                          className={cn(
+                            "flex items-center justify-between p-2 rounded text-xs",
+                            isPrimary ? "bg-primary/10 border border-primary/30" : "bg-background"
+                          )}
+                        >
+                          <span className={cn(
+                            "truncate",
+                            isPrimary && "font-medium"
+                          )}>
+                            {shortLabel}
+                            {isPrimary && " (Best)"}
+                          </span>
+                          <span className={cn(
+                            "font-mono font-medium",
+                            getScoreColor(score as number).split(" ")[0]
+                          )}>
+                            {score as number}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Quality Indicators */}
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Quality Breakdown</span>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Action Clarity</span>
+                      <span className={getScoreColor(previewAssessment.quality_indicators.action_clarity).split(" ")[0]}>
+                        {previewAssessment.quality_indicators.action_clarity}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Impact</span>
+                      <span className={getScoreColor(previewAssessment.quality_indicators.impact_significance).split(" ")[0]}>
+                        {previewAssessment.quality_indicators.impact_significance}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Metrics</span>
+                      <span className={getScoreColor(previewAssessment.quality_indicators.metrics_quality).split(" ")[0]}>
+                        {previewAssessment.quality_indicators.metrics_quality}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Scope</span>
+                      <span className={getScoreColor(previewAssessment.quality_indicators.scope_definition).split(" ")[0]}>
+                        {previewAssessment.quality_indicators.scope_definition}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-muted-foreground/70">
+                  Tip: Add more specific details, quantifiable metrics, and clear impact to improve your score.
+                </p>
+              </div>
+            )}
+
+            {!previewAssessment && !isAssessing && (
+              <p className="text-xs text-muted-foreground">
+                Click &quot;Rate My Accomplishment&quot; to see how well this entry scores before saving.
+              </p>
+            )}
           </div>
 
           <DialogFooter className="pt-2 sm:pt-4 gap-4">

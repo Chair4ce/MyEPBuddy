@@ -46,8 +46,12 @@ import {
   ChevronDown,
   Check,
   X,
+  ArrowUpDown,
+  TrendingUp,
 } from "lucide-react";
-import type { Accomplishment } from "@/types/database";
+import type { Accomplishment, AccomplishmentMPARelevancy } from "@/types/database";
+
+type SortOption = "date" | "relevancy" | "quality";
 
 interface ActionSelectorSheetProps {
   accomplishments: Accomplishment[];
@@ -74,6 +78,19 @@ export function ActionSelectorSheet({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   const [localSelection, setLocalSelection] = useState<string[]>(selectedIds);
+  const [sortBy, setSortBy] = useState<SortOption>("relevancy");
+
+  // Helper to get MPA relevancy score for an accomplishment
+  const getMpaRelevancyScore = (action: Accomplishment, mpaKey: string): number => {
+    if (!action.assessment_scores?.mpa_relevancy) return 0;
+    const relevancy = action.assessment_scores.mpa_relevancy as AccomplishmentMPARelevancy;
+    return relevancy[mpaKey as keyof AccomplishmentMPARelevancy] || 0;
+  };
+
+  // Helper to get overall quality score
+  const getOverallScore = (action: Accomplishment): number => {
+    return action.assessment_scores?.overall_score || 0;
+  };
 
   // Extract unique tags from accomplishments
   const availableTags = useMemo(() => {
@@ -86,7 +103,7 @@ export function ActionSelectorSheet({
     return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
   }, [accomplishments]);
 
-  // Filter accomplishments
+  // Filter and sort accomplishments
   const filteredAccomplishments = useMemo(() => {
     let filtered = accomplishments;
 
@@ -116,8 +133,42 @@ export function ActionSelectorSheet({
       );
     }
 
-    return filtered;
-  }, [accomplishments, mpaFilter, selectedTags, searchQuery]);
+    // Sort based on selected option
+    const sorted = [...filtered];
+    switch (sortBy) {
+      case "relevancy":
+        // When filtering by MPA, sort by that MPA's relevancy score
+        // Otherwise, use the action's primary MPA relevancy or overall score
+        if (mpaFilter !== "all") {
+          sorted.sort((a, b) => {
+            const scoreA = getMpaRelevancyScore(a, mpaFilter);
+            const scoreB = getMpaRelevancyScore(b, mpaFilter);
+            return scoreB - scoreA; // Descending
+          });
+        } else {
+          // Sort by the best MPA match score
+          sorted.sort((a, b) => {
+            const scoreA = a.assessment_scores?.mpa_relevancy
+              ? Math.max(...Object.values(a.assessment_scores.mpa_relevancy as AccomplishmentMPARelevancy))
+              : 0;
+            const scoreB = b.assessment_scores?.mpa_relevancy
+              ? Math.max(...Object.values(b.assessment_scores.mpa_relevancy as AccomplishmentMPARelevancy))
+              : 0;
+            return scoreB - scoreA;
+          });
+        }
+        break;
+      case "quality":
+        sorted.sort((a, b) => getOverallScore(b) - getOverallScore(a));
+        break;
+      case "date":
+      default:
+        sorted.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        break;
+    }
+
+    return sorted;
+  }, [accomplishments, mpaFilter, selectedTags, searchQuery, sortBy]);
 
   // Toggle tag selection
   const toggleTag = (tag: string) => {
@@ -347,7 +398,7 @@ export function ActionSelectorSheet({
             )}
           </div>
 
-          {/* Quick actions */}
+          {/* Quick actions and sort */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
@@ -367,9 +418,27 @@ export function ActionSelectorSheet({
                 </button>
               )}
             </div>
-            <Badge variant="secondary" className="text-xs">
-              {localSelection.length} selected
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="h-7 w-[120px] text-xs">
+                  <ArrowUpDown className="size-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="relevancy">
+                    <span className="flex items-center gap-1.5">
+                      <TrendingUp className="size-3" />
+                      Relevancy
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="quality">Quality</SelectItem>
+                  <SelectItem value="date">Date</SelectItem>
+                </SelectContent>
+              </Select>
+              <Badge variant="secondary" className="text-xs">
+                {localSelection.length} selected
+              </Badge>
+            </div>
           </div>
 
           {/* Action list */}
@@ -393,6 +462,22 @@ export function ActionSelectorSheet({
               ) : (
                 filteredAccomplishments.map((action) => {
                   const isSelected = localSelection.includes(action.id);
+                  const hasAssessment = !!action.assessment_scores;
+                  const relevancyScore = mpaFilter !== "all" 
+                    ? getMpaRelevancyScore(action, mpaFilter)
+                    : action.assessment_scores?.mpa_relevancy
+                      ? Math.max(...Object.values(action.assessment_scores.mpa_relevancy as AccomplishmentMPARelevancy))
+                      : 0;
+                  const qualityScore = getOverallScore(action);
+                  
+                  // Score color based on value
+                  const getScoreColor = (score: number) => {
+                    if (score >= 80) return "text-green-600 bg-green-500/10";
+                    if (score >= 60) return "text-blue-600 bg-blue-500/10";
+                    if (score >= 40) return "text-amber-600 bg-amber-500/10";
+                    return "text-muted-foreground bg-muted";
+                  };
+                  
                   return (
                     <button
                       key={action.id}
@@ -420,6 +505,27 @@ export function ActionSelectorSheet({
                             <Badge variant="outline" className="text-[10px]">
                               {getMpaLabel(action.mpa).split(" ")[0]}
                             </Badge>
+                            {/* Score badges */}
+                            {hasAssessment && (
+                              <>
+                                {sortBy === "relevancy" && relevancyScore > 0 && (
+                                  <span className={cn(
+                                    "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                                    getScoreColor(relevancyScore)
+                                  )}>
+                                    {relevancyScore}% fit
+                                  </span>
+                                )}
+                                {sortBy === "quality" && qualityScore > 0 && (
+                                  <span className={cn(
+                                    "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                                    getScoreColor(qualityScore)
+                                  )}>
+                                    {qualityScore} quality
+                                  </span>
+                                )}
+                              </>
+                            )}
                             {Array.isArray(action.tags) && action.tags.length > 0 && (
                               <div className="flex items-center gap-1">
                                 {action.tags.slice(0, 2).map((tag) => (
