@@ -9,17 +9,13 @@ interface VersionInfo {
   commitHash?: string;
 }
 
-// Cache the version info in memory (read once at startup)
-let cachedVersion: VersionInfo | null = null;
-
+// Read version.json fresh each time to ensure we always return the latest
+// This is important for serverless environments where instances may be stale
 function getVersionInfo(): VersionInfo | null {
-  if (cachedVersion) return cachedVersion;
-  
   try {
     const versionPath = path.join(process.cwd(), "public", "version.json");
     const content = fs.readFileSync(versionPath, "utf8");
-    cachedVersion = JSON.parse(content);
-    return cachedVersion;
+    return JSON.parse(content);
   } catch {
     // Version file doesn't exist yet (first deploy)
     return null;
@@ -36,30 +32,31 @@ export async function GET(request: Request) {
     );
   }
   
-  // Use buildId as ETag for efficient caching
+  // Use buildId as ETag for efficient conditional requests
   const etag = `"${versionInfo.buildId}"`;
   
   // Check If-None-Match header for conditional requests
   const ifNoneMatch = request.headers.get("if-none-match");
   if (ifNoneMatch === etag) {
     // Client already has the latest version - return 304 Not Modified
-    // This is extremely lightweight (no body transferred)
     return new NextResponse(null, {
       status: 304,
       headers: {
         "ETag": etag,
-        "Cache-Control": "public, max-age=300, stale-while-revalidate=900",
+        // No caching - always revalidate to ensure fresh version info
+        "Cache-Control": "no-store, max-age=0",
       },
     });
   }
   
-  // Return version info with proper caching headers
+  // Return version info with no-cache to prevent stale version detection
+  // The polling is already infrequent (15 min), so no need for browser caching
   return NextResponse.json(versionInfo, {
     headers: {
       "ETag": etag,
-      // Allow CDN/browser caching for 5 min, serve stale for 15 min while revalidating
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=900",
-      // Ensure CDN can cache but still respects ETag
+      // No browser/CDN caching - always get fresh version from server
+      // This prevents the issue where stale cache causes repeated update prompts
+      "Cache-Control": "no-store, max-age=0",
       "Vary": "Accept-Encoding",
     },
   });

@@ -254,14 +254,19 @@ export function useVersionCheck(
     }
   }, [latestVersion]);
 
-  // Refresh the app
+  // Refresh the app - clear all version state for a clean start
   const refreshApp = useCallback(() => {
-    if (latestVersion) {
-      localStorage.setItem(VERSION_STORAGE_KEY, latestVersion.buildId);
-      localStorage.removeItem(DISMISS_STORAGE_KEY);
-    }
+    // Clear all version-related localStorage to prevent stale comparisons
+    // After reload, the app will initialize fresh with whatever the server returns
+    localStorage.removeItem(VERSION_STORAGE_KEY);
+    localStorage.removeItem(DISMISS_STORAGE_KEY);
+    localStorage.removeItem(LAST_CHECK_KEY);
+    localStorage.removeItem(LEADER_KEY);
+    localStorage.removeItem("app-version-update");
+    
+    // Force a hard refresh to bypass any browser cache
     window.location.reload();
-  }, [latestVersion]);
+  }, []);
 
   // Initial check on mount
   useEffect(() => {
