@@ -135,7 +135,7 @@ export const AI_MODELS = [
     description: "Google's latest fast model",
   },
   {
-    id: "gemini-1.5-pro-latest",
+    id: "gemini-1.5-pro-002",
     name: "Gemini 1.5 Pro",
     provider: "google",
     description: "Google's advanced model",
