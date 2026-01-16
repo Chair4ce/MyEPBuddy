@@ -647,7 +647,7 @@ export default function LibraryPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 w-full sm:w-auto sm:flex">
             <Select value={filterStatementType} onValueChange={setFilterStatementType}>
-              <SelectTrigger className="w-full sm:w-[110px]" aria-label="Filter by type">
+              <SelectTrigger className="w-full sm:w-[130px]" aria-label="Filter by type">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -670,7 +670,7 @@ export default function LibraryPage() {
               </SelectContent>
             </Select>
             <Select value={filterAfsc} onValueChange={setFilterAfsc}>
-              <SelectTrigger className="w-full sm:w-[120px]" aria-label="Filter by AFSC">
+              <SelectTrigger className="w-full sm:w-[140px]" aria-label="Filter by AFSC">
                 <SelectValue placeholder="AFSC" />
               </SelectTrigger>
               <SelectContent>
@@ -683,7 +683,7 @@ export default function LibraryPage() {
               </SelectContent>
             </Select>
             <Select value={filterCycleYear} onValueChange={setFilterCycleYear}>
-              <SelectTrigger className="w-full sm:w-[100px]" aria-label="Filter by cycle year">
+              <SelectTrigger className="w-full sm:w-[130px]" aria-label="Filter by cycle year">
                 <SelectValue placeholder="Cycle" />
               </SelectTrigger>
               <SelectContent>

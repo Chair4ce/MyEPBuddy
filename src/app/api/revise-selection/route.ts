@@ -3,7 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createXai } from "@ai-sdk/xai";
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { 
@@ -12,6 +12,14 @@ import {
   buildFewShotExamples,
   triggerStyleProcessing 
 } from "@/lib/style-learning";
+import {
+  buildCharacterEmphasisPrompt,
+} from "@/lib/character-verification";
+import {
+  performQualityControl,
+  shouldRunQualityControl,
+  type QualityControlConfig,
+} from "@/lib/quality-control";
 import type { StyleExampleCategory } from "@/types/database";
 
 interface ReviseSelectionRequest {
@@ -175,33 +183,48 @@ export async function POST(request: Request) {
       }
     };
     
-    // Calculate fill-to-max instructions
+    // Calculate fill-to-max instructions with enhanced emphasis
     const getFillInstructions = (shouldFill: boolean, maxChars?: number, currentLength?: number): string => {
       if (!shouldFill || !maxChars) {
         return "";
       }
       const targetMin = maxChars - 10;
       const charsToAdd = maxChars - (currentLength || 0);
+      
+      // Use the enhanced character emphasis prompt
+      const emphasisPrompt = buildCharacterEmphasisPrompt(targetMin, maxChars, charsToAdd > 0 ? "expand" : "compress");
+      
       return `
-**YOUR #1 PRIORITY: HIT THE CHARACTER TARGET**
-- Target: EXACTLY ${targetMin} to ${maxChars} characters
-- This is non-negotiable. Every revision MUST be in this range.
+${emphasisPrompt}
 
-The input is ${currentLength || "unknown"} chars. You need ${charsToAdd > 0 ? charsToAdd : 0} MORE characters.
+**CURRENT STATUS:**
+- Input: ${currentLength || "unknown"} characters
+- Target: ${targetMin}-${maxChars} characters
+- Action needed: ${charsToAdd > 0 ? `ADD ${charsToAdd} characters` : charsToAdd < 0 ? `REMOVE ${Math.abs(charsToAdd)} characters` : "Minor adjustment"}
 
-**HOW TO ADD CHARACTERS:**
-- "led" → "spearheaded and directed" (+15 chars)
-- "&" → " and " (+4 chars) 
-- "ops" → "critical operations" (+15 chars)
-- Add adjectives: "systems" → "mission-critical systems" (+17 chars)
-- Add scope: "safeguarding" → "effectively safeguarding" (+12 chars)
+**⚠️ CRITICAL VERIFICATION PROCESS (MANDATORY FOR EACH REVISION) ⚠️**
 
-**PROCESS FOR EACH REVISION:**
-1. Write your revision
-2. Count the characters (every letter, number, space, and symbol)
-3. If under ${targetMin}, ADD words until you reach the target
-4. If over ${maxChars}, trim until you reach the target
-5. Verify the count is ${targetMin}-${maxChars} before including`;
+You MUST execute this EXACT sequence for each revision:
+
+STEP 1: Draft your revision
+
+STEP 2: COUNT characters using this mental model:
+- Count every letter, number, space, and punctuation mark
+- Example: "Led 4-mbr tm" = 12 characters (L-e-d-space-4---m-b-r-space-t-m)
+
+STEP 3: Calculate compliance:
+- Is your count between ${targetMin} and ${maxChars}? 
+- If YES: ✓ COMPLIANT - include this revision
+- If NO: ❌ NOT COMPLIANT - proceed to STEP 4
+
+STEP 4: If NOT COMPLIANT:
+- If UNDER ${targetMin}: Expand words, add scope, add adjectives
+- If OVER ${maxChars}: Use abbreviations, remove weak words, condense
+- REPEAT from STEP 2 until compliant
+
+STEP 5: Only output revisions that are ${targetMin}-${maxChars} characters
+
+**FAILURE TO COMPLY = REVISION REJECTED**`;
     };
 
     if (!fullStatement || !selectedText) {
@@ -353,6 +376,51 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       revisions = [selectedText]; // Return original if nothing generated
     } else {
       revisions = revisions.slice(0, versionCount);
+    }
+
+    // POST-GENERATION QUALITY CONTROL
+    // Single consolidated QC pass that handles:
+    // - Character count enforcement (when fillToMax is enabled)
+    // - Statement diversity check
+    // - Instruction compliance verification
+    // This is ONE LLM call instead of multiple per-statement calls
+    if (fillToMax && maxCharacters) {
+      const targetMin = maxCharacters - 10;
+      
+      // Check if QC is worth running
+      const qcCheck = shouldRunQualityControl(revisions, fillToMax, maxCharacters, targetMin);
+      
+      if (qcCheck.shouldRun) {
+        try {
+          const qcConfig: QualityControlConfig = {
+            statements: revisions,
+            userPrompt: systemPrompt, // The prompt used for revision
+            targetMaxChars: maxCharacters,
+            targetMinChars: targetMin,
+            fillToMax,
+            context: category || "EPB statement revision",
+            model: modelProvider as LanguageModel,
+          };
+          
+          const qcResult = await performQualityControl(qcConfig);
+          
+          revisions = qcResult.statements;
+          
+          // Log QC results
+          console.log(
+            `[Revise] QC: adjusted=${qcResult.wasAdjusted}, ` +
+            `diversity=${qcResult.evaluation.diversityScore}, ` +
+            `compliance=${qcResult.evaluation.instructionCompliance}, ` +
+            `charLimits=${qcResult.evaluation.allMeetCharacterLimits}, ` +
+            `reason=${qcResult.stopReason}`
+          );
+        } catch (qcError) {
+          console.error("[Revise] QC failed:", qcError);
+          // Fall back to original revisions (already set)
+        }
+      } else {
+        console.log(`[Revise] Skipping QC: ${qcCheck.reason}`);
+      }
     }
 
     // Trigger async style processing (fire-and-forget)

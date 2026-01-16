@@ -3,12 +3,18 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createXai } from "@ai-sdk/xai";
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import { NextResponse } from "next/server";
 import { DEFAULT_ACRONYMS, formatAcronymsList } from "@/lib/default-acronyms";
 import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, formatMPAContext, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
+import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
+import {
+  performQualityControl,
+  shouldRunQualityControl,
+  type QualityControlConfig,
+} from "@/lib/quality-control";
 import type { MPADescriptions } from "@/types/database";
 import type { Rank, WritingStyle, UserLLMSettings, MajorGradedArea, Acronym, Abbreviation } from "@/types/database";
 
@@ -47,6 +53,9 @@ interface GenerateRequest {
   dutyDescription?: string; // Optional - member's duty description for context
   // HLR-specific: all EPB MPA statements for holistic assessment generation
   epbStatements?: { mpa: string; label: string; statement: string }[];
+  // Character filling options
+  fillToMax?: boolean; // When true, aggressively fill to max character limit
+  enforceCharacterLimits?: boolean; // When true, run post-generation verification and correction
 }
 
 // Overused/cliché verbs that should be avoided
@@ -105,11 +114,31 @@ CRITICAL RULES - NEVER VIOLATE THESE:
 1. Every statement MUST be a single, standalone sentence that flows naturally when read aloud.
 2. NEVER use semi-colons (;). Use commas to connect clauses into flowing sentences.
 3. Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
-4. Character range: AIM for {{max_characters_per_statement}} characters. Minimum 220 characters, maximum {{max_characters_per_statement}}.
+4. **⚠️ CHARACTER COUNT IS MANDATORY**: Target {{max_characters_per_statement}} characters. Minimum 340 characters, maximum {{max_characters_per_statement}}.
 5. Generate exactly 2–3 strong statements per Major Performance Area.
 6. Output pure, clean text only — no formatting.
 7. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope).
 8. CONSISTENCY: Use either "&" OR "and" throughout a statement - NEVER mix them. Prefer "&" when saving space.
+
+**⚠️ CHARACTER COUNT VERIFICATION PROCESS (MANDATORY) ⚠️**
+For EACH statement you generate, you MUST:
+
+STEP 1: Draft the statement with full content
+STEP 2: Count every character (letters, numbers, spaces, punctuation)
+STEP 3: Check compliance: Is count between 340-{{max_characters_per_statement}}?
+STEP 4: If NOT compliant:
+  - If UNDER 340: Add scope ("team" → "12-person team"), add adjectives ("systems" → "mission-critical systems"), expand abbreviations ("ops" → "operations")
+  - If OVER {{max_characters_per_statement}}: Use abbreviations, remove weak words
+  - REPEAT until compliant
+STEP 5: Only output statements that are 340-{{max_characters_per_statement}} characters
+
+**EXPANSION TECHNIQUES (to add characters):**
+- "led" → "directed and managed" (+11)
+- "ops" → "critical operations" (+12)
+- "team" → "high-performing team" (+12)
+- "improved" → "significantly improved" (+13)
+- Add scope: "for unit" → "for 450-member squadron" (+17)
+- Add depth: "saving $5K" → "saving $5K annually, enabling reinvestment in training" (+35)
 
 SENTENCE STRUCTURE (CRITICAL - THE #1 RULE):
 Board members scan quickly—they need clear, punchy statements digestible in 2-3 seconds. Avoid the "laundry list" problem:
@@ -463,7 +492,12 @@ export async function POST(request: Request) {
     }
 
     const body: GenerateRequest = await request.json();
-    const { rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, communityMpaFilter, communityAfscFilter, accomplishments, selectedMPAs, customContext, customContextOptions, generatePerAccomplishment, dutyDescription, epbStatements } = body;
+    const { 
+      rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, 
+      communityMpaFilter, communityAfscFilter, accomplishments, selectedMPAs, 
+      customContext, customContextOptions, generatePerAccomplishment, dutyDescription, 
+      epbStatements, fillToMax = true, enforceCharacterLimits: shouldEnforceCharLimits = true 
+    } = body;
 
     // Either accomplishments, customContext, or epbStatements must be provided
     const hasAccomplishments = accomplishments && accomplishments.length > 0;
@@ -1110,9 +1144,72 @@ Format as JSON array only:
         }
 
         if (statements.length > 0) {
+          // POST-GENERATION QUALITY CONTROL
+          // Single consolidated QC pass that handles:
+          // - Character count enforcement (when fillToMax is enabled)
+          // - Statement diversity check
+          // - Instruction compliance verification
+          // This is ONE LLM call instead of multiple per-statement calls
+          let verifiedStatements = statements;
+          let qcFeedback: string | undefined;
+          
+          if (shouldEnforceCharLimits && fillToMax) {
+            const targetMin = effectiveMaxChars - 10;
+            
+            // Check if QC is worth running
+            const qcCheck = shouldRunQualityControl(statements, fillToMax, effectiveMaxChars, targetMin);
+            
+            if (qcCheck.shouldRun) {
+              try {
+                const qcConfig: QualityControlConfig = {
+                  statements,
+                  userPrompt: userPrompt, // The prompt used to generate these statements
+                  targetMaxChars: effectiveMaxChars,
+                  targetMinChars: targetMin,
+                  fillToMax,
+                  context: `${mpa.label} statement for ${rateeRank}`,
+                  model: modelProvider as LanguageModel,
+                };
+                
+                const qcResult = await performQualityControl(qcConfig);
+                
+                verifiedStatements = qcResult.statements;
+                qcFeedback = qcResult.evaluation.overallFeedback;
+                
+                // Log QC results
+                console.log(
+                  `[Generate] QC for ${mpa.key}: ` +
+                  `adjusted=${qcResult.wasAdjusted}, ` +
+                  `diversity=${qcResult.evaluation.diversityScore}, ` +
+                  `compliance=${qcResult.evaluation.instructionCompliance}, ` +
+                  `charLimits=${qcResult.evaluation.allMeetCharacterLimits}, ` +
+                  `reason=${qcResult.stopReason}`
+                );
+                
+                // Log individual statement adjustments if any
+                if (qcResult.wasAdjusted) {
+                  qcResult.evaluation.statementEvaluations.forEach((evalItem, i) => {
+                    if (evalItem.originalLength !== evalItem.characterCount) {
+                      console.log(
+                        `  Statement ${i + 1}: ${evalItem.originalLength} → ${evalItem.characterCount} chars, ` +
+                        `compliance=${evalItem.instructionCompliance}%`
+                      );
+                    }
+                  });
+                }
+              } catch (qcError) {
+                console.error(`[Generate] QC failed for ${mpa.key}:`, qcError);
+                // Fall back to original statements
+                verifiedStatements = statements;
+              }
+            } else {
+              console.log(`[Generate] Skipping QC for ${mpa.key}: ${qcCheck.reason}`);
+            }
+          }
+          
           const historyIds: string[] = [];
           
-          for (const statement of statements) {
+          for (const statement of verifiedStatements) {
             const { data: historyData } = await supabase
               .from("statement_history")
               .insert({
@@ -1133,7 +1230,14 @@ Format as JSON array only:
             }
           }
 
-          results.push({ mpa: mpa.key, statements, historyIds, relevancyScore });
+          // Include QC feedback in results if available
+          results.push({ 
+            mpa: mpa.key, 
+            statements: verifiedStatements, 
+            historyIds, 
+            relevancyScore,
+            ...(qcFeedback && { qcFeedback }),
+          });
         }
       } catch (error) {
         console.error(`Error generating for ${mpa.key}:`, error);
