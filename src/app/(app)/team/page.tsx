@@ -72,6 +72,8 @@ import {
   Settings,
   ClipboardPlus,
   FolderKanban,
+  List,
+  Network,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -107,6 +109,7 @@ import { ProjectDetailSheet } from "@/components/team/project-detail-sheet";
 import { ProjectMembersManager } from "@/components/team/project-members-manager";
 import { AddProjectAccomplishmentDialog } from "@/components/team/add-project-accomplishment-dialog";
 import { ProjectsInfoModal, useProjectsInfoModal } from "@/components/team/projects-info-modal";
+import { HierarchyTreeView } from "@/components/team/hierarchy-tree-view";
 import { useProjectsStore } from "@/stores/projects-store";
 import { toast } from "@/components/ui/sonner";
 import { 
@@ -232,6 +235,7 @@ export default function TeamPage() {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [rankColors, setRankColors] = useState<RankColors>({});
   const [showRankColorsDialog, setShowRankColorsDialog] = useState(false);
+  const [treeViewMode, setTreeViewMode] = useState<"list" | "hierarchy">("list");
   
   // Invite dialog state
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -552,29 +556,49 @@ export default function TeamPage() {
       const subordinateIds = chainData.map((c: { subordinate_id: string }) => c.subordinate_id);
       const allChainIds = [...subordinateIds, profile.id];
       
-      // Get all profiles in the chain plus myself
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("id", allChainIds);
-
-      if (profiles) {
-        setAllProfiles((profiles as Profile[]) || [profile]);
+      // Batch fetch profiles to avoid URI Too Long errors (414)
+      // Supabase/PostgREST has URL length limits, so we batch in groups of 50
+      const BATCH_SIZE = 50;
+      const allProfiles: Profile[] = [];
+      
+      for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
+        const batch = allChainIds.slice(i, i + BATCH_SIZE);
+        const { data: batchProfiles } = await supabase
+          .from("profiles")
+          .select("*")
+          .in("id", batch);
         
-        const chainMembers: ChainMember[] = profiles.map((p: Profile) => ({
+        if (batchProfiles) {
+          allProfiles.push(...(batchProfiles as Profile[]));
+        }
+      }
+
+      if (allProfiles.length > 0) {
+        setAllProfiles(allProfiles);
+        
+        const chainMembers: ChainMember[] = allProfiles.map((p: Profile) => ({
           ...p,
           depth: p.id === profile.id ? 0 : (chainData.find((c: { subordinate_id: string; depth: number }) => c.subordinate_id === p.id)?.depth || 1),
         }));
         setSubordinateChain(chainMembers.sort((a, b) => a.depth - b.depth));
       }
       
-      // Get all team relationships where supervisor is in our chain
-      const { data: teams } = await supabase
-        .from("teams")
-        .select("supervisor_id, subordinate_id")
-        .in("supervisor_id", allChainIds);
+      // Batch fetch team relationships as well
+      const allTeams: { supervisor_id: string; subordinate_id: string }[] = [];
+      
+      for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
+        const batch = allChainIds.slice(i, i + BATCH_SIZE);
+        const { data: batchTeams } = await supabase
+          .from("teams")
+          .select("supervisor_id, subordinate_id")
+          .in("supervisor_id", batch);
+        
+        if (batchTeams) {
+          allTeams.push(...(batchTeams as { supervisor_id: string; subordinate_id: string }[]));
+        }
+      }
 
-      setTeamRelations(teams || []);
+      setTeamRelations(allTeams);
       
       // Expand the root node by default
       setExpandedNodes(new Set([profile.id]));
@@ -1789,7 +1813,10 @@ export default function TeamPage() {
         "flex-1 min-w-0 transition-all duration-300",
         isProjectsPanelOpen ? "pr-0" : ""
       )}>
-        <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6 px-4 sm:px-6">
+        <div className={cn(
+          "w-full space-y-4 sm:space-y-6 px-4 sm:px-6",
+          isProjectsPanelOpen ? "max-w-7xl mx-auto" : "" // Allow full width when projects panel is closed
+        )}>
           {/* Assign Mode Banner */}
           {isAssignMode && selectedProjectId && (
             <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
@@ -2456,6 +2483,51 @@ export default function TeamPage() {
                       </Tooltip>
                     </TooltipProvider>
                   )}
+                  {/* View toggle buttons */}
+                  <div className="flex items-center border rounded-md overflow-hidden">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={treeViewMode === "list" ? "default" : "ghost"}
+                            size="icon"
+                            className={cn(
+                              "size-8 rounded-none",
+                              treeViewMode === "list" && "bg-primary text-primary-foreground"
+                            )}
+                            onClick={() => setTreeViewMode("list")}
+                            aria-label="List view"
+                          >
+                            <List className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>List View</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={treeViewMode === "hierarchy" ? "default" : "ghost"}
+                            size="icon"
+                            className={cn(
+                              "size-8 rounded-none",
+                              treeViewMode === "hierarchy" && "bg-primary text-primary-foreground"
+                            )}
+                            onClick={() => setTreeViewMode("hierarchy")}
+                            aria-label="Hierarchy view"
+                          >
+                            <Network className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Hierarchy View</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -2479,9 +2551,42 @@ export default function TeamPage() {
                   </p>
                 </div>
               ) : tree ? (
-                <div className="overflow-x-auto">
-                  <div className="md:max-w-2xl lg:max-w-3xl">{renderTreeNode(tree)}</div>
-                </div>
+                treeViewMode === "hierarchy" ? (
+                  <HierarchyTreeView
+                    tree={tree}
+                    currentUserId={profile?.id || ""}
+                    rankColors={rankColors}
+                    onMemberClick={(memberId, isManagedMember) => {
+                      // Find the node data to populate the details dialog
+                      const findNode = (node: TreeNode): TreeNode | null => {
+                        if (node.data.id === memberId) return node;
+                        for (const child of node.children) {
+                          const found = findNode(child);
+                          if (found) return found;
+                        }
+                        return null;
+                      };
+                      const node = findNode(tree);
+                      if (node && node.data.id !== profile?.id) {
+                        setSelectedSubordinate({
+                          id: node.data.id,
+                          name: node.data.full_name || "Unknown",
+                          rank: node.data.rank,
+                          afsc: node.data.afsc,
+                          unit: node.data.unit,
+                          email: node.data.email || null,
+                          isManagedMember: node.data.isManagedMember,
+                          supervision_start_date: node.data.supervision_start_date || null,
+                          supervision_end_date: node.data.supervision_end_date || null,
+                        });
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <div className="md:max-w-2xl lg:max-w-3xl">{renderTreeNode(tree)}</div>
+                  </div>
+                )
               ) : (
                 <p className="text-center text-muted-foreground py-6 sm:py-8 text-xs sm:text-sm">
                   No subordinates in your chain of command.
