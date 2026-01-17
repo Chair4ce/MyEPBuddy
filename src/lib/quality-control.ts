@@ -45,6 +45,7 @@ const BANNED_WORDS = [
   "facilitated",
   "utilized",
   "impacted",
+  "w/ ",  // Banned abbreviation - not standard for EPBs
 ];
 
 /**

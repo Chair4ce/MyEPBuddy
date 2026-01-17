@@ -132,6 +132,76 @@ interface ExampleStatement {
   source: "personal" | "community";
 }
 
+// Function to extract action verbs from existing EPB sections to avoid reuse
+async function extractUsedVerbsFromEPB(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rateeId: string,
+  cycleYear: number,
+  currentMPA?: string // Exclude current MPA if specified
+): Promise<string[]> {
+  try {
+    // Get the current EPB shell for this ratee and cycle
+    const { data: epbShell } = await supabase
+      .from("epb_shells")
+      .select("sections")
+      .eq("cycle_year", cycleYear)
+      .or(`user_id.eq.${rateeId},team_member_id.eq.${rateeId}`)
+      .maybeSingle();
+
+    if (!epbShell) return [];
+
+    const typedShell = epbShell as { sections: any[] };
+    if (!typedShell.sections || !Array.isArray(typedShell.sections)) return [];
+
+    const usedVerbs = new Set<string>();
+
+    // Common action verbs to look for (case insensitive)
+    const actionVerbPatterns = [
+      /\b(led|directed|managed|drove|championed|pioneered|transformed|accelerated|streamlined|optimized|enhanced|elevated|strengthened|bolstered|trained|mentored|developed|coached|cultivated|empowered|resolved|eliminated|eradicated|mitigated|prevented|reduced|corrected|delivered|produced|generated|created|built|established|launched|coordinated|synchronized|integrated|unified|consolidated|aligned|analyzed|assessed|evaluated|identified|diagnosed|investigated|audited|negotiated|acquired|procured|saved|recovered|reclaimed|secured|safeguarded|protected|defended|fortified|hardened|shielded|guided|commanded|supervise|executed|performed|supported|assisted|helped|contributed|participated|maintained|operated|administered|oversaw|controlled|monitored|tracked|reported|documented|recorded|compiled|organized|prepared|planned|scheduled|arranged|facilitated|coordinated|collaborated|partnered|engaged|interacted|communicated|liaised|consulted|advised|counseled|instructed|educated|taught|demonstrated|showed|illustrated|presented|displayed|exhibited|featured|highlighted|emphasized|promoted|advocated|championed|endorsed|supported|backed|defended|upheld|sustained|maintained|preserved|protected|guarded|shielded|defended|fortified)\b/gi
+    ];
+
+    // Process each section
+    for (const section of typedShell.sections) {
+      // Skip current MPA if specified (when revising existing statement)
+      if (currentMPA && section.mpa === currentMPA) continue;
+
+      // Skip if no statement text
+      if (!section.statement_text || section.statement_text.trim().length < 10) continue;
+
+      const statementText = section.statement_text.toLowerCase();
+
+      // Extract verbs using patterns
+      for (const pattern of actionVerbPatterns) {
+        const matches = statementText.match(pattern);
+        if (matches) {
+          matches.forEach((match: string) => {
+            // Normalize verb (remove 'ed' endings for base form, but keep simple for now)
+            const verb = match.toLowerCase();
+            usedVerbs.add(verb);
+          });
+        }
+      }
+
+      // Also extract verbs that start sentences or major clauses
+      const sentenceStarters = statementText.match(/^([a-z]+)\s+/gm) || [];
+      sentenceStarters.forEach((match: string) => {
+        const verb = match.trim().toLowerCase();
+        if (verb.length > 2 && !['the', 'and', 'but', 'for', 'nor', 'yet', 'so', 'although', 'because', 'since', 'while'].includes(verb)) {
+          usedVerbs.add(verb);
+        }
+      });
+    }
+
+    // Convert to array and limit to most relevant verbs (avoid overwhelming the prompt)
+    const verbArray = Array.from(usedVerbs);
+    return verbArray.slice(0, 15); // Limit to top 15 most used verbs
+
+  } catch (error) {
+    console.warn("Error extracting used verbs from EPB:", error);
+    return [];
+  }
+}
+
 // Default settings if user hasn't configured their own
 const DEFAULT_SETTINGS: Partial<UserLLMSettings> = {
   max_characters_per_statement: 350,
@@ -633,6 +703,9 @@ export async function POST(request: Request) {
       
       if (hasCustomContext) {
         // Custom context mode - use the raw text as source material
+        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
+        const usedVerbsCustom = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
+
         // Get options with defaults
         const stmtCount = customContextOptions?.statementCount || 1;
         const impactFocus = customContextOptions?.impactFocus;
@@ -732,6 +805,7 @@ REQUIREMENTS:
 4. END STRONG: Last phrase = promotion recommendation tied to their unique value
 5. Use definitive language: "My #1", "must promote", "ready for next level"
 6. USE ALLOWED ABBREVIATIONS: hrs, mos, wks, & (for "and"), K/M/B for metrics
+   NEVER use "w/ " - it's not standard for EPBs
 
 Format as JSON array:
 ["Rewritten statement 1 (~${charLimitPerStatement} chars)", "Rewritten statement 2 (~${charLimitPerStatement} chars)"]`;
@@ -764,6 +838,7 @@ CRITICAL TRANSFORMATION REQUIREMENTS:
    - Statement 1: aim for ~${charLimitPerStatement} chars
    - Statement 2: aim for ~${charLimitPerStatement} chars
    - USE ALLOWED ABBREVIATIONS: hrs, mos, wks, & (for "and"), K/M/B for metrics
+     NEVER use "w/ " - it's not standard for EPBs
 4. SENTENCE STRUCTURE (CRITICAL):
    - Maximum 3-4 action clauses per statement - NO laundry lists of 5+ actions
    - Use PARALLEL verb structure (consistent tense throughout)
@@ -781,7 +856,7 @@ BANNED VERBS - NEVER USE:
 "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized", "Impacted"
 Use alternatives: Led, Directed, Managed, Drove, Championed, Transformed, Pioneered, Accelerated
 
-VERB VARIETY: Each statement MUST start with a DIFFERENT action verb.
+VERB VARIETY: Each statement MUST start with a DIFFERENT action verb.${usedVerbsCustom.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsCustom.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
 
 RELEVANCY: Rate how well this accomplishment fits "${mpa.label}" on a scale of 0-100.
 
@@ -826,7 +901,7 @@ REQUIREMENTS:
 STRUCTURE:
 [Commander's assessment] + [Unique value from input] + [PROMOTION PUSH - what you want for them]
 
-BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
+BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"${usedVerbsCustom.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsCustom.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
 
 Format as JSON array:
 ["Rewritten HLR statement"]`;
@@ -865,7 +940,7 @@ CRITICAL - DO NOT FABRICATE:
 - If input is vague, output should reflect that vagueness - enhance structure only
 
 BANNED VERBS: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated", "Utilized"
-Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated
+Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated${usedVerbsCustom.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsCustom.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
 
 RELEVANCY: Rate how well this accomplishment fits "${mpa.label}" on a scale of 0-100.
 
@@ -947,6 +1022,9 @@ Format as JSON array only:
 ["Statement 1", "Statement 2", "Statement 3"]`;
       } else if (isHLR) {
         // HLR-specific prompt - Commander's perspective, holistic assessment (from accomplishments)
+        // Extract verbs from existing EPB sections to avoid reuse (exclude HLR itself)
+        const usedVerbsHLR = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
+
         // Build rank-appropriate promotion push language
         const promotionLanguage = {
           "AB": "promote ahead of peers, ready for increased responsibility",
@@ -1007,7 +1085,7 @@ GOOD EXAMPLE:
 BAD EXAMPLE (weak ending):
 "My top performer, drove mission success, mentored Amn, my strongest recommendation." (ending too generic)
 
-BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
+BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"${usedVerbsHLR.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsHLR.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
 
 Generate EXACTLY 2-3 statements. Each must END with a strong, specific promotion push.
 
@@ -1019,10 +1097,17 @@ Format as JSON array only:
         const allStatements: string[] = [];
         const allHistoryIds: string[] = [];
         const accomplishmentSources: { index: number; actionVerb: string; details: string }[] = [];
-        
+
+        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
+        const usedVerbsPerAcc = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
+
         for (let accIdx = 0; accIdx < mpaAccomplishments.length; accIdx++) {
           const acc = mpaAccomplishments[accIdx];
-          
+
+        const verbAvoidanceInstruction = usedVerbsPerAcc.length > 0
+          ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsPerAcc.join(", ")}\nUse different action verbs to maintain variety across the EPB.`
+          : "";
+
           const perAccPrompt = `Generate ONE HIGH-QUALITY EPB narrative statement for the "${mpa.label}" Major Performance Area.
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
@@ -1051,7 +1136,7 @@ CRITICAL REQUIREMENTS:
 5. This is a COMPLETE statement on its own - not a fragment
 
 BANNED VERBS: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
-Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered
+Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered${verbAvoidanceInstruction}
 
 Output ONLY the statement text, no quotes or JSON.`;
 
@@ -1111,6 +1196,9 @@ Output ONLY the statement text, no quotes or JSON.`;
         continue; // Skip the normal generation flow below
       } else {
         // Regular MPA prompt - combine accomplishments into 2-3 statement VERSIONS
+        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
+        const usedVerbsRegular = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
+
         // Get abbreviations for injection into user prompt
         const userAbbreviations = settings.abbreviations || [];
         const userAcronyms = settings.acronyms || [];
@@ -1130,7 +1218,13 @@ Output ONLY the statement text, no quotes or JSON.`;
         // For multi-accomplishment MPAs, we want SEPARATE statements that get combined later
         // Each statement should be ~half the max chars since they'll be joined
         const perStatementTarget = Math.floor((effectiveMaxChars - 2) / mpaAccomplishments.length);
-        
+
+        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
+        const usedVerbs = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
+        const verbAvoidanceInstruction = usedVerbsRegular.length > 0
+          ? `\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsRegular.join(", ")}\nUse different action verbs to maintain variety across the EPB.`
+          : "";
+
         userPrompt = `Generate EPB narrative statements for "${mpa.label}".
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
@@ -1164,13 +1258,16 @@ ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 1. Write ONE complete sentence per accomplishment
 2. Each sentence ~${perStatementTarget} chars (use abbreviations to fit!)
 3. COMPLETE sentences - no truncation, no cutting off mid-word
-4. BANNED VERBS: Spearheaded, Orchestrated, Synergized, Leveraged, Facilitated, Utilized, Impacted
+4. BANNED VERBS: Spearheaded, Orchestrated, Synergized, Leveraged, Facilitated, Utilized, Impacted${verbAvoidanceInstruction}
 
 **ALLOWED ABBREVIATIONS (only these are permitted):**
 - TIME: "hours" → "hrs", "months" → "mos", "weeks" → "wks", "days" → "days"
 - NUMBERS: Use digits (e.g., "three" → "3", "twelve" → "12")
 - CONJUNCTION: "and" → "&" (saves 2 characters each time!)
 - METRICS: K, M, B for thousands/millions/billions (e.g., "$50K", "1.2M users")
+
+**BANNED ABBREVIATIONS (NEVER USE):**
+- "w/ " - Not standard for EPBs, use "with" instead
 
 **OUTPUT FORMAT:**
 {"statements": ["Statement for accomplishment 1 (~${perStatementTarget} chars)", "Statement for accomplishment 2 (~${perStatementTarget} chars)"], "relevancy_score": 85}`;

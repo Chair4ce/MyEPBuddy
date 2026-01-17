@@ -74,7 +74,7 @@ export default function GeneratePage() {
   
   // Officer workspace mode: "opb" for personal OPB, "epb" for team EPBs
   const [officerWorkspaceMode, setOfficerWorkspaceMode] = useState<"opb" | "epb">("epb");
-  
+
   // Accomplishment selection dialog
   const [showAccomplishmentDialog, setShowAccomplishmentDialog] = useState(false);
   const [selectedMPAForAccomplishments, setSelectedMPAForAccomplishments] = useState<string | null>(null);
@@ -203,7 +203,7 @@ export default function GeneratePage() {
       try {
         const { ratee } = JSON.parse(stored);
         if (ratee) {
-          // Set the ratee - validation will happen in the ratee validation useEffect
+          // Set the ratee - validation will happen separately if needed
           setSelectedRatee(ratee);
         }
       } catch (error) {
@@ -351,34 +351,18 @@ export default function GeneratePage() {
   // Check if officer has any enlisted team members (for officers, rateeOptions doesn't include "self")
   const hasEnlistedTeamMembers = rateeOptions.length > 0;
   
-  // Validate selectedRatee is still valid when user type or available options change
+  // Set default ratee selection when no selection exists and options are available
   useEffect(() => {
-    if (!profile) return;
-    
-    // For officers in EPB mode, ensure selectedRatee is an enlisted member (not themselves)
+    if (!profile || !rateeOptions.length || selectedRatee) return;
+
     if (userIsOfficer && officerWorkspaceMode === "epb") {
-      // If no ratee selected, try to select first available enlisted member
-      if (!selectedRatee && rateeOptions.length > 0) {
-        const firstOption = rateeOptions[0];
+      // Officers default to first enlisted team member
+      const firstOption = rateeOptions[0];
+      if (firstOption) {
         setSelectedRatee(firstOption.ratee as Parameters<typeof setSelectedRatee>[0]);
       }
-      // If current ratee is not in available options (e.g., they're an officer), reset
-      else if (selectedRatee) {
-        const isValid = rateeOptions.some(opt => 
-          (opt.value === "self" && selectedRatee.id === profile.id && !selectedRatee.isManagedMember) ||
-          (opt.value === selectedRatee.id && !selectedRatee.isManagedMember) ||
-          (opt.value === `managed:${selectedRatee.id}` && selectedRatee.isManagedMember)
-        );
-        if (!isValid && rateeOptions.length > 0) {
-          const firstOption = rateeOptions[0];
-          setSelectedRatee(firstOption.ratee as Parameters<typeof setSelectedRatee>[0]);
-        } else if (!isValid && rateeOptions.length === 0) {
-          setSelectedRatee(null);
-        }
-      }
-    }
-    // For non-officers, ensure they have a valid selection (default to self)
-    else if (!userIsOfficer && !selectedRatee) {
+    } else if (!userIsOfficer) {
+      // Non-officers default to self
       setSelectedRatee({
         id: profile.id,
         fullName: profile.full_name || null,
