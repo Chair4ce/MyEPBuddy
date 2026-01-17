@@ -717,9 +717,6 @@ export function CustomContextWorkspace({
   const [isLoaded, setIsLoaded] = useState(false);
   const [generatingMPA, setGeneratingMPA] = useState<string | null>(null);
   const [isRegeneratingWithContext, setIsRegeneratingWithContext] = useState(false);
-  
-  // Get the active clarifying question set for regeneration
-  const activeQuestionSet = useClarifyingQuestionsStore((state) => state.getActiveQuestionSet());
 
   // Load session from localStorage
   useEffect(() => {
@@ -827,15 +824,24 @@ export function CustomContextWorkspace({
       // Store clarifying questions if any were returned
       if (clarifyingQuestions.length > 0) {
         const { addQuestionSet } = useClarifyingQuestionsStore.getState();
+        const mpaLabel = ENTRY_MGAS.find(m => m.key === mpaKey)?.label || mpaKey;
         addQuestionSet({
           mpaKey,
           rateeId,
           originalContext: data.statement1.context,
-          questions: clarifyingQuestions.map((q: { question: string; category?: string; hint?: string }) => ({
+          sourceContext: {
+            statement1Input: data.statement1.context,
+            statement2Input: data.statementCount === 2 ? data.statement2?.context : undefined,
+            statement1Generated: statements[0],
+            statement2Generated: data.statementCount === 2 ? statements[1] : undefined,
+            mpaLabel,
+          },
+          questions: clarifyingQuestions.map((q: { question: string; category?: string; hint?: string; sentenceNumber?: 1 | 2 }) => ({
             id: `q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             question: q.question,
             category: q.category || "general",
             hint: q.hint,
+            sentenceNumber: q.sentenceNumber,
             answer: "",
           })),
         });
@@ -880,10 +886,7 @@ export function CustomContextWorkspace({
   };
 
   // Regenerate statement with clarifying context from user answers
-  const regenerateWithClarifyingContext = async (clarifyingContext: string) => {
-    if (!activeQuestionSet) return;
-    
-    const mpaKey = activeQuestionSet.mpaKey;
+  const regenerateWithClarifyingContext = async (clarifyingContext: string, mpaKey: string) => {
     const data = getMPAData(mpaKey);
     
     setIsRegeneratingWithContext(true);

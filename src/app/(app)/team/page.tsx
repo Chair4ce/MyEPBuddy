@@ -44,7 +44,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import {
   Users,
@@ -72,6 +71,7 @@ import {
   FileText,
   Settings,
   ClipboardPlus,
+  FolderKanban,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -90,7 +90,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { Profile, TeamRequest, TeamRequestType, Rank, ManagedMember, Award, AwardRequest } from "@/types/database";
+import type { Profile, TeamRequest, TeamRequestType, Rank, ManagedMember, Award, AwardRequest, Project } from "@/types/database";
 import { AddManagedMemberDialog } from "@/components/team/add-managed-member-dialog";
 import { EditManagedMemberDialog } from "@/components/team/edit-managed-member-dialog";
 import { AddAwardDialog } from "@/components/team/add-award-dialog";
@@ -100,6 +100,14 @@ import { AwardRequestsPanel } from "@/components/team/award-requests-panel";
 import { MemberStatementsDialog } from "@/components/team/member-statements-dialog";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
 import { AddTeamAccomplishmentDialog } from "@/components/team/add-team-accomplishment-dialog";
+import { ProjectsSidePanel } from "@/components/team/projects-side-panel";
+import { AddProjectDialog } from "@/components/team/add-project-dialog";
+import { EditProjectDialog } from "@/components/team/edit-project-dialog";
+import { ProjectDetailSheet } from "@/components/team/project-detail-sheet";
+import { ProjectMembersManager } from "@/components/team/project-members-manager";
+import { ProjectsInfoModal, useProjectsInfoModal } from "@/components/team/projects-info-modal";
+import { useProjectsStore } from "@/stores/projects-store";
+import { toast } from "@/components/ui/sonner";
 import { 
   MPA_ABBREVIATIONS, 
   STANDARD_MGAS, 
@@ -322,6 +330,96 @@ export default function TeamPage() {
 
   // Team accomplishment dialog state
   const [showTeamAccomplishmentDialog, setShowTeamAccomplishmentDialog] = useState(false);
+
+  // Projects state
+  const { 
+    selectedProjectId, 
+    setSelectedProjectId, 
+    isPanelOpen: isProjectsPanelOpen,
+    setPanelOpen: setProjectsPanelOpen,
+    togglePanel: toggleProjectsPanel,
+    isAssignMode,
+    setAssignMode,
+    toggleAssignMode,
+    projects,
+    addProjectMember,
+  } = useProjectsStore();
+  const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
+  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [viewProject, setViewProject] = useState<Project | null>(null);
+  const [manageProjectMembers, setManageProjectMembers] = useState<Project | null>(null);
+
+  // Projects info modal (one-time display)
+  const projectsInfoModal = useProjectsInfoModal();
+
+  // Handle opening projects panel with first-time modal
+  const handleOpenProjectsPanel = useCallback(() => {
+    toggleProjectsPanel();
+    // Trigger the info modal if it's their first time and panel is being opened
+    if (!isProjectsPanelOpen) {
+      projectsInfoModal.triggerFirstTimeModal();
+    }
+  }, [toggleProjectsPanel, isProjectsPanelOpen, projectsInfoModal]);
+
+  // Handle assigning a member to the selected project
+  const handleAssignMemberToProject = useCallback(async (
+    memberId: string, 
+    memberType: "profile" | "team_member"
+  ) => {
+    if (!selectedProjectId || !profile) return;
+    
+    const project = projects.find((p) => p.id === selectedProjectId);
+    if (!project) return;
+    
+    // Check if already a member
+    const isAlreadyMember = project.members?.some(
+      (m) => m.profile_id === memberId || m.team_member_id === memberId
+    );
+    
+    if (isAlreadyMember) {
+      toast.info("Already a member", { description: "This person is already assigned to the project" });
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile_id: memberType === "profile" ? memberId : undefined,
+          team_member_id: memberType === "team_member" ? memberId : undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to add member");
+      }
+      
+      const { member } = await response.json();
+      addProjectMember(selectedProjectId, member);
+      toast.success("Member added", { description: "Successfully assigned to project" });
+    } catch (error) {
+      console.error("Error assigning member:", error);
+      toast.error("Failed to assign member", { 
+        description: error instanceof Error ? error.message : "Please try again" 
+      });
+    }
+  }, [selectedProjectId, profile, projects, addProjectMember]);
+
+  // Get highlighted member IDs from selected project
+  const highlightedMemberIds = useMemo(() => {
+    if (!selectedProjectId) return new Set<string>();
+    const project = projects.find((p) => p.id === selectedProjectId);
+    if (!project?.members) return new Set<string>();
+    
+    const ids = new Set<string>();
+    project.members.forEach((m) => {
+      if (m.profile_id) ids.add(m.profile_id);
+      if (m.team_member_id) ids.add(m.team_member_id);
+    });
+    return ids;
+  }, [selectedProjectId, projects]);
 
   const supabase = createClient();
 
@@ -1266,6 +1364,7 @@ export default function TeamPage() {
     const isCurrentUser = node.data.id === profile?.id;
     const isManagedMember = node.data.isManagedMember;
     const isPlaceholder = node.data.isPlaceholder;
+    const isProjectMember = highlightedMemberIds.has(node.data.id);
 
     return (
       <div key={node.data.id} className="relative min-w-0">
@@ -1299,18 +1398,51 @@ export default function TeamPage() {
         <div
           className={cn(
             "relative p-2.5 sm:p-3 rounded-lg border-2 transition-all bg-card md:max-w-lg my-1 mx-0.5 group",
-            hasChildren && "cursor-pointer hover:shadow-md active:scale-[0.99]",
+            hasChildren && !isAssignMode && "cursor-pointer hover:shadow-md active:scale-[0.99]",
             !hasCustomColor(node.data.rank) && "border-border",
-            isCurrentUser && "ring-2 ring-primary ring-offset-1"
+            isCurrentUser && "ring-2 ring-primary ring-offset-1",
+            isProjectMember && !isCurrentUser && "ring-2 ring-amber-500 ring-offset-1 bg-amber-50/50 dark:bg-amber-900/20",
+            // Assign mode styling
+            isAssignMode && !isProjectMember && "cursor-pointer hover:ring-2 hover:ring-green-500 hover:bg-green-50/50 dark:hover:bg-green-900/20",
+            isAssignMode && isProjectMember && "opacity-60"
           )}
           style={getRankStyle(node.data.rank)}
-          onClick={() => hasChildren && toggleExpand(node.data.id)}
+          onClick={() => {
+            if (isAssignMode && selectedProjectId) {
+              // In assign mode, clicking adds member to project
+              if (!isProjectMember) {
+                const memberType = isManagedMember ? "team_member" : "profile";
+                handleAssignMemberToProject(node.data.id, memberType);
+              }
+            } else if (hasChildren) {
+              // Normal mode, toggle expand
+              toggleExpand(node.data.id);
+            }
+          }}
         >
+          {/* Assign mode indicator overlay */}
+          {isAssignMode && !isProjectMember && (
+            <div className="absolute inset-0 flex items-center justify-center bg-green-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+              <div className="flex items-center gap-1.5 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium shadow-lg">
+                <Plus className="size-3.5" />
+                Add to Project
+              </div>
+            </div>
+          )}
+          {isAssignMode && isProjectMember && (
+            <div className="absolute top-1 right-1 z-10">
+              <Badge variant="secondary" className="text-[9px] bg-amber-100 text-amber-700 border-amber-300">
+                <Check className="size-2.5 mr-0.5" />
+                Assigned
+              </Badge>
+            </div>
+          )}
+
           {/* Main content */}
           <div className="space-y-2">
             {/* Top row: Avatar, name, and expand chevron */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {hasChildren && (
+              {hasChildren && !isAssignMode && (
                 <div className="shrink-0">
                   {isExpanded ? (
                     <ChevronDown className="size-4 text-muted-foreground" />
@@ -1649,15 +1781,55 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">My Team</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Manage your team members
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
+    <div className="flex w-full h-full">
+      {/* Main Content Area */}
+      <div className={cn(
+        "flex-1 min-w-0 transition-all duration-300",
+        isProjectsPanelOpen ? "pr-0" : ""
+      )}>
+        <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6 px-4 sm:px-6">
+          {/* Assign Mode Banner */}
+          {isAssignMode && selectedProjectId && (
+            <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <div className="flex items-center gap-2">
+                <UserPlus className="size-5 text-amber-600" />
+                <div>
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                    Assign Mode Active
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Click on team members below to add them to &quot;{projects.find(p => p.id === selectedProjectId)?.name || "project"}&quot;
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-500/50 text-amber-700 hover:bg-amber-500/10"
+                onClick={() => setAssignMode(false)}
+              >
+                <Check className="size-4 mr-1.5" />
+                Done Assigning
+              </Button>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">My Team</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">
+                Manage your team members
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button 
+                variant={isProjectsPanelOpen ? "default" : "outline"}
+                className="w-full sm:w-auto shrink-0"
+                onClick={handleOpenProjectsPanel}
+              >
+                <FolderKanban className="size-4 mr-2" />
+                Projects
+              </Button>
           {canSupervise(profile?.rank) && (
             <Button 
               variant="outline" 
@@ -3023,6 +3195,74 @@ export default function TeamPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Project Dialog */}
+      <AddProjectDialog
+        open={showAddProjectDialog}
+        onOpenChange={setShowAddProjectDialog}
+      />
+
+      {/* Edit Project Dialog */}
+      <EditProjectDialog
+        open={!!editProject}
+        onOpenChange={(open) => !open && setEditProject(null)}
+        project={editProject}
+      />
+
+      {/* Project Detail Sheet */}
+      <ProjectDetailSheet
+        open={!!viewProject}
+        onOpenChange={(open) => !open && setViewProject(null)}
+        project={viewProject}
+        onEditProject={() => {
+          if (viewProject) {
+            setEditProject(viewProject);
+            setViewProject(null);
+          }
+        }}
+        onManageMembers={() => {
+          if (viewProject) {
+            setManageProjectMembers(viewProject);
+          }
+        }}
+      />
+
+      {/* Project Members Manager */}
+      <ProjectMembersManager
+        open={!!manageProjectMembers}
+        onOpenChange={(open) => !open && setManageProjectMembers(null)}
+        project={manageProjectMembers}
+        isOwner={
+          manageProjectMembers?.members?.some(
+            (m) => m.profile_id === profile?.id && m.is_owner
+          ) || false
+        }
+      />
+
+      {/* Projects Info Modal (one-time) */}
+      <ProjectsInfoModal
+        open={projectsInfoModal.showModal}
+        onOpenChange={projectsInfoModal.onOpenChange}
+      />
+        </div>
+      </div>
+
+      {/* Projects Side Panel - coexists with main content */}
+      <ProjectsSidePanel
+        isOpen={isProjectsPanelOpen}
+        onClose={() => {
+          setProjectsPanelOpen(false);
+          setAssignMode(false);
+        }}
+        onAddProject={() => setShowAddProjectDialog(true)}
+        onEditProject={(project) => setEditProject(project)}
+        onViewProject={(project) => setViewProject(project)}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={setSelectedProjectId}
+        isAssignMode={isAssignMode}
+        onToggleAssignMode={toggleAssignMode}
+        onShowHelp={projectsInfoModal.openModal}
+      />
     </div>
   );
 }

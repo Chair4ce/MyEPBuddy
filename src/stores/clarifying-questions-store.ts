@@ -26,6 +26,25 @@ export interface ClarifyingQuestion {
   answer: string;
   /** Hint text to help user understand what kind of answer is helpful */
   hint?: string;
+  /** Which sentence this question relates to (1, 2, or undefined for general/both) */
+  sentenceNumber?: 1 | 2;
+}
+
+/**
+ * Source context information for clarifying questions
+ * Shows the user what input generated these questions
+ */
+export interface QuestionSourceContext {
+  /** The input text for statement 1 */
+  statement1Input?: string;
+  /** The input text for statement 2 (if applicable) */
+  statement2Input?: string;
+  /** The generated text for statement 1 */
+  statement1Generated?: string;
+  /** The generated text for statement 2 (if applicable) */
+  statement2Generated?: string;
+  /** Human-readable MPA label (e.g., "Job Performance") */
+  mpaLabel?: string;
 }
 
 /**
@@ -42,6 +61,8 @@ export interface QuestionSet {
   createdAt: Date;
   /** The original prompt/context that generated these questions */
   originalContext?: string;
+  /** Source context showing what input/output triggered these questions */
+  sourceContext?: QuestionSourceContext;
   /** The questions themselves */
   questions: ClarifyingQuestion[];
   /** Additional context the user wants to add (free-form) */
@@ -63,7 +84,7 @@ interface ClarifyingQuestionsState {
   // Actions
   
   /** Add a new question set from LLM response */
-  addQuestionSet: (questionSet: Omit<QuestionSet, "id" | "createdAt" | "hasBeenViewed" | "additionalContext">) => string;
+  addQuestionSet: (questionSet: Omit<QuestionSet, "id" | "createdAt" | "hasBeenViewed" | "additionalContext"> & { sourceContext?: QuestionSourceContext }) => string;
   
   /** Get questions for a specific MPA and ratee */
   getQuestionsForMPA: (mpaKey: string, rateeId: string) => QuestionSet | undefined;
@@ -121,6 +142,7 @@ export const useClarifyingQuestionsStore = create<ClarifyingQuestionsState>((set
       createdAt: new Date(),
       hasBeenViewed: false,
       additionalContext: "",
+      sourceContext: questionSetData.sourceContext,
       questions: questionSetData.questions.map(q => ({
         ...q,
         id: q.id || generateId(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -31,18 +30,20 @@ import {
   Sparkles,
   RefreshCw,
   X,
-  ChevronRight,
   Lightbulb,
   CheckCircle2,
+  FileText,
+  ArrowRight,
 } from "lucide-react";
 import {
   useClarifyingQuestionsStore,
   QUESTION_CATEGORY_LABELS,
   type ClarifyingQuestion,
+  type QuestionSourceContext,
 } from "@/stores/clarifying-questions-store";
 
 interface ClarifyingQuestionsModalProps {
-  onRegenerate: (clarifyingContext: string) => void;
+  onRegenerate: (clarifyingContext: string, mpaKey: string) => void;
   isRegenerating?: boolean;
 }
 
@@ -66,6 +67,112 @@ const CATEGORY_COLORS: Record<ClarifyingQuestion["category"], string> = {
   general: "bg-gray-500/10 text-gray-600 border-gray-500/20",
 };
 
+/**
+ * Displays a single sentence's context (input + generated) with its questions
+ */
+function SentenceQuestionsSection({
+  sentenceNumber,
+  sourceContext,
+  questions,
+  localAnswers,
+  onAnswerChange,
+  isOnlySentence,
+}: {
+  sentenceNumber: 1 | 2 | "general";
+  sourceContext?: QuestionSourceContext;
+  questions: ClarifyingQuestion[];
+  localAnswers: Record<string, string>;
+  onAnswerChange: (questionId: string, value: string) => void;
+  isOnlySentence: boolean;
+}) {
+  // Get sentence-specific content
+  const generated = sentenceNumber === 1 
+    ? sourceContext?.statement1Generated 
+    : sentenceNumber === 2 
+      ? sourceContext?.statement2Generated 
+      : undefined;
+
+  // Color scheme based on sentence
+  const colorScheme = sentenceNumber === 1 
+    ? { border: "border-primary/50", bg: "bg-primary/5", accent: "border-primary", accentBg: "bg-primary/10", badge: "bg-primary text-primary-foreground" }
+    : sentenceNumber === 2
+      ? { border: "border-blue-500/50", bg: "bg-blue-500/5", accent: "border-blue-500", accentBg: "bg-blue-500/10", badge: "bg-blue-500 text-white" }
+      : { border: "border-muted", bg: "bg-muted/30", accent: "border-muted-foreground/30", accentBg: "bg-muted/50", badge: "bg-muted text-muted-foreground" };
+
+  const sectionTitle = sentenceNumber === "general" 
+    ? "General"
+    : isOnlySentence 
+      ? "Your Statement" 
+      : `Sentence ${sentenceNumber}`;
+
+  return (
+    <div className={cn("rounded-lg border-2 p-4 space-y-4", colorScheme.border, colorScheme.bg)}>
+      {/* Header row with sentence badge and generated text */}
+      <div className="space-y-2">
+        <Badge className={cn("text-xs font-semibold", colorScheme.badge)}>
+          {sectionTitle}
+        </Badge>
+        
+        {/* Generated text - compact display */}
+        {sentenceNumber !== "general" && generated && (
+          <p className={cn(
+            "text-sm text-foreground leading-relaxed rounded-md px-3 py-2 border-l-4",
+            colorScheme.accentBg,
+            colorScheme.accent
+          )}>
+            {generated}
+          </p>
+        )}
+        
+        {sentenceNumber === "general" && (
+          <p className="text-xs text-muted-foreground">
+            These questions apply to your entire statement.
+          </p>
+        )}
+      </div>
+
+      {/* Questions - full width layout */}
+      <div className="space-y-5">
+        {questions.map((question) => {
+          const Icon = CATEGORY_ICONS[question.category];
+          const categoryColor = CATEGORY_COLORS[question.category];
+          
+          return (
+            <div key={question.id} className="space-y-2">
+              {/* Category badge on its own row */}
+              <Badge variant="outline" className={cn("gap-1.5", categoryColor)}>
+                <Icon className="h-3 w-3" />
+                {QUESTION_CATEGORY_LABELS[question.category]}
+              </Badge>
+              
+              {/* Question text - full width */}
+              <div className="space-y-1">
+                <Label className="text-sm font-medium leading-relaxed block">
+                  {question.question}
+                </Label>
+                {question.hint && (
+                  <p className="text-xs text-muted-foreground">
+                    💡 {question.hint}
+                  </p>
+                )}
+              </div>
+              
+              {/* Answer textarea - full width */}
+              <Textarea
+                placeholder="Your answer (optional)..."
+                value={localAnswers[question.id] || ""}
+                onChange={(e) => onAnswerChange(question.id, e.target.value)}
+                className="min-h-[60px] resize-none text-sm w-full"
+                aria-label={question.question}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ClarifyingQuestionsModal({
   onRegenerate,
   isRegenerating = false,
@@ -84,9 +191,9 @@ export function ClarifyingQuestionsModal({
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
   const [additionalContext, setAdditionalContext] = useState("");
 
-  // Initialize local state from store
-  const initializeFromStore = () => {
-    if (questionSet) {
+  // Initialize local state from store when modal opens
+  useEffect(() => {
+    if (isModalOpen && questionSet) {
       const answers: Record<string, string> = {};
       questionSet.questions.forEach(q => {
         answers[q.id] = q.answer;
@@ -94,13 +201,11 @@ export function ClarifyingQuestionsModal({
       setLocalAnswers(answers);
       setAdditionalContext(questionSet.additionalContext);
     }
-  };
+  }, [isModalOpen, questionSet]);
 
-  // Handle modal open - initialize state
+  // Handle modal close
   const handleOpenChange = (open: boolean) => {
-    if (open) {
-      initializeFromStore();
-    } else {
+    if (!open) {
       closeModal();
     }
   };
@@ -112,7 +217,14 @@ export function ClarifyingQuestionsModal({
 
   // Handle regenerate
   const handleRegenerate = () => {
-    if (!questionSet) return;
+    if (!questionSet) {
+      console.error("[ClarifyingQuestionsModal] No questionSet available");
+      return;
+    }
+
+    // Capture mpaKey before any state changes
+    const mpaKey = questionSet.mpaKey;
+    console.log("[ClarifyingQuestionsModal] handleRegenerate called for MPA:", mpaKey);
 
     // Save answers to store
     Object.entries(localAnswers).forEach(([questionId, answer]) => {
@@ -122,6 +234,7 @@ export function ClarifyingQuestionsModal({
 
     // Build context and trigger regeneration
     const context = buildClarifyingContext(questionSet.id);
+    console.log("[ClarifyingQuestionsModal] Built context:", context.substring(0, 200) + "...");
     
     // Add local additional context if different from store
     let finalContext = context;
@@ -129,7 +242,9 @@ export function ClarifyingQuestionsModal({
       finalContext = `${context}\n\n=== ADDITIONAL CONTEXT FROM USER ===\n${additionalContext}`;
     }
 
-    onRegenerate(finalContext);
+    console.log("[ClarifyingQuestionsModal] Calling onRegenerate with mpaKey:", mpaKey);
+    // Pass both context and mpaKey to ensure regeneration works
+    onRegenerate(finalContext, mpaKey);
     
     // Remove question set after regeneration
     removeQuestionSet(questionSet.id);
@@ -150,84 +265,93 @@ export function ClarifyingQuestionsModal({
 
   if (!questionSet) return null;
 
-  // Group questions by category
-  const groupedQuestions = questionSet.questions.reduce((acc, q) => {
-    if (!acc[q.category]) acc[q.category] = [];
-    acc[q.category].push(q);
-    return acc;
-  }, {} as Record<ClarifyingQuestion["category"], ClarifyingQuestion[]>);
+  // Group questions by sentence number
+  const sentence1Questions = questionSet.questions.filter(q => q.sentenceNumber === 1);
+  const sentence2Questions = questionSet.questions.filter(q => q.sentenceNumber === 2);
+  const generalQuestions = questionSet.questions.filter(q => !q.sentenceNumber);
+
+  // Determine if we have 2 sentences
+  const hasSentence2 = !!(questionSet.sourceContext?.statement2Input || questionSet.sourceContext?.statement2Generated);
+  const isOnlySentence = !hasSentence2;
 
   return (
     <Dialog open={isModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-amber-500/10">
+      <DialogContent className="max-w-2xl flex flex-col overflow-hidden p-0" style={{ maxHeight: "min(85vh, 750px)" }}>
+        {/* Fixed Header */}
+        <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b bg-background">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-500/10 shrink-0">
               <Lightbulb className="h-5 w-5 text-amber-500" />
             </div>
-            <div>
+            <div className="min-w-0">
               <DialogTitle className="text-lg">Enhance Your Statement</DialogTitle>
               <DialogDescription className="text-sm">
-                The AI identified some areas where additional details could strengthen your statement.
+                {hasSentence2 
+                  ? "Answer questions for each sentence to add more impact."
+                  : "Answer questions below to add more impact to your statement."}
               </DialogDescription>
             </div>
           </div>
+          {/* MPA Label */}
+          {questionSet.sourceContext?.mpaLabel && (
+            <Badge variant="secondary" className="text-xs font-medium w-fit mt-2">
+              <FileText className="h-3 w-3 mr-1" />
+              {questionSet.sourceContext.mpaLabel}
+            </Badge>
+          )}
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          <div className="space-y-6 pb-4">
-            {/* Introduction */}
-            <div className="bg-muted/50 rounded-lg p-4 text-sm">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="space-y-5">
+            {/* Instructions */}
+            <div className="bg-muted/50 rounded-lg p-3 text-sm">
               <p className="text-muted-foreground">
-                <span className="font-medium text-foreground">Answering these questions is optional</span> — 
-                but providing more context can help generate more impactful statements with specific metrics, 
-                broader scope, and stronger results. You don't need to answer all of them.
+                <span className="font-medium text-foreground">Questions are optional</span> — 
+                answer any that apply to add specific metrics, scope, or impact.
+                {hasSentence2 && (
+                  <span className="block mt-1 text-xs">
+                    Each section below shows which sentence the questions are for.
+                  </span>
+                )}
               </p>
             </div>
 
-            {/* Questions grouped by category */}
-            {Object.entries(groupedQuestions).map(([category, questions]) => {
-              const categoryKey = category as ClarifyingQuestion["category"];
-              const Icon = CATEGORY_ICONS[categoryKey];
-              const colorClass = CATEGORY_COLORS[categoryKey];
+            {/* Sentence 1 Questions */}
+            {sentence1Questions.length > 0 && (
+              <SentenceQuestionsSection
+                sentenceNumber={1}
+                sourceContext={questionSet.sourceContext}
+                questions={sentence1Questions}
+                localAnswers={localAnswers}
+                onAnswerChange={handleAnswerChange}
+                isOnlySentence={isOnlySentence}
+              />
+            )}
 
-              return (
-                <div key={category} className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className={cn("gap-1", colorClass)}>
-                      <Icon className="h-3 w-3" />
-                      {QUESTION_CATEGORY_LABELS[categoryKey]}
-                    </Badge>
-                  </div>
+            {/* Sentence 2 Questions */}
+            {sentence2Questions.length > 0 && (
+              <SentenceQuestionsSection
+                sentenceNumber={2}
+                sourceContext={questionSet.sourceContext}
+                questions={sentence2Questions}
+                localAnswers={localAnswers}
+                onAnswerChange={handleAnswerChange}
+                isOnlySentence={false}
+              />
+            )}
 
-                  <div className="space-y-4 pl-4 border-l-2 border-muted">
-                    {questions.map((question) => (
-                      <div key={question.id} className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <ChevronRight className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                          <div className="flex-1">
-                            <Label className="text-sm font-medium leading-relaxed">
-                              {question.question}
-                            </Label>
-                            {question.hint && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                💡 {question.hint}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <Textarea
-                          placeholder="Your answer (optional)..."
-                          value={localAnswers[question.id] || ""}
-                          onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                          className="min-h-[80px] resize-none text-sm"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+            {/* General Questions (no specific sentence) */}
+            {generalQuestions.length > 0 && (
+              <SentenceQuestionsSection
+                sentenceNumber="general"
+                sourceContext={questionSet.sourceContext}
+                questions={generalQuestions}
+                localAnswers={localAnswers}
+                onAnswerChange={handleAnswerChange}
+                isOnlySentence={isOnlySentence}
+              />
+            )}
 
             <Separator />
 
@@ -240,21 +364,21 @@ export function ClarifyingQuestionsModal({
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                Have other details not covered by the questions above? Add them here.
+                Any other details not covered by the questions above?
               </p>
               <Textarea
                 placeholder="Any other context that could help enhance your statement..."
                 value={additionalContext}
                 onChange={(e) => setAdditionalContext(e.target.value)}
-                className="min-h-[100px] resize-none text-sm"
+                className="min-h-[70px] resize-none text-sm"
+                aria-label="Additional context"
               />
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
-        <Separator className="my-2" />
-
-        <DialogFooter className="flex-row justify-between sm:justify-between gap-2">
+        {/* Fixed Footer */}
+        <DialogFooter className="px-6 py-4 border-t bg-background shrink-0 flex-row justify-between sm:justify-between gap-2">
           <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>

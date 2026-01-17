@@ -15,10 +15,21 @@ import {
   shouldRunQualityControl,
   type QualityControlConfig,
 } from "@/lib/quality-control";
-import type { MPADescriptions } from "@/types/database";
+import type { MPADescriptions, Project, ProjectStakeholder } from "@/types/database";
 import type { Rank, WritingStyle, UserLLMSettings, MajorGradedArea, Acronym, Abbreviation } from "@/types/database";
 
+interface ProjectContext {
+  project: Project;
+  subordinateAccomplishments?: {
+    memberName: string;
+    memberRank: string | null;
+    action: string;
+    details: string;
+  }[];
+}
+
 interface AccomplishmentData {
+  id?: string; // Optional - used for fetching project context
   mpa: string;
   action_verb: string;
   details: string;
@@ -60,6 +71,22 @@ interface GenerateRequest {
   clarifyingContext?: string;
   // Whether to request clarifying questions from the LLM
   requestClarifyingQuestions?: boolean;
+  // Project context to include (result, impact, stakeholders from linked projects)
+  projectContext?: {
+    name: string;
+    result?: string;
+    impact?: string;
+    scope?: string;
+    stakeholders?: { name: string; title: string; role: string }[];
+    metrics?: { people_impacted?: number };
+    // Team accomplishments (from subordinates in the same project)
+    teamAccomplishments?: {
+      memberName: string;
+      memberRank: string | null;
+      action: string;
+      details: string;
+    }[];
+  }[];
 }
 
 // Type for clarifying questions returned by LLM
@@ -67,6 +94,8 @@ interface ClarifyingQuestionResponse {
   question: string;
   category: "impact" | "scope" | "leadership" | "recognition" | "metrics" | "general";
   hint?: string;
+  /** Which sentence this question relates to (1, 2, or undefined for general/both) */
+  sentenceNumber?: 1 | 2;
 }
 
 // Overused/cliché verbs that should be avoided
@@ -98,6 +127,12 @@ const VERB_POOL = {
 const CLARIFYING_QUESTION_GUIDANCE = `
 === CLARIFYING QUESTIONS (PLEASE INCLUDE 1-3) ===
 ALWAYS look for opportunities to ask clarifying questions that would enhance statement quality. Most accomplishment inputs are missing key details. Ask 1-3 questions about what's NOT mentioned.
+
+**CRITICAL: SENTENCE NUMBER**
+When generating 2 sentences from 2 different inputs, you MUST specify which sentence (1 or 2) each question relates to using the "sentenceNumber" field. This helps the user know which accomplishment/topic the question is about.
+- sentenceNumber: 1 = question is about the FIRST sentence/accomplishment input
+- sentenceNumber: 2 = question is about the SECOND sentence/accomplishment input
+- Omit sentenceNumber only if the question applies to BOTH sentences equally
 
 **IMPACT Questions (category: "impact")**
 - Did this save time, money, or resources? How much?
@@ -134,6 +169,148 @@ interface ExampleStatement {
   mpa: string;
   statement: string;
   source: "personal" | "community";
+}
+
+// Fetch project context for accomplishments (if linked to projects)
+async function fetchProjectContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accomplishmentIds: string[],
+  userId: string
+): Promise<ProjectContext[]> {
+  if (accomplishmentIds.length === 0) return [];
+
+  try {
+    // Get project links for these accomplishments
+    const { data: projectLinks } = await supabase
+      .from("accomplishment_projects")
+      .select(`
+        accomplishment_id,
+        project_id,
+        project:projects(*)
+      `)
+      .in("accomplishment_id", accomplishmentIds);
+
+    if (!projectLinks || projectLinks.length === 0) return [];
+
+    // Get unique projects
+    const projectMap = new Map<string, Project>();
+    for (const link of projectLinks) {
+      if (link.project && !projectMap.has(link.project_id)) {
+        projectMap.set(link.project_id, link.project as unknown as Project);
+      }
+    }
+
+    const contexts: ProjectContext[] = [];
+
+    for (const [projectId, project] of projectMap) {
+      // Get subordinate accomplishments for this project (if user is in supervisor chain)
+      const { data: subordinateChain } = await supabase.rpc("get_subordinate_chain", {
+        supervisor_uuid: userId,
+      });
+
+      let subordinateAccomplishments: ProjectContext["subordinateAccomplishments"] = [];
+
+      if (subordinateChain && subordinateChain.length > 0) {
+        const subordinateIds = subordinateChain.map((s: { subordinate_id: string }) => s.subordinate_id);
+
+        // Get accomplishments from subordinates that are linked to this project
+        const { data: subAccomplishments } = await supabase
+          .from("accomplishment_projects")
+          .select(`
+            accomplishment:accomplishments(
+              id,
+              user_id,
+              action_verb,
+              details,
+              owner_profile:profiles!accomplishments_user_id_fkey(full_name, rank),
+              team_member:team_members(full_name, rank)
+            )
+          `)
+          .eq("project_id", projectId);
+
+        if (subAccomplishments) {
+          for (const sa of subAccomplishments) {
+            const acc = sa.accomplishment as any;
+            if (!acc) continue;
+
+            // Only include if from a subordinate (not self)
+            if (acc.user_id !== userId && subordinateIds.includes(acc.user_id)) {
+              subordinateAccomplishments.push({
+                memberName: acc.owner_profile?.full_name || acc.team_member?.full_name || "Team member",
+                memberRank: acc.owner_profile?.rank || acc.team_member?.rank || null,
+                action: acc.action_verb,
+                details: acc.details,
+              });
+            }
+          }
+        }
+      }
+
+      contexts.push({
+        project,
+        subordinateAccomplishments: subordinateAccomplishments.length > 0 ? subordinateAccomplishments : undefined,
+      });
+    }
+
+    return contexts;
+  } catch (error) {
+    console.warn("Error fetching project context:", error);
+    return [];
+  }
+}
+
+// Build project context prompt section
+function buildProjectContextPrompt(projectContexts: ProjectContext[]): string {
+  if (projectContexts.length === 0) return "";
+
+  const sections: string[] = [];
+
+  for (const { project, subordinateAccomplishments } of projectContexts) {
+    const projectSection: string[] = [
+      `\n=== PROJECT CONTEXT: ${project.name} ===`,
+    ];
+
+    if (project.description) {
+      projectSection.push(`Description: ${project.description}`);
+    }
+
+    if (project.scope) {
+      projectSection.push(`Scope: ${project.scope}`);
+    }
+
+    if (project.result) {
+      projectSection.push(`Result: ${project.result}`);
+    }
+
+    if (project.impact) {
+      projectSection.push(`Impact: ${project.impact}`);
+    }
+
+    if (project.metrics?.people_impacted) {
+      projectSection.push(`People Impacted: ${project.metrics.people_impacted.toLocaleString()}`);
+    }
+
+    if (project.key_stakeholders && project.key_stakeholders.length > 0) {
+      const stakeholdersList = project.key_stakeholders
+        .map((s: ProjectStakeholder) => `${s.name} (${s.title})`)
+        .join(", ");
+      projectSection.push(`Key Stakeholders: ${stakeholdersList}`);
+    }
+
+    if (subordinateAccomplishments && subordinateAccomplishments.length > 0) {
+      projectSection.push(`\nTEAM ACCOMPLISHMENTS (you led/directed this team):`);
+      for (const sub of subordinateAccomplishments.slice(0, 5)) { // Limit to 5
+        projectSection.push(`- ${sub.memberRank || ""} ${sub.memberName}: ${sub.action} - ${sub.details.substring(0, 100)}...`);
+      }
+      projectSection.push(`\nIMPORTANT: When generating statements, frame these team accomplishments as YOUR leadership/direction. Use phrases like "led team that...", "directed personnel who...", "supervised effort that...". Connect your actions to the team's results and the project's overall impact.`);
+    } else {
+      projectSection.push(`\nIMPORTANT: Use the project's result and impact to enhance your personal accomplishment. Connect your specific actions to the broader project outcomes.`);
+    }
+
+    sections.push(projectSection.join("\n"));
+  }
+
+  return sections.join("\n");
 }
 
 // Function to extract action verbs from existing EPB sections to avoid reuse
@@ -625,7 +802,8 @@ export async function POST(request: Request) {
       communityMpaFilter, communityAfscFilter, accomplishments, selectedMPAs, 
       customContext, customContextOptions, generatePerAccomplishment, dutyDescription, 
       epbStatements, fillToMax = true, enforceCharacterLimits: shouldEnforceCharLimits = true,
-      clarifyingContext, requestClarifyingQuestions = true
+      clarifyingContext, requestClarifyingQuestions = true,
+      projectContext
     } = body;
 
     // Either accomplishments, customContext, or epbStatements must be provided
@@ -667,6 +845,55 @@ export async function POST(request: Request) {
       writingStyle || "personal",
       communityMpaFilter
     );
+
+    // Build project context prompt if provided
+    let projectContextPrompt = "";
+    if (projectContext && projectContext.length > 0) {
+      const sections: string[] = [];
+      
+      for (const project of projectContext) {
+        const projectSection: string[] = [
+          `\n=== PROJECT CONTEXT: ${project.name} ===`,
+        ];
+        
+        if (project.scope) {
+          projectSection.push(`Scope: ${project.scope}`);
+        }
+        
+        if (project.result) {
+          projectSection.push(`Project Result: ${project.result}`);
+        }
+        
+        if (project.impact) {
+          projectSection.push(`Project Impact: ${project.impact}`);
+        }
+        
+        if (project.metrics?.people_impacted) {
+          projectSection.push(`People Impacted: ${project.metrics.people_impacted.toLocaleString()}`);
+        }
+        
+        if (project.stakeholders && project.stakeholders.length > 0) {
+          const stakeholdersList = project.stakeholders
+            .map((s) => `${s.name} (${s.title})`)
+            .join(", ");
+          projectSection.push(`Key Stakeholders: ${stakeholdersList}`);
+        }
+        
+        if (project.teamAccomplishments && project.teamAccomplishments.length > 0) {
+          projectSection.push(`\nTEAM ACCOMPLISHMENTS (you led/directed this team):`);
+          for (const sub of project.teamAccomplishments.slice(0, 5)) {
+            projectSection.push(`- ${sub.memberRank || ""} ${sub.memberName}: ${sub.action} - ${sub.details.substring(0, 100)}...`);
+          }
+          projectSection.push(`\nIMPORTANT: When generating statements, frame these team accomplishments as YOUR leadership. Use phrases like "led team that...", "directed personnel who...", "supervised effort that...". Connect your actions to the team's results and the project's overall impact.`);
+        } else {
+          projectSection.push(`\nIMPORTANT: Use the project's result and impact to enhance your personal accomplishment. Connect your specific actions to the broader project outcomes.`);
+        }
+        
+        sections.push(projectSection.join("\n"));
+      }
+      
+      projectContextPrompt = sections.join("\n");
+    }
 
     const systemPrompt = buildSystemPrompt(settings, rateeRank, examples, dutyDescription);
     const modelProvider = getModelProvider(model, userKeys);
@@ -1162,7 +1389,14 @@ Action: ${acc.action_verb}
 Details: ${acc.details}${acc.impact ? `
 Impact: ${acc.impact}` : ""}
 ${acc.metrics ? `Metrics: ${acc.metrics}` : ""}
+${projectContextPrompt ? `
+${projectContextPrompt}
 
+**PROJECT CONTEXT INSTRUCTIONS:**
+- Use the project's RESULT and IMPACT to enhance your statement
+- If team accomplishments are listed, frame them as YOUR leadership
+- Connect your personal actions to the broader project outcomes
+` : ""}
 ${mpaExamples.length > 0 ? `
 EXAMPLE STATEMENTS (match this flow and readability):
 ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
@@ -1311,7 +1545,14 @@ ${mpaAccomplishments
 `
   )
   .join("")}
+${projectContextPrompt ? `
+${projectContextPrompt}
 
+**PROJECT CONTEXT INSTRUCTIONS:**
+- Use the project's RESULT and IMPACT to enhance your statements
+- If team accomplishments are listed, frame them as YOUR leadership (led team that..., directed effort that...)
+- Connect your personal actions to the broader project outcomes
+` : ""}
 ${mpaExamples.length > 0 ? `
 EXAMPLE STATEMENTS (match this style):
 ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
@@ -1363,10 +1604,15 @@ You MUST respond with a JSON OBJECT (not array) in this format:
 {
   "statements": ["Statement 1", "Statement 2", "Statement 3"],
   "clarifyingQuestions": [
-    {"question": "Did this save time or money? How much?", "category": "impact", "hint": "Quantify savings if possible"},
-    {"question": "How many people were on the team they led?", "category": "leadership", "hint": "Specific numbers help"}
+    {"question": "Did this save time or money? How much?", "category": "impact", "hint": "Quantify savings if possible", "sentenceNumber": 1},
+    {"question": "How many people were on the team they led?", "category": "leadership", "hint": "Specific numbers help", "sentenceNumber": 2}
   ]
 }
+
+**sentenceNumber is REQUIRED when there are 2 sentences** - it tells the user which accomplishment the question relates to:
+- sentenceNumber: 1 = question about first input/accomplishment  
+- sentenceNumber: 2 = question about second input/accomplishment
+- Omit only if question applies to BOTH equally
 
 Include 1-3 clarifying questions if the input lacks:
 - Specific metrics (time saved, money saved, people impacted)

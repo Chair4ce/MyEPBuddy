@@ -111,6 +111,8 @@ interface GenerateOptions {
   versionCount?: number;
   // HLR-specific: use all EPB statements to generate holistic assessment
   useEPBStatements?: boolean;
+  // Clarifying context from user answers (for regeneration with enhanced details)
+  clarifyingContext?: string;
 }
 
 // Get MPA display info
@@ -313,6 +315,9 @@ export function MPASectionCard({
   const storedState = sectionStates[section.mpa];
   const updateSectionState = useEPBShellStore((s) => s.updateSectionState);
   const initializeSectionState = useEPBShellStore((s) => s.initializeSectionState);
+  
+  // Get active clarifying question set for modal rendering
+  const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
   
   // Use local ref for autosave timer to avoid Zustand updates on every keystroke
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1956,30 +1961,33 @@ export function MPASectionCard({
           </CardContent>
       )}
 
-      {/* Clarifying Questions Modal - for regeneration with enhanced context */}
-      {rateeId && (
+      {/* Clarifying Questions Modal - only render for THIS MPA if it has the active question set */}
+      {rateeId && activeQuestionSet?.mpaKey === section.mpa && (
         <ClarifyingQuestionsModal
-          onRegenerate={async (clarifyingContext) => {
-            // Regenerate with clarifying context added to custom context
+          onRegenerate={async (clarifyingContext, _mpaKey) => {
+            console.log("[MPASectionCard] onRegenerate called for MPA:", section.mpa, "with clarifyingContext length:", clarifyingContext.length);
+            // Regenerate with clarifying context passed as a separate parameter
             updateSectionState(section.mpa, { isGenerating: true });
             setGeneratedStatements([]);
             try {
+              console.log("[MPASectionCard] Calling onGenerateStatement with clarifyingContext...");
               const results = await onGenerateStatement({
                 useAccomplishments: state.sourceType === "actions",
                 accomplishmentIds: state.usesTwoStatements
                   ? [...state.statement1ActionIds, ...state.statement2ActionIds]
                   : state.statement1ActionIds,
-                customContext: state.sourceType === "custom"
-                  ? `${state.statement1Context}\n\n${clarifyingContext}`
-                  : clarifyingContext,
+                customContext: state.sourceType === "custom" ? state.statement1Context : undefined,
                 usesTwoStatements: state.usesTwoStatements,
-                statement1Context: `${state.statement1Context}\n\n${clarifyingContext}`,
+                statement1Context: state.statement1Context,
                 statement2Context: state.statement2Context,
                 versionCount: 3,
+                // Pass clarifying context as separate parameter - API will inject it properly
+                clarifyingContext,
               });
+              console.log("[MPASectionCard] onGenerateStatement returned results:", results?.length);
               setGeneratedStatements(results);
             } catch (err) {
-              console.error("Regenerate with context error:", err);
+              console.error("[MPASectionCard] Regenerate with context error:", err);
             } finally {
               updateSectionState(section.mpa, { isGenerating: false });
             }

@@ -34,6 +34,8 @@ import { Loader2, Sparkles, Target, BarChart3 } from "lucide-react";
 import { celebrateEntry } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import type { Accomplishment, AccomplishmentAssessmentScores } from "@/types/database";
+import { ProjectSelector } from "@/components/entries/project-selector";
+import { createClient } from "@/lib/supabase/client";
 
 interface EntryFormDialogProps {
   open: boolean;
@@ -60,6 +62,8 @@ export function EntryFormDialog({
   const [assessmentModel, setAssessmentModel] = useState<string | null>(null);
   const [assessmentFormUsed, setAssessmentFormUsed] = useState<string | null>(null);
   const [assessmentRateeRank, setAssessmentRateeRank] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const supabase = createClient();
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
     action_verb: "",
@@ -173,6 +177,8 @@ export function EntryFormDialog({
       setAssessmentModel(editEntry.assessment_model || null);
       setAssessmentFormUsed(null);
       setAssessmentRateeRank(null);
+      // Load existing project link
+      loadExistingProjectLink(editEntry.id);
     } else {
       setForm({
         date: new Date().toISOString().split("T")[0],
@@ -188,8 +194,53 @@ export function EntryFormDialog({
       setAssessmentModel(null);
       setAssessmentFormUsed(null);
       setAssessmentRateeRank(null);
+      setSelectedProjectId(null);
     }
   }, [editEntry, open]);
+
+  // Load existing project link for an accomplishment
+  async function loadExistingProjectLink(accomplishmentId: string) {
+    const { data } = await supabase
+      .from("accomplishment_projects")
+      .select("project_id")
+      .eq("accomplishment_id", accomplishmentId)
+      .maybeSingle();
+    
+    setSelectedProjectId(data?.project_id || null);
+  }
+
+  // Update project link for an accomplishment
+  async function updateProjectLink(accomplishmentId: string) {
+    // First, get the current link
+    const { data: existingLink } = await supabase
+      .from("accomplishment_projects")
+      .select("id, project_id")
+      .eq("accomplishment_id", accomplishmentId)
+      .maybeSingle();
+
+    const currentProjectId = existingLink?.project_id;
+
+    // If the selected project hasn't changed, do nothing
+    if (currentProjectId === selectedProjectId) return;
+
+    // If there was a link, remove it
+    if (existingLink) {
+      await supabase
+        .from("accomplishment_projects")
+        .delete()
+        .eq("id", existingLink.id);
+    }
+
+    // If a new project is selected, create the link
+    if (selectedProjectId) {
+      await supabase
+        .from("accomplishment_projects")
+        .insert({
+          accomplishment_id: accomplishmentId,
+          project_id: selectedProjectId,
+        });
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -260,6 +311,9 @@ export function EntryFormDialog({
           if (!hasPreAssessment && isEnlisted(profile?.rank as Rank)) {
             triggerAssessment(editEntry.id);
           }
+          
+          // Handle project link changes
+          await updateProjectLink(editEntry.id);
         }
       } else {
         const result = await createAccomplishment({
@@ -308,6 +362,16 @@ export function EntryFormDialog({
           // Only trigger background assessment if not pre-assessed and user is enlisted
           if (!hasPreAssessment && isEnlisted(profile?.rank as Rank)) {
             triggerAssessment(result.data.id);
+          }
+          
+          // Link to project if selected
+          if (selectedProjectId) {
+            await supabase
+              .from("accomplishment_projects")
+              .insert({
+                accomplishment_id: result.data.id,
+                project_id: selectedProjectId,
+              });
           }
         }
       }
@@ -362,6 +426,22 @@ export function EntryFormDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Project Selector */}
+          <div className="space-y-1.5 sm:space-y-2">
+            <Label className="text-sm">
+              Project
+              <span className="text-muted-foreground font-normal ml-1 sm:ml-2 text-xs sm:text-sm">
+                (optional)
+              </span>
+            </Label>
+            <ProjectSelector
+              value={selectedProjectId}
+              onChange={setSelectedProjectId}
+              disabled={isSubmitting}
+              className="h-9 sm:h-10"
+            />
           </div>
 
           <div className="space-y-1.5 sm:space-y-2">

@@ -894,6 +894,62 @@ export interface ToggleUsedPayload {
   fill_to_max: boolean;
 }
 
+// ============================================
+// PROJECTS SYSTEM TYPES
+// ============================================
+
+export interface ProjectStakeholder {
+  name: string;
+  title: string;
+  role: string;
+}
+
+export interface ProjectMetrics {
+  people_impacted?: number;
+  [key: string]: unknown;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: string | null;
+  result: string | null;
+  impact: string | null;
+  key_stakeholders: ProjectStakeholder[];
+  metrics: ProjectMetrics | null;
+  cycle_year: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  members?: ProjectMember[];
+  creator_profile?: Profile;
+}
+
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  profile_id: string | null;
+  team_member_id: string | null;
+  is_owner: boolean;
+  added_by: string;
+  created_at: string;
+  // Joined fields
+  profile?: Profile;
+  team_member?: ManagedMember;
+  can_view_accomplishments?: boolean;
+}
+
+export interface AccomplishmentProject {
+  id: string;
+  accomplishment_id: string;
+  project_id: string;
+  created_at: string;
+  // Joined fields
+  project?: Project;
+}
+
 // JSON type for Supabase
 type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -1299,6 +1355,79 @@ export interface Database {
           ended_at?: string | null;
         };
       };
+      projects: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          scope: string | null;
+          result: string | null;
+          impact: string | null;
+          key_stakeholders: ProjectStakeholder[];
+          metrics: ProjectMetrics | null;
+          cycle_year: number;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          scope?: string | null;
+          result?: string | null;
+          impact?: string | null;
+          key_stakeholders?: ProjectStakeholder[];
+          metrics?: ProjectMetrics | null;
+          cycle_year?: number;
+          created_by: string;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          scope?: string | null;
+          result?: string | null;
+          impact?: string | null;
+          key_stakeholders?: ProjectStakeholder[];
+          metrics?: ProjectMetrics | null;
+        };
+      };
+      project_members: {
+        Row: {
+          id: string;
+          project_id: string;
+          profile_id: string | null;
+          team_member_id: string | null;
+          is_owner: boolean;
+          added_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          profile_id?: string | null;
+          team_member_id?: string | null;
+          is_owner?: boolean;
+          added_by: string;
+        };
+        Update: {
+          is_owner?: boolean;
+        };
+      };
+      accomplishment_projects: {
+        Row: {
+          id: string;
+          accomplishment_id: string;
+          project_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          accomplishment_id: string;
+          project_id: string;
+        };
+        Update: never;
+      };
     };
     Views: {
       [_ in never]: never;
@@ -1392,6 +1521,31 @@ export interface Database {
       reject_prior_data_review: {
         Args: { p_review_id: string };
         Returns: { success: boolean };
+      };
+      is_project_member: {
+        Args: { p_project_id: string; p_user_id: string };
+        Returns: boolean;
+      };
+      is_project_owner: {
+        Args: { p_project_id: string; p_user_id: string };
+        Returns: boolean;
+      };
+      get_user_projects: {
+        Args: { p_user_id: string };
+        Returns: Project[];
+      };
+      get_project_members_with_visibility: {
+        Args: { p_project_id: string; p_viewer_id: string };
+        Returns: {
+          member_id: string;
+          profile_id: string | null;
+          team_member_id: string | null;
+          is_owner: boolean;
+          full_name: string;
+          rank: string | null;
+          afsc: string | null;
+          can_view_accomplishments: boolean;
+        }[];
       };
     };
     Enums: {

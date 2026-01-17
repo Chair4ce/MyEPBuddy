@@ -1515,6 +1515,8 @@ export function EPBShellForm({
       versionCount?: number;
       // HLR-specific: use all EPB statements to generate holistic assessment
       useEPBStatements?: boolean;
+      // Clarifying context from user answers (for regeneration with enhanced details)
+      clarifyingContext?: string;
     }
   ): Promise<string[]> => {
     if (!selectedRatee) return [];
@@ -1593,6 +1595,10 @@ export function EPBShellForm({
             dutyDescription: currentShell?.duty_description || "",
             // HLR-specific: pass all EPB statements for holistic assessment
             epbStatements: options.useEPBStatements ? epbStatements : undefined,
+            // Clarifying context from user answers (for regeneration)
+            clarifyingContext: options.clarifyingContext,
+            // Don't request more clarifying questions when regenerating with answers
+            requestClarifyingQuestions: !options.clarifyingContext,
           }),
         });
 
@@ -1605,15 +1611,26 @@ export function EPBShellForm({
         // Store clarifying questions if returned
         if (mpaResult?.clarifyingQuestions?.length > 0 && selectedRatee?.id) {
           const { addQuestionSet } = useClarifyingQuestionsStore.getState();
+          const mpaLabel = STANDARD_MGAS.find(m => m.key === mpa)?.label || mpa;
           addQuestionSet({
             mpaKey: mpa,
             rateeId: selectedRatee.id,
             originalContext: context,
-            questions: mpaResult.clarifyingQuestions.map((q: { question: string; category?: string; hint?: string }) => ({
+            sourceContext: {
+              statement1Input: options.usesTwoStatements 
+                ? options.statement1Context 
+                : (options.customContext || options.statement1Context),
+              statement2Input: options.usesTwoStatements ? options.statement2Context : undefined,
+              statement1Generated: statements[0],
+              statement2Generated: options.usesTwoStatements ? statements[1] : undefined,
+              mpaLabel,
+            },
+            questions: mpaResult.clarifyingQuestions.map((q: { question: string; category?: string; hint?: string; sentenceNumber?: 1 | 2 }) => ({
               id: `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               question: q.question,
               category: q.category || "general",
               hint: q.hint,
+              sentenceNumber: q.sentenceNumber,
               answer: "",
             })),
           });
