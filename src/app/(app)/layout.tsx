@@ -89,8 +89,8 @@ export default async function AppLayout({
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <AppHeader profile={profile} />
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            <main className="flex flex-col items-center w-full h-full min-h-0 p-3 md:p-6 lg:p-8 overflow-hidden">
-              <PageTransition className="w-full h-full min-h-0 overflow-hidden">{children}</PageTransition>
+            <main className="flex flex-col items-center w-full h-full min-h-0 p-3 md:p-6 lg:p-8 overflow-y-auto">
+              <PageTransition className="w-full min-h-0">{children}</PageTransition>
             </main>
           </div>
         </div>

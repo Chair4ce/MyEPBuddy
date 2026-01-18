@@ -387,7 +387,7 @@ export default function GeneratePage() {
   }, [profile, userIsOfficer, officerWorkspaceMode, selectedRatee, rateeOptions, setSelectedRatee]);
 
   return (
-    <div className="space-y-6 min-w-0 w-full max-w-7xl">
+    <div className="space-y-6 min-w-0 w-full max-w-7xl pb-8">
       {/* Page Header with Title and Share Button */}
       <div className="flex items-center justify-between gap-4 min-w-0">
         <div className="min-w-0">

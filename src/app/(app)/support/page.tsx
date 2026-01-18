@@ -8,7 +8,7 @@ export default function SupportPage() {
   const buyMeACoffeeUrl = "https://buymeacoffee.com/chairforceone";
 
   return (
-    <div className="space-y-8 max-w-3xl mx-auto">
+    <div className="space-y-8 max-w-3xl mx-auto pb-8">
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="inline-flex items-center justify-center size-16 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 mb-2">
