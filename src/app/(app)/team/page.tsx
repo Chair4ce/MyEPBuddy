@@ -2449,16 +2449,13 @@ export default function TeamPage() {
         {/* Full Chain Tab with Tree Visualization */}
         <TabsContent value="chain" className="mt-3 sm:mt-4 space-y-4">
           <Card>
-            <CardHeader className="px-3 sm:px-6 pb-2 sm:pb-4">
+            <CardHeader className="px-3 sm:px-6">
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
                     <Users className="size-4 sm:size-5" />
                     Supervision Tree
                   </CardTitle>
-                  <CardDescription className="text-[11px] sm:text-xs md:text-sm">
-                    Tap to expand/collapse. Your position is highlighted.
-                  </CardDescription>
                 </div>
                 <div className="flex items-center gap-1">
                   {canSupervise(profile?.rank) && (subordinates.length > 0 || managedMembers.length > 0) && (
