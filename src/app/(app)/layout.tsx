@@ -6,6 +6,9 @@ import { AppInitializer } from "@/components/layout/app-initializer";
 import { PageTransition } from "@/components/layout/page-transition";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
+// Prevent caching of user-specific data
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({
   children,
 }: {
