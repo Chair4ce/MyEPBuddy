@@ -2141,7 +2141,7 @@ export default function TeamPage() {
         
         {/* Subordinate Details Dialog */}
         <Dialog open={!!selectedSubordinate} onOpenChange={() => setSelectedSubordinate(null)}>
-          <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Subordinate Details</DialogTitle>
               <DialogDescription>
