@@ -561,62 +561,61 @@ export default function TeamPage() {
       supervisor_uuid: profile.id,
     }) as { data: { subordinate_id: string; depth: number }[] | null };
 
-    if (chainData && chainData.length > 0) {
-      const subordinateIds = chainData.map((c: { subordinate_id: string }) => c.subordinate_id);
-      const allChainIds = [...subordinateIds, profile.id];
+    // Always include current user's profile in the chain
+    // This ensures tree can be built even with no real subordinates
+    const subordinateIds = chainData?.map((c: { subordinate_id: string }) => c.subordinate_id) || [];
+    const allChainIds = [...subordinateIds, profile.id];
+    
+    // Batch fetch profiles to avoid URI Too Long errors (414)
+    // Supabase/PostgREST has URL length limits, so we batch in groups of 50
+    const BATCH_SIZE = 50;
+    const allProfiles: Profile[] = [];
+    
+    for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
+      const batch = allChainIds.slice(i, i + BATCH_SIZE);
+      const { data: batchProfiles } = await supabase
+        .from("profiles")
+        .select("*")
+        .in("id", batch);
       
-      // Batch fetch profiles to avoid URI Too Long errors (414)
-      // Supabase/PostgREST has URL length limits, so we batch in groups of 50
-      const BATCH_SIZE = 50;
-      const allProfiles: Profile[] = [];
-      
-      for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
-        const batch = allChainIds.slice(i, i + BATCH_SIZE);
-        const { data: batchProfiles } = await supabase
-          .from("profiles")
-          .select("*")
-          .in("id", batch);
-        
-        if (batchProfiles) {
-          allProfiles.push(...(batchProfiles as Profile[]));
-        }
+      if (batchProfiles) {
+        allProfiles.push(...(batchProfiles as Profile[]));
       }
-
-      if (allProfiles.length > 0) {
-        setAllProfiles(allProfiles);
-        
-        const chainMembers: ChainMember[] = allProfiles.map((p: Profile) => ({
-          ...p,
-          depth: p.id === profile.id ? 0 : (chainData.find((c: { subordinate_id: string; depth: number }) => c.subordinate_id === p.id)?.depth || 1),
-        }));
-        setSubordinateChain(chainMembers.sort((a, b) => a.depth - b.depth));
-      }
-      
-      // Batch fetch team relationships as well
-      const allTeams: { supervisor_id: string; subordinate_id: string }[] = [];
-      
-      for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
-        const batch = allChainIds.slice(i, i + BATCH_SIZE);
-        const { data: batchTeams } = await supabase
-          .from("teams")
-          .select("supervisor_id, subordinate_id")
-          .in("supervisor_id", batch);
-        
-        if (batchTeams) {
-          allTeams.push(...(batchTeams as { supervisor_id: string; subordinate_id: string }[]));
-        }
-      }
-
-      setTeamRelations(allTeams);
-      
-      // Expand the root node by default
-      setExpandedNodes(new Set([profile.id]));
-    } else {
-      setAllProfiles([profile]);
-      setTeamRelations([]);
-      setSubordinateChain([]);
-      setExpandedNodes(new Set([profile.id]));
     }
+
+    if (allProfiles.length > 0) {
+      setAllProfiles(allProfiles);
+      
+      const chainMembers: ChainMember[] = allProfiles.map((p: Profile) => ({
+        ...p,
+        depth: p.id === profile.id ? 0 : (chainData?.find((c: { subordinate_id: string; depth: number }) => c.subordinate_id === p.id)?.depth || 1),
+      }));
+      setSubordinateChain(chainMembers.sort((a, b) => a.depth - b.depth));
+    } else {
+      // If no profiles fetched, at least set current user
+      setAllProfiles([profile]);
+      setSubordinateChain([]);
+    }
+      
+    // Batch fetch team relationships as well
+    const allTeams: { supervisor_id: string; subordinate_id: string }[] = [];
+    
+    for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
+      const batch = allChainIds.slice(i, i + BATCH_SIZE);
+      const { data: batchTeams } = await supabase
+        .from("teams")
+        .select("supervisor_id, subordinate_id")
+        .in("supervisor_id", batch);
+      
+      if (batchTeams) {
+        allTeams.push(...(batchTeams as { supervisor_id: string; subordinate_id: string }[]));
+      }
+    }
+
+    setTeamRelations(allTeams);
+    
+    // Expand the root node by default
+    setExpandedNodes(new Set([profile.id]));
   }
 
   // Load metrics (entry and statement counts) for all members

@@ -81,6 +81,14 @@ refresh_token_reuse_interval = 10
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
+# Minimum password length for new users
+minimum_password_length = 8
+
+# SECURITY: Rate limiting settings (configure in Supabase Dashboard for production)
+# Dashboard > Authentication > Rate Limits:
+# - Max login attempts: 5 per 15 minutes
+# - Max OTP attempts: 3 per 5 minutes  
+# - Password reset rate limit: 1 per 60 seconds
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
@@ -89,13 +97,18 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
+# SECURITY: Enable for production to prevent email enumeration attacks
 enable_confirmations = false
+# Maximum frequency for sending emails (in seconds)
+max_frequency = 60
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
 enable_signup = true
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
+# Maximum frequency for sending SMS (in seconds)
+max_frequency = 60
 
 [auth.external.google]
 enabled = true
