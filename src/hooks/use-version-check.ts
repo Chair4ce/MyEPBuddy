@@ -114,6 +114,7 @@ export function useVersionCheck(
   const isInitialized = useRef(false);
   const currentEtag = useRef<string | null>(null);
   const isLeader = useRef(false);
+  const sessionBuildId = useRef<string | null>(null); // Track buildId for this session only
 
   // Fetch version using ETag for efficient caching
   const fetchVersion = useCallback(async (): Promise<VersionInfo | null> => {
@@ -191,24 +192,17 @@ export function useVersionCheck(
     if (!isInitialized.current) {
       isInitialized.current = true;
       
-      const storedBuildId = localStorage.getItem(VERSION_STORAGE_KEY);
-      const dismissedBuildId = localStorage.getItem(DISMISS_STORAGE_KEY);
-      
-      if (storedBuildId && storedBuildId !== serverVersion.buildId) {
-        setCurrentVersion({ ...serverVersion, buildId: storedBuildId });
-        if (dismissedBuildId !== serverVersion.buildId) {
-          setHasUpdate(true);
-        } else {
-          setIsDismissed(true);
-        }
-      } else {
-        setCurrentVersion(serverVersion);
-        localStorage.setItem(VERSION_STORAGE_KEY, serverVersion.buildId);
-        localStorage.removeItem(DISMISS_STORAGE_KEY);
-      }
+      // On first load, always set the current version from the server
+      // Don't check localStorage - we always start fresh with whatever the server has
+      setCurrentVersion(serverVersion);
+      sessionBuildId.current = serverVersion.buildId;
+      localStorage.setItem(VERSION_STORAGE_KEY, serverVersion.buildId);
+      localStorage.removeItem(DISMISS_STORAGE_KEY);
       
       currentEtag.current = `"${serverVersion.buildId}"`;
-    } else if (currentVersion && currentVersion.buildId !== serverVersion.buildId) {
+    } else if (sessionBuildId.current && sessionBuildId.current !== serverVersion.buildId) {
+      // Only show update if the buildId changes DURING this session
+      // This prevents showing updates on fresh page loads/logins
       const dismissedBuildId = localStorage.getItem(DISMISS_STORAGE_KEY);
       if (dismissedBuildId !== serverVersion.buildId) {
         setHasUpdate(true);
@@ -227,8 +221,8 @@ export function useVersionCheck(
           const { version } = JSON.parse(e.newValue);
           setLatestVersion(version);
           
-          const storedBuildId = localStorage.getItem(VERSION_STORAGE_KEY);
-          if (storedBuildId && storedBuildId !== version.buildId) {
+          // Only show update if we have a session buildId and it differs
+          if (sessionBuildId.current && sessionBuildId.current !== version.buildId) {
             const dismissedBuildId = localStorage.getItem(DISMISS_STORAGE_KEY);
             if (dismissedBuildId !== version.buildId) {
               setHasUpdate(true);
