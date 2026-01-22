@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -24,11 +24,10 @@ import { toast } from "@/components/ui/sonner";
 import { Loader2, ArrowLeft, Smartphone } from "lucide-react";
 import { AppLogo } from "@/components/layout/app-logo";
 
-// SECURITY: Mask phone number to show only last 4 digits
-function maskPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length < 4) return phone;
-  return `+${'*'.repeat(digits.length - 4)}${digits.slice(-4)}`;
+// Format phone number for masked display: +1 (***) ***-XXXX
+function formatPhoneForMaskedDisplay(digits: string): string {
+  if (digits.length !== 10) return `+1 ***-${digits.slice(-4)}`;
+  return `+1 (***) ***-${digits.slice(6)}`;
 }
 
 // SECURITY: Track last OTP request to prevent rate limit bypass via refresh
@@ -61,16 +60,18 @@ export default function PhoneLoginPage() {
     setIsLoading(true);
     setShowSignupOption(false);
 
-    // SECURITY: Validate phone number format
+    // phone now contains just the 10 digits from PhoneInput
     const digitsOnly = phone.replace(/\D/g, '');
-    if (digitsOnly.length < 10 || digitsOnly.length > 15) {
-      toast.error("Please enter a valid phone number");
+    
+    // SECURITY: Validate phone number format - must be exactly 10 digits
+    if (digitsOnly.length !== 10) {
+      toast.error("Please enter a complete 10-digit phone number");
       setIsLoading(false);
       return;
     }
 
     // SECURITY: Check client-side rate limit (prevent bypass via refresh)
-    const lastRequest = getLastOtpRequest(phone);
+    const lastRequest = getLastOtpRequest(digitsOnly);
     if (lastRequest && Date.now() - lastRequest < 60000) {
       const secondsRemaining = Math.ceil((60000 - (Date.now() - lastRequest)) / 1000);
       toast.error(`Please wait ${secondsRemaining} seconds before requesting another code`);
@@ -79,7 +80,7 @@ export default function PhoneLoginPage() {
     }
 
     // Format phone number to E.164 format
-    const formattedPhone = phone.startsWith('+') ? phone : `+1${digitsOnly}`;
+    const formattedPhone = `+1${digitsOnly}`;
 
     try {
       // Try to sign in with phone (won't create new user)
@@ -99,7 +100,7 @@ export default function PhoneLoginPage() {
       }
 
       // SECURITY: Track request timestamp to prevent rate limit bypass
-      setLastOtpRequest(phone);
+      setLastOtpRequest(digitsOnly);
       
       setOtpSent(true);
       toast.success("Verification code sent! Check your phone.");
@@ -123,7 +124,8 @@ export default function PhoneLoginPage() {
 
     setIsLoading(true);
 
-    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone.replace(/\D/g, '')}`;
+    // phone contains just the 10 digits
+    const formattedPhone = `+1${phone.replace(/\D/g, '')}`;
 
     try {
       const { error } = await supabase.auth.verifyOtp({
@@ -216,7 +218,7 @@ export default function PhoneLoginPage() {
                 <p className="text-sm text-muted-foreground">
                   Code sent to:
                 </p>
-                <p className="font-medium font-mono">{maskPhone(phone)}</p>
+                <p className="font-medium font-mono">{formatPhoneForMaskedDisplay(phone)}</p>
               </div>
 
               <div className="space-y-2">
@@ -287,26 +289,20 @@ export default function PhoneLoginPage() {
               <form onSubmit={handleSendOTP} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone Number</Label>
-                  <Input
+                  <PhoneInput
                     id="phone"
-                    type="tel"
-                    placeholder="+1 (555) 123-4567"
                     value={phone}
-                    onChange={(e) => {
-                      setPhone(e.target.value);
+                    onChange={(value) => {
+                      setPhone(value);
                       setShowSignupOption(false); // Reset when user changes phone
                     }}
-                    required
                     disabled={isLoading}
-                    aria-label="Phone number"
-                    autoComplete="tel"
-                    autoFocus
                   />
                   <p className="text-xs text-muted-foreground">
-                    Enter your phone number with country code (e.g., +1 for US)
+                    Enter your 10-digit US phone number
                   </p>
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full" disabled={isLoading || phone.length !== 10}>
                   {isLoading ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (

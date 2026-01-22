@@ -40,6 +40,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
+import { PhoneInput } from "@/components/ui/phone-input";
 import type { Rank, Profile } from "@/types/database";
 
 export default function SettingsPage() {
@@ -341,38 +342,51 @@ export default function SettingsPage() {
     }
   }
 
+  // Format phone number for display (E.164 to readable format)
+  function formatPhoneForDisplay(phone: string): string {
+    // Remove +1 prefix and format as (XXX) XXX-XXXX
+    const digits = phone.replace(/\D/g, "");
+    const nationalDigits = digits.startsWith("1") ? digits.slice(1) : digits;
+    
+    if (nationalDigits.length !== 10) return phone; // Return as-is if not 10 digits
+    
+    return `+1 (${nationalDigits.slice(0, 3)}) ${nationalDigits.slice(3, 6)}-${nationalDigits.slice(6)}`;
+  }
+
   async function handleAddPhone(e: React.FormEvent) {
     e.preventDefault();
     setPhoneLoading(true);
 
-    // SECURITY: Validate phone number format
+    // newPhone now contains just the 10 digits from the PhoneInput component
     const digitsOnly = newPhone.replace(/\D/g, '');
-    if (digitsOnly.length < 10 || digitsOnly.length > 15) {
-      toast.error("Please enter a valid phone number");
+    
+    // SECURITY: Validate phone number format - must be exactly 10 digits
+    if (digitsOnly.length !== 10) {
+      toast.error("Please enter a complete 10-digit phone number");
       setPhoneLoading(false);
       return;
     }
 
-    // Format phone to E.164
-    const formattedPhone = newPhone.startsWith('+') 
-      ? newPhone 
-      : `+1${digitsOnly}`;
+    // Format phone to E.164 (always US +1)
+    const formattedPhone = `+1${digitsOnly}`;
 
     try {
-      const { error } = await supabase.auth.updateUser({
+      const { data, error } = await supabase.auth.updateUser({
         phone: formattedPhone,
       });
 
       if (error) {
-        toast.error(error.message);
+        console.error('[Phone Update] Error:', error);
+        toast.error(`Failed to send code: ${error.message}`, { duration: 5000 });
         return;
       }
 
       setPhoneOtpSent(true);
-      toast.success("Verification code sent to your phone!");
+      toast.success("Verification code sent to your phone! Check your messages.", { duration: 5000 });
       setTimeout(() => setCanResendPhone(true), 60000);
-    } catch {
-      toast.error("An unexpected error occurred");
+    } catch (err) {
+      console.error('[Phone Update] Unexpected error:', err);
+      toast.error(`An unexpected error occurred: ${err instanceof Error ? err.message : 'Unknown error'}`, { duration: 5000 });
     } finally {
       setPhoneLoading(false);
     }
@@ -388,21 +402,22 @@ export default function SettingsPage() {
 
     setPhoneLoading(true);
 
-    const formattedPhone = newPhone.startsWith('+') 
-      ? newPhone 
-      : `+1${newPhone.replace(/\D/g, '')}`;
+    // newPhone contains just the 10 digits
+    const digitsOnly = newPhone.replace(/\D/g, '');
+    const formattedPhone = `+1${digitsOnly}`;
 
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         phone: formattedPhone,
         token: phoneOtp,
         type: 'phone_change',
       });
 
       if (error) {
+        console.error('[Phone Verify] Error:', error);
         // SECURITY: Clear OTP on failed verification
         setPhoneOtp("");
-        toast.error("Invalid or expired code. Please try again.");
+        toast.error(`Verification failed: ${error.message}`, { duration: 5000 });
         return;
       }
 
@@ -410,11 +425,12 @@ export default function SettingsPage() {
       setNewPhone("");
       setPhoneOtp("");
       setPhoneOtpSent(false);
-      toast.success("Phone number updated successfully!");
-    } catch {
+      toast.success("Phone number verified and saved!");
+    } catch (err) {
+      console.error('[Phone Verify] Unexpected error:', err);
       // SECURITY: Clear OTP on error
       setPhoneOtp("");
-      toast.error("An unexpected error occurred");
+      toast.error(`An unexpected error occurred: ${err instanceof Error ? err.message : 'Unknown error'}`, { duration: 5000 });
     } finally {
       setPhoneLoading(false);
     }
@@ -762,7 +778,7 @@ export default function SettingsPage() {
                 <Smartphone className="size-5 text-muted-foreground" />
                 <div className="flex-1">
                   <p className="text-sm font-medium">Current Phone</p>
-                  <p className="text-sm text-muted-foreground">{userPhone}</p>
+                  <p className="text-sm text-muted-foreground font-mono">{formatPhoneForDisplay(userPhone)}</p>
                 </div>
                 <CheckCircle2 className="size-5 text-green-500" />
               </div>
@@ -770,22 +786,17 @@ export default function SettingsPage() {
               <form onSubmit={handleAddPhone} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="updatePhone">Update Phone Number</Label>
-                  <Input
+                  <PhoneInput
                     id="updatePhone"
-                    type="tel"
-                    placeholder="+1 (555) 123-4567"
                     value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    required
+                    onChange={setNewPhone}
                     disabled={phoneLoading}
-                    aria-label="New phone number"
-                    autoComplete="tel"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Enter your new phone number with country code (e.g., +1 for US)
+                    Enter your 10-digit US phone number
                   </p>
                 </div>
-                <Button type="submit" disabled={phoneLoading}>
+                <Button type="submit" disabled={phoneLoading || newPhone.length !== 10}>
                   {phoneLoading ? (
                     <>
                       <Loader2 className="size-4 animate-spin mr-2" />
@@ -807,7 +818,7 @@ export default function SettingsPage() {
                 <p className="text-sm text-muted-foreground">
                   Code sent to:
                 </p>
-                <p className="font-medium">{newPhone}</p>
+                <p className="font-medium font-mono">+1 ({newPhone.slice(0, 3)}) {newPhone.slice(3, 6)}-{newPhone.slice(6)}</p>
               </div>
 
               <div className="space-y-2">
@@ -880,22 +891,17 @@ export default function SettingsPage() {
             <form onSubmit={handleAddPhone} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="newPhone">Phone Number</Label>
-                <Input
+                <PhoneInput
                   id="newPhone"
-                  type="tel"
-                  placeholder="+1 (555) 123-4567"
                   value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  required
+                  onChange={setNewPhone}
                   disabled={phoneLoading}
-                  aria-label="Phone number"
-                  autoComplete="tel"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Enter your phone number with country code (e.g., +1 for US)
+                  Enter your 10-digit US phone number
                 </p>
               </div>
-              <Button type="submit" disabled={phoneLoading}>
+              <Button type="submit" disabled={phoneLoading || newPhone.length !== 10}>
                 {phoneLoading ? (
                   <>
                     <Loader2 className="size-4 animate-spin mr-2" />
