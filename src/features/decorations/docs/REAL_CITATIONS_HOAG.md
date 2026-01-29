@@ -205,10 +205,9 @@ Most of these citations exceed the 1350 character MyDecs limit:
 - Longest: 1,489 (AFCM)
 - Average: ~1,300
 
-This suggests either:
-1. These were written before MyDecs Reimagined (Oct 2022)
-2. Character limits are flexibly enforced
-3. Some compression needed for new citations
+**Note:** These were all written **pre-MyDecs Reimagined** (Oct 2022). The 1350 character limit is now enforced. New citations must be more concise than these examples.
+
+**Implication for prompts:** When generating, we need to condense similar content into ~1350 chars — about 10-15% shorter than these historical examples.
 
 ---
 
