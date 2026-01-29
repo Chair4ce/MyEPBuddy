@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { PostHogProvider } from "@/components/providers/posthog-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next"
@@ -132,9 +134,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Analytics />
-          {children}
-          <Toaster position="top-center" />
+          <Suspense fallback={null}>
+            <PostHogProvider>
+              <Analytics />
+              {children}
+              <Toaster position="top-center" />
+            </PostHogProvider>
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>

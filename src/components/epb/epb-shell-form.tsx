@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Analytics } from "@/lib/posthog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -1633,6 +1634,10 @@ export function EPBShellForm({
 
     const maxChars = mpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
     const versionCount = options.versionCount || 1;
+    const generateStartTime = Date.now();
+    
+    // Track generation start
+    Analytics.generateStarted(model, "personal", 1);
     
     // If using accomplishments, filter to selected ones
     const selectedAccs = options.useAccomplishments && options.accomplishmentIds
@@ -1750,9 +1755,15 @@ export function EPBShellForm({
       );
       
       // Filter out nulls and return
-      return results.filter((r): r is string => r !== null);
+      const validResults = results.filter((r): r is string => r !== null);
+      
+      // Track generation success
+      Analytics.generateCompleted(model, Date.now() - generateStartTime, validResults.length);
+      
+      return validResults;
     } catch (error) {
       console.error("Generate error:", error);
+      Analytics.generateFailed(model, error instanceof Error ? error.message : "Unknown error");
       throw error;
     }
   };

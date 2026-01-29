@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Analytics } from "@/lib/posthog";
 import { useUserStore } from "@/stores/user-store";
 import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
 import { Button } from "@/components/ui/button";
@@ -359,6 +360,9 @@ export function EntryFormDialog({
             description: "Great job tracking your accomplishment!",
             duration: 3000,
           });
+          
+          // Track accomplishment creation
+          Analytics.accomplishmentCreated(form.mpa, !!form.metrics);
           
           // Only trigger background assessment if not pre-assessed and user is enlisted
           if (!hasPreAssessment && isEnlisted(profile?.rank as Rank)) {
