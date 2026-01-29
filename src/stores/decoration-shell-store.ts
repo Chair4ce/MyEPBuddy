@@ -29,6 +29,32 @@ export interface DecorationSnapshot {
   created_at: string;
 }
 
+// Available highlight colors for statement tracking
+export const HIGHLIGHT_COLORS = [
+  { id: "yellow", label: "Yellow", bg: "bg-yellow-200", text: "text-yellow-900", border: "border-yellow-400" },
+  { id: "green", label: "Green", bg: "bg-green-200", text: "text-green-900", border: "border-green-400" },
+  { id: "blue", label: "Blue", bg: "bg-blue-200", text: "text-blue-900", border: "border-blue-400" },
+  { id: "pink", label: "Pink", bg: "bg-pink-200", text: "text-pink-900", border: "border-pink-400" },
+  { id: "purple", label: "Purple", bg: "bg-purple-200", text: "text-purple-900", border: "border-purple-400" },
+  { id: "orange", label: "Orange", bg: "bg-orange-200", text: "text-orange-900", border: "border-orange-400" },
+  { id: "cyan", label: "Cyan", bg: "bg-cyan-200", text: "text-cyan-900", border: "border-cyan-400" },
+  { id: "lime", label: "Lime", bg: "bg-lime-200", text: "text-lime-900", border: "border-lime-400" },
+] as const;
+
+export type HighlightColorId = typeof HIGHLIGHT_COLORS[number]["id"];
+
+// Map of statement ID to highlight color ID
+export type StatementColorMap = Record<string, HighlightColorId>;
+
+// Citation text highlight range
+export interface CitationHighlight {
+  id: string;
+  startIndex: number;
+  endIndex: number;
+  colorId: HighlightColorId;
+  statementId?: string; // Optional link to source statement
+}
+
 interface DecorationShellState {
   // Current selected ratee (self or subordinate/managed member)
   selectedRatee: SelectedRatee | null;
@@ -74,6 +100,13 @@ interface DecorationShellState {
   // UI state
   isDirty: boolean;
   showHistory: boolean;
+  
+  // Statement color highlighting
+  statementColors: StatementColorMap;
+  activeHighlightColor: HighlightColorId | null; // Currently hovered/focused color for matching
+  
+  // Citation text highlights
+  citationHighlights: CitationHighlight[];
   
   // Actions
   setSelectedRatee: (ratee: SelectedRatee | null) => void;
@@ -122,6 +155,17 @@ interface DecorationShellState {
   // UI state
   setIsDirty: (dirty: boolean) => void;
   
+  // Statement color highlighting
+  setStatementColor: (statementId: string, color: HighlightColorId | null) => void;
+  clearStatementColors: () => void;
+  setActiveHighlightColor: (color: HighlightColorId | null) => void;
+  getStatementColor: (statementId: string) => HighlightColorId | null;
+  
+  // Citation text highlights
+  addCitationHighlight: (highlight: Omit<CitationHighlight, "id">) => void;
+  removeCitationHighlight: (id: string) => void;
+  clearCitationHighlights: () => void;
+  
   // Get accomplishment texts for generation
   getSelectedAccomplishmentTexts: (accomplishments: Accomplishment[]) => string[];
   
@@ -154,6 +198,9 @@ const getDefaultState = () => ({
   selectedModel: "gemini-2.0-flash",
   isDirty: false,
   showHistory: false,
+  statementColors: {} as StatementColorMap,
+  activeHighlightColor: null,
+  citationHighlights: [] as CitationHighlight[],
 });
 
 export const useDecorationShellStore = create<DecorationShellState>((set, get) => ({
@@ -234,6 +281,36 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
   // Revision settings
   setRevisionAggressiveness: (value) => set({ revisionAggressiveness: value }),
   setIsRevising: (revising) => set({ isRevising: revising }),
+  
+  // Statement color highlighting
+  setStatementColor: (statementId, color) => set((state) => {
+    if (color === null) {
+      // Remove color assignment
+      const { [statementId]: _, ...rest } = state.statementColors;
+      return { statementColors: rest };
+    }
+    return { 
+      statementColors: { ...state.statementColors, [statementId]: color } 
+    };
+  }),
+  clearStatementColors: () => set({ statementColors: {} }),
+  setActiveHighlightColor: (color) => set({ activeHighlightColor: color }),
+  getStatementColor: (statementId) => {
+    const { statementColors } = get();
+    return statementColors[statementId] || null;
+  },
+  
+  // Citation text highlights
+  addCitationHighlight: (highlight) => set((state) => ({
+    citationHighlights: [
+      ...state.citationHighlights,
+      { ...highlight, id: `hl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }
+    ]
+  })),
+  removeCitationHighlight: (id) => set((state) => ({
+    citationHighlights: state.citationHighlights.filter(h => h.id !== id)
+  })),
+  clearCitationHighlights: () => set({ citationHighlights: [] }),
   
   getSelectedAccomplishmentTexts: (accomplishments) => {
     const { selectedStatementIds } = get();

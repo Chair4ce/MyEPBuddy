@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";
-import { useDecorationShellStore, type DecorationSnapshot } from "@/stores/decoration-shell-store";
+import { 
+  useDecorationShellStore, 
+  type DecorationSnapshot,
+  HIGHLIGHT_COLORS,
+  type HighlightColorId,
+} from "@/stores/decoration-shell-store";
 import { useUserStore } from "@/stores/user-store";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +32,9 @@ import {
   Maximize2,
   Minimize2,
   RefreshCw,
+  BookA,
+  Palette,
+  Highlighter,
 } from "lucide-react";
 import {
   Tooltip,
@@ -34,6 +42,17 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { Accomplishment } from "@/types/database";
 
 interface DecorationCitationEditorProps {
@@ -67,14 +86,19 @@ export function DecorationCitationEditor({
     currentShell,
     isGenerating,
     setIsGenerating,
-    isRevising,
-    setIsRevising,
     snapshots,
     setSnapshots,
     addSnapshot,
     removeSnapshot,
     showHistory,
     setShowHistory,
+    citationHighlights,
+    addCitationHighlight,
+    removeCitationHighlight,
+    clearCitationHighlights,
+    statementColors,
+    activeHighlightColor,
+    setActiveHighlightColor,
   } = useDecorationShellStore();
 
   const [copied, setCopied] = useState(false);
@@ -86,6 +110,32 @@ export function DecorationCitationEditor({
   const [selectionEnd, setSelectionEnd] = useState(0);
   const [revisionResults, setRevisionResults] = useState<string[]>([]);
   const [isRevisingSelection, setIsRevisingSelection] = useState(false);
+  
+  // Synonym state (for single-word selection)
+  const [synonyms, setSynonyms] = useState<string[]>([]);
+  const [isLoadingSynonyms, setIsLoadingSynonyms] = useState(false);
+  
+  // Track previous citation length to detect major changes
+  const prevCitationLengthRef = useRef(citationText.length);
+  
+  // Clear highlights when citation text changes significantly (regeneration, major edits)
+  useEffect(() => {
+    const lengthDiff = Math.abs(citationText.length - prevCitationLengthRef.current);
+    // If text changed by more than 50 characters, clear highlights as indices are likely invalid
+    if (lengthDiff > 50 && citationHighlights.length > 0) {
+      clearCitationHighlights();
+    }
+    prevCitationLengthRef.current = citationText.length;
+  }, [citationText.length, citationHighlights.length, clearCitationHighlights]);
+  
+  // Check if selection is a single word (no spaces, reasonable length)
+  const isSingleWord = useMemo(() => {
+    const trimmed = selectedText.trim();
+    return trimmed.length > 0 && 
+           trimmed.length <= 30 && 
+           !trimmed.includes(" ") &&
+           /^[a-zA-Z-]+$/.test(trimmed);
+  }, [selectedText]);
 
   // Get decoration config
   const decorationConfig = useMemo(() => {
@@ -243,73 +293,7 @@ export function DecorationCitationEditor({
     setIsGenerating,
   ]);
 
-  // Revise the body section only (preserving opening and closing templates)
-  const handleRevise = useCallback(async () => {
-    if (!citationText.trim()) return;
-
-    // Parse the citation to extract opening, body, and closing
-    const { opening, body, closing } = parseCitationStructure(citationText);
-    
-    if (!body.trim()) {
-      toast.error("No body content found to revise");
-      return;
-    }
-    
-    // Calculate remaining characters for the body
-    const usedByTemplates = opening.length + closing.length + 2; // +2 for spaces
-    const maxBodyChars = maxCharacters - usedByTemplates;
-
-    setIsRevising(true);
-
-    try {
-      const response = await fetch("/api/revise-selection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullStatement: body,
-          selectedText: body,
-          selectionStart: 0,
-          selectionEnd: body.length,
-          model: selectedModel,
-          mode: "general",
-          context: `Revise ONLY this accomplishments narrative section of a ${decorationConfig?.name || "decoration"} citation. 
-This is the BODY content between the opening and closing sentences.
-
-CRITICAL RULES:
-1. DO NOT include any opening sentence (no "distinguished himself/herself" phrases)
-2. DO NOT include any closing sentence (no "reflect credit upon" phrases)
-3. ONLY revise the accomplishments narrative
-4. Start with transition words like "During this period," or "In this important assignment,"
-5. Maintain all factual content, metrics, and quantified impacts
-6. Improve flow, word choice, and action verbs
-7. Keep the same number of accomplishments
-8. Maximum ${maxBodyChars} characters for this section`,
-          aggressiveness: revisionAggressiveness,
-          maxCharacters: maxBodyChars,
-          versionCount: 1,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Revision failed");
-
-      const data = await response.json();
-      if (data.revisions?.[0]) {
-        // Reconstruct the full citation with the revised body
-        const revisedBody = data.revisions[0].trim();
-        const newCitation = `${opening} ${revisedBody} ${closing}`.trim();
-        setCitationText(newCitation);
-        toast.success("Citation body revised");
-      }
-    } catch (error) {
-      console.error("Revise error:", error);
-      toast.error("Failed to revise citation");
-    } finally {
-      setIsRevising(false);
-      setShowRevisePanel(false);
-    }
-  }, [citationText, selectedModel, decorationConfig, revisionAggressiveness, maxCharacters, setCitationText, setIsRevising]);
-
-  // Handle text selection for popup
+  // Handle text selection for popup (highlight text to get expand/compress/rephrase options)
   const handleTextSelect = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -319,17 +303,6 @@ CRITICAL RULES:
     const text = citationText.substring(start, end);
 
     if (text.trim().length > 0 && start !== end) {
-      // Check if selection is within the body section
-      const { bodyStart, bodyEnd } = parseCitationStructure(citationText);
-      const isInBody = start >= bodyStart && end <= bodyEnd;
-      
-      if (!isInBody) {
-        // Selection includes opening or closing - warn user
-        toast.warning("Opening and closing sentences are template-based. Select text from the body section to revise.");
-        setShowSelectionPopup(false);
-        return;
-      }
-      
       setSelectedText(text);
       setSelectionStart(start);
       setSelectionEnd(end);
@@ -345,12 +318,148 @@ CRITICAL RULES:
     setShowSelectionPopup(false);
     setSelectedText("");
     setRevisionResults([]);
+    setSynonyms([]);
   }, []);
+  
+  // Fetch synonyms for a single word
+  const handleFetchSynonyms = useCallback(async () => {
+    if (!selectedText.trim() || !isSingleWord) return;
+    
+    setIsLoadingSynonyms(true);
+    setSynonyms([]);
+    
+    try {
+      const response = await fetch("/api/synonyms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: selectedText.trim(),
+          fullStatement: citationText,
+          model: selectedModel,
+          context: "decoration", // Decoration-specific synonym suggestions
+        }),
+      });
+      
+      if (!response.ok) throw new Error("Failed to fetch synonyms");
+      
+      const data = await response.json();
+      setSynonyms(data.synonyms || []);
+    } catch (error) {
+      console.error("Synonym error:", error);
+      toast.error("Failed to get synonyms");
+    } finally {
+      setIsLoadingSynonyms(false);
+    }
+  }, [selectedText, isSingleWord, citationText, selectedModel]);
+  
+  // Apply a synonym replacement
+  const applySynonym = useCallback(
+    (synonym: string) => {
+      const newText =
+        citationText.substring(0, selectionStart) + synonym + citationText.substring(selectionEnd);
+      setCitationText(newText);
+      closeSelectionPopup();
+      toast.success("Word replaced");
+    },
+    [citationText, selectionStart, selectionEnd, setCitationText, closeSelectionPopup]
+  );
+  
+  // Apply highlight color to selected text
+  const applyHighlightColor = useCallback(
+    (colorId: HighlightColorId, statementId?: string) => {
+      if (selectionStart === selectionEnd) return;
+      
+      addCitationHighlight({
+        startIndex: selectionStart,
+        endIndex: selectionEnd,
+        colorId,
+        statementId,
+      });
+      closeSelectionPopup();
+      toast.success("Highlight added");
+    },
+    [selectionStart, selectionEnd, addCitationHighlight, closeSelectionPopup]
+  );
+  
+  // Get highlight for a text range (for rendering)
+  const getHighlightAtPosition = useCallback(
+    (position: number) => {
+      return citationHighlights.find(
+        h => position >= h.startIndex && position < h.endIndex
+      );
+    },
+    [citationHighlights]
+  );
+  
+  // Render citation text with highlights
+  const renderHighlightedText = useMemo(() => {
+    if (citationHighlights.length === 0) return null;
+    
+    // Sort highlights by start index
+    const sorted = [...citationHighlights].sort((a, b) => a.startIndex - b.startIndex);
+    const segments: { text: string; highlight?: typeof citationHighlights[0] }[] = [];
+    let lastIndex = 0;
+    
+    for (const hl of sorted) {
+      // Skip highlights that overlap with already processed text
+      if (hl.startIndex < lastIndex) {
+        continue;
+      }
+      
+      // Validate highlight indices are within bounds
+      if (hl.startIndex >= citationText.length || hl.endIndex > citationText.length) {
+        continue;
+      }
+      
+      // Add non-highlighted text before this highlight
+      if (hl.startIndex > lastIndex) {
+        segments.push({ text: citationText.slice(lastIndex, hl.startIndex) });
+      }
+      // Add highlighted segment
+      segments.push({ 
+        text: citationText.slice(hl.startIndex, hl.endIndex),
+        highlight: hl
+      });
+      lastIndex = hl.endIndex;
+    }
+    // Add remaining text
+    if (lastIndex < citationText.length) {
+      segments.push({ text: citationText.slice(lastIndex) });
+    }
+    
+    return segments;
+  }, [citationText, citationHighlights]);
+
+  // Handle textarea blur - delay closing to allow button clicks
+  const handleTextareaBlur = useCallback(() => {
+    setTimeout(() => {
+      // Don't close if actively revising or if focus is inside the popup
+      if (document.activeElement?.closest(".selection-popup")) {
+        return;
+      }
+      // Check the current revising/loading state via data attribute to avoid stale closure
+      const loadingElement = document.querySelector('[data-loading="true"]');
+      if (loadingElement) {
+        return;
+      }
+      closeSelectionPopup();
+    }, 300);
+  }, [closeSelectionPopup]);
 
   // Revise selected text
   const handleReviseSelection = useCallback(
     async (mode: "expand" | "compress" | "general") => {
-      if (!selectedText.trim()) return;
+      // Capture values at call time to avoid stale closures
+      const textToRevise = selectedText.trim();
+      const fullText = citationText;
+      const start = selectionStart;
+      const end = selectionEnd;
+      const model = selectedModel;
+      
+      if (!textToRevise) {
+        console.warn("No text selected for revision");
+        return;
+      }
 
       setIsRevisingSelection(true);
       setRevisionResults([]);
@@ -360,22 +469,25 @@ CRITICAL RULES:
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            fullStatement: citationText,
-            selectedText,
-            selectionStart,
-            selectionEnd,
-            model: selectedModel,
+            fullStatement: fullText,
+            selectedText: textToRevise,
+            selectionStart: start,
+            selectionEnd: end,
+            model: model,
             mode,
           }),
         });
 
-        if (!response.ok) throw new Error("Revision failed");
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Revision failed");
+        }
 
         const data = await response.json();
         setRevisionResults(data.revisions || []);
       } catch (error) {
         console.error("Revision error:", error);
-        toast.error("Failed to revise selection");
+        toast.error(error instanceof Error ? error.message : "Failed to revise selection");
       } finally {
         setIsRevisingSelection(false);
       }
@@ -438,6 +550,42 @@ CRITICAL RULES:
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              {/* Clear highlights button */}
+              {citationHighlights.length > 0 && (
+                <AlertDialog>
+                  <Tooltip>
+                    <AlertDialogTrigger asChild>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground"
+                        >
+                          <Palette className="size-3 mr-1" />
+                          Clear ({citationHighlights.length})
+                        </Button>
+                      </TooltipTrigger>
+                    </AlertDialogTrigger>
+                    <TooltipContent>Clear all highlights</TooltipContent>
+                  </Tooltip>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear all citation highlights?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will remove all {citationHighlights.length} highlight{citationHighlights.length > 1 ? "s" : ""} from your citation text. 
+                        You can always re-highlight text afterward.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={clearCitationHighlights}>
+                        Clear Highlights
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              
               {/* Snapshot button */}
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -461,7 +609,7 @@ CRITICAL RULES:
                     variant={showHistory ? "default" : "outline"}
                     size="icon"
                     onClick={() => setShowHistory(!showHistory)}
-                    className="h-8 w-8"
+                    className="h-8 w-8 relative"
                   >
                     <History className="size-4" />
                     {snapshots.length > 0 && (
@@ -526,56 +674,63 @@ CRITICAL RULES:
             )}
           </div>
 
-          {/* Snapshot History Panel */}
-          {showHistory && (
-            <div className="rounded-lg border bg-card shadow-sm animate-in fade-in-0 duration-200">
-              <div className="p-3 border-b flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium text-sm">Snapshot History</h4>
-                  <p className="text-xs text-muted-foreground">
-                    {snapshots.length} snapshot{snapshots.length !== 1 && "s"} (max {MAX_SNAPSHOTS})
-                  </p>
+          {/* Snapshot History Panel - with smooth transition */}
+          <div
+            className={cn(
+              "grid transition-all duration-300 ease-in-out",
+              showHistory ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+            )}
+          >
+            <div className="overflow-hidden">
+              <div className="rounded-lg border bg-card shadow-sm">
+                <div className="p-3 border-b flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-sm">Snapshot History</h4>
+                    <p className="text-xs text-muted-foreground">
+                      {snapshots.length} snapshot{snapshots.length !== 1 && "s"} (max {MAX_SNAPSHOTS})
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowHistory(false)}
+                    className="h-7 w-7"
+                  >
+                    <X className="size-4" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowHistory(false)}
-                  className="h-7 w-7"
-                >
-                  <X className="size-4" />
-                </Button>
-              </div>
-              <ScrollArea className="max-h-48">
-                {snapshots.length === 0 ? (
-                  <p className="p-3 text-sm text-muted-foreground text-center">
-                    No snapshots yet. Click the camera icon to save your current citation.
-                  </p>
-                ) : (
-                  snapshots.map((snap) => (
-                    <div key={snap.id} className="p-3 border-b last:border-0 hover:bg-muted/30">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(snap.created_at).toLocaleString()}
+                <ScrollArea className="max-h-[300px]">
+                  {snapshots.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground text-center">
+                      No snapshots yet. Click the camera icon to save your current citation.
+                    </p>
+                  ) : (
+                    snapshots.map((snap) => (
+                      <div key={snap.id} className="p-3 border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(snap.created_at).toLocaleString()}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestoreSnapshot(snap)}
+                            className="h-6 px-2 text-xs shrink-0"
+                          >
+                            <RotateCcw className="size-3 mr-1" />
+                            Restore
+                          </Button>
+                        </div>
+                        <p className="text-xs text-foreground whitespace-pre-wrap break-words font-mono bg-muted/30 p-2 rounded">
+                          {snap.citation_text}
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRestoreSnapshot(snap)}
-                          className="h-6 px-2 text-xs"
-                        >
-                          <RotateCcw className="size-3 mr-1" />
-                          Restore
-                        </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {snap.citation_text.slice(0, 150)}...
-                      </p>
-                    </div>
-                  ))
-                )}
-              </ScrollArea>
+                    ))
+                  )}
+                </ScrollArea>
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Citation textarea */}
           <div className="relative">
@@ -585,14 +740,7 @@ CRITICAL RULES:
               onChange={(e) => setCitationText(e.target.value)}
               onMouseUp={handleTextSelect}
               onKeyUp={handleTextSelect}
-              onBlur={() => {
-                // Delay to allow click on popup
-                setTimeout(() => {
-                  if (!document.activeElement?.closest(".selection-popup")) {
-                    closeSelectionPopup();
-                  }
-                }, 200);
-              }}
+              onBlur={handleTextareaBlur}
               placeholder={
                 selectedStatementIds.length === 0
                   ? "Select accomplishments above, then click Generate to create a citation..."
@@ -605,102 +753,232 @@ CRITICAL RULES:
               )}
               aria-label="Citation text editor"
             />
-            {(isGenerating || isRevising) && (
+            {isGenerating && (
               <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-md">
                 <div className="flex flex-col items-center gap-2">
                   <Spinner size="lg" />
                   <span className="text-sm text-muted-foreground">
-                    {isGenerating ? "Generating citation..." : "Revising citation..."}
+                    Generating citation...
                   </span>
                 </div>
               </div>
             )}
           </div>
-
-          {/* Text Selection Popup */}
-          {showSelectionPopup && (
-            <div className="selection-popup p-3 rounded-lg bg-card border shadow-lg animate-in fade-in-0 zoom-in-95 duration-200">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Selected:{" "}
-                    <span className="font-medium text-foreground">
-                      &ldquo;{selectedText.slice(0, 30)}
-                      {selectedText.length > 30 ? "..." : ""}&rdquo;
-                    </span>
-                    <span className="ml-1">({selectedText.length} chars)</span>
-                  </p>
-                  <button
-                    onClick={closeSelectionPopup}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-
-                {/* Revision mode buttons */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleReviseSelection("expand")}
-                    disabled={isRevisingSelection}
-                    className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    {isRevisingSelection ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <Maximize2 className="size-3" />
-                    )}
-                    Expand
-                  </button>
-                  <button
-                    onClick={() => handleReviseSelection("compress")}
-                    disabled={isRevisingSelection}
-                    className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    {isRevisingSelection ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <Minimize2 className="size-3" />
-                    )}
-                    Compress
-                  </button>
-                  <button
-                    onClick={() => handleReviseSelection("general")}
-                    disabled={isRevisingSelection}
-                    className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    {isRevisingSelection ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <RefreshCw className="size-3" />
-                    )}
-                    Rephrase
-                  </button>
-                </div>
-
-                {/* Revision results */}
-                {revisionResults.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t">
-                    <p className="text-xs text-muted-foreground font-medium">Alternatives:</p>
-                    {revisionResults.map((revision, index) => (
-                      <button
+          
+          {/* Highlighted text preview - shows when highlights exist */}
+          {renderHighlightedText && renderHighlightedText.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Highlighter className="size-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-medium">
+                  Highlighted Preview
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  (hover to match with statements)
+                </span>
+              </div>
+              <div className="p-3 rounded-md border bg-muted/20 font-mono text-sm whitespace-pre-wrap break-words">
+                {renderHighlightedText.map((segment, index) => {
+                  if (segment.highlight) {
+                    const colorConfig = HIGHLIGHT_COLORS.find(c => c.id === segment.highlight?.colorId);
+                    const isActive = activeHighlightColor === segment.highlight.colorId;
+                    return (
+                      <span
                         key={index}
-                        onClick={() => applyRevision(revision)}
-                        className="w-full text-left p-2 rounded-md text-sm border hover:bg-accent hover:border-primary/50 transition-colors"
+                        className={cn(
+                          "px-0.5 rounded transition-all duration-200",
+                          colorConfig?.bg,
+                          colorConfig?.text,
+                          isActive && "ring-2 ring-offset-1 ring-primary"
+                        )}
+                        onMouseEnter={() => setActiveHighlightColor(segment.highlight!.colorId)}
+                        onMouseLeave={() => setActiveHighlightColor(null)}
                       >
-                        <p className="whitespace-pre-wrap">{revision}</p>
-                        <span className="text-[10px] text-muted-foreground mt-1">
-                          {revision.length} chars (
-                          {revision.length > selectedText.length ? "+" : ""}
-                          {revision.length - selectedText.length})
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                        {segment.text}
+                      </span>
+                    );
+                  }
+                  return <span key={index}>{segment.text}</span>;
+                })}
               </div>
             </div>
           )}
+
+          {/* Text Selection Popup - with smooth transition */}
+          <div
+            className={cn(
+              "selection-popup grid transition-all duration-200 ease-in-out",
+              showSelectionPopup ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
+            )}
+            data-loading={(isRevisingSelection || isLoadingSynonyms) ? "true" : "false"}
+          >
+            <div className="overflow-hidden">
+              <div className="p-3 rounded-lg bg-card border shadow-lg">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Selected:{" "}
+                      <span className="font-medium text-foreground">
+                        &ldquo;{selectedText.slice(0, 50)}
+                        {selectedText.length > 50 ? "..." : ""}&rdquo;
+                      </span>
+                      <span className="ml-1">({selectedText.length} chars)</span>
+                      {isSingleWord && (
+                        <span className="ml-1.5 text-[10px] text-primary">(word)</span>
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={closeSelectionPopup}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  {/* Single word: Show synonym button */}
+                  {isSingleWord && (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleFetchSynonyms}
+                        disabled={isLoadingSynonyms}
+                        className="w-full h-8 px-3 rounded-md text-xs border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        {isLoadingSynonyms ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <BookA className="size-3" />
+                        )}
+                        {isLoadingSynonyms ? "Finding synonyms..." : "Find Synonyms"}
+                      </button>
+                      
+                      {/* Synonyms results */}
+                      {synonyms.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-2 border-t">
+                          {synonyms.map((synonym, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => applySynonym(synonym)}
+                              className="px-2 py-1 rounded text-xs border bg-background hover:bg-accent hover:border-primary/50 transition-colors"
+                            >
+                              {synonym}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Multi-word/phrase: Show revision buttons */}
+                  {!isSingleWord && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleReviseSelection("expand")}
+                        disabled={isRevisingSelection}
+                        className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        {isRevisingSelection ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Maximize2 className="size-3" />
+                        )}
+                        Expand
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleReviseSelection("compress")}
+                        disabled={isRevisingSelection}
+                        className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        {isRevisingSelection ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Minimize2 className="size-3" />
+                        )}
+                        Compress
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleReviseSelection("general")}
+                        disabled={isRevisingSelection}
+                        className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        {isRevisingSelection ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-3" />
+                        )}
+                        Rephrase
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Revision results - with smooth transition (only for multi-word) */}
+                  <div
+                    className={cn(
+                      "grid transition-all duration-200 ease-in-out",
+                      revisionResults.length > 0 && !isSingleWord ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="space-y-2 pt-2 border-t">
+                        <p className="text-xs text-muted-foreground font-medium">Alternatives:</p>
+                        {revisionResults.map((revision, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applyRevision(revision)}
+                            className="w-full text-left p-2 rounded-md text-sm border hover:bg-accent hover:border-primary/50 transition-colors"
+                          >
+                            <p className="whitespace-pre-wrap">{revision}</p>
+                            <span className="text-[10px] text-muted-foreground mt-1">
+                              {revision.length} chars (
+                              {revision.length > selectedText.length ? "+" : ""}
+                              {revision.length - selectedText.length})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Highlight color picker - always available */}
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center gap-2">
+                      <Highlighter className="size-3 text-muted-foreground shrink-0" />
+                      <span className="text-[10px] text-muted-foreground shrink-0">Highlight:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {HIGHLIGHT_COLORS.map((color) => (
+                          <button
+                            key={color.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applyHighlightColor(color.id)}
+                            className={cn(
+                              "size-5 rounded-full border-2 transition-all hover:scale-110",
+                              color.bg,
+                              "border-transparent hover:border-primary/50"
+                            )}
+                            aria-label={`Highlight with ${color.label}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* TODO: Future work - Revise Panel (needs proper citation structure parsing)
           {citationText.trim() && (

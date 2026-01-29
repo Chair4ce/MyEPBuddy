@@ -11,6 +11,7 @@ interface SynonymRequest {
   word: string;
   fullStatement: string;
   model: string;
+  context?: "epb" | "decoration" | "award"; // Type of document for better suggestions
 }
 
 function getModelProvider(
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
     }
 
     const body: SynonymRequest = await request.json();
-    const { word, fullStatement, model } = body;
+    const { word, fullStatement, model, context = "epb" } = body;
 
     if (!word || !fullStatement) {
       return NextResponse.json(
@@ -85,26 +86,53 @@ export async function POST(request: Request) {
 
     const modelProvider = getModelProvider(model, userKeys);
 
-    const systemPrompt = `You are an expert military writing assistant specializing in Air Force Enlisted Performance Brief (EPB) statements. Your task is to suggest context-appropriate synonyms for a specific word within an EPB statement.
+    // Document type specific guidance
+    const documentTypes: Record<string, { name: string; guidance: string }> = {
+      epb: {
+        name: "Enlisted Performance Brief (EPB) statement",
+        guidance: "Use strong action verbs and impactful language suitable for performance evaluation.",
+      },
+      decoration: {
+        name: "Air Force decoration citation",
+        guidance: "Use formal, dignified language appropriate for decoration citations. Emphasize distinguished service, meritorious achievement, and professional excellence.",
+      },
+      award: {
+        name: "Air Force award nomination (AF Form 1206)",
+        guidance: "Use powerful action verbs and quantifiable impact language suitable for award packages.",
+      },
+    };
+
+    const docType = documentTypes[context] || documentTypes.epb;
+
+    const systemPrompt = `You are an expert military writing assistant specializing in Air Force performance and recognition documents. Your task is to suggest context-appropriate synonyms for a specific word within a ${docType.name}.
 
 GUIDELINES:
-1. Consider the full context of the statement when suggesting synonyms
-2. Prioritize strong, active verbs commonly used in military performance writing
-3. Suggest words that maintain or enhance the professional, action-oriented tone
+1. **ANALYZE THE FULL CONTEXT** - Read the entire statement to understand how the word is used
+2. ${docType.guidance}
+3. Prioritize words that:
+   - Fit grammatically in the exact same position
+   - Maintain or enhance the professional, action-oriented tone
+   - Are commonly used in Air Force writing
 4. Include a mix of:
-   - Direct synonyms that fit the context
+   - Direct synonyms that fit the context perfectly
    - Stronger/more impactful alternatives
    - Military-appropriate terminology
-5. Each suggestion should be grammatically correct when substituted
-6. Keep suggestions concise (preferably single words, but short phrases are OK)
+5. Each suggestion MUST be grammatically correct when substituted directly
+6. Keep suggestions concise (preferably single words, short phrases only if needed)
+7. Order suggestions from MOST relevant/impactful to least
 
-IMPORTANT: Return ONLY a JSON array of 10-15 synonyms/alternatives, ordered from most to least relevant.`;
+IMPORTANT: Return ONLY a JSON array of 10-15 synonyms/alternatives.`;
 
-    const userPrompt = `Find synonyms for the word "${word}" in this EPB statement:
+    const userPrompt = `Find synonyms for the word "${word}" in this ${docType.name}:
 
 "${fullStatement}"
 
-The word "${word}" appears in the context above. Provide 10-15 context-appropriate alternatives that would work well in this military performance statement.
+The word "${word}" appears in the context above. Consider:
+- What part of speech is this word? (verb, noun, adjective, etc.)
+- What tone and formality level fits this document?
+- What synonyms would a senior Air Force leader use?
+
+Provide 10-15 context-appropriate alternatives, ordered from most to least impactful.
 
 Return ONLY a JSON array of strings:
 ["synonym1", "synonym2", "synonym3", ...]`;

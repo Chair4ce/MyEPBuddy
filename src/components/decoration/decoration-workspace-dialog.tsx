@@ -53,7 +53,15 @@ import {
   RotateCcw,
   Trash2,
   AlertTriangle,
+  MoreVertical,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Collapsible,
   CollapsibleContent,
@@ -508,6 +516,68 @@ export function DecorationWorkspaceDialog({
                 <Share2 className="size-4" />
                 <span className="ml-1.5 text-xs">Share</span>
               </Button>
+
+              {/* More options menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
+                    <MoreVertical className="size-4" />
+                    <span className="sr-only">More options</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuSeparator />
+                  <AlertDialog
+                    open={showDeleteConfirm}
+                    onOpenChange={setShowDeleteConfirm}
+                  >
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem
+                        onSelect={(e) => e.preventDefault()}
+                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        Delete Decoration
+                      </DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <AlertTriangle className="size-5 text-destructive" />
+                          Delete Decoration
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete this decoration for{" "}
+                          <strong>{rateeDisplayName}</strong>? This will permanently
+                          delete the citation and cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>
+                          Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteShell}
+                          disabled={isDeleting}
+                          className="bg-destructive text-white hover:bg-destructive/90"
+                        >
+                          {isDeleting ? (
+                            <>
+                              <Loader2 className="size-4 mr-1.5 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="size-4 mr-1.5" />
+                              Delete Permanently
+                            </>
+                          )}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </DialogHeader>
 
@@ -646,66 +716,6 @@ export function DecorationWorkspaceDialog({
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-
-                      {/* Danger Zone */}
-                      <Separator className="my-4" />
-                      <div className="space-y-2">
-                        <Label className="text-xs text-destructive">Danger Zone</Label>
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-destructive/30 bg-destructive/5">
-                          <div className="space-y-0.5">
-                            <p className="text-sm font-medium">Delete Decoration</p>
-                            <p className="text-xs text-muted-foreground">
-                              Permanently delete this decoration draft.
-                            </p>
-                          </div>
-                          <AlertDialog
-                            open={showDeleteConfirm}
-                            onOpenChange={setShowDeleteConfirm}
-                          >
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm">
-                                <Trash2 className="size-4 mr-1.5" />
-                                Delete
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle className="flex items-center gap-2">
-                                  <AlertTriangle className="size-5 text-destructive" />
-                                  Delete Decoration
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this decoration for{" "}
-                                  <strong>{rateeDisplayName}</strong>? This will permanently
-                                  delete the citation and cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel disabled={isDeleting}>
-                                  Cancel
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={handleDeleteShell}
-                                  disabled={isDeleting}
-                                  className="bg-destructive text-white hover:bg-destructive/90"
-                                >
-                                  {isDeleting ? (
-                                    <>
-                                      <Loader2 className="size-4 mr-1.5 animate-spin" />
-                                      Deleting...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Trash2 className="size-4 mr-1.5" />
-                                      Delete Permanently
-                                    </>
-                                  )}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
                       </div>
                     </div>
                   </CollapsibleContent>
