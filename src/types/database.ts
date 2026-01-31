@@ -238,8 +238,12 @@ export interface CommunityStatement {
   statement: string;
   upvotes: number;
   downvotes: number;
+  average_rating: number;
+  rating_count: number;
   is_approved: boolean;
   created_at: string;
+  /** Whether this statement can be rated (only true for statements from community_statements table) */
+  is_ratable?: boolean;
 }
 
 export type ShareType = "user" | "team" | "community";
@@ -1481,6 +1485,8 @@ export interface Database {
           statement: string;
           upvotes: number;
           downvotes: number;
+          average_rating: number;
+          rating_count: number;
           is_approved: boolean;
           created_at: string;
         };
@@ -1494,12 +1500,16 @@ export interface Database {
           statement: string;
           upvotes?: number;
           downvotes?: number;
+          average_rating?: number;
+          rating_count?: number;
           is_approved?: boolean;
         };
         Update: {
           statement?: string;
           upvotes?: number;
           downvotes?: number;
+          average_rating?: number;
+          rating_count?: number;
           is_approved?: boolean;
         };
       };
@@ -1508,17 +1518,17 @@ export interface Database {
           id: string;
           user_id: string;
           statement_id: string;
-          vote_type: "up" | "down";
+          rating: number;
           created_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
           statement_id: string;
-          vote_type: "up" | "down";
+          rating: number;
         };
         Update: {
-          vote_type?: "up" | "down";
+          rating?: number;
         };
       };
       statement_shares: {

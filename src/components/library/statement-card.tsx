@@ -14,8 +14,6 @@ import {
   Pencil,
   Share2,
   Loader2,
-  ThumbsUp,
-  ThumbsDown,
   Trophy,
   Globe,
   Users as UsersIcon,
@@ -30,6 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
+import { StarRating, StarRatingDisplay } from "@/components/library/star-rating";
 import type { RefinedStatement, SharedStatementView, CommunityStatement, StatementShare } from "@/types/database";
 
 interface BaseStatementCardProps {
@@ -58,11 +57,13 @@ interface SharedStatementCardProps extends BaseStatementCardProps {
 interface CommunityStatementCardProps extends BaseStatementCardProps {
   type: "community";
   statement: CommunityStatement;
-  userVote?: "up" | "down" | null;
-  isVoting?: boolean;
+  userRating?: number | null;
+  isRating?: boolean;
   isTopRated?: boolean;
   rank?: number;
-  onVote: (statementId: string, voteType: "up" | "down") => void;
+  currentUserId?: string;
+  onRate: (statementId: string, rating: number) => void;
+  onRemoveRating?: (statementId: string) => void;
   onCopyToLibrary: (statement: CommunityStatement) => void;
   isCopying?: boolean;
 }
@@ -298,114 +299,101 @@ export function StatementCard(props: StatementCardProps) {
   }
 
   if (props.type === "community") {
-    const { statement, userVote, isVoting, isTopRated, rank, onVote, onCopyToLibrary, isCopying, mpaLabel } = props;
-    const netVotes = statement.upvotes - (statement.downvotes || 0);
+    const { statement, userRating, isRating, isTopRated, rank, currentUserId, onRate, onRemoveRating, onCopyToLibrary, isCopying, mpaLabel } = props;
+    const isRatable = statement.is_ratable !== false; // Default to true for backwards compatibility
+    const isOwnStatement = currentUserId && statement.contributor_id === currentUserId;
 
     return (
-      <Card className={cn("group transition-colors", isTopRated && "border-yellow-500/30 bg-yellow-500/5")}>
+      <Card className="group">
         <CardContent className="p-3 sm:pt-4 sm:px-6">
-          <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
-            {/* Voting */}
-            <div className="flex sm:flex-col items-center gap-2 sm:gap-1 shrink-0 order-last sm:order-first">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("size-8", userVote === "up" && "text-green-500 bg-green-500/10")}
-                onClick={() => onVote(statement.id, "up")}
-                disabled={isVoting}
-                aria-label="Upvote"
-              >
-                {isVoting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ThumbsUp className={cn("size-4", userVote === "up" && "fill-current")} />
-                )}
-              </Button>
-              <span className={cn(
-                "text-sm font-semibold tabular-nums min-w-[2ch] text-center",
-                netVotes > 0 && "text-green-600 dark:text-green-400",
-                netVotes < 0 && "text-red-600 dark:text-red-400",
-                netVotes === 0 && "text-muted-foreground"
-              )}>
-                {netVotes}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("size-8", userVote === "down" && "text-red-500 bg-red-500/10")}
-                onClick={() => onVote(statement.id, "down")}
-                disabled={isVoting}
-                aria-label="Downvote"
-              >
-                <ThumbsDown className={cn("size-4", userVote === "down" && "fill-current")} />
-              </Button>
-              
-              {/* Mobile: Copy and save buttons inline with votes */}
-              <div className="flex-1 sm:hidden" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 sm:hidden"
-                onClick={() => copyToClipboard(statement.statement, statement.id)}
-                aria-label="Copy statement"
-              >
-                {copiedId === statement.id ? (
-                  <Check className="size-4 text-green-500" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </Button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 space-y-2 min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <div className="flex flex-col gap-3">
+            {/* Header with badges */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
                 {isTopRated && rank !== undefined && (
-                  <Badge className="gap-1 bg-yellow-500/80 hover:bg-yellow-500 text-yellow-950 text-xs">
+                  <Badge variant="outline" className="gap-1 text-xs border-primary/30 text-primary">
                     <Trophy className="size-3" />
-                    #{rank + 1} {mpaLabel} - {statement.afsc}
+                    #{rank + 1} {mpaLabel}
                   </Badge>
                 )}
                 {!isTopRated && <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>}
                 <Badge variant="secondary" className="text-xs">{statement.rank}</Badge>
                 <Badge variant="secondary" className="text-xs">{statement.afsc}</Badge>
               </div>
-              <p className="text-sm leading-relaxed break-words">{statement.statement}</p>
-              <p className="text-xs text-muted-foreground">
-                {statement.upvotes} upvotes · {statement.downvotes || 0} downvotes
-              </p>
+              {/* Star rating display - only show for ratable statements with ratings */}
+              {isRatable && (statement.rating_count > 0 || statement.average_rating > 0) && (
+                <div className="shrink-0">
+                  <StarRatingDisplay
+                    averageRating={statement.average_rating || 0}
+                    ratingCount={statement.rating_count || 0}
+                    size="sm"
+                  />
+                </div>
+              )}
             </div>
-
-            {/* Desktop Actions */}
-            <div className="hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9"
-                onClick={() => copyToClipboard(statement.statement, statement.id)}
-                aria-label="Copy statement"
-              >
-                {copiedId === statement.id ? (
-                  <Check className="size-4 text-green-500" />
+            
+            {/* Statement text */}
+            <p className="text-sm leading-relaxed break-words">{statement.statement}</p>
+            
+            {/* Footer with actions */}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              {/* Rating info or shared indicator */}
+              <div className="text-xs text-muted-foreground shrink-0">
+                {isRatable ? (
+                  statement.rating_count > 0 
+                    ? `${statement.rating_count} rating${statement.rating_count !== 1 ? "s" : ""}`
+                    : "No ratings yet"
                 ) : (
-                  <Copy className="size-4" />
+                  "Shared by community"
                 )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                onClick={() => onCopyToLibrary(statement)}
-                disabled={isCopying}
-                aria-label="Save to my library"
-              >
-                {isCopying ? (
-                  <Loader2 className="size-4 animate-spin mr-1.5" />
-                ) : (
-                  <Download className="size-4 mr-1.5" />
+              </div>
+              
+              {/* Actions */}
+              <div className="flex gap-0.5 sm:gap-1 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                {/* Star Rating Popover - only for ratable statements */}
+                {isRatable && (
+                  <StarRating
+                    userRating={userRating ?? null}
+                    averageRating={statement.average_rating || 0}
+                    ratingCount={statement.rating_count || 0}
+                    isLoading={isRating}
+                    onRate={(rating) => onRate(statement.id, rating)}
+                    onRemoveRating={onRemoveRating ? () => onRemoveRating(statement.id) : undefined}
+                    size="sm"
+                  />
                 )}
-                Save
-              </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 sm:size-9"
+                  onClick={() => copyToClipboard(statement.statement, statement.id)}
+                  aria-label="Copy statement"
+                >
+                  {copiedId === statement.id ? (
+                    <Check className="size-3.5 sm:size-4 text-green-500" />
+                  ) : (
+                    <Copy className="size-3.5 sm:size-4" />
+                  )}
+                </Button>
+                {!isOwnStatement && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 sm:h-9 text-xs sm:text-sm"
+                    onClick={() => onCopyToLibrary(statement)}
+                    disabled={isCopying}
+                    aria-label="Save to my library"
+                  >
+                    {isCopying ? (
+                      <Loader2 className="size-3.5 sm:size-4 animate-spin mr-1.5" />
+                    ) : (
+                      <Download className="size-3.5 sm:size-4 mr-1.5" />
+                    )}
+                    Save
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </CardContent>

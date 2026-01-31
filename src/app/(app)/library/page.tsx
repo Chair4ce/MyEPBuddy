@@ -60,7 +60,7 @@ import { StatementWorkspaceDialog } from "@/components/library/statement-workspa
 import { ArchivedEPBHeader } from "@/components/library/archived-epb-header";
 import type { RefinedStatement, StatementHistory, CommunityStatement, SharedStatementView, StatementShare, ArchivedEPBView } from "@/types/database";
 
-type UserVotes = Record<string, "up" | "down">;
+type UserRatings = Record<string, number>;
 
 // Archived EPB option for filter dropdown
 interface ArchivedEPBOption {
@@ -76,7 +76,7 @@ export default function LibraryPage() {
   const [myStatementShares, setMyStatementShares] = useState<Record<string, StatementShare[]>>({});
   const [sharedStatements, setSharedStatements] = useState<SharedStatementView[]>([]);
   const [communityStatements, setCommunityStatements] = useState<CommunityStatement[]>([]);
-  const [userVotes, setUserVotes] = useState<UserVotes>({});
+  const [userRatings, setUserRatings] = useState<UserRatings>({});
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMpa, setFilterMpa] = useState<string>("all");
@@ -85,7 +85,7 @@ export default function LibraryPage() {
   const [filterStatementType, setFilterStatementType] = useState<string>("all");
   const [filterArchivedEPB, setFilterArchivedEPB] = useState<string>("all");
   const [archivedEPBs, setArchivedEPBs] = useState<ArchivedEPBOption[]>([]);
-  const [votingId, setVotingId] = useState<string | null>(null);
+  const [ratingId, setRatingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
   // Edit dialog - comprehensive state for all fields
@@ -205,7 +205,10 @@ export default function LibraryPage() {
         .order("upvotes", { ascending: false })
         .limit(100);
 
-      const legacyCommunity: CommunityStatement[] = (communityData as CommunityStatement[]) || [];
+      const legacyCommunity: CommunityStatement[] = ((communityData as CommunityStatement[]) || []).map(s => ({
+        ...s,
+        is_ratable: true, // These are from community_statements table and can be rated
+      }));
 
       // Source 2: Statements shared to community via sharing system (all AFSCs)
       const { data: sharedCommunityData } = await supabase
@@ -213,6 +216,34 @@ export default function LibraryPage() {
         .select("*")
         .eq("share_type", "community")
         .order("created_at", { ascending: false });
+
+      const sharedStatementIds = ((sharedCommunityData as SharedStatementView[]) || []).map(s => s.id);
+      
+      // Load rating stats for shared community statements
+      let ratingStatsMap: Record<string, { avg: number; count: number }> = {};
+      if (sharedStatementIds.length > 0) {
+        const { data: ratingStats } = await supabase
+          .from("statement_votes")
+          .select("statement_id, rating")
+          .in("statement_id", sharedStatementIds);
+        
+        if (ratingStats) {
+          // Aggregate ratings by statement_id
+          const statsAgg: Record<string, number[]> = {};
+          ratingStats.forEach((r: { statement_id: string; rating: number }) => {
+            if (!statsAgg[r.statement_id]) statsAgg[r.statement_id] = [];
+            statsAgg[r.statement_id].push(r.rating);
+          });
+          
+          Object.entries(statsAgg).forEach(([id, ratings]) => {
+            const sum = ratings.reduce((a, b) => a + b, 0);
+            ratingStatsMap[id] = {
+              avg: Math.round((sum / ratings.length) * 100) / 100,
+              count: ratings.length,
+            };
+          });
+        }
+      }
 
       // Convert shared community statements to CommunityStatement format
       const sharedCommunity: CommunityStatement[] = ((sharedCommunityData as SharedStatementView[]) || []).map((s) => ({
@@ -225,8 +256,11 @@ export default function LibraryPage() {
         statement: s.statement,
         upvotes: 0,
         downvotes: 0,
+        average_rating: ratingStatsMap[s.id]?.avg || 0,
+        rating_count: ratingStatsMap[s.id]?.count || 0,
         is_approved: true,
         created_at: s.created_at,
+        is_ratable: true, // Now ratable since we allow voting on refined_statements
         // Extra fields for display
         owner_name: s.owner_name,
         owner_rank: s.owner_rank,
@@ -241,18 +275,18 @@ export default function LibraryPage() {
 
       setCommunityStatements(combinedCommunity);
 
-      // Load user's votes for community statements
-      const { data: votes } = await supabase
+      // Load user's ratings for community statements
+      const { data: ratings } = await supabase
         .from("statement_votes")
-        .select("statement_id, vote_type")
+        .select("statement_id, rating")
         .eq("user_id", profile.id);
 
-      if (votes) {
-        const votesMap: UserVotes = {};
-        votes.forEach((v: { statement_id: string; vote_type: "up" | "down" }) => {
-          votesMap[v.statement_id] = v.vote_type;
+      if (ratings) {
+        const ratingsMap: UserRatings = {};
+        ratings.forEach((r: { statement_id: string; rating: number }) => {
+          ratingsMap[r.statement_id] = r.rating;
         });
-        setUserVotes(votesMap);
+        setUserRatings(ratingsMap);
       }
 
       // Load archived EPBs for the filter dropdown
@@ -426,95 +460,129 @@ export default function LibraryPage() {
     openCopyDialog(statement);
   }
 
-  async function voteOnStatement(statementId: string, voteType: "up" | "down") {
+  async function rateStatement(statementId: string, rating: number) {
     if (!profile) return;
     
-    setVotingId(statementId);
-    const currentVote = userVotes[statementId];
+    setRatingId(statementId);
+    const currentRating = userRatings[statementId];
 
     try {
-      if (currentVote === voteType) {
-        // Remove vote
-        await supabase
+      if (currentRating) {
+        // Update existing rating
+        const { error } = await supabase
           .from("statement_votes")
-          .delete()
+          .update({ rating } as never)
           .eq("user_id", profile.id)
           .eq("statement_id", statementId);
 
-        setUserVotes((prev) => {
-          const updated = { ...prev };
-          delete updated[statementId];
-          return updated;
-        });
+        if (error) throw error;
 
+        setUserRatings((prev) => ({ ...prev, [statementId]: rating }));
+
+        // Optimistically update the average (will be recalculated by trigger)
         setCommunityStatements((prev) =>
           prev.map((s) => {
             if (s.id === statementId) {
+              // Simple optimistic update - recalculate average
+              const oldTotal = (s.average_rating || 0) * (s.rating_count || 0);
+              const newTotal = oldTotal - currentRating + rating;
+              const newAverage = s.rating_count > 0 ? newTotal / s.rating_count : rating;
               return {
                 ...s,
-                upvotes: voteType === "up" ? Math.max(0, s.upvotes - 1) : s.upvotes,
-                downvotes: voteType === "down" ? Math.max(0, s.downvotes - 1) : s.downvotes,
+                average_rating: Math.round(newAverage * 100) / 100,
               };
             }
             return s;
           })
         );
 
-        toast.success("Vote removed");
-      } else if (currentVote) {
-        // Change vote
-        await supabase
-          .from("statement_votes")
-          .update({ vote_type: voteType } as never)
-          .eq("user_id", profile.id)
-          .eq("statement_id", statementId);
-
-        setUserVotes((prev) => ({ ...prev, [statementId]: voteType }));
-
-        setCommunityStatements((prev) =>
-          prev.map((s) => {
-            if (s.id === statementId) {
-              return {
-                ...s,
-                upvotes: voteType === "up" ? s.upvotes + 1 : Math.max(0, s.upvotes - 1),
-                downvotes: voteType === "down" ? s.downvotes + 1 : Math.max(0, s.downvotes - 1),
-              };
-            }
-            return s;
-          })
-        );
-
-        toast.success("Vote changed");
+        toast.success("Rating updated");
       } else {
-        // New vote
-        await supabase.from("statement_votes").insert({
+        // New rating
+        const { error } = await supabase.from("statement_votes").insert({
           user_id: profile.id,
           statement_id: statementId,
-          vote_type: voteType,
+          rating,
         } as never);
 
-        setUserVotes((prev) => ({ ...prev, [statementId]: voteType }));
+        if (error) throw error;
 
+        setUserRatings((prev) => ({ ...prev, [statementId]: rating }));
+
+        // Optimistically update the count and average
         setCommunityStatements((prev) =>
           prev.map((s) => {
             if (s.id === statementId) {
+              const newCount = (s.rating_count || 0) + 1;
+              const oldTotal = (s.average_rating || 0) * (s.rating_count || 0);
+              const newAverage = (oldTotal + rating) / newCount;
               return {
                 ...s,
-                upvotes: voteType === "up" ? s.upvotes + 1 : s.upvotes,
-                downvotes: voteType === "down" ? s.downvotes + 1 : s.downvotes,
+                rating_count: newCount,
+                average_rating: Math.round(newAverage * 100) / 100,
               };
             }
             return s;
           })
         );
 
-        toast.success(voteType === "up" ? "Upvoted!" : "Downvoted");
+        toast.success(`Rated ${rating} star${rating !== 1 ? "s" : ""}`);
       }
     } catch (error) {
-      console.error("Vote error:", error);
-      toast.error("Failed to vote");
+      console.error("Rating error:", error);
+      toast.error("Failed to save rating");
     } finally {
-      setVotingId(null);
+      setRatingId(null);
+    }
+  }
+
+  async function removeRating(statementId: string) {
+    if (!profile) return;
+    
+    setRatingId(statementId);
+    const currentRating = userRatings[statementId];
+
+    try {
+      const { error } = await supabase
+        .from("statement_votes")
+        .delete()
+        .eq("user_id", profile.id)
+        .eq("statement_id", statementId);
+
+      if (error) throw error;
+
+      setUserRatings((prev) => {
+        const updated = { ...prev };
+        delete updated[statementId];
+        return updated;
+      });
+
+      // Optimistically update the count and average
+      setCommunityStatements((prev) =>
+        prev.map((s) => {
+          if (s.id === statementId && currentRating) {
+            const newCount = Math.max(0, (s.rating_count || 0) - 1);
+            if (newCount === 0) {
+              return { ...s, rating_count: 0, average_rating: 0 };
+            }
+            const oldTotal = (s.average_rating || 0) * (s.rating_count || 0);
+            const newAverage = (oldTotal - currentRating) / newCount;
+            return {
+              ...s,
+              rating_count: newCount,
+              average_rating: Math.round(newAverage * 100) / 100,
+            };
+          }
+          return s;
+        })
+      );
+
+      toast.success("Rating removed");
+    } catch (error) {
+      console.error("Remove rating error:", error);
+      toast.error("Failed to remove rating");
+    } finally {
+      setRatingId(null);
     }
   }
 
@@ -569,18 +637,21 @@ export default function LibraryPage() {
   const mpaRankMap = useMemo(() => {
     const rankMap = new Map<string, number>();
     
-    // Group by MPA and sort each group by net votes
+    // Group by MPA and sort each group by average rating
     const byMpa: Record<string, CommunityStatement[]> = {};
     communityStatements.forEach((s) => {
       if (!byMpa[s.mpa]) byMpa[s.mpa] = [];
       byMpa[s.mpa].push(s);
     });
     
-    // For each MPA, sort by net votes and assign ranks
+    // For each MPA, sort by average rating (then by rating count as tiebreaker) and assign ranks
     Object.values(byMpa).forEach((statements) => {
       statements
-        .map((s) => ({ ...s, netVotes: s.upvotes - (s.downvotes || 0) }))
-        .sort((a, b) => b.netVotes - a.netVotes)
+        .sort((a, b) => {
+          const ratingDiff = (b.average_rating || 0) - (a.average_rating || 0);
+          if (ratingDiff !== 0) return ratingDiff;
+          return (b.rating_count || 0) - (a.rating_count || 0);
+        })
         .forEach((s, idx) => {
           rankMap.set(s.id, idx);
         });
@@ -849,11 +920,13 @@ export default function LibraryPage() {
                         type="community"
                         statement={statement}
                         mpaLabel={getMpaLabel(statement.mpa)}
-                        userVote={userVotes[statement.id]}
-                        isVoting={votingId === statement.id}
+                        userRating={userRatings[statement.id]}
+                        isRating={ratingId === statement.id}
                         isTopRated={mpaRank < 20}
                         rank={mpaRank}
-                        onVote={voteOnStatement}
+                        currentUserId={profile?.id}
+                        onRate={rateStatement}
+                        onRemoveRating={removeRating}
                         onCopyToLibrary={copyToLibrary}
                         isCopying={copyingId === statement.id}
                       />
