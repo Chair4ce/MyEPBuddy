@@ -9,9 +9,12 @@ interface CommentSidebarProps {
   comments: CommentData[];
   isEditable?: boolean;
   activeCommentId?: string | null;
+  hoveredCommentId?: string | null;
+  editingCommentId?: string | null;
   onCommentUpdate?: (id: string, commentText: string, suggestion?: string) => void;
   onCommentDelete?: (id: string) => void;
   onCommentClick?: (id: string) => void;
+  onCommentHover?: (id: string | null) => void;
   onCommentAccept?: (id: string) => void;
   onCommentDismiss?: (id: string) => void;
   onAddGeneralComment?: () => void;
@@ -23,9 +26,12 @@ export function CommentSidebar({
   comments,
   isEditable = false,
   activeCommentId,
+  hoveredCommentId,
+  editingCommentId,
   onCommentUpdate,
   onCommentDelete,
   onCommentClick,
+  onCommentHover,
   onCommentAccept,
   onCommentDismiss,
   onAddGeneralComment,
@@ -47,10 +53,10 @@ export function CommentSidebar({
           {!isEditable && comments.length > 0 && (
             <div className="flex gap-2 text-xs text-muted-foreground">
               {pendingCount > 0 && (
-                <span className="text-amber-600">{pendingCount} pending</span>
+                <span>{pendingCount} pending</span>
               )}
               {acceptedCount > 0 && (
-                <span className="text-green-600">{acceptedCount} accepted</span>
+                <span>{acceptedCount} accepted</span>
               )}
             </div>
           )}
@@ -71,9 +77,12 @@ export function CommentSidebar({
                 comment={comment}
                 isEditable={isEditable}
                 isActive={activeCommentId === comment.id}
+                isHovered={hoveredCommentId === comment.id}
+                startInEditMode={editingCommentId === comment.id}
                 onUpdate={onCommentUpdate}
                 onDelete={onCommentDelete}
                 onClick={onCommentClick ? () => onCommentClick(comment.id) : undefined}
+                onHover={onCommentHover}
                 onAccept={onCommentAccept}
                 onDismiss={onCommentDismiss}
               />

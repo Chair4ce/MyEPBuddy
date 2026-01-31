@@ -59,13 +59,14 @@ import { EPBShellForm } from "@/components/epb/epb-shell-form";
 import { EPBShellShareDialog } from "@/components/epb/epb-shell-share-dialog";
 import { OPBShellForm } from "@/components/opb/opb-shell-form";
 import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
+import { ReviewLinksManager } from "@/components/review/review-links-manager";
 import { FeedbackListDialog } from "@/components/feedback/feedback-list-dialog";
 import { FeedbackViewerDialog } from "@/components/feedback/feedback-viewer-dialog";
 import { FeedbackBadge } from "@/components/feedback/feedback-badge";
 
 export default function GeneratePage() {
   const { profile, subordinates, managedMembers } = useUserStore();
-  const { selectedRatee, setSelectedRatee, currentShell, reset: resetShellStore } = useEPBShellStore();
+  const { selectedRatee, setSelectedRatee, currentShell, setCurrentShell, sections: shellSections, updateSection, reset: resetShellStore } = useEPBShellStore();
   
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
   const [hasUserKey, setHasUserKey] = useState(false);
@@ -77,6 +78,7 @@ export default function GeneratePage() {
   const [configOpen, setConfigOpen] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [showReviewLinkDialog, setShowReviewLinkDialog] = useState(false);
+  const [showLinksManager, setShowLinksManager] = useState(false);
   const [showFeedbackListDialog, setShowFeedbackListDialog] = useState(false);
   const [showFeedbackViewerDialog, setShowFeedbackViewerDialog] = useState(false);
   const [selectedFeedbackSessionId, setSelectedFeedbackSessionId] = useState<string | null>(null);
@@ -322,6 +324,59 @@ export default function GeneratePage() {
       .eq("id", profile.id);
   }
 
+  // Handle applying a mentor suggestion to the EPB
+  const handleApplySuggestion = useCallback(async (sectionKey: string, newText: string) => {
+    if (!profile || !currentShell) return;
+
+    try {
+      if (sectionKey === "duty_description") {
+        // Update duty description
+        const { error } = await supabase
+          .from("epb_shells")
+          .update({
+            duty_description: newText,
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq("id", currentShell.id);
+
+        if (error) throw error;
+
+        // Update local state
+        setCurrentShell({ ...currentShell, duty_description: newText });
+        toast.success("Duty description updated from suggestion");
+      } else {
+        // Update a section
+        const section = shellSections[sectionKey];
+        if (!section) {
+          toast.error("Section not found");
+          return;
+        }
+
+        const { error } = await supabase
+          .from("epb_shell_sections")
+          .update({
+            statement_text: newText,
+            last_edited_by: profile.id,
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq("id", section.id);
+
+        if (error) throw error;
+
+        // Update local state
+        updateSection(sectionKey, {
+          statement_text: newText,
+          last_edited_by: profile.id,
+          updated_at: new Date().toISOString(),
+        });
+        toast.success("Statement updated from suggestion");
+      }
+    } catch (error) {
+      console.error("Apply suggestion error:", error);
+      toast.error("Failed to apply suggestion");
+    }
+  }, [profile, currentShell, shellSections, supabase, setCurrentShell, updateSection]);
+
   // Handle opening accomplishment selection for an MPA
   const handleOpenAccomplishments = (mpa: string) => {
     setSelectedMPAForAccomplishments(mpa);
@@ -440,7 +495,7 @@ export default function GeneratePage() {
               </button>
             </div>
           )}
-          {currentShell && officerWorkspaceMode === "epb" && (
+          {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
             <>
               <FeedbackBadge
                 shellType="epb"
@@ -450,9 +505,9 @@ export default function GeneratePage() {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setShowReviewLinkDialog(true)} 
+                onClick={() => setShowLinksManager(true)} 
                 className="h-8 px-3 shrink-0"
-                title="Share for Mentor Review"
+                title="Manage Review Links"
               >
                 <MessageSquareText className="size-4" />
                 <span className="hidden sm:inline ml-1.5">Get Feedback</span>
@@ -544,6 +599,20 @@ export default function GeneratePage() {
         />
       )}
 
+      {/* Review Links Manager */}
+      {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
+        <ReviewLinksManager
+          open={showLinksManager}
+          onOpenChange={setShowLinksManager}
+          shellType="epb"
+          shellId={currentShell.id}
+          onCreateNew={() => {
+            setShowLinksManager(false);
+            setShowReviewLinkDialog(true);
+          }}
+        />
+      )}
+
       {/* Review Link Dialog - For mentor feedback */}
       {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
         <CreateReviewLinkDialog
@@ -553,6 +622,31 @@ export default function GeneratePage() {
           shellId={currentShell.id}
           rateeName={selectedRatee?.fullName || profile?.full_name || "Unknown"}
           rateeRank={selectedRatee?.rank || profile?.rank || undefined}
+          contentSnapshot={{
+            description: currentShell.duty_description || undefined,
+            cycleYear: currentShell.cycle_year,
+            // For the dialog's empty check, use key/label/content format
+            sections: Object.values(shellSections).map((s) => ({
+              key: s.mpa,
+              label: {
+                executing_mission: "Executing the Mission",
+                leading_people: "Leading People",
+                managing_resources: "Managing Resources",
+                improving_unit: "Improving the Unit",
+                hlr_assessment: "HLR Assessment",
+              }[s.mpa] || s.mpa,
+              content: s.statement_text,
+            })),
+            // Raw data for the API in the format the SQL function expects
+            _rawForApi: {
+              duty_description: currentShell.duty_description || null,
+              cycle_year: currentShell.cycle_year,
+              sections: Object.values(shellSections).map((s) => ({
+                mpa: s.mpa,
+                statement_text: s.statement_text,
+              })),
+            },
+          }}
         />
       )}
 
@@ -583,6 +677,7 @@ export default function GeneratePage() {
             setShowFeedbackViewerDialog(false);
             setShowFeedbackListDialog(true);
           }}
+          onApplySuggestion={handleApplySuggestion}
         />
       )}
 

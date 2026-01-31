@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { X, Check, MessageSquare } from "lucide-react";
+import { X, Check, MessageSquare, ArrowRightLeft, Trash2, FileEdit, ArrowRight } from "lucide-react";
+
+export type SuggestionType = "comment" | "replace" | "delete";
 
 export interface CommentData {
   id: string;
@@ -17,30 +19,42 @@ export interface CommentData {
   commentText: string;
   suggestion?: string;
   status?: "pending" | "accepted" | "dismissed";
+  // New fields for suggestion system
+  suggestionType?: SuggestionType;
+  replacementText?: string;
+  // Full section rewrite
+  isFullRewrite?: boolean;
+  rewriteText?: string;
 }
 
 interface CommentCardProps {
   comment: CommentData;
   isEditable?: boolean;
   isActive?: boolean;
+  isHovered?: boolean;
+  startInEditMode?: boolean;
   onUpdate?: (id: string, commentText: string, suggestion?: string) => void;
   onDelete?: (id: string) => void;
   onAccept?: (id: string) => void;
   onDismiss?: (id: string) => void;
   onClick?: () => void;
+  onHover?: (id: string | null) => void;
 }
 
 export function CommentCard({
   comment,
   isEditable = false,
   isActive = false,
+  isHovered = false,
+  startInEditMode = false,
   onUpdate,
   onDelete,
   onAccept,
   onDismiss,
   onClick,
+  onHover,
 }: CommentCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(startInEditMode);
   const [editText, setEditText] = useState(comment.commentText);
 
   const handleSave = () => {
@@ -55,21 +69,17 @@ export function CommentCard({
     setIsEditing(false);
   };
 
-  const statusColors = {
-    pending: "border-l-amber-400",
-    accepted: "border-l-green-500 bg-green-50 dark:bg-green-950/20",
-    dismissed: "border-l-muted opacity-60",
-  };
-
   return (
     <div
       className={cn(
-        "relative p-3 rounded-lg border border-l-4 bg-card transition-all",
-        statusColors[comment.status || "pending"],
-        isActive && "ring-2 ring-primary ring-offset-2",
+        "relative p-3 rounded-lg bg-card transition-all",
+        comment.status === "dismissed" && "opacity-60",
+        (isActive || isHovered) && "ring-1 ring-primary bg-primary/5",
         onClick && "cursor-pointer hover:bg-muted/50"
       )}
       onClick={onClick}
+      onMouseEnter={() => onHover?.(comment.id)}
+      onMouseLeave={() => onHover?.(null)}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => e.key === "Enter" && onClick() : undefined}
@@ -90,22 +100,48 @@ export function CommentCard({
         </Button>
       )}
 
-      {/* Highlighted text quote */}
-      {comment.highlightedText && (
+      {/* Section label and suggestion type badge */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1.5">
+          {comment.isFullRewrite ? (
+            <FileEdit className="size-3 text-muted-foreground" />
+          ) : comment.suggestionType === "replace" ? (
+            <ArrowRightLeft className="size-3 text-muted-foreground" />
+          ) : comment.suggestionType === "delete" ? (
+            <Trash2 className="size-3 text-muted-foreground" />
+          ) : (
+            <MessageSquare className="size-3 text-muted-foreground" />
+          )}
+          <span className="text-xs font-medium text-muted-foreground">
+            {comment.sectionLabel}
+          </span>
+        </div>
+        {/* Suggestion type badge */}
+        {(comment.suggestionType === "replace" || comment.suggestionType === "delete" || comment.isFullRewrite) && (
+          <span className={cn(
+            "text-[10px] px-1.5 py-0.5 rounded font-medium",
+            comment.suggestionType === "delete" && "bg-destructive/10 text-destructive",
+            comment.suggestionType === "replace" && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+            comment.isFullRewrite && "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+          )}>
+            {comment.isFullRewrite ? "Rewrite" : comment.suggestionType === "delete" ? "Delete" : "Replace"}
+          </span>
+        )}
+      </div>
+
+      {/* Highlighted text quote (for non-rewrite comments) */}
+      {comment.highlightedText && !comment.isFullRewrite && (
         <div className="mb-2 pb-2 border-b">
-          <p className="text-xs text-muted-foreground italic line-clamp-2">
+          <p className={cn(
+            "text-xs italic line-clamp-2",
+            comment.suggestionType === "delete" 
+              ? "text-destructive line-through" 
+              : "text-muted-foreground"
+          )}>
             &ldquo;{comment.highlightedText}&rdquo;
           </p>
         </div>
       )}
-
-      {/* Section label */}
-      <div className="flex items-center gap-1.5 mb-2">
-        <MessageSquare className="size-3 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">
-          {comment.sectionLabel}
-        </span>
-      </div>
 
       {/* Comment text */}
       {isEditing ? (
@@ -138,8 +174,30 @@ export function CommentCard({
         </p>
       )}
 
-      {/* Suggestion if provided */}
-      {comment.suggestion && !isEditing && (
+      {/* Replacement suggestion (for replace type) */}
+      {comment.suggestionType === "replace" && comment.replacementText && !isEditing && (
+        <div className="mt-2 pt-2 border-t">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+            <span>Replace with:</span>
+          </div>
+          <p className="text-sm bg-blue-500/10 text-blue-700 dark:text-blue-300 px-2 py-1 rounded">
+            {comment.replacementText}
+          </p>
+        </div>
+      )}
+
+      {/* Full rewrite preview */}
+      {comment.isFullRewrite && comment.rewriteText && !isEditing && (
+        <div className="mt-2 pt-2 border-t">
+          <p className="text-xs text-muted-foreground mb-1">Suggested rewrite:</p>
+          <p className="text-sm bg-purple-500/10 text-purple-700 dark:text-purple-300 px-2 py-1.5 rounded line-clamp-3">
+            {comment.rewriteText}
+          </p>
+        </div>
+      )}
+
+      {/* Legacy suggestion if provided */}
+      {comment.suggestion && !comment.replacementText && !comment.rewriteText && !isEditing && (
         <div className="mt-2 pt-2 border-t">
           <p className="text-xs text-muted-foreground mb-1">Suggested replacement:</p>
           <p className="text-sm italic bg-muted/50 px-2 py-1 rounded">
@@ -151,12 +209,8 @@ export function CommentCard({
       {/* Status indicator for resolved comments */}
       {comment.status && comment.status !== "pending" && (
         <div className="mt-2 pt-2 border-t">
-          <span className={cn(
-            "text-xs font-medium",
-            comment.status === "accepted" && "text-green-600 dark:text-green-400",
-            comment.status === "dismissed" && "text-muted-foreground"
-          )}>
-            {comment.status === "accepted" ? "✓ Accepted" : "Dismissed"}
+          <span className="text-xs text-muted-foreground">
+            {comment.status === "accepted" ? "Accepted" : "Dismissed"}
           </span>
         </div>
       )}
@@ -168,7 +222,7 @@ export function CommentCard({
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 text-green-600 hover:text-green-700 hover:bg-green-50"
+              className="flex-1"
               onClick={(e) => {
                 e.stopPropagation();
                 onAccept(comment.id);

@@ -96,7 +96,7 @@ export function FeedbackListDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="size-5" />
-            Mentor Feedback
+            Reviewer Feedback
             {totalPending > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {totalPending} pending

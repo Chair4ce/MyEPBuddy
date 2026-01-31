@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       linkLabel,
       isAnonymous,
       recipientEmail,
+      contentSnapshot,
     } = body;
 
     // Validate required fields
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the review token record
+    // Create the review token record with content snapshot
     const result = await supabase
       .from("review_tokens")
       .insert({
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
         link_label: isAnonymous ? null : linkLabel,
         is_anonymous: isAnonymous || false,
         recipient_email: recipientEmail || null,
+        content_snapshot: contentSnapshot || null,
       } as never)
       .select()
       .single();

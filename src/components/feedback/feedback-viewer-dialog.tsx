@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,9 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
-import { cn } from "@/lib/utils";
-import { Loader2, Check, X, MessageSquare, ArrowLeft } from "lucide-react";
+import { cn, normalizeText } from "@/lib/utils";
+import { 
+  Loader2, 
+  Check, 
+  MessageSquare, 
+  ArrowLeft, 
+  ArrowRightLeft, 
+  Trash2, 
+  FileEdit, 
+  ArrowRight,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 
 interface FeedbackComment {
   id: string;
@@ -32,6 +45,10 @@ interface FeedbackComment {
   suggestion?: string;
   status: "pending" | "accepted" | "dismissed";
   created_at: string;
+  suggestion_type?: "comment" | "replace" | "delete";
+  replacement_text?: string;
+  is_full_rewrite?: boolean;
+  rewrite_text?: string;
 }
 
 interface FeedbackSession {
@@ -40,6 +57,15 @@ interface FeedbackSession {
   comment_count: number;
   submitted_at: string;
   pending_count: number;
+}
+
+interface ContentSnapshot {
+  duty_description?: string;
+  cycle_year?: string;
+  sections?: Array<{
+    mpa: string;
+    statement_text: string;
+  }>;
 }
 
 // MPA labels
@@ -60,6 +86,7 @@ interface FeedbackViewerDialogProps {
   shellType: "epb" | "award" | "decoration";
   shellId: string;
   onBack?: () => void;
+  onApplySuggestion?: (sectionKey: string, newText: string) => void;
 }
 
 export function FeedbackViewerDialog({
@@ -69,12 +96,15 @@ export function FeedbackViewerDialog({
   shellType,
   shellId,
   onBack,
+  onApplySuggestion,
 }: FeedbackViewerDialogProps) {
   const [sessions, setSessions] = useState<FeedbackSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId);
   const [comments, setComments] = useState<FeedbackComment[]>([]);
+  const [contentSnapshot, setContentSnapshot] = useState<ContentSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Load sessions list
   useEffect(() => {
@@ -89,7 +119,6 @@ export function FeedbackViewerDialog({
 
         if (response.ok && data.sessions) {
           setSessions(data.sessions);
-          // If no session selected, select the first one
           if (!currentSessionId && data.sessions.length > 0) {
             setCurrentSessionId(data.sessions[0].id);
           }
@@ -124,6 +153,16 @@ export function FeedbackViewerDialog({
         }
 
         setComments(data.comments || []);
+        setContentSnapshot(data.contentSnapshot || null);
+        
+        // Auto-expand sections with pending comments
+        const sectionsWithPending = new Set<string>();
+        (data.comments || []).forEach((c: FeedbackComment) => {
+          if (c.status === "pending") {
+            sectionsWithPending.add(c.section_key);
+          }
+        });
+        setExpandedSections(sectionsWithPending);
       } catch (error) {
         console.error("Load comments error:", error);
         toast.error("Failed to load comments");
@@ -154,18 +193,65 @@ export function FeedbackViewerDialog({
           c.id === commentId ? { ...c, status } : c
         )
       );
-
-      toast.success(status === "accepted" ? "Comment accepted" : "Comment dismissed");
     } catch (error) {
       console.error("Update error:", error);
-      toast.error("Failed to update comment");
+      toast.error("Failed to update feedback");
     } finally {
       setIsUpdating(null);
     }
   }, []);
 
+  // Get section text from snapshot (normalized to fix PDF line breaks)
+  const getSectionText = useCallback((sectionKey: string): string => {
+    if (!contentSnapshot) return "";
+    
+    let text = "";
+    if (sectionKey === "duty_description") {
+      text = contentSnapshot.duty_description || "";
+    } else {
+      const section = contentSnapshot.sections?.find(s => s.mpa === sectionKey);
+      text = section?.statement_text || "";
+    }
+    
+    return normalizeText(text);
+  }, [contentSnapshot]);
+
+  // Render text with highlight
+  const renderTextWithHighlight = useCallback((
+    text: string, 
+    highlightStart?: number, 
+    highlightEnd?: number,
+    suggestionType?: string
+  ) => {
+    if (!text) {
+      return <span className="text-muted-foreground italic">No content available</span>;
+    }
+
+    if (highlightStart === undefined || highlightEnd === undefined) {
+      return <span className="whitespace-pre-wrap">{text}</span>;
+    }
+
+    const before = text.slice(0, highlightStart);
+    const highlighted = text.slice(highlightStart, highlightEnd);
+    const after = text.slice(highlightEnd);
+
+    return (
+      <span className="whitespace-pre-wrap">
+        {before}
+        <mark className={cn(
+          "px-0.5 rounded",
+          suggestionType === "delete" 
+            ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" 
+            : "bg-amber-200 dark:bg-amber-900/50"
+        )}>
+          {highlighted}
+        </mark>
+        {after}
+      </span>
+    );
+  }, []);
+
   const currentSession = sessions.find((s) => s.id === currentSessionId);
-  const pendingCount = comments.filter((c) => c.status === "pending").length;
 
   const formatDate = (isoString: string) => {
     try {
@@ -173,8 +259,6 @@ export function FeedbackViewerDialog({
         month: "short",
         day: "numeric",
         year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
       });
     } catch {
       return isoString;
@@ -182,18 +266,33 @@ export function FeedbackViewerDialog({
   };
 
   // Group comments by section
-  const commentsBySection: Record<string, FeedbackComment[]> = {};
-  comments.forEach((comment) => {
-    const key = comment.section_key;
-    if (!commentsBySection[key]) {
-      commentsBySection[key] = [];
-    }
-    commentsBySection[key].push(comment);
-  });
+  const commentsBySection = useMemo(() => {
+    const grouped: Record<string, FeedbackComment[]> = {};
+    comments.forEach((comment) => {
+      const key = comment.section_key;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(comment);
+    });
+    return grouped;
+  }, [comments]);
+
+  const toggleSection = (sectionKey: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionKey)) {
+        next.delete(sectionKey);
+      } else {
+        next.add(sectionKey);
+      }
+      return next;
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+      <DialogContent className="!max-w-5xl w-[90vw] h-[85vh] flex flex-col p-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <div className="flex items-center gap-3">
@@ -205,12 +304,11 @@ export function FeedbackViewerDialog({
             <div className="flex-1">
               <DialogTitle className="flex items-center gap-2">
                 <MessageSquare className="size-5" />
-                Feedback from {currentSession?.reviewer_name || "Mentor"}
+                Feedback from {currentSession?.reviewer_name || "Reviewer"}
               </DialogTitle>
               {currentSession && (
                 <p className="text-sm text-muted-foreground mt-1">
-                  {formatDate(currentSession.submitted_at)} • {currentSession.comment_count} comments
-                  {pendingCount > 0 && ` • ${pendingCount} pending`}
+                  {formatDate(currentSession.submitted_at)}
                 </p>
               )}
             </div>
@@ -229,17 +327,7 @@ export function FeedbackViewerDialog({
                 <SelectContent>
                   {sessions.map((session) => (
                     <SelectItem key={session.id} value={session.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{session.reviewer_name}</span>
-                        <span className="text-muted-foreground">
-                          ({session.comment_count} comments)
-                        </span>
-                        {session.pending_count > 0 && (
-                          <Badge variant="secondary" className="ml-1">
-                            {session.pending_count} pending
-                          </Badge>
-                        )}
-                      </div>
+                      {session.reviewer_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -248,113 +336,251 @@ export function FeedbackViewerDialog({
           )}
         </DialogHeader>
 
-        {/* Comments */}
-        <ScrollArea className="flex-1 px-6 py-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : comments.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-sm text-muted-foreground">No comments found</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {Object.entries(commentsBySection).map(([sectionKey, sectionComments]) => (
-                <div key={sectionKey}>
-                  <h3 className="font-medium text-sm text-muted-foreground mb-3">
-                    {MPA_LABELS[sectionKey] || sectionKey}
-                  </h3>
-                  <div className="space-y-3">
-                    {sectionComments.map((comment) => (
-                      <div
-                        key={comment.id}
-                        className={cn(
-                          "p-4 rounded-lg border",
-                          comment.status === "accepted" && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800",
-                          comment.status === "dismissed" && "bg-muted/50 opacity-60",
-                          comment.status === "pending" && "bg-card"
-                        )}
+        {/* Content */}
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-6 py-4">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : comments.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-sm text-muted-foreground">No comments found</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(commentsBySection).map(([sectionKey, sectionComments]) => {
+                  const sectionText = getSectionText(sectionKey);
+                  const isExpanded = expandedSections.has(sectionKey);
+
+                  return (
+                    <div key={sectionKey} className="border rounded-lg overflow-hidden">
+                      {/* Section header */}
+                      <button
+                        onClick={() => toggleSection(sectionKey)}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-muted/50 hover:bg-muted/70 transition-colors text-left"
                       >
-                        {/* Highlighted text */}
-                        {comment.highlighted_text && (
-                          <div className="mb-3 pb-3 border-b">
-                            <p className="text-xs text-muted-foreground mb-1">Highlighted text:</p>
-                            <p className="text-sm italic bg-amber-100 dark:bg-amber-900/30 px-2 py-1 rounded">
-                              &ldquo;{comment.highlighted_text}&rdquo;
-                            </p>
-                          </div>
+                        <span className="font-medium">
+                          {MPA_LABELS[sectionKey] || sectionKey}
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-4 text-muted-foreground" />
                         )}
+                      </button>
 
-                        {/* Comment text */}
-                        <p className={cn(
-                          "text-sm",
-                          comment.status === "dismissed" && "line-through"
-                        )}>
-                          {comment.comment_text}
-                        </p>
-
-                        {/* Suggestion */}
-                        {comment.suggestion && (
-                          <div className="mt-3 pt-3 border-t">
-                            <p className="text-xs text-muted-foreground mb-1">Suggested replacement:</p>
-                            <p className="text-sm italic bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded">
-                              {comment.suggestion}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Status indicator */}
-                        {comment.status !== "pending" && (
-                          <div className="mt-3 pt-3 border-t">
-                            <span className={cn(
-                              "text-xs font-medium",
-                              comment.status === "accepted" && "text-green-600 dark:text-green-400",
-                              comment.status === "dismissed" && "text-muted-foreground"
-                            )}>
-                              {comment.status === "accepted" ? "✓ Accepted" : "Dismissed"}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Action buttons for pending */}
-                        {comment.status === "pending" && (
-                          <div className="mt-3 pt-3 border-t flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex-1 text-green-600 hover:text-green-700 hover:bg-green-50"
-                              onClick={() => handleUpdateStatus(comment.id, "accepted")}
-                              disabled={isUpdating === comment.id}
-                            >
-                              {isUpdating === comment.id ? (
-                                <Loader2 className="size-3 animate-spin mr-1" />
-                              ) : (
-                                <Check className="size-3 mr-1" />
-                              )}
-                              Accept
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => handleUpdateStatus(comment.id, "dismissed")}
-                              disabled={isUpdating === comment.id}
-                            >
-                              <X className="size-3 mr-1" />
-                              Dismiss
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                      {/* Expanded content */}
+                      {isExpanded && (
+                        <div className="p-4 space-y-4">
+                          {sectionComments.map((comment, idx) => (
+                            <div key={comment.id}>
+                              {idx > 0 && <Separator className="my-4" />}
+                              
+                              <FeedbackCommentCard
+                                comment={comment}
+                                sectionText={sectionText}
+                                isUpdating={isUpdating === comment.id}
+                                onMarkRead={() => handleUpdateStatus(comment.id, "accepted")}
+                                onIgnore={() => handleUpdateStatus(comment.id, "dismissed")}
+                                onApply={onApplySuggestion ? () => {
+                                  let newText = sectionText;
+                                  if (comment.is_full_rewrite && comment.rewrite_text) {
+                                    newText = comment.rewrite_text;
+                                  } else if (comment.suggestion_type === "delete" && 
+                                             comment.highlight_start !== undefined && 
+                                             comment.highlight_end !== undefined) {
+                                    newText = sectionText.slice(0, comment.highlight_start) + 
+                                              sectionText.slice(comment.highlight_end);
+                                  } else if (comment.suggestion_type === "replace" && 
+                                             comment.replacement_text &&
+                                             comment.highlight_start !== undefined && 
+                                             comment.highlight_end !== undefined) {
+                                    newText = sectionText.slice(0, comment.highlight_start) + 
+                                              comment.replacement_text + 
+                                              sectionText.slice(comment.highlight_end);
+                                  }
+                                  onApplySuggestion(sectionKey, newText);
+                                  handleUpdateStatus(comment.id, "accepted");
+                                } : undefined}
+                                renderTextWithHighlight={renderTextWithHighlight}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </ScrollArea>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Individual comment card component
+function FeedbackCommentCard({
+  comment,
+  sectionText,
+  isUpdating,
+  onMarkRead,
+  onIgnore,
+  onApply,
+  renderTextWithHighlight,
+}: {
+  comment: FeedbackComment;
+  sectionText: string;
+  isUpdating: boolean;
+  onMarkRead: () => void;
+  onIgnore: () => void;
+  onApply?: () => void;
+  renderTextWithHighlight: (
+    text: string, 
+    start?: number, 
+    end?: number, 
+    type?: string
+  ) => React.ReactNode;
+}) {
+  const isActionable = comment.suggestion_type === "replace" || 
+                       comment.suggestion_type === "delete" || 
+                       comment.is_full_rewrite;
+  const isPending = comment.status === "pending";
+
+  // Already handled - show minimal
+  if (!isPending) {
+    return (
+      <div className="opacity-50 space-y-3">
+        <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <Check className="size-3" />
+          {comment.status === "accepted" ? "Reviewed" : "Ignored"}
+        </div>
+        {comment.comment_text && (
+          <p className="text-sm text-muted-foreground">{comment.comment_text}</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Suggestion type indicator */}
+      {isActionable && (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          {comment.is_full_rewrite ? (
+            <><FileEdit className="size-3" /> Suggested rewrite</>
+          ) : comment.suggestion_type === "delete" ? (
+            <><Trash2 className="size-3" /> Suggested deletion</>
+          ) : (
+            <><ArrowRightLeft className="size-3" /> Suggested replacement</>
+          )}
+        </div>
+      )}
+
+      {/* Full section rewrite - side by side */}
+      {comment.is_full_rewrite && comment.rewrite_text ? (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <Eye className="size-3" /> Original Statement
+            </p>
+            <div className="text-sm bg-muted/50 p-3 rounded-lg border max-h-60 overflow-auto whitespace-pre-wrap">
+              {sectionText || comment.original_text || "No content"}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <FileEdit className="size-3" /> Suggested Rewrite
+            </p>
+            <div className="text-sm bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border max-h-60 overflow-auto whitespace-pre-wrap">
+              {comment.rewrite_text}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Show the full statement with highlight */
+        <div>
+          <div className="text-sm bg-muted/50 p-3 rounded-lg border max-h-48 overflow-auto">
+            {renderTextWithHighlight(
+              sectionText || comment.original_text || "",
+              comment.highlight_start,
+              comment.highlight_end,
+              comment.suggestion_type
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Replacement text for replace suggestions */}
+      {comment.suggestion_type === "replace" && comment.replacement_text && (
+        <div className="flex items-start gap-2 pl-2">
+          <ArrowRight className="size-4 text-blue-500 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-medium text-muted-foreground mb-1">
+              Replace with:
+            </p>
+            <div className="text-sm bg-blue-50 dark:bg-blue-950/30 p-2 rounded border">
+              {comment.replacement_text}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reviewer's comment */}
+      {comment.comment_text && (
+        <div className="bg-card border rounded-lg p-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1">
+            Reviewer&apos;s Comment:
+          </p>
+          <p className="text-sm">{comment.comment_text}</p>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex gap-2 pt-2">
+        {isActionable && onApply ? (
+          <>
+            <Button
+              size="sm"
+              onClick={onApply}
+              disabled={isUpdating}
+              className="gap-1"
+            >
+              {isUpdating ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Check className="size-3" />
+              )}
+              Accept
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onIgnore}
+              disabled={isUpdating}
+            >
+              Ignore
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onMarkRead}
+            disabled={isUpdating}
+            className="gap-1"
+          >
+            {isUpdating ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Check className="size-3" />
+            )}
+            Mark as Read
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

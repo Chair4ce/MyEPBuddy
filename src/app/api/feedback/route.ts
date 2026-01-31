@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
 
     // Validate each comment has required fields
     for (const comment of comments) {
-      if (!comment.section_key || !comment.comment_text) {
+      if (!comment.sectionKey || !comment.commentText) {
         return NextResponse.json(
-          { error: "Each comment must have section_key and comment_text" },
+          { error: "Each comment must have sectionKey and commentText" },
           { status: 400 }
         );
       }
@@ -63,21 +63,33 @@ export async function POST(request: NextRequest) {
     // Sanitize inputs to prevent XSS
     const sanitizedReviewerName = reviewerName.slice(0, 100).replace(/<[^>]*>/g, "");
     const sanitizedComments = comments.map((c: {
-      section_key: string;
-      original_text?: string;
-      highlight_start?: number;
-      highlight_end?: number;
-      highlighted_text?: string;
-      comment_text: string;
+      sectionKey: string;
+      sectionLabel?: string;
+      originalText?: string;
+      highlightStart?: number;
+      highlightEnd?: number;
+      highlightedText?: string;
+      commentText: string;
       suggestion?: string;
+      suggestionType?: string;
+      replacementText?: string;
+      isFullRewrite?: boolean;
+      rewriteText?: string;
     }) => ({
-      section_key: c.section_key?.slice(0, 50),
-      original_text: c.original_text?.slice(0, 5000),
-      highlight_start: typeof c.highlight_start === "number" ? c.highlight_start : null,
-      highlight_end: typeof c.highlight_end === "number" ? c.highlight_end : null,
-      highlighted_text: c.highlighted_text?.slice(0, 1000),
-      comment_text: c.comment_text?.slice(0, 2000).replace(/<[^>]*>/g, ""),
+      sectionKey: c.sectionKey?.slice(0, 50),
+      sectionLabel: c.sectionLabel?.slice(0, 100),
+      originalText: c.originalText?.slice(0, 5000),
+      highlightStart: typeof c.highlightStart === "number" ? c.highlightStart : null,
+      highlightEnd: typeof c.highlightEnd === "number" ? c.highlightEnd : null,
+      highlightedText: c.highlightedText?.slice(0, 1000),
+      commentText: c.commentText?.slice(0, 2000).replace(/<[^>]*>/g, ""),
       suggestion: c.suggestion?.slice(0, 2000).replace(/<[^>]*>/g, ""),
+      suggestionType: c.suggestionType && ["comment", "replace", "delete"].includes(c.suggestionType) 
+        ? c.suggestionType 
+        : "comment",
+      replacementText: c.replacementText?.slice(0, 2000).replace(/<[^>]*>/g, ""),
+      isFullRewrite: c.isFullRewrite === true,
+      rewriteText: c.rewriteText?.slice(0, 5000).replace(/<[^>]*>/g, ""),
     }));
 
     // Call the secure function to submit feedback
@@ -90,26 +102,44 @@ export async function POST(request: NextRequest) {
 
     if (rpcResult.error) {
       console.error("Feedback submission error:", rpcResult.error);
+      // Check for specific error messages
+      const errorMessage = rpcResult.error.message || "Failed to submit feedback";
       return NextResponse.json(
-        { error: "Failed to submit feedback" },
+        { error: errorMessage },
         { status: 500 }
       );
     }
 
-    // The RPC returns a JSONB object
-    const result = rpcResult.data as FeedbackResult;
+    // The RPC now returns a UUID (session_id) directly, or JSONB for older versions
+    const result = rpcResult.data;
     
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error || "Failed to submit feedback" },
-        { status: 400 }
-      );
+    // Handle both old JSONB format and new UUID format
+    if (typeof result === "string") {
+      // New format: returns UUID directly
+      return NextResponse.json({
+        success: true,
+        message: "Feedback submitted successfully",
+        sessionId: result,
+      });
+    } else if (result && typeof result === "object") {
+      // Old JSONB format for backwards compatibility
+      const jsonResult = result as FeedbackResult;
+      if (!jsonResult.success) {
+        return NextResponse.json(
+          { error: jsonResult.error || "Failed to submit feedback" },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        message: jsonResult.message,
+        sessionId: jsonResult.session_id,
+      });
     }
 
     return NextResponse.json({
       success: true,
-      message: result.message,
-      sessionId: result.session_id,
+      message: "Feedback submitted successfully",
     });
   } catch (error) {
     console.error("Feedback submission error:", error);

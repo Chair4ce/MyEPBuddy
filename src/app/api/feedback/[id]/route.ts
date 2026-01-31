@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 interface FeedbackSession {
   id: string;
   user_id: string;
+  review_token_id: string;
+}
+
+interface ReviewToken {
+  content_snapshot: Record<string, unknown> | null;
 }
 
 // GET: Get comments for a feedback session
@@ -24,10 +29,10 @@ export async function GET(
 
     const { id: sessionId } = await params;
 
-    // Verify user owns this session
+    // Verify user owns this session and get the review token id
     const sessionResult = await supabase
       .from("feedback_sessions")
-      .select("id, user_id")
+      .select("id, user_id, review_token_id")
       .eq("id", sessionId)
       .single();
     
@@ -48,6 +53,15 @@ export async function GET(
       );
     }
 
+    // Get the content snapshot from the review token
+    const { data: tokenData } = await supabase
+      .from("review_tokens")
+      .select("content_snapshot")
+      .eq("id", session.review_token_id)
+      .single();
+    
+    const reviewToken = tokenData as ReviewToken | null;
+
     // Get comments for this session
     const { data: comments, error } = await supabase
       .from("feedback_comments")
@@ -63,7 +77,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ comments });
+    return NextResponse.json({ 
+      comments,
+      contentSnapshot: reviewToken?.content_snapshot || null,
+    });
   } catch (error) {
     console.error("Comments fetch error:", error);
     return NextResponse.json(

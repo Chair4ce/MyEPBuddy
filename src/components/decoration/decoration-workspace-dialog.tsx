@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
@@ -70,6 +70,10 @@ import {
 import { DecorationStatementSelector } from "@/components/decoration/decoration-statement-selector";
 import { DecorationCitationEditor } from "@/components/decoration/decoration-citation-editor";
 import { DecorationShellShareDialog } from "@/components/decoration/decoration-shell-share-dialog";
+import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
+import { FeedbackListDialog } from "@/components/feedback/feedback-list-dialog";
+import { FeedbackViewerDialog } from "@/components/feedback/feedback-viewer-dialog";
+import { MessageSquareText } from "lucide-react";
 import type {
   RefinedStatement,
   DecorationShell,
@@ -159,6 +163,10 @@ export function DecorationWorkspaceDialog({
   const [statements, setStatements] = useState<RefinedStatement[]>([]);
   const [showConfig, setShowConfig] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showReviewLinkDialog, setShowReviewLinkDialog] = useState(false);
+  const [showFeedbackListDialog, setShowFeedbackListDialog] = useState(false);
+  const [showFeedbackViewerDialog, setShowFeedbackViewerDialog] = useState(false);
+  const [selectedFeedbackSessionId, setSelectedFeedbackSessionId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [rateeInfo, setRateeInfo] = useState<RateeInfo | null>(null);
@@ -372,6 +380,53 @@ export function DecorationWorkspaceDialog({
     onSaved,
   ]);
 
+  // Silent save for autosave (no toast notifications)
+  const handleSilentSave = useCallback(async () => {
+    if (!currentShell || !profile || isSaving) return;
+
+    try {
+      const { error } = await supabase
+        .from("decoration_shells")
+        .update({
+          award_type: awardType,
+          reason,
+          duty_title: dutyTitle,
+          unit,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          citation_text: citationText,
+          selected_statement_ids: selectedStatementIds,
+          statement_colors: statementColors,
+        } as never)
+        .eq("id", currentShell.id);
+
+      if (error) throw error;
+
+      setIsDirty(false);
+    } catch (error) {
+      console.error("Autosave error:", error);
+      // Silent fail - user can still manually save
+    }
+  }, [
+    currentShell,
+    profile,
+    isSaving,
+    awardType,
+    reason,
+    dutyTitle,
+    unit,
+    startDate,
+    endDate,
+    citationText,
+    selectedStatementIds,
+    statementColors,
+    supabase,
+    setIsDirty,
+  ]);
+
+  // Autosave timeout ref
+  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Delete the decoration shell
   const handleDeleteShell = useCallback(async () => {
     if (!currentShell) return;
@@ -417,6 +472,27 @@ export function DecorationWorkspaceDialog({
   const decorationConfig = useMemo(() => {
     return DECORATION_TYPES.find((d) => d.key === awardType);
   }, [awardType]);
+
+  // Autosave effect - triggers 2 seconds after changes stop
+  useEffect(() => {
+    // Clear any existing timeout
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+    }
+
+    // Only autosave if dirty and dialog is open and user can edit
+    if (isDirty && open && currentShell && canEdit) {
+      autosaveTimeoutRef.current = setTimeout(() => {
+        handleSilentSave();
+      }, 2000); // 2 second debounce
+    }
+
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, [isDirty, open, currentShell, canEdit, handleSilentSave]);
 
   // ============================================================================
   // Render
@@ -512,6 +588,15 @@ export function DecorationWorkspaceDialog({
                   )}
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowReviewLinkDialog(true)}
+                className="h-8 px-3 flex-1"
+              >
+                <MessageSquareText className="size-4" />
+                <span className="ml-1.5 text-xs">Feedback</span>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -760,6 +845,58 @@ export function DecorationWorkspaceDialog({
             isManagedMember: rateeInfo?.isManagedMember || false,
           }}
           currentUserId={profile?.id}
+        />
+      )}
+
+      {/* Review Link Dialog - For mentor feedback */}
+      {currentShell && (
+        <CreateReviewLinkDialog
+          open={showReviewLinkDialog}
+          onOpenChange={setShowReviewLinkDialog}
+          shellType="decoration"
+          shellId={currentShell.id}
+          rateeName={rateeInfo?.fullName || "Unknown"}
+          rateeRank={rateeInfo?.rank || undefined}
+          contentSnapshot={{
+            title: DECORATION_TYPES.find((t) => t.key === currentShell.award_type)?.name || currentShell.award_type,
+            sections: [
+              {
+                key: "citation",
+                label: "Citation",
+                content: citationText,
+              },
+            ],
+          }}
+        />
+      )}
+
+      {/* Feedback List Dialog */}
+      {currentShell && (
+        <FeedbackListDialog
+          open={showFeedbackListDialog}
+          onOpenChange={setShowFeedbackListDialog}
+          shellType="decoration"
+          shellId={currentShell.id}
+          onViewSession={(sessionId) => {
+            setSelectedFeedbackSessionId(sessionId);
+            setShowFeedbackListDialog(false);
+            setShowFeedbackViewerDialog(true);
+          }}
+        />
+      )}
+
+      {/* Feedback Viewer Dialog */}
+      {currentShell && (
+        <FeedbackViewerDialog
+          open={showFeedbackViewerDialog}
+          onOpenChange={setShowFeedbackViewerDialog}
+          sessionId={selectedFeedbackSessionId}
+          shellType="decoration"
+          shellId={currentShell.id}
+          onBack={() => {
+            setShowFeedbackViewerDialog(false);
+            setShowFeedbackListDialog(true);
+          }}
         />
       )}
     </>

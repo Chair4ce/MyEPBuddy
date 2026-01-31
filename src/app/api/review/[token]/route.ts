@@ -24,6 +24,30 @@ interface EPBShellData {
   sections: Array<{ mpa: string; statement_text: string }> | null;
 }
 
+interface AwardShellData {
+  shell_id: string;
+  award_title: string | null;
+  category: string | null;
+  cycle_year: number;
+  ratee_name: string;
+  ratee_rank: string | null;
+  link_label: string | null;
+  is_anonymous: boolean;
+  sections: Array<{ key: string; label: string; content: string }> | null;
+}
+
+interface DecorationShellData {
+  shell_id: string;
+  award_type: string;
+  reason: string | null;
+  duty_title: string | null;
+  ratee_name: string;
+  ratee_rank: string | null;
+  link_label: string | null;
+  is_anonymous: boolean;
+  sections: Array<{ key: string; label: string; content: string }> | null;
+}
+
 // GET: Validate token and get shell data for review (public)
 export async function GET(
   request: NextRequest,
@@ -112,9 +136,81 @@ export async function GET(
       });
     }
 
-    // TODO: Add award and decoration support in future phases
+    // Award shell
+    if (tokenInfo.shell_type === "award") {
+      const awardResult = await supabase
+        .rpc("get_award_shell_for_review", { p_token: token } as never);
+      
+      const awardData = awardResult.data as AwardShellData[] | null;
+      const awardError = awardResult.error;
+
+      if (awardError) {
+        console.error("Award fetch error:", awardError);
+        return NextResponse.json(
+          { error: "Failed to fetch Award data" },
+          { status: 500 }
+        );
+      }
+
+      if (!awardData || awardData.length === 0) {
+        return NextResponse.json(
+          { error: "Award not found" },
+          { status: 404 }
+        );
+      }
+
+      const award = awardData[0];
+      return NextResponse.json({
+        shellType: "award",
+        shellId: award.shell_id,
+        rateeName: award.ratee_name,
+        rateeRank: award.ratee_rank,
+        linkLabel: award.link_label,
+        isAnonymous: award.is_anonymous,
+        title: award.award_title,
+        cycleYear: award.cycle_year,
+        sections: award.sections,
+      });
+    }
+
+    // Decoration shell
+    if (tokenInfo.shell_type === "decoration") {
+      const decorationResult = await supabase
+        .rpc("get_decoration_shell_for_review", { p_token: token } as never);
+      
+      const decorationData = decorationResult.data as DecorationShellData[] | null;
+      const decorationError = decorationResult.error;
+
+      if (decorationError) {
+        console.error("Decoration fetch error:", decorationError);
+        return NextResponse.json(
+          { error: "Failed to fetch Decoration data" },
+          { status: 500 }
+        );
+      }
+
+      if (!decorationData || decorationData.length === 0) {
+        return NextResponse.json(
+          { error: "Decoration not found" },
+          { status: 404 }
+        );
+      }
+
+      const decoration = decorationData[0];
+      return NextResponse.json({
+        shellType: "decoration",
+        shellId: decoration.shell_id,
+        rateeName: decoration.ratee_name,
+        rateeRank: decoration.ratee_rank,
+        linkLabel: decoration.link_label,
+        isAnonymous: decoration.is_anonymous,
+        title: decoration.award_type,
+        sections: decoration.sections,
+      });
+    }
+
     return NextResponse.json(
-      { error: `Shell type ${tokenInfo.shell_type} not yet supported` },
+      { error: `Shell type ${tokenInfo.shell_type} not supported` },
       { status: 501 }
     );
   } catch (error) {

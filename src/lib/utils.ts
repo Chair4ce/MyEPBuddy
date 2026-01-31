@@ -31,6 +31,35 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Normalize text by removing unwanted line breaks that often come from PDF copy/paste.
+ * Preserves intentional paragraph breaks (double newlines) while joining lines that
+ * were broken mid-sentence.
+ */
+export function normalizeText(text: string): string {
+  if (!text) return text;
+  
+  // Replace single newlines (often from PDF line breaks) with spaces
+  // but preserve double newlines (paragraph breaks)
+  return text
+    // First, normalize all types of line endings
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    // Preserve paragraph breaks by temporarily replacing them
+    .replace(/\n\n+/g, "<<<PARAGRAPH>>>")
+    // Replace single newlines with spaces
+    .replace(/\n/g, " ")
+    // Restore paragraph breaks
+    .replace(/<<<PARAGRAPH>>>/g, "\n\n")
+    // Clean up multiple spaces
+    .replace(/  +/g, " ")
+    // Trim each line
+    .split("\n")
+    .map(line => line.trim())
+    .join("\n")
+    .trim();
+}
+
 
 
 

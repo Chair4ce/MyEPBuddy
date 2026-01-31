@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore } from "@/stores/award-shell-store";
@@ -75,6 +75,10 @@ import {
 import { AwardCategorySectionCard } from "@/components/award/award-category-section";
 import { AwardShellShareDialog } from "@/components/award/award-shell-share-dialog";
 import { BulletCanvasPreview } from "@/components/award/bullet-canvas-preview";
+import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
+import { FeedbackListDialog } from "@/components/feedback/feedback-list-dialog";
+import { FeedbackViewerDialog } from "@/components/feedback/feedback-viewer-dialog";
+import { MessageSquareText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Pencil } from "lucide-react";
 import type {
@@ -170,6 +174,10 @@ export function AwardWorkspaceDialog({
   const [showConfig, setShowConfig] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showReviewLinkDialog, setShowReviewLinkDialog] = useState(false);
+  const [showFeedbackListDialog, setShowFeedbackListDialog] = useState(false);
+  const [showFeedbackViewerDialog, setShowFeedbackViewerDialog] = useState(false);
+  const [selectedFeedbackSessionId, setSelectedFeedbackSessionId] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -500,6 +508,96 @@ export function AwardWorkspaceDialog({
     return false;
   }, [profile, shell, subordinates, managedMembers]);
 
+  // Check if any slot has unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    return Object.values(slotStates).some((s) => s.isDirty);
+  }, [slotStates]);
+
+  // Silent save for autosave (no toast notifications)
+  const handleSilentSave = useCallback(async () => {
+    if (!nomineeInfo || !profile || !currentShell || isSaving) return;
+
+    try {
+      const shellId = currentShell.id;
+
+      // Update shell config
+      await supabase
+        .from("award_shells")
+        .update({
+          award_level: awardLevel,
+          award_category: awardCategory,
+          sentences_per_statement: sentencesPerStatement,
+          title: awardTitle.trim() || null,
+        } as never)
+        .eq("id", shellId);
+
+      // Save all sections
+      for (const [key, slotState] of Object.entries(slotStates)) {
+        const [category, slotIndexStr] = key.split(":");
+        const slotIndex = parseInt(slotIndexStr);
+        const section = sections[key];
+
+        if (section?.id?.startsWith("temp-")) {
+          // Insert new section
+          await supabase
+            .from("award_shell_sections")
+            .insert({
+              shell_id: shellId,
+              category,
+              slot_index: slotIndex,
+              statement_text: slotState.draftText,
+              source_type: slotState.sourceType,
+              custom_context: slotState.customContext,
+              selected_action_ids: slotState.selectedActionIds,
+              last_edited_by: profile.id,
+            } as never);
+        } else if (section) {
+          // Update existing section
+          await supabase
+            .from("award_shell_sections")
+            .update({
+              statement_text: slotState.draftText,
+              source_type: slotState.sourceType,
+              custom_context: slotState.customContext,
+              selected_action_ids: slotState.selectedActionIds,
+              last_edited_by: profile.id,
+            } as never)
+            .eq("id", section.id);
+        }
+
+        // Mark slot as not dirty
+        const [cat, idx] = key.split(":");
+        updateSlotState(cat, parseInt(idx), { isDirty: false });
+      }
+    } catch (error) {
+      console.error("Autosave error:", error);
+      // Silent fail - user can still manually save
+    }
+  }, [nomineeInfo, profile, currentShell, isSaving, awardLevel, awardCategory, sentencesPerStatement, awardTitle, slotStates, sections, supabase, updateSlotState]);
+
+  // Autosave effect - triggers 2 seconds after changes stop
+  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Clear any existing timeout
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+    }
+
+    // Only autosave if there are unsaved changes and dialog is open and user can edit
+    if (hasUnsavedChanges && open && currentShell && canEdit) {
+      autosaveTimeoutRef.current = setTimeout(() => {
+        handleSilentSave();
+      }, 2000); // 2 second debounce
+    }
+
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, [hasUnsavedChanges, open, currentShell, canEdit, handleSilentSave]);
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -585,6 +683,20 @@ export function AwardWorkspaceDialog({
                     <TooltipContent>Save changes</TooltipContent>
                   </Tooltip>
                 )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowReviewLinkDialog(true)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <MessageSquareText className="size-4" />
+                      <span className="sr-only">Get Feedback</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Get Feedback</TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -964,6 +1076,60 @@ export function AwardWorkspaceDialog({
             isManagedMember: nomineeInfo?.isManagedMember || false,
           }}
           currentUserId={profile?.id}
+        />
+      )}
+
+      {/* Review Link Dialog - For mentor feedback */}
+      {currentShell && (
+        <CreateReviewLinkDialog
+          open={showReviewLinkDialog}
+          onOpenChange={setShowReviewLinkDialog}
+          shellType="award"
+          shellId={currentShell.id}
+          rateeName={nomineeInfo?.fullName || "Unknown"}
+          rateeRank={nomineeInfo?.rank || undefined}
+          contentSnapshot={{
+            title: currentShell.title || AWARD_CATEGORIES.find((c) => c.value === currentShell.award_category)?.label || currentShell.award_category,
+            cycleYear: currentShell.cycle_year,
+            sections: Object.entries(slotStates).map(([key, state]) => {
+              const category = key.split(":")[0];
+              return {
+                key: category,
+                label: AWARD_1206_CATEGORIES.find((c) => c.key === category)?.label || category,
+                content: state.draftText,
+              };
+            }),
+          }}
+        />
+      )}
+
+      {/* Feedback List Dialog */}
+      {currentShell && (
+        <FeedbackListDialog
+          open={showFeedbackListDialog}
+          onOpenChange={setShowFeedbackListDialog}
+          shellType="award"
+          shellId={currentShell.id}
+          onViewSession={(sessionId) => {
+            setSelectedFeedbackSessionId(sessionId);
+            setShowFeedbackListDialog(false);
+            setShowFeedbackViewerDialog(true);
+          }}
+        />
+      )}
+
+      {/* Feedback Viewer Dialog */}
+      {currentShell && (
+        <FeedbackViewerDialog
+          open={showFeedbackViewerDialog}
+          onOpenChange={setShowFeedbackViewerDialog}
+          sessionId={selectedFeedbackSessionId}
+          shellType="award"
+          shellId={currentShell.id}
+          onBack={() => {
+            setShowFeedbackViewerDialog(false);
+            setShowFeedbackListDialog(true);
+          }}
         />
       )}
     </>
