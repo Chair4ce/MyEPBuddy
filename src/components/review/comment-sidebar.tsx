@@ -12,7 +12,7 @@ interface CommentSidebarProps {
   activeCommentId?: string | null;
   hoveredCommentId?: string | null;
   editingCommentId?: string | null;
-  onCommentUpdate?: (id: string, commentText: string, suggestion?: string) => void;
+  onCommentUpdate?: (id: string, updates: { commentText?: string; replacementText?: string; rewriteText?: string }) => void;
   onCommentDelete?: (id: string) => void;
   onCommentClick?: (id: string) => void;
   onCommentHover?: (id: string | null) => void;

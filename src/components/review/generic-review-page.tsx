@@ -197,9 +197,9 @@ export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericR
   }, []);
 
   // Update a comment
-  const handleUpdateComment = useCallback((id: string, commentText: string) => {
+  const handleUpdateComment = useCallback((id: string, updates: { commentText?: string; replacementText?: string; rewriteText?: string }) => {
     setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, commentText } : c))
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
     );
   }, []);
 
@@ -511,8 +511,8 @@ export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericR
               activeCommentId={activeCommentId}
               hoveredCommentId={hoveredCommentId}
               editingCommentId={editingCommentId}
-              onCommentUpdate={(id, text) => {
-                handleUpdateComment(id, text);
+              onCommentUpdate={(id, updates) => {
+                handleUpdateComment(id, updates);
                 setEditingCommentId(null);
               }}
               onCommentDelete={handleDeleteComment}
