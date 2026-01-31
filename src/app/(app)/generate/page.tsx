@@ -45,6 +45,7 @@ import {
   ChevronUp,
   ListChecks,
   Share2,
+  MessageSquareText,
 } from "lucide-react";
 import {
   Collapsible,
@@ -57,6 +58,10 @@ import { getKeyStatus } from "@/app/actions/api-keys";
 import { EPBShellForm } from "@/components/epb/epb-shell-form";
 import { EPBShellShareDialog } from "@/components/epb/epb-shell-share-dialog";
 import { OPBShellForm } from "@/components/opb/opb-shell-form";
+import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
+import { FeedbackListDialog } from "@/components/feedback/feedback-list-dialog";
+import { FeedbackViewerDialog } from "@/components/feedback/feedback-viewer-dialog";
+import { FeedbackBadge } from "@/components/feedback/feedback-badge";
 
 export default function GeneratePage() {
   const { profile, subordinates, managedMembers } = useUserStore();
@@ -71,6 +76,10 @@ export default function GeneratePage() {
   const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showReviewLinkDialog, setShowReviewLinkDialog] = useState(false);
+  const [showFeedbackListDialog, setShowFeedbackListDialog] = useState(false);
+  const [showFeedbackViewerDialog, setShowFeedbackViewerDialog] = useState(false);
+  const [selectedFeedbackSessionId, setSelectedFeedbackSessionId] = useState<string | null>(null);
   
   // Officer workspace mode: "opb" for personal OPB, "epb" for team EPBs
   const [officerWorkspaceMode, setOfficerWorkspaceMode] = useState<"opb" | "epb">("epb");
@@ -432,16 +441,33 @@ export default function GeneratePage() {
             </div>
           )}
           {currentShell && officerWorkspaceMode === "epb" && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setShowShareDialog(true)} 
-              className="h-8 px-3 shrink-0"
-              title="Share EPB"
-            >
-              <Share2 className="size-4" />
-              <span className="hidden sm:inline ml-1.5">Share</span>
-            </Button>
+            <>
+              <FeedbackBadge
+                shellType="epb"
+                shellId={currentShell.id}
+                onClick={() => setShowFeedbackListDialog(true)}
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowReviewLinkDialog(true)} 
+                className="h-8 px-3 shrink-0"
+                title="Share for Mentor Review"
+              >
+                <MessageSquareText className="size-4" />
+                <span className="hidden sm:inline ml-1.5">Get Feedback</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowShareDialog(true)} 
+                className="h-8 px-3 shrink-0"
+                title="Share EPB"
+              >
+                <Share2 className="size-4" />
+                <span className="hidden sm:inline ml-1.5">Share</span>
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -515,6 +541,48 @@ export default function GeneratePage() {
           onClose={() => setShowShareDialog(false)}
           ratee={selectedRatee}
           currentUserId={profile?.id}
+        />
+      )}
+
+      {/* Review Link Dialog - For mentor feedback */}
+      {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
+        <CreateReviewLinkDialog
+          open={showReviewLinkDialog}
+          onOpenChange={setShowReviewLinkDialog}
+          shellType="epb"
+          shellId={currentShell.id}
+          rateeName={selectedRatee?.fullName || profile?.full_name || "Unknown"}
+          rateeRank={selectedRatee?.rank || profile?.rank || undefined}
+        />
+      )}
+
+      {/* Feedback List Dialog */}
+      {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
+        <FeedbackListDialog
+          open={showFeedbackListDialog}
+          onOpenChange={setShowFeedbackListDialog}
+          shellType="epb"
+          shellId={currentShell.id}
+          onViewSession={(sessionId) => {
+            setSelectedFeedbackSessionId(sessionId);
+            setShowFeedbackListDialog(false);
+            setShowFeedbackViewerDialog(true);
+          }}
+        />
+      )}
+
+      {/* Feedback Viewer Dialog */}
+      {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
+        <FeedbackViewerDialog
+          open={showFeedbackViewerDialog}
+          onOpenChange={setShowFeedbackViewerDialog}
+          sessionId={selectedFeedbackSessionId}
+          shellType="epb"
+          shellId={currentShell.id}
+          onBack={() => {
+            setShowFeedbackViewerDialog(false);
+            setShowFeedbackListDialog(true);
+          }}
         />
       )}
 
