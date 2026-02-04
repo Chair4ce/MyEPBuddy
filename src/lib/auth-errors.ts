@@ -51,6 +51,27 @@ const ERROR_PATTERNS: Array<{
       isEmailDelivery: true,
     },
   },
+  // SendGrid credits exhausted
+  {
+    pattern: /maximum credits exceeded/i,
+    info: {
+      title: "Email Service Unavailable",
+      message: "We can't send verification emails right now.",
+      action: "Please sign up with Google instead — it works instantly!",
+      isRateLimit: true,
+      isEmailDelivery: true,
+    },
+  },
+  {
+    pattern: /credits exceeded/i,
+    info: {
+      title: "Email Service Unavailable", 
+      message: "Our email service is temporarily unavailable.",
+      action: "Please use Google sign-in, or try again later.",
+      isRateLimit: true,
+      isEmailDelivery: true,
+    },
+  },
   // SendGrid specific errors
   {
     pattern: /sendgrid/i,
