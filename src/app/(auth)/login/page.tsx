@@ -16,7 +16,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, ExternalLink, Copy, Check, Smartphone } from "lucide-react";
+import { Loader2, ExternalLink, Copy, Check, Smartphone, AlertTriangle } from "lucide-react";
+import { parseAuthError } from "@/lib/auth-errors";
 import { AppLogo } from "@/components/layout/app-logo";
 
 // Detect if running in a restricted browser context (in-app browsers, PWAs)

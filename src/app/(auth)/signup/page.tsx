@@ -23,7 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, ExternalLink, Copy, Check, Smartphone } from "lucide-react";
+import { Loader2, ExternalLink, Copy, Check, Smartphone, AlertTriangle } from "lucide-react";
+import { parseAuthError, isRateLimitError } from "@/lib/auth-errors";
 import { AppLogo } from "@/components/layout/app-logo";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK } from "@/lib/constants";
 import type { Rank } from "@/types/database";
@@ -103,7 +104,17 @@ export default function SignupPage() {
       });
 
       if (signUpError) {
-        toast.error(signUpError.message);
+        const errorInfo = parseAuthError(signUpError.message);
+        
+        // Show more helpful error for rate limits and email issues
+        if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
+          toast.error(errorInfo.title, {
+            description: errorInfo.action || errorInfo.message,
+            duration: 8000, // Show longer for important errors
+          });
+        } else {
+          toast.error(errorInfo.message);
+        }
         return;
       }
 

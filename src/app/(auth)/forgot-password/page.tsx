@@ -15,7 +15,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, ArrowLeft, Mail } from "lucide-react";
+import { Loader2, ArrowLeft, Mail, AlertTriangle } from "lucide-react";
+import { parseAuthError } from "@/lib/auth-errors";
 import { AppLogo } from "@/components/layout/app-logo";
 
 export default function ForgotPasswordPage() {
@@ -34,7 +35,17 @@ export default function ForgotPasswordPage() {
       });
 
       if (error) {
-        toast.error(error.message);
+        const errorInfo = parseAuthError(error.message);
+        
+        // Show more helpful error for rate limits and email issues
+        if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
+          toast.error(errorInfo.title, {
+            description: errorInfo.action || errorInfo.message,
+            duration: 8000,
+          });
+        } else {
+          toast.error(errorInfo.message);
+        }
         return;
       }
 
