@@ -1,5 +1,8 @@
 "use client";
 
+// Force dynamic rendering - this page requires auth session
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
