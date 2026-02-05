@@ -60,42 +60,49 @@ const navItems = [
     href: "/dashboard",
     icon: LayoutDashboard,
     roles: ["member", "admin"],
+    tourId: "nav-dashboard",
   },
   {
     title: "My Performance",
     href: "/entries",
     icon: FileText,
     roles: ["member", "admin"],
+    tourId: "nav-entries",
   },
   {
     title: "My Team",
     href: "/team",
     icon: Users,
     roles: ["member", "admin"],
+    tourId: "nav-team",
   },
   {
     title: "EPBs",
     href: "/generate",
     icon: Sparkles,
     roles: ["member", "admin"],
+    tourId: "nav-epbs",
   },
   {
     title: "Awards",
     href: "/award",
     icon: Award,
     roles: ["member", "admin"],
+    tourId: "nav-awards",
   },
   {
     title: "Decorations",
     href: "/decoration",
     icon: Medal,
     roles: ["member", "admin"],
+    tourId: "nav-decorations",
   },
   {
     title: "Statement Library",
     href: "/library",
     icon: Library,
     roles: ["member", "admin"],
+    tourId: "nav-library",
   },
 ];
 
@@ -105,24 +112,28 @@ const settingsItems = [
     href: "/settings",
     icon: Settings,
     roles: ["member", "admin"],
+    tourId: "nav-settings-profile",
   },
   {
     title: "LLM Settings",
     href: "/settings/llm",
     icon: Wand2,
     roles: ["member", "admin"],
+    tourId: "nav-settings-llm",
   },
   {
     title: "API Keys",
     href: "/settings/api-keys",
     icon: Key,
     roles: ["member", "admin"],
+    tourId: "nav-settings-api-keys",
   },
   {
     title: "Admin Config",
     href: "/admin/config",
     icon: Shield,
     roles: ["admin"],
+    tourId: "nav-admin-config",
   },
 ];
 
@@ -156,6 +167,7 @@ function NavItem({
           : "text-sidebar-foreground hover:bg-sidebar-accent/50"
       )}
       aria-label={item.title}
+      data-tour={item.tourId}
     >
       {isLoading ? (
         <Loader2 className="size-4 shrink-0 animate-spin" />
@@ -475,6 +487,7 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                   href: "/support",
                   icon: Heart,
                   roles: ["member", "admin"],
+                  tourId: "nav-support",
                 }}
                 isActive={pathname === "/support"}
                 isLoading={loadingHref === "/support"}

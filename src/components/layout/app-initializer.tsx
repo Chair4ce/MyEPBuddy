@@ -5,6 +5,8 @@ import { useUserStore } from "@/stores/user-store";
 import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
 import { UpdatePrompt } from "@/components/layout/update-prompt";
 import { RankCompletionModal } from "@/components/modals/rank-completion-modal";
+// TODO: Re-enable tutorial feature when ready
+// import { TourProvider } from "@/components/onboarding";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
 interface AppInitializerProps {
@@ -69,6 +71,8 @@ export function AppInitializer({
       )}
       {/* Show rank completion modal after terms are accepted */}
       {!showTermsDialog && <RankCompletionModal />}
+      {/* TODO: Re-enable tutorial feature when ready */}
+      {/* {!showTermsDialog && <TourProvider />} */}
       {children}
     </>
   );

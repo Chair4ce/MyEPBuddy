@@ -375,17 +375,17 @@ export function AddManagedMemberDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="size-5" />
-            Add Team Member
+            Add Managed Subordinate
           </DialogTitle>
           <DialogDescription>
-            Add a subordinate to your team. They don&apos;t need an account yet
-            — if they sign up later, their data will be linked automatically.
+            Add a subordinate to your team who doesn&apos;t have an account yet.
+            If they sign up later, their data will link automatically.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Parent Selection - Who this member reports to */}
-          <div className="space-y-2">
+          <div className="space-y-2" data-tour="reports-to-field">
             <Label htmlFor="parent">
               Reports To <span className="text-destructive">*</span>
             </Label>
@@ -429,7 +429,7 @@ export function AddManagedMemberDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2" data-tour="member-name-field">
             <Label htmlFor="full_name">
               Full Name <span className="text-destructive">*</span>
             </Label>
@@ -444,7 +444,8 @@ export function AddManagedMemberDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-4" data-tour="remaining-fields">
+            <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="rank">Rank</Label>
               {(() => {
@@ -503,68 +504,69 @@ export function AddManagedMemberDialog({
                 placeholder="e.g., 3D0X2"
                 className="uppercase"
               />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="unit">Unit</Label>
-            <Input
-              id="unit"
-              value={formData.unit}
-              onChange={(e) =>
-                setFormData({ ...formData, unit: e.target.value })
-              }
-              placeholder="e.g., 123rd Communications Squadron"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email">
-              Email{" "}
-              <span className="text-muted-foreground text-xs">
-                (for account linking)
-              </span>
-            </Label>
-            <div className="relative">
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => {
-                  setFormData({ ...formData, email: e.target.value });
-                  setExistingUser(null);
-                }}
-                onBlur={handleEmailBlur}
-                placeholder="e.g., john.doe@us.af.mil"
-                className={existingUser ? "pr-10 border-amber-500" : ""}
-              />
-              {isCheckingEmail && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
-              )}
-              {existingUser && !isCheckingEmail && (
-                <Link2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-amber-500" />
-              )}
-            </div>
-
-            {existingUser && (
-              <div className="flex items-start gap-2 p-2 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-sm">
-                <AlertCircle className="size-4 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-medium">Account found!</p>
-                  <p className="text-xs opacity-80">
-                    {existingUser.rank} {existingUser.full_name || existingUser.email} already has an account.
-                    A supervisor request will be sent when you add them. Until they accept,
-                    they&apos;ll appear as &quot;Pending&quot; and you can still create entries for them.
-                  </p>
-                </div>
               </div>
-            )}
+            </div>
 
-            {!existingUser && !formData.email && (
-              <p className="text-xs text-muted-foreground">
-                If they sign up with this email later, they&apos;ll be prompted to link their account.
-              </p>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="unit">Unit</Label>
+              <Input
+                id="unit"
+                value={formData.unit}
+                onChange={(e) =>
+                  setFormData({ ...formData, unit: e.target.value })
+                }
+                placeholder="e.g., 123rd Communications Squadron"
+              />
+            </div>
+
+            <div className="space-y-2" data-tour="member-email-field">
+              <Label htmlFor="email">
+                Email{" "}
+                <span className="text-muted-foreground text-xs">
+                  (for account linking)
+                </span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    setExistingUser(null);
+                  }}
+                  onBlur={handleEmailBlur}
+                  placeholder="e.g., john.doe@us.af.mil"
+                  className={existingUser ? "pr-10 border-amber-500" : ""}
+                />
+                {isCheckingEmail && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+                )}
+                {existingUser && !isCheckingEmail && (
+                  <Link2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-amber-500" />
+                )}
+              </div>
+
+              {existingUser && (
+                <div className="flex items-start gap-2 p-2 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-sm">
+                  <AlertCircle className="size-4 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium">Account found!</p>
+                    <p className="text-xs opacity-80">
+                      {existingUser.rank} {existingUser.full_name || existingUser.email} already has an account.
+                      A supervisor request will be sent when you add them. Until they accept,
+                      they&apos;ll appear as &quot;Pending&quot; and you can still create entries for them.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!existingUser && !formData.email && (
+                <p className="text-xs text-muted-foreground">
+                  If they sign up with this email later, they&apos;ll be prompted to link their account.
+                </p>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
@@ -580,6 +582,7 @@ export function AddManagedMemberDialog({
               type="submit"
               disabled={isSubmitting || isCheckingEmail}
               className="w-full sm:w-auto"
+              data-tour="submit-member-btn"
             >
               {isSubmitting ? (
                 <>

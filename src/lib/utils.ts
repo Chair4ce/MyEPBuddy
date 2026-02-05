@@ -60,6 +60,153 @@ export function normalizeText(text: string): string {
     .trim();
 }
 
+// ============================================
+// Name Utilities
+// ============================================
+
+interface NameFields {
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+}
+
+/**
+ * Get the full name from a profile or entity with name fields.
+ * Prefers first_name + last_name if both exist, falls back to full_name.
+ */
+export function getFullName(entity: NameFields | null | undefined): string {
+  if (!entity) return "";
+  
+  // Prefer the new separate fields
+  if (entity.first_name && entity.last_name) {
+    return `${entity.first_name} ${entity.last_name}`;
+  }
+  
+  // Fall back to full_name
+  return entity.full_name || "";
+}
+
+/**
+ * Get the last name from a profile or entity.
+ * Prefers last_name field, falls back to parsing from full_name.
+ */
+export function getLastName(entity: NameFields | null | undefined): string {
+  if (!entity) return "";
+  
+  // Prefer the new last_name field
+  if (entity.last_name) {
+    return entity.last_name;
+  }
+  
+  // Fall back to parsing from full_name (get everything after first space)
+  if (entity.full_name) {
+    const parts = entity.full_name.trim().split(" ");
+    if (parts.length > 1) {
+      return parts.slice(1).join(" "); // Everything after first name (handles middle names)
+    }
+    return entity.full_name; // Single name, return as-is
+  }
+  
+  return "";
+}
+
+/**
+ * Get just the surname (last word of name) for military format.
+ * Useful for "SSgt Smith" format where middle names should be excluded.
+ */
+export function getSurname(entity: NameFields | null | undefined): string {
+  if (!entity) return "";
+  
+  // If we have last_name, get the last word (in case it includes middle name)
+  if (entity.last_name) {
+    const parts = entity.last_name.trim().split(" ");
+    return parts[parts.length - 1];
+  }
+  
+  // Fall back to parsing from full_name
+  if (entity.full_name) {
+    const parts = entity.full_name.trim().split(" ");
+    return parts[parts.length - 1];
+  }
+  
+  return "";
+}
+
+/**
+ * Get the first name from a profile or entity.
+ * Prefers first_name field, falls back to parsing from full_name.
+ */
+export function getFirstName(entity: NameFields | null | undefined): string {
+  if (!entity) return "";
+  
+  // Prefer the new first_name field
+  if (entity.first_name) {
+    return entity.first_name;
+  }
+  
+  // Fall back to parsing from full_name (first word)
+  if (entity.full_name) {
+    const parts = entity.full_name.trim().split(" ");
+    return parts[0];
+  }
+  
+  return "";
+}
+
+/**
+ * Get initials from a profile or entity.
+ * Uses first letter of first name and first letter of last name.
+ */
+export function getInitials(entity: NameFields | null | undefined): string {
+  if (!entity) return "";
+  
+  const firstName = getFirstName(entity);
+  const lastName = getLastName(entity);
+  
+  if (firstName && lastName) {
+    // Get first letter of first name and first letter of last name (not middle)
+    const lastParts = lastName.split(" ");
+    const actualLastName = lastParts[lastParts.length - 1];
+    return `${firstName[0]}${actualLastName[0]}`.toUpperCase();
+  }
+  
+  // Fall back to full_name parsing
+  if (entity?.full_name) {
+    return entity.full_name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }
+  
+  return "";
+}
+
+/**
+ * Parse a full name string into first and last name components.
+ * Used for migrating legacy data or handling user input.
+ */
+export function parseFullName(fullName: string | null | undefined): { firstName: string; lastName: string } {
+  if (!fullName) {
+    return { firstName: "", lastName: "" };
+  }
+  
+  const trimmed = fullName.trim();
+  const spaceIndex = trimmed.indexOf(" ");
+  
+  if (spaceIndex === -1) {
+    // Single word - could be either first or last name
+    // Conventionally treating it as first name
+    return { firstName: trimmed, lastName: "" };
+  }
+  
+  return {
+    firstName: trimmed.slice(0, spaceIndex),
+    lastName: trimmed.slice(spaceIndex + 1), // Everything after first space (handles middle names)
+  };
+}
+
 
 
 

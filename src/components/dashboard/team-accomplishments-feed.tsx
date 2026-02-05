@@ -58,6 +58,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useOnboardingStore } from "@/stores/onboarding-store";
+import { useRouter } from "next/navigation";
+import { UserPlus, Link2 } from "lucide-react";
 
 // All ranks for filtering (enlisted + officer, excluding civilian for typical use)
 const FEED_FILTER_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
@@ -75,6 +78,49 @@ type TimePeriod = typeof TIME_PERIODS[number]["value"];
 
 interface TeamAccomplishmentsFeedProps {
   cycleYear: number; // Still passed for quarterly view grouping, but not used for filtering
+}
+
+// Empty state component with tour triggers
+function EmptyTeamState() {
+  const router = useRouter();
+  const { startTour } = useOnboardingStore();
+
+  const handleAddSubordinate = () => {
+    router.push("/team");
+    setTimeout(() => {
+      startTour("add-subordinate");
+    }, 500);
+  };
+
+  const handleConnectMember = () => {
+    router.push("/team");
+    setTimeout(() => {
+      startTour("connect-supervisor");
+    }, 500);
+  };
+
+  return (
+    <div className="py-8 text-center">
+      <div className="inline-flex items-center justify-center size-16 rounded-full bg-primary/10 mb-4">
+        <Users className="size-8 text-primary" />
+      </div>
+      <h3 className="font-semibold text-lg mb-2">Build Your Team</h3>
+      <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+        Start tracking your team&apos;s accomplishments by adding subordinates,
+        or connect with an existing member to join their chain of command.
+      </p>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <Button onClick={handleAddSubordinate}>
+          <UserPlus className="size-4 mr-2" />
+          Add Subordinate
+        </Button>
+        <Button variant="outline" onClick={handleConnectMember}>
+          <Link2 className="size-4 mr-2" />
+          Connect to Member
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedProps) {
@@ -872,30 +918,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
   // Has supervisor rank but no subordinates yet
   if (!hasSubordinates) {
     return (
-      <div className="py-8 text-center">
-        <div className="inline-flex items-center justify-center size-16 rounded-full bg-primary/10 mb-4">
-          <Users className="size-8 text-primary" />
-        </div>
-        <h3 className="font-semibold text-lg mb-2">Build Your Team</h3>
-        <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-          Start tracking your team&apos;s accomplishments by adding subordinates,
-          or request to link with your supervisor to join their chain of command.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Button asChild>
-            <a href="/team">
-              <Users className="size-4 mr-2" />
-              Add Team Members
-            </a>
-          </Button>
-          <Button variant="outline" asChild>
-            <a href="/team?tab=chain">
-              <UserCheck className="size-4 mr-2" />
-              Link to Supervisor
-            </a>
-          </Button>
-        </div>
-      </div>
+      <EmptyTeamState />
     );
   }
 

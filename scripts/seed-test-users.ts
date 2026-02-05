@@ -39,6 +39,21 @@ interface TestUser {
   unit: string;
 }
 
+// Fresh user for onboarding testing (no rank, no terms accepted)
+interface FreshTestUser {
+  id: string;
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+const freshOnboardingUser: FreshTestUser = {
+  id: "f0f0f0f0-f0f0-f0f0-f0f0-f0f0f0f0f0f0",
+  email: "new.user@test.af.mil",
+  password: "password123",
+  full_name: "New User",
+};
+
 const testUsers: TestUser[] = [
   // Flight Chief
   {
@@ -130,8 +145,12 @@ const testUsers: TestUser[] = [
 async function main() {
   console.log("🚀 Seeding local database...\n");
 
+  // Step 0: Create fresh onboarding test user
+  console.log("📋 Step 0: Creating fresh onboarding test user...\n");
+  await createFreshOnboardingUser();
+
   // Step 1: Create auth users
-  console.log("📋 Step 1: Creating auth users...\n");
+  console.log("\n📋 Step 1: Creating auth users...\n");
   for (const user of testUsers) {
     await createAuthUser(user);
   }
@@ -156,7 +175,16 @@ async function main() {
   console.log("\n" + "=".repeat(60));
   console.log("✅ Database seeding complete!");
   console.log("=".repeat(60));
-  console.log("\n📧 Test Accounts:\n");
+  
+  console.log("\n🆕 ONBOARDING TEST ACCOUNT (no rank, no terms accepted):\n");
+  console.log("┌────────────────────────────────┬──────────────┬─────────┐");
+  console.log("│ Email                          │ Password     │ Rank    │");
+  console.log("├────────────────────────────────┼──────────────┼─────────┤");
+  console.log(`│ ${freshOnboardingUser.email.padEnd(30)} │ ${freshOnboardingUser.password.padEnd(12)} │ ${"(none)".padEnd(7)} │`);
+  console.log("└────────────────────────────────┴──────────────┴─────────┘");
+  console.log("   → Login to test: Terms Agreement → Rank Selection → Dashboard");
+  
+  console.log("\n📧 Test Accounts (with existing data):\n");
   console.log("┌────────────────────────────────┬──────────────┬─────────┐");
   console.log("│ Email                          │ Password     │ Rank    │");
   console.log("├────────────────────────────────┼──────────────┼─────────┤");
@@ -171,6 +199,38 @@ async function main() {
   console.log("  • TSgt Williams sees: Self, SSgt Davis, SrA Taylor, A1C Anderson, Amn Thompson");
   console.log("  • TSgt Jones CANNOT see TSgt Williams' chain (co-worker isolation)");
   console.log("  • SrA Miller can only see their own data\n");
+}
+
+async function createFreshOnboardingUser() {
+  const user = freshOnboardingUser;
+  try {
+    // Delete existing user if present (ignore errors)
+    await supabase.auth.admin.deleteUser(user.id).catch(() => {});
+
+    // Create user with admin API - NO email confirmation so they go through verification
+    const { error } = await supabase.auth.admin.createUser({
+      id: user.id,
+      email: user.email,
+      password: user.password,
+      email_confirm: true, // Skip email verification for testing
+      user_metadata: {
+        full_name: user.full_name,
+        // NO rank, afsc, unit - this user will go through onboarding
+      },
+    });
+
+    if (error) {
+      console.error(`  ❌ ${user.email}: ${error.message}`);
+      return;
+    }
+
+    // The profile is auto-created by trigger with null rank, null terms_accepted_at
+    // Perfect for testing the onboarding flow!
+    console.log(`  ✅ Fresh onboarding user: ${user.email} (password: ${user.password})`);
+    console.log(`     → No rank set, no terms accepted - will see full onboarding flow`);
+  } catch (err) {
+    console.error(`  ❌ Error creating ${user.email}:`, err);
+  }
 }
 
 async function createAuthUser(user: TestUser) {

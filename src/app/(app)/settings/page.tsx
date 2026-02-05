@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { getInitials } from "@/lib/utils";
 import type { Rank, Profile } from "@/types/database";
 
 export default function SettingsPage() {
@@ -52,7 +53,8 @@ export default function SettingsPage() {
   const [googlePictureUrl, setGooglePictureUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
-    full_name: "",
+    first_name: "",
+    last_name: "",
     rank: "" as Rank | "",
     afsc: "",
     unit: "",
@@ -92,12 +94,7 @@ export default function SettingsPage() {
   const hasCustomAvatar = profile?.avatar_url && googlePictureUrl && profile.avatar_url !== googlePictureUrl;
   const canRevertToGoogle = googlePictureUrl && (hasCustomAvatar || !profile?.avatar_url);
   
-  const initials =
-    profile?.full_name
-      ?.split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase() || profile?.email?.charAt(0).toUpperCase() || "U";
+  const initials = getInitials(profile) || profile?.email?.charAt(0).toUpperCase() || "U";
 
   // When user selects a file, show the crop dialog
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -286,7 +283,8 @@ export default function SettingsPage() {
   useEffect(() => {
     if (profile) {
       setForm({
-        full_name: profile.full_name || "",
+        first_name: profile.first_name || "",
+        last_name: profile.last_name || "",
         rank: profile.rank || "",
         afsc: profile.afsc || "",
         unit: profile.unit || "",
@@ -315,11 +313,16 @@ export default function SettingsPage() {
     setIsLoading(true);
 
     try {
+      // Combine first and last name for full_name (backwards compatibility)
+      const fullName = [form.first_name, form.last_name].filter(Boolean).join(" ") || null;
+      
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("profiles")
         .update({
-          full_name: form.full_name,
+          first_name: form.first_name || null,
+          last_name: form.last_name || null,
+          full_name: fullName, // Keep full_name synced for backwards compatibility
           rank: form.rank || null,
           afsc: form.afsc || null,
           unit: form.unit || null,
@@ -651,15 +654,28 @@ export default function SettingsPage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="full_name">Full Name</Label>
+                <Label htmlFor="first_name">First Name</Label>
                 <Input
-                  id="full_name"
-                  value={form.full_name}
+                  id="first_name"
+                  value={form.first_name}
                   onChange={(e) =>
-                    setForm({ ...form, full_name: e.target.value })
+                    setForm({ ...form, first_name: e.target.value })
                   }
-                  placeholder="John Doe"
-                  aria-label="Full name"
+                  placeholder="John"
+                  aria-label="First name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="last_name">Last Name</Label>
+                <Input
+                  id="last_name"
+                  value={form.last_name}
+                  onChange={(e) =>
+                    setForm({ ...form, last_name: e.target.value })
+                  }
+                  placeholder="Doe"
+                  aria-label="Last name"
                 />
               </div>
 

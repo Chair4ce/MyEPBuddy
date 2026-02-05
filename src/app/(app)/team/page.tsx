@@ -1881,35 +1881,36 @@ export default function TeamPage() {
                 onClick={() => setShowAwardPackagesManager(true)}
               >
                 <Trophy className="size-4 mr-2" />
-                Award Packages
+                Manage Team Awards
               </Button>
               <Button 
                 variant="outline" 
                 className="w-full sm:w-auto shrink-0"
                 onClick={() => setShowAddMemberDialog(true)}
+                data-tour="add-member-btn"
               >
                 <UserPlus className="size-4 mr-2" />
-                Add Member
+                Add Managed Account
               </Button>
             </>
           )}
           <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
             <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto shrink-0">
+              <Button className="w-full sm:w-auto shrink-0" data-tour="send-request-btn">
                 <Send className="size-4 mr-2" />
-                Send Request
+                Request Supervision
               </Button>
             </DialogTrigger>
           <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle className="text-base sm:text-lg">Send Team Request</DialogTitle>
+              <DialogTitle className="text-base sm:text-lg">Connect to Existing Member</DialogTitle>
               <DialogDescription className="text-xs sm:text-sm">
-                Request to supervise someone or request someone to supervise you
+                Link with a supervisor or subordinate who already has an account
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 sm:space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs sm:text-sm">Request Type</Label>
+              <div className="space-y-2" data-tour="request-type-field">
+                <Label className="text-xs sm:text-sm">Connection Type</Label>
                 <Select 
                   value={inviteType} 
                   onValueChange={(v) => {
@@ -1944,8 +1945,8 @@ export default function TeamPage() {
                 )}
               </div>
               
-              <div className="space-y-2">
-                <Label className="text-xs sm:text-sm">Search by Email</Label>
+              <div className="space-y-2" data-tour="search-email-field">
+                <Label className="text-xs sm:text-sm">Find by Email</Label>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
                     value={inviteEmail}

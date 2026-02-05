@@ -25,6 +25,8 @@ import { SUPERVISOR_RANKS, getStaticCloseoutDate, getActiveCycleYear, isOfficer 
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
 import { TeamAccomplishmentsFeed } from "@/components/dashboard/team-accomplishments-feed";
+// TODO: Re-enable tutorial feature when ready
+// import { SetupChecklistButton } from "@/components/dashboard/setup-checklist-button";
 import type { Rank } from "@/types/database";
 
 export default function DashboardPage() {
@@ -79,7 +81,7 @@ export default function DashboardPage() {
       {/* Welcome Section */}
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight">
-          Welcome back, {profile?.rank} {profile?.full_name?.split(" ")[0] || (userIsOfficer ? "Sir/Ma'am" : "Airman")}
+          Welcome back, {profile?.rank} {profile?.last_name || profile?.full_name?.split(" ").pop() || (userIsOfficer ? "Sir/Ma'am" : "Airman")}
         </h1>
         <p className="text-muted-foreground">
           {userIsOfficer 
@@ -122,6 +124,8 @@ export default function DashboardPage() {
             </Link>
           </Button>
         )}
+        {/* TODO: Re-enable tutorial feature when ready */}
+        {/* <SetupChecklistButton /> */}
       </div>
 
       {/* Officer Info Card */}

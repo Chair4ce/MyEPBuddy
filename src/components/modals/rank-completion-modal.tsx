@@ -19,9 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
-import { CheckCircle2, Calendar, Users, Award, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK } from "@/lib/constants";
 import type { Rank, Profile } from "@/types/database";
 
@@ -32,6 +33,8 @@ export function RankCompletionModal() {
   const { profile, setProfile } = useUserStore();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedRank, setSelectedRank] = useState<Rank | "">("");
+  const [afsc, setAfsc] = useState("");
+  const [unit, setUnit] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const supabase = createClient();
 
@@ -55,16 +58,28 @@ export function RankCompletionModal() {
     return () => clearTimeout(timer);
   }, [profile]);
 
-  async function handleSaveRank() {
+  async function handleSaveProfile() {
     if (!selectedRank || !profile) return;
 
     setIsLoading(true);
 
     try {
+      const updateData: { rank: Rank; afsc?: string; unit?: string } = {
+        rank: selectedRank,
+      };
+
+      // Only include afsc and unit if they have values
+      if (afsc.trim()) {
+        updateData.afsc = afsc.trim().toUpperCase();
+      }
+      if (unit.trim()) {
+        updateData.unit = unit.trim();
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("profiles")
-        .update({ rank: selectedRank })
+        .update(updateData)
         .eq("id", profile.id)
         .select()
         .single();
@@ -75,11 +90,11 @@ export function RankCompletionModal() {
       }
 
       setProfile(data as Profile);
-      toast.success("Rank saved! EPB features are now enabled.");
+      toast.success("Profile saved! EPB features are now enabled.");
       setIsOpen(false);
       localStorage.setItem(getStorageKey(profile.id), "true");
     } catch {
-      toast.error("Failed to save rank");
+      toast.error("Failed to save profile");
     } finally {
       setIsLoading(false);
     }
@@ -103,42 +118,11 @@ export function RankCompletionModal() {
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Feature highlights */}
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <Calendar className="size-5 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium">EPB Close-out Dates</p>
-                <p className="text-xs text-muted-foreground">
-                  See your static close-out dates and submission deadlines
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <Users className="size-5 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium">Team Management</p>
-                <p className="text-xs text-muted-foreground">
-                  Supervise and manage EPBs for your team members
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <Award className="size-5 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium">Award Recommendations</p>
-                <p className="text-xs text-muted-foreground">
-                  Get rank-appropriate award suggestions and tracking
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* Rank selection */}
-          <div className="space-y-2 pt-2">
-            <Label htmlFor="modal-rank">Your Rank</Label>
+          <div className="space-y-2">
+            <Label htmlFor="modal-rank">
+              Rank <span className="text-destructive">*</span>
+            </Label>
             <Select
               value={selectedRank}
               onValueChange={(value) => setSelectedRank(value as Rank)}
@@ -175,8 +159,40 @@ export function RankCompletionModal() {
             </Select>
           </div>
 
-          <p className="text-xs text-muted-foreground text-center">
-            You can always update your rank later in Settings
+          {/* AFSC */}
+          <div className="space-y-2">
+            <Label htmlFor="modal-afsc">AFSC</Label>
+            <Input
+              id="modal-afsc"
+              placeholder="e.g., 3D0X2"
+              value={afsc}
+              onChange={(e) => setAfsc(e.target.value)}
+              maxLength={10}
+              aria-label="Enter your AFSC"
+            />
+            <p className="text-xs text-muted-foreground">
+              Your Air Force Specialty Code
+            </p>
+          </div>
+
+          {/* Unit */}
+          <div className="space-y-2">
+            <Label htmlFor="modal-unit">Unit</Label>
+            <Input
+              id="modal-unit"
+              placeholder="e.g., 42 CS/SCOO"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              maxLength={50}
+              aria-label="Enter your unit"
+            />
+            <p className="text-xs text-muted-foreground">
+              Your squadron or office symbol
+            </p>
+          </div>
+
+          <p className="text-xs text-muted-foreground text-center pt-2">
+            You can always update these later in Settings
           </p>
         </div>
 
@@ -186,10 +202,10 @@ export function RankCompletionModal() {
             onClick={handleDismiss}
             className="w-full sm:w-auto"
           >
-            I'll do this later
+            I&apos;ll do this later
           </Button>
           <Button
-            onClick={handleSaveRank}
+            onClick={handleSaveProfile}
             disabled={!selectedRank || isLoading}
             className="w-full sm:w-auto"
           >
@@ -201,7 +217,7 @@ export function RankCompletionModal() {
             ) : (
               <>
                 <CheckCircle2 className="size-4 mr-2" />
-                Save Rank
+                Save Profile
               </>
             )}
           </Button>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getFullName } from "@/lib/utils";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore } from "@/stores/award-shell-store";
 import { Button } from "@/components/ui/button";
@@ -249,23 +250,23 @@ export default function AwardPage() {
   const nomineeOptions: NomineeOption[] = [
     {
       id: "self",
-      label: `${profile?.rank || ""} ${profile?.full_name || "Myself"} (Self)`.trim(),
-      fullName: profile?.full_name || null,
+      label: `${profile?.rank || ""} ${getFullName(profile) || "Myself"} (Self)`.trim(),
+      fullName: getFullName(profile) || null,
       rank: profile?.rank as Rank | null,
       afsc: profile?.afsc || null,
       isManagedMember: false,
     },
     ...subordinates.map((sub) => ({
       id: sub.id,
-      label: `${sub.rank || ""} ${sub.full_name}`.trim(),
-      fullName: sub.full_name,
+      label: `${sub.rank || ""} ${getFullName(sub)}`.trim(),
+      fullName: getFullName(sub),
       rank: sub.rank as Rank | null,
       afsc: sub.afsc,
       isManagedMember: false,
     })),
     ...managedMembers.map((member) => ({
       id: `managed:${member.id}`,
-      label: `${member.rank || ""} ${member.full_name}`.trim(),
+      label: `${member.rank || ""} ${member.full_name}`.trim(), // Managed members only have full_name
       fullName: member.full_name,
       rank: member.rank as Rank | null,
       afsc: member.afsc,
@@ -774,14 +775,14 @@ export default function AwardPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="self">
-                        {profile?.rank} {profile?.full_name} (Self)
+                        {profile?.rank} {getFullName(profile)} (Self)
                       </SelectItem>
                       {(subordinates.length > 0 || managedMembers.length > 0) && (
                         <Separator className="my-1" />
                       )}
                       {subordinates.map((sub) => (
                         <SelectItem key={sub.id} value={sub.id}>
-                          {sub.rank} {sub.full_name}
+                          {sub.rank} {getFullName(sub)}
                         </SelectItem>
                       ))}
                       {managedMembers.map((member) => (

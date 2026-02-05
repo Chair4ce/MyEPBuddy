@@ -40,7 +40,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { AI_MODELS } from "@/lib/constants";
 import { DECORATION_TYPES, DECORATION_REASONS } from "@/features/decorations/constants";
-import { cn } from "@/lib/utils";
+import { cn, getFullName } from "@/lib/utils";
 import {
   Medal,
   Save,
@@ -243,7 +243,7 @@ export function DecorationWorkspaceDialog({
       if (member) {
         info = {
           id: member.id,
-          fullName: member.full_name,
+          fullName: member.full_name, // Managed members only have full_name
           rank: member.rank as Rank | null,
           afsc: member.afsc,
           unit: member.unit,
@@ -254,7 +254,7 @@ export function DecorationWorkspaceDialog({
       // It's the user's own shell
       info = {
         id: profile.id,
-        fullName: profile.full_name,
+        fullName: getFullName(profile), // Use utility to get proper full name
         rank: profile.rank as Rank | null,
         afsc: profile.afsc,
         unit: profile.unit,
@@ -266,7 +266,7 @@ export function DecorationWorkspaceDialog({
       if (sub) {
         info = {
           id: sub.id,
-          fullName: sub.full_name,
+          fullName: getFullName(sub), // Use utility to get proper full name
           rank: sub.rank as Rank | null,
           afsc: sub.afsc,
           unit: sub.unit,

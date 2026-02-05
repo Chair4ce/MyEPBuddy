@@ -59,7 +59,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DecorationWorkspaceDialog } from "@/components/decoration/decoration-workspace-dialog";
 import { DECORATION_TYPES, DECORATION_REASONS } from "@/features/decorations/constants";
-import { cn } from "@/lib/utils";
+import { cn, getFullName } from "@/lib/utils";
 import type {
   DecorationShell,
   DecorationAwardType,
@@ -138,23 +138,23 @@ export default function DecorationPage() {
   const rateeOptions: RateeOption[] = [
     {
       id: "self",
-      label: `${profile?.rank || ""} ${profile?.full_name || "Myself"} (Self)`.trim(),
-      fullName: profile?.full_name || null,
+      label: `${profile?.rank || ""} ${getFullName(profile) || "Myself"} (Self)`.trim(),
+      fullName: getFullName(profile) || null,
       rank: profile?.rank as Rank | null,
       afsc: profile?.afsc || null,
       isManagedMember: false,
     },
     ...subordinates.map((sub) => ({
       id: sub.id,
-      label: `${sub.rank || ""} ${sub.full_name}`.trim(),
-      fullName: sub.full_name,
+      label: `${sub.rank || ""} ${getFullName(sub)}`.trim(),
+      fullName: getFullName(sub),
       rank: sub.rank as Rank | null,
       afsc: sub.afsc,
       isManagedMember: false,
     })),
     ...managedMembers.map((member) => ({
       id: `managed:${member.id}`,
-      label: `${member.rank || ""} ${member.full_name}`.trim(),
+      label: `${member.rank || ""} ${member.full_name}`.trim(), // Managed members only have full_name
       fullName: member.full_name,
       rank: member.rank as Rank | null,
       afsc: member.afsc,
@@ -366,10 +366,12 @@ export default function DecorationPage() {
   // Get owner display name
   const getOwnerDisplayName = (decoration: DecorationShellWithDetails) => {
     if (decoration.owner_team_member) {
+      // Managed members only have full_name
       return `${decoration.owner_team_member.rank || ""} ${decoration.owner_team_member.full_name}`.trim();
     }
     if (decoration.owner_profile) {
-      return `${decoration.owner_profile.rank || ""} ${decoration.owner_profile.full_name}`.trim();
+      // Use getFullName for profiles to properly combine first_name + last_name
+      return `${decoration.owner_profile.rank || ""} ${getFullName(decoration.owner_profile)}`.trim();
     }
     return "Unknown";
   };
