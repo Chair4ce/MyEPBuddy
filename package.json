@@ -3,7 +3,7 @@
   "version": "0.3.2",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "(docker ps --format '{{.Names}}' | grep -q 'supabase_db_myepbuddy' || supabase start) && next dev --turbopack",
     "prebuild": "node scripts/generate-version.js",
     "build": "next build",
     "start": "next start",
