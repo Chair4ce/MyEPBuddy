@@ -15,19 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, ExternalLink, Copy, Check, Smartphone, AlertTriangle } from "lucide-react";
-import { parseAuthError, isRateLimitError } from "@/lib/auth-errors";
+import { Loader2, ExternalLink, Copy, Check, Smartphone } from "lucide-react";
+import { parseAuthError } from "@/lib/auth-errors";
 import { AppLogo } from "@/components/layout/app-logo";
-import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK } from "@/lib/constants";
-import type { Rank } from "@/types/database";
 
 // Detect if running in a restricted browser context (in-app browsers, PWAs)
 function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
@@ -61,9 +52,6 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [rank, setRank] = useState<Rank | "">("");
-  const [afsc, setAfsc] = useState("");
-  const [unit, setUnit] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [restrictedBrowser, setRestrictedBrowser] = useState<{
@@ -80,19 +68,10 @@ export default function SignupPage() {
 
   async function handleEmailSignup(e: React.FormEvent) {
     e.preventDefault();
-
-    if (!rank) {
-      toast.error("Please select your rank");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      // All users are members - team relationships determine supervision
-      const role = "member";
-
-      const { error: signUpError, data } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -110,54 +89,12 @@ export default function SignupPage() {
         if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
           toast.error(errorInfo.title, {
             description: errorInfo.action || errorInfo.message,
-            duration: 8000, // Show longer for important errors
+            duration: 8000,
           });
         } else {
           toast.error(errorInfo.message);
         }
         return;
-      }
-
-      // Update profile with additional info
-      // The profile is created by a database trigger, so we may need to wait briefly
-      if (data.user) {
-        const userId = data.user.id;
-        // Helper function to update profile with retry
-        const updateProfileWithRetry = async (retries = 3, delay = 200): Promise<boolean> => {
-          for (let attempt = 0; attempt < retries; attempt++) {
-            // Wait before retrying (skip wait on first attempt)
-            if (attempt > 0) {
-              await new Promise(resolve => setTimeout(resolve, delay));
-            }
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error: profileError } = await (supabase as any)
-              .from("profiles")
-              .update({
-                full_name: fullName,
-                rank,
-                afsc,
-                unit,
-                role,
-              })
-              .eq("id", userId);
-
-            if (!profileError) {
-              return true; // Success
-            }
-
-            console.error(`Profile update attempt ${attempt + 1} failed:`, profileError);
-          }
-          return false; // All retries failed
-        };
-
-        const profileUpdated = await updateProfileWithRetry();
-        
-        if (!profileUpdated) {
-          // Profile update failed, but account was created
-          // User can update their profile in settings
-          toast.warning("Account created but profile incomplete. Please update your profile in Settings after logging in.");
-        }
       }
 
       toast.success("Account created! Please check your email to verify.");
@@ -310,83 +247,18 @@ export default function SignupPage() {
           </div>
 
           <form onSubmit={handleEmailSignup} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
-                <Input
-                  id="fullName"
-                  placeholder="John Doe"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                  disabled={isLoading}
-                  aria-label="Full name"
-                  autoComplete="name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="rank">Rank</Label>
-                <Select
-                  value={rank}
-                  onValueChange={(value) => setRank(value as Rank)}
-                  disabled={isLoading}
-                >
-                  <SelectTrigger id="rank" aria-label="Select rank">
-                    <SelectValue placeholder="Select rank" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                      Enlisted
-                    </div>
-                    {ENLISTED_RANKS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>
-                        {r.value}
-                      </SelectItem>
-                    ))}
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-1">
-                      Officer
-                    </div>
-                    {OFFICER_RANKS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>
-                        {r.value}
-                      </SelectItem>
-                    ))}
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-1">
-                      Civilian
-                    </div>
-                    {CIVILIAN_RANK.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>
-                        {r.value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="afsc">AFSC</Label>
-                <Input
-                  id="afsc"
-                  placeholder="1N0X1"
-                  value={afsc}
-                  onChange={(e) => setAfsc(e.target.value.toUpperCase())}
-                  disabled={isLoading}
-                  aria-label="Air Force Specialty Code"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="unit">Unit</Label>
-                <Input
-                  id="unit"
-                  placeholder="25 IS"
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  disabled={isLoading}
-                  aria-label="Unit"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Full Name</Label>
+              <Input
+                id="fullName"
+                placeholder="John Doe"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                disabled={isLoading}
+                aria-label="Full name"
+                autoComplete="name"
+              />
             </div>
 
             <div className="space-y-2">
@@ -448,4 +320,3 @@ export default function SignupPage() {
     </div>
   );
 }
-
