@@ -21,26 +21,21 @@ interface WelcomeTourModalProps {
 export function WelcomeTourModal({ open, onOpenChange }: WelcomeTourModalProps) {
   const router = useRouter();
   const { 
-    startTour, 
     setHasSeenWelcome,
     hasCreatedFirstTeamMember,
     hasConnectedSupervisor,
   } = useOnboardingStore();
 
-  const handleStartSubordinateTour = () => {
+  const handleAddManagedAccount = () => {
     onOpenChange(false);
-    router.push("/team");
-    setTimeout(() => {
-      startTour("add-subordinate");
-    }, 500);
+    setHasSeenWelcome(true);
+    router.push("/team?action=add-member");
   };
 
-  const handleStartSupervisorTour = () => {
+  const handleRequestSupervision = () => {
     onOpenChange(false);
-    router.push("/team");
-    setTimeout(() => {
-      startTour("connect-supervisor");
-    }, 500);
+    setHasSeenWelcome(true);
+    router.push("/team?action=request-supervision");
   };
 
   const handleSkip = () => {
@@ -65,8 +60,8 @@ export function WelcomeTourModal({ open, onOpenChange }: WelcomeTourModalProps) 
           <div
             role="button"
             tabIndex={hasCreatedFirstTeamMember ? -1 : 0}
-            onClick={() => !hasCreatedFirstTeamMember && handleStartSubordinateTour()}
-            onKeyDown={(e) => !hasCreatedFirstTeamMember && e.key === "Enter" && handleStartSubordinateTour()}
+            onClick={() => !hasCreatedFirstTeamMember && handleAddManagedAccount()}
+            onKeyDown={(e) => !hasCreatedFirstTeamMember && e.key === "Enter" && handleAddManagedAccount()}
             className={`w-full flex items-center gap-2 py-1.5 text-left transition-all rounded ${
               hasCreatedFirstTeamMember
                 ? "opacity-60 cursor-default"
@@ -81,15 +76,15 @@ export function WelcomeTourModal({ open, onOpenChange }: WelcomeTourModalProps) 
               {hasCreatedFirstTeamMember && <Check className="size-3 text-primary-foreground" />}
             </div>
             <span className={`text-sm ${hasCreatedFirstTeamMember ? "line-through" : ""}`}>
-              Add a managed subordinate
+              Add Managed Account
             </span>
           </div>
 
           <div
             role="button"
             tabIndex={hasConnectedSupervisor ? -1 : 0}
-            onClick={() => !hasConnectedSupervisor && handleStartSupervisorTour()}
-            onKeyDown={(e) => !hasConnectedSupervisor && e.key === "Enter" && handleStartSupervisorTour()}
+            onClick={() => !hasConnectedSupervisor && handleRequestSupervision()}
+            onKeyDown={(e) => !hasConnectedSupervisor && e.key === "Enter" && handleRequestSupervision()}
             className={`w-full flex items-center gap-2 py-1.5 text-left transition-all rounded ${
               hasConnectedSupervisor
                 ? "opacity-60 cursor-default"
@@ -104,7 +99,7 @@ export function WelcomeTourModal({ open, onOpenChange }: WelcomeTourModalProps) 
               {hasConnectedSupervisor && <Check className="size-3 text-primary-foreground" />}
             </div>
             <span className={`text-sm ${hasConnectedSupervisor ? "line-through" : ""}`}>
-              Connect to existing member
+              Request Supervision
             </span>
           </div>
         </div>

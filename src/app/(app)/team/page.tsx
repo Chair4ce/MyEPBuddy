@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
@@ -224,6 +225,8 @@ function formatDaysSupervised(days: number): string {
 }
 
 export default function TeamPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { profile, subordinates, setSubordinates, managedMembers, removeManagedMember, epbConfig } = useUserStore();
   const [isLoading, setIsLoading] = useState(true);
   const [supervisors, setSupervisors] = useState<Profile[]>([]);
@@ -254,6 +257,20 @@ export default function TeamPage() {
   const [searchedProfile, setSearchedProfile] = useState<Profile | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   
+  // Handle URL query params to open modals directly
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "add-member") {
+      setShowAddMemberDialog(true);
+      // Clear the query param
+      router.replace("/team", { scroll: false });
+    } else if (action === "request-supervision") {
+      setShowInviteDialog(true);
+      // Clear the query param
+      router.replace("/team", { scroll: false });
+    }
+  }, [searchParams, router]);
+
   // Member removal confirmation state
   const [confirmDeleteMember, setConfirmDeleteMember] = useState<{ 
     id: string; 

@@ -58,7 +58,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useOnboardingStore } from "@/stores/onboarding-store";
+// TODO: Re-enable when tutorial feature is ready
+// import { useOnboardingStore } from "@/stores/onboarding-store";
 import { useRouter } from "next/navigation";
 import { UserPlus, Link2 } from "lucide-react";
 
@@ -80,23 +81,16 @@ interface TeamAccomplishmentsFeedProps {
   cycleYear: number; // Still passed for quarterly view grouping, but not used for filtering
 }
 
-// Empty state component with tour triggers
+// Empty state component with direct modal triggers
 function EmptyTeamState() {
   const router = useRouter();
-  const { startTour } = useOnboardingStore();
 
-  const handleAddSubordinate = () => {
-    router.push("/team");
-    setTimeout(() => {
-      startTour("add-subordinate");
-    }, 500);
+  const handleAddManagedAccount = () => {
+    router.push("/team?action=add-member");
   };
 
-  const handleConnectMember = () => {
-    router.push("/team");
-    setTimeout(() => {
-      startTour("connect-supervisor");
-    }, 500);
+  const handleRequestSupervision = () => {
+    router.push("/team?action=request-supervision");
   };
 
   return (
@@ -110,13 +104,13 @@ function EmptyTeamState() {
         or connect with an existing member to join their chain of command.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <Button onClick={handleAddSubordinate}>
+        <Button onClick={handleAddManagedAccount}>
           <UserPlus className="size-4 mr-2" />
-          Add Subordinate
+          Add Managed Account
         </Button>
-        <Button variant="outline" onClick={handleConnectMember}>
+        <Button variant="outline" onClick={handleRequestSupervision}>
           <Link2 className="size-4 mr-2" />
-          Connect to Member
+          Request Supervision
         </Button>
       </div>
     </div>
