@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,11 +20,23 @@ import { Loader2, ArrowLeft, Mail, AlertTriangle } from "lucide-react";
 import { parseAuthError } from "@/lib/auth-errors";
 import { AppLogo } from "@/components/layout/app-logo";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  useEffect(() => {
+    // Check for error from callback (e.g., link opened in different browser)
+    const error = searchParams.get("error");
+    if (error === "link_expired") {
+      toast.error("Password reset link expired or invalid", {
+        description: "Please request a new password reset link.",
+        duration: 6000,
+      });
+    }
+  }, [searchParams]);
 
   async function handleResetRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -147,5 +160,21 @@ export default function ForgotPasswordPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="animate-fade-in">
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }

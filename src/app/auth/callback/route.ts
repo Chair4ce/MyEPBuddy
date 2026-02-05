@@ -6,6 +6,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/dashboard";
   const error_description = searchParams.get("error_description");
+  const type = searchParams.get("type");
 
   // Handle error from auth provider
   if (error_description) {
@@ -29,6 +30,26 @@ export async function GET(request: Request) {
       } else {
         return NextResponse.redirect(`${origin}${next}`);
       }
+    }
+
+    // Code exchange failed - this commonly happens when:
+    // 1. User opens verification email in a different browser/device than where they signed up
+    // 2. The PKCE code_verifier cookie is missing or expired
+    // 3. The verification link was already used
+    
+    // For signup verification, the email IS verified at this point (Supabase verified it
+    // before redirecting here), but we couldn't create a session. Redirect with success.
+    if (type === "signup" || type === "email") {
+      return NextResponse.redirect(
+        `${origin}/login?email_verified=true`
+      );
+    }
+
+    // For password recovery, redirect to indicate they should try again
+    if (type === "recovery") {
+      return NextResponse.redirect(
+        `${origin}/forgot-password?error=link_expired`
+      );
     }
   }
 

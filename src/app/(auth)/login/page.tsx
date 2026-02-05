@@ -65,6 +65,15 @@ function LoginPageContent() {
   useEffect(() => {
     setRestrictedBrowser(isRestrictedBrowser());
 
+    // Check for successful email verification
+    const emailVerified = searchParams.get("email_verified");
+    if (emailVerified === "true") {
+      toast.success("Email verified! Please sign in to continue.", {
+        duration: 5000,
+      });
+      return;
+    }
+
     // Check for auth errors from callback
     const error = searchParams.get("error");
     if (error) {
