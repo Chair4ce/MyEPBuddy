@@ -30,7 +30,8 @@ import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK } from "@/lib/constants";
 import type { Rank } from "@/types/database";
 
 export default function CompleteProfilePage() {
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [rank, setRank] = useState<Rank | "">("");
   const [afsc, setAfsc] = useState("");
@@ -119,11 +120,16 @@ export default function CompleteProfilePage() {
         return;
       }
 
+      // Combine first and last name for full_name (backwards compatibility)
+      const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+
       // Update user metadata with email
       const { error: updateError } = await supabase.auth.updateUser({
         email: email,
         data: {
           full_name: fullName,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
           rank: rank,
         },
       });
@@ -151,6 +157,8 @@ export default function CompleteProfilePage() {
       const { error: profileError } = await (supabase as any).from("profiles").upsert({
         id: user.id,
         full_name: fullName,
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
         email: email,
         rank: rank as Rank,
         afsc: afsc || null,
@@ -224,19 +232,35 @@ export default function CompleteProfilePage() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name *</Label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="John Doe"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                disabled={isLoading}
-                aria-label="Full name"
-                autoComplete="name"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="John"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  aria-label="First name"
+                  autoComplete="given-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Doe"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  aria-label="Last name"
+                  autoComplete="family-name"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

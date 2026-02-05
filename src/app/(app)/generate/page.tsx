@@ -696,8 +696,8 @@ export default function GeneratePage() {
         />
       )}
 
-      {/* Viewing EPB for Selector - Only for EPB mode */}
-      {currentShell && (!userIsOfficer || officerWorkspaceMode === "epb") && (
+      {/* Viewing EPB for Selector - Only for EPB mode, always rendered to prevent layout shift */}
+      {(!userIsOfficer || officerWorkspaceMode === "epb") && (
         <Card className="bg-muted/30 overflow-hidden">
           <CardContent className="py-2 sm:py-3 px-3 sm:px-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">

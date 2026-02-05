@@ -51,7 +51,8 @@ function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [restrictedBrowser, setRestrictedBrowser] = useState<{
@@ -71,6 +72,7 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
+      const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
       const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -78,6 +80,8 @@ export default function SignupPage() {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
           },
         },
       });
@@ -247,18 +251,33 @@ export default function SignupPage() {
           </div>
 
           <form onSubmit={handleEmailSignup} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
-                placeholder="John Doe"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                disabled={isLoading}
-                aria-label="Full name"
-                autoComplete="name"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <Input
+                  id="firstName"
+                  placeholder="John"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  aria-label="First name"
+                  autoComplete="given-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input
+                  id="lastName"
+                  placeholder="Doe"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  aria-label="Last name"
+                  autoComplete="family-name"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
