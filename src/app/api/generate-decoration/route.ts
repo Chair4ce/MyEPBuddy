@@ -10,6 +10,9 @@ import { buildDecorationSystemPrompt, expandAbbreviations } from "@/lib/decorati
 import type { DecorationAwardType, DecorationReason } from "@/lib/decoration-constants";
 import { DECORATION_TYPES } from "@/lib/decoration-constants";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 interface GenerateDecorationRequest {
   // Ratee info
   rateeId: string;

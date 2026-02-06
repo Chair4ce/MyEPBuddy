@@ -9,6 +9,9 @@ import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import type { Rank, UserLLMSettings } from "@/types/database";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 // Legacy combine mode (two statements into one)
 interface CombineRequest {
   mode?: "combine";

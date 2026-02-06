@@ -9,6 +9,9 @@ import { AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES } from "@/lib/constants"
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import type { Rank, UserLLMSettings, AwardLevel, AwardCategory, AwardSentencesPerCategory, WinLevel } from "@/types/database";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 interface AwardExampleStatement {
   category: string;
   statement: string;

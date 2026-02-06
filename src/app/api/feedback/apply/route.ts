@@ -4,6 +4,9 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 interface ApplyFeedbackRequest {
   currentText: string;
   snapshotText: string;

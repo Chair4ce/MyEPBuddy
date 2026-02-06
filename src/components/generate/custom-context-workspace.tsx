@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -970,7 +971,7 @@ export function CustomContextWorkspace({
 
     try {
       // Use revise-selection API with proper format
-      const response = await fetch("/api/revise-selection", {
+      const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

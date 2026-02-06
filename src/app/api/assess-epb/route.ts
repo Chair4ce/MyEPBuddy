@@ -10,6 +10,9 @@ import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank } from "@/li
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 interface AssessEPBRequest {
   shellId: string;
   rateeRank: Rank;

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Analytics } from "@/lib/analytics";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -1776,7 +1777,7 @@ export function EPBShellForm({
   ): Promise<string[]> => {
     const maxChars = mpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
     try {
-      const response = await fetch("/api/revise-selection", {
+      const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1815,7 +1816,7 @@ export function EPBShellForm({
     fillToMax: boolean = true
   ): Promise<string[]> => {
     try {
-      const response = await fetch("/api/revise-selection", {
+      const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

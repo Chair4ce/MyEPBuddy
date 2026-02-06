@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo, useLayoutEffect } from "react";
 import { Badge } from "@/components/ui/badge";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -384,7 +385,7 @@ function StatementSlotCard({
     setRevisionResults([]);
     
     try {
-      const response = await fetch("/api/revise-selection", {
+      const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -425,7 +426,7 @@ function StatementSlotCard({
     onUpdate({ isRevising: true });
     
     try {
-      const response = await fetch("/api/revise-selection", {
+      const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

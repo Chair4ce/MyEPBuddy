@@ -22,6 +22,9 @@ import {
 } from "@/lib/quality-control";
 import type { StyleExampleCategory } from "@/types/database";
 
+// Allow up to 60s for LLM calls (initial generation + quality control pass)
+export const maxDuration = 60;
+
 interface ReviseSelectionRequest {
   fullStatement: string;
   selectedText: string;

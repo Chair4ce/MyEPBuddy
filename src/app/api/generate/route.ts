@@ -18,6 +18,9 @@ import {
 import type { MPADescriptions, Project, ProjectStakeholder } from "@/types/database";
 import type { Rank, WritingStyle, UserLLMSettings, MajorGradedArea, Acronym, Abbreviation } from "@/types/database";
 
+// Allow up to 60s for LLM calls (initial generation + quality control)
+export const maxDuration = 60;
+
 interface ProjectContext {
   project: Project;
   subordinateAccomplishments?: {

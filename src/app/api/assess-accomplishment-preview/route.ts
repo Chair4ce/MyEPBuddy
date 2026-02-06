@@ -17,6 +17,9 @@ import {
 import type { Rank } from "@/types/database";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 interface AssessPreviewRequest {
   action_verb: string;
   details: string;

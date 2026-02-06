@@ -10,6 +10,9 @@ import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
 
+// Allow up to 60s for LLM calls
+export const maxDuration = 60;
+
 interface ParseBulkStatementsRequest {
   rawText: string;
   mpaDetectionMode: "auto" | "manual";
