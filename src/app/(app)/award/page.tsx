@@ -1,20 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getFullName } from "@/lib/utils";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore } from "@/stores/award-shell-store";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -149,9 +141,10 @@ function calculatePeriodDates(
 export default function AwardPage() {
   const router = useRouter();
   const supabase = createClient();
-  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
-  // Awards use calendar year cycles, not SCOD-based cycles
-  const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
+  const { profile, subordinates, managedMembers } = useUserStore();
+
+  // Optional year filter — "all" by default so every award is visible
+  const [filterYear, setFilterYear] = useState<number | "all">("all");
 
   // Award shell store (for reset functionality)
   const { reset: resetAwardStore } = useAwardShellStore();
@@ -282,12 +275,11 @@ export default function AwardPage() {
     if (!profile) return;
 
     try {
-      // Fetch all award shells visible to this user
-      // The RLS policies handle visibility based on:
-      // - User's own shells
-      // - Shells they created
-      // - Subordinate shells via team_history
-      // - Managed member shells
+      // Fetch all award shells visible to this user (all years).
+      // RLS policies (067 + 071) grant visibility for:
+      // - Own shells & shells the user created
+      // - Full subordinate chain via get_subordinate_chain (any depth)
+      // - Managed members of anyone in the chain
       // - Shared shells
       const { data: shellsData, error } = await supabase
         .from("award_shells")
@@ -295,7 +287,6 @@ export default function AwardPage() {
           *,
           award_shell_sections(id, statement_text)
         `)
-        .eq("cycle_year", cycleYear)
         .order("updated_at", { ascending: false });
 
       if (error) {
@@ -303,118 +294,111 @@ export default function AwardPage() {
         return;
       }
 
-      // Enrich with owner profile/member info
-      const enrichedAwards: AwardShellWithDetails[] = await Promise.all(
-        (shellsData || []).map(async (shellData) => {
-          // Type the shell data properly
-          const shell = shellData as unknown as AwardShell & { 
-            award_shell_sections?: { id: string; statement_text: string }[] 
-          };
-          
-          const sections = shell.award_shell_sections || [];
-          const sectionsCount = sections.length;
-          const filledSectionsCount = sections.filter(
-            (s) => s.statement_text?.trim()
-          ).length;
+      // Type the raw rows
+      const shells = (shellsData || []).map((d) => d as unknown as AwardShell & {
+        award_shell_sections?: { id: string; statement_text: string }[];
+      });
 
-          let ownerProfile: Profile | null = null;
-          let ownerTeamMember: ManagedMember | null = null;
-          let creatorProfile: Profile | null = null;
+      // ---- Batch-fetch all profiles & managed members we don't already have ----
+      // Build a local lookup from store data
+      const knownProfiles = new Map<string, Profile>();
+      knownProfiles.set(profile.id, profile);
+      for (const sub of subordinates) knownProfiles.set(sub.id, sub);
 
-          // Get owner info
-          if (shell.team_member_id) {
-            // It's a managed member
-            const member = managedMembers.find((m) => m.id === shell.team_member_id);
-            if (member) {
-              ownerTeamMember = member;
-            } else {
-              // Fetch from DB if not in local store
-              const { data: memberData } = await supabase
-                .from("team_members")
-                .select("*")
-                .eq("id", shell.team_member_id)
-                .single();
-              if (memberData) {
-                ownerTeamMember = memberData as unknown as ManagedMember;
-              }
-            }
-          } else {
-            // It's a real user
-            if (shell.user_id === profile.id) {
-              ownerProfile = profile;
-            } else {
-              const sub = subordinates.find((s) => s.id === shell.user_id);
-              if (sub) {
-                ownerProfile = sub;
-              } else {
-                // Fetch from DB
-                const { data: profileData } = await supabase
-                  .from("profiles")
-                  .select("*")
-                  .eq("id", shell.user_id)
-                  .single();
-                if (profileData) {
-                  ownerProfile = profileData as unknown as Profile;
-                }
-              }
-            }
-          }
+      const knownMembers = new Map<string, ManagedMember>();
+      for (const m of managedMembers) knownMembers.set(m.id, m);
 
-          // Get creator info
-          if (shell.created_by === profile.id) {
-            creatorProfile = profile;
-          } else {
-            const creator = subordinates.find((s) => s.id === shell.created_by);
-            if (creator) {
-              creatorProfile = creator;
-            } else {
-              const { data: creatorData } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", shell.created_by)
-                .single();
-              if (creatorData) {
-                creatorProfile = creatorData as unknown as Profile;
-              }
-            }
-          }
+      // Collect IDs we still need
+      const missingProfileIds = new Set<string>();
+      const missingMemberIds = new Set<string>();
 
-          return {
-            id: shell.id,
-            user_id: shell.user_id,
-            team_member_id: shell.team_member_id,
-            created_by: shell.created_by,
-            cycle_year: shell.cycle_year,
-            award_level: shell.award_level,
-            award_category: shell.award_category,
-            sentences_per_statement: shell.sentences_per_statement,
-            award_period_type: shell.award_period_type || "annual",
-            quarter: shell.quarter,
-            is_fiscal_year: shell.is_fiscal_year || false,
-            period_start_date: shell.period_start_date,
-            period_end_date: shell.period_end_date,
-            is_team_award: shell.is_team_award,
-            is_winner: shell.is_winner,
-            win_level: shell.win_level,
-            won_at: shell.won_at,
-            generated_award_id: shell.generated_award_id,
-            created_at: shell.created_at,
-            updated_at: shell.updated_at,
-            owner_profile: ownerProfile,
-            owner_team_member: ownerTeamMember,
-            creator_profile: creatorProfile,
-            sections_count: sectionsCount || 3,
-            filled_sections_count: filledSectionsCount,
-          } as AwardShellWithDetails;
-        })
-      );
+      for (const shell of shells) {
+        if (shell.team_member_id && !knownMembers.has(shell.team_member_id)) {
+          missingMemberIds.add(shell.team_member_id);
+        }
+        if (!shell.team_member_id && !knownProfiles.has(shell.user_id)) {
+          missingProfileIds.add(shell.user_id);
+        }
+        if (!knownProfiles.has(shell.created_by)) {
+          missingProfileIds.add(shell.created_by);
+        }
+      }
+
+      // Fetch missing profiles in one call
+      if (missingProfileIds.size > 0) {
+        const { data: fetched } = await supabase
+          .from("profiles")
+          .select("*")
+          .in("id", [...missingProfileIds]);
+        for (const p of (fetched || []) as unknown as Profile[]) {
+          knownProfiles.set(p.id, p);
+        }
+      }
+
+      // Fetch missing managed members in one call
+      if (missingMemberIds.size > 0) {
+        const { data: fetched } = await supabase
+          .from("team_members")
+          .select("*")
+          .in("id", [...missingMemberIds]);
+        for (const m of (fetched || []) as unknown as ManagedMember[]) {
+          knownMembers.set(m.id, m);
+        }
+      }
+
+      // ---- Enrich each shell using the pre-fetched maps ----
+      const enrichedAwards: AwardShellWithDetails[] = shells.map((shell) => {
+        const sections = shell.award_shell_sections || [];
+        const sectionsCount = sections.length;
+        const filledSectionsCount = sections.filter(
+          (s) => s.statement_text?.trim()
+        ).length;
+
+        const ownerTeamMember = shell.team_member_id
+          ? knownMembers.get(shell.team_member_id) || null
+          : null;
+
+        const ownerProfile = !shell.team_member_id
+          ? knownProfiles.get(shell.user_id) || null
+          : null;
+
+        const creatorProfile = knownProfiles.get(shell.created_by) || null;
+
+        return {
+          id: shell.id,
+          user_id: shell.user_id,
+          team_member_id: shell.team_member_id,
+          created_by: shell.created_by,
+          cycle_year: shell.cycle_year,
+          award_level: shell.award_level,
+          award_category: shell.award_category,
+          sentences_per_statement: shell.sentences_per_statement,
+          award_period_type: shell.award_period_type || "annual",
+          quarter: shell.quarter,
+          is_fiscal_year: shell.is_fiscal_year || false,
+          period_start_date: shell.period_start_date,
+          period_end_date: shell.period_end_date,
+          is_team_award: shell.is_team_award,
+          is_winner: shell.is_winner,
+          win_level: shell.win_level,
+          won_at: shell.won_at,
+          generated_award_id: shell.generated_award_id,
+          created_at: shell.created_at,
+          updated_at: shell.updated_at,
+          owner_profile: ownerProfile,
+          owner_team_member: ownerTeamMember,
+          creator_profile: creatorProfile,
+          sections_count: sectionsCount || 3,
+          filled_sections_count: filledSectionsCount,
+        } as AwardShellWithDetails;
+      });
 
       setAwards(enrichedAwards);
     } catch (error) {
       console.error("Error loading awards:", error);
       toast.error("Failed to load award packages");
     }
-  }, [profile, cycleYear, supabase, subordinates, managedMembers]);
+  }, [profile, supabase, subordinates, managedMembers]);
 
   // Initial load
   useEffect(() => {
@@ -425,6 +409,20 @@ export default function AwardPage() {
     }
     init();
   }, [loadAwards]);
+
+  // ============================================================================
+  // Derived: filtered awards + available years
+  // ============================================================================
+
+  const availableYears = useMemo(() => {
+    const years = [...new Set(awards.map((a) => a.cycle_year))].sort((a, b) => b - a);
+    return years;
+  }, [awards]);
+
+  const filteredAwards = useMemo(() => {
+    if (filterYear === "all") return awards;
+    return awards.filter((a) => a.cycle_year === filterYear);
+  }, [awards, filterYear]);
 
   // ============================================================================
   // Handlers
@@ -688,17 +686,31 @@ export default function AwardPage() {
           </div>
         </div>
 
-        {/* Cycle Year Badge */}
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-xs">
-            {cycleYear} Cycle
-          </Badge>
-      
-        </div>
+        {/* Year Filter */}
+        {availableYears.length > 1 && (
+          <div className="flex items-center gap-2">
+            <Select
+              value={filterYear === "all" ? "all" : filterYear.toString()}
+              onValueChange={(v) => setFilterYear(v === "all" ? "all" : parseInt(v))}
+            >
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Years</SelectItem>
+                {availableYears.map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Awards List */}
         <AwardListTable
-          awards={awards}
+          awards={filteredAwards}
           currentUserId={profile.id}
           isLoading={isLoading}
           onAwardClick={handleAwardClick}

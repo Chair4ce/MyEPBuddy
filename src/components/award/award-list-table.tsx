@@ -77,7 +77,7 @@ interface AwardListTableProps {
   onAwardClick: (award: AwardShellWithDetails) => void;
 }
 
-type SortField = "name" | "level" | "category" | "updated" | "progress";
+type SortField = "name" | "level" | "category" | "updated" | "progress" | "year";
 type SortOrder = "asc" | "desc";
 
 // ============================================================================
@@ -203,6 +203,9 @@ export function AwardListTable({
           break;
         case "progress":
           comparison = getProgress(a) - getProgress(b);
+          break;
+        case "year":
+          comparison = a.cycle_year - b.cycle_year;
           break;
       }
 
@@ -340,11 +343,13 @@ export function AwardListTable({
                   </Tooltip>
                 )}
               </div>
-              <span className="text-xs text-muted-foreground">
-                {formatPeriodLabel(award)}
-              </span>
             </div>
           </div>
+        </TableCell>
+        <TableCell>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {formatPeriodLabel(award)}
+          </span>
         </TableCell>
         <TableCell>
           <Badge variant="outline" className="text-xs">
@@ -428,11 +433,19 @@ export function AwardListTable({
               <TableHeader>
                 <TableRow>
                   <TableHead
-                    className="w-[250px] cursor-pointer hover:bg-muted/50"
+                    className="w-[220px] cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("name")}
                   >
                     <div className="flex items-center">
                       Nominee <SortIcon field="name" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("year")}
+                  >
+                    <div className="flex items-center">
+                      Period <SortIcon field="year" />
                     </div>
                   </TableHead>
                   <TableHead
@@ -493,7 +506,8 @@ export function AwardListTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[250px]">Nominee</TableHead>
+                  <TableHead className="w-[220px]">Nominee</TableHead>
+                  <TableHead>Period</TableHead>
                   <TableHead>Level</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Progress</TableHead>

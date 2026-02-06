@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -53,15 +52,13 @@ import {
   RotateCcw,
   Trash2,
   AlertTriangle,
-  MoreVertical,
 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Collapsible,
   CollapsibleContent,
@@ -519,7 +516,7 @@ export function DecorationWorkspaceDialog({
     : "Unknown";
 
   return (
-    <>
+    <TooltipProvider>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           hideCloseButton
@@ -554,142 +551,94 @@ export function DecorationWorkspaceDialog({
             </div>
           )}
 
-          <DialogHeader className="px-4 pt-4 pb-3 border-b shrink-0">
-            {/* Title row with close button */}
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <Medal className="size-5 text-primary shrink-0" />
+          <DialogHeader className="px-4 pt-3 pb-3 border-b shrink-0">
+            {/* Header row: Icon + Title/Description + Action buttons */}
+            <div className="flex items-center justify-between gap-3">
+              {/* Left side: Icon and info */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Medal className="size-5 text-primary" />
+                </div>
                 <div className="min-w-0">
-                  <DialogTitle className="text-base font-semibold leading-tight">
+                  <DialogTitle className="text-sm font-semibold leading-tight truncate">
                     {rateeDisplayName}&apos;s Decoration
                   </DialogTitle>
-                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  <DialogDescription className="text-xs text-muted-foreground">
                     {decorationConfig?.name || "Decoration"} •{" "}
                     {decorationConfig?.abbreviation || awardType.toUpperCase()}
                   </DialogDescription>
                 </div>
               </div>
-              <DialogClose asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 shrink-0 -mr-1 -mt-1"
-                >
-                  <X className="size-4" />
-                  <span className="sr-only">Close</span>
-                </Button>
-              </DialogClose>
-            </div>
 
-            {/* Action buttons row */}
-            <div className="flex items-center gap-2">
-              {canEdit && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveShell}
-                  disabled={isSaving || isLoadingShell}
-                  className="h-8 px-3 flex-1"
-                >
-                  {isSaving ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Save className="size-4" />
-                  )}
-                  <span className="ml-1.5 text-xs">Save</span>
-                  {isDirty && (
-                    <Badge variant="secondary" className="ml-1 text-[10px]">
-                      •
-                    </Badge>
-                  )}
-                </Button>
-              )}
-              <FeedbackBadge
-                shellType="decoration"
-                shellId={currentShell?.id || ""}
-                onClick={() => setShowFeedbackListDialog(true)}
-                refreshKey={feedbackBadgeRefreshKey}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowReviewLinkDialog(true)}
-                className="h-8 px-3"
-              >
-                <MessageSquareText className="size-4" />
-                <span className="ml-1.5 text-xs">Get Feedback</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowShareDialog(true)}
-                className="h-8 px-3 flex-1"
-              >
-                <Share2 className="size-4" />
-                <span className="ml-1.5 text-xs">Share</span>
-              </Button>
-
-              {/* More options menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
-                    <MoreVertical className="size-4" />
-                    <span className="sr-only">More options</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuSeparator />
-                  <AlertDialog
-                    open={showDeleteConfirm}
-                    onOpenChange={setShowDeleteConfirm}
-                  >
-                    <AlertDialogTrigger asChild>
-                      <DropdownMenuItem
-                        onSelect={(e) => e.preventDefault()}
-                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+              {/* Right side: Action buttons */}
+              <div className="flex items-center gap-1 shrink-0">
+                {canEdit && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleSaveShell}
+                        disabled={isSaving || isLoadingShell}
+                        className="h-8 w-8 p-0 relative"
                       >
-                        <Trash2 className="size-4 mr-2" />
-                        Delete Decoration
-                      </DropdownMenuItem>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2">
-                          <AlertTriangle className="size-5 text-destructive" />
-                          Delete Decoration
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to delete this decoration for{" "}
-                          <strong>{rateeDisplayName}</strong>? This will permanently
-                          delete the citation and cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>
-                          Cancel
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={handleDeleteShell}
-                          disabled={isDeleting}
-                          className="bg-destructive text-white hover:bg-destructive/90"
-                        >
-                          {isDeleting ? (
-                            <>
-                              <Loader2 className="size-4 mr-1.5 animate-spin" />
-                              Deleting...
-                            </>
-                          ) : (
-                            <>
-                              <Trash2 className="size-4 mr-1.5" />
-                              Delete Permanently
-                            </>
-                          )}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                        {isSaving ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Save className="size-4" />
+                        )}
+                        {isDirty && (
+                          <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary" />
+                        )}
+                        <span className="sr-only">Save</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Save changes</TooltipContent>
+                  </Tooltip>
+                )}
+                <FeedbackBadge
+                  shellType="decoration"
+                  shellId={currentShell?.id || ""}
+                  onClick={() => setShowFeedbackListDialog(true)}
+                  refreshKey={feedbackBadgeRefreshKey}
+                  className="h-8"
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowReviewLinkDialog(true)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <MessageSquareText className="size-4" />
+                      <span className="sr-only">Get Feedback</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Get Feedback</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowShareDialog(true)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Share2 className="size-4" />
+                      <span className="sr-only">Share</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Share</TooltipContent>
+                </Tooltip>
+                <div className="w-px h-5 bg-border mx-1" />
+                <DialogClose asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <X className="size-4" />
+                    <span className="sr-only">Close</span>
+                  </Button>
+                </DialogClose>
+              </div>
             </div>
           </DialogHeader>
 
@@ -829,6 +778,63 @@ export function DecorationWorkspaceDialog({
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {/* Danger Zone - Delete */}
+                      <Separator className="my-4" />
+                      <div className="space-y-2">
+                        <Label className="text-xs text-destructive">Danger Zone</Label>
+                        <div className="flex items-center justify-between p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+                          <div className="space-y-0.5">
+                            <p className="text-sm font-medium">Delete Decoration</p>
+                            <p className="text-xs text-muted-foreground">
+                              Permanently delete this decoration and its citation.
+                            </p>
+                          </div>
+                          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="destructive" size="sm">
+                                <Trash2 className="size-4 mr-1.5" />
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="flex items-center gap-2">
+                                  <AlertTriangle className="size-5 text-destructive" />
+                                  Delete Decoration
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this decoration for{" "}
+                                  <strong>{rateeDisplayName}</strong>? This will permanently
+                                  delete the citation and cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isDeleting}>
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={handleDeleteShell}
+                                  disabled={isDeleting}
+                                  className="bg-destructive text-white hover:bg-destructive/90"
+                                >
+                                  {isDeleting ? (
+                                    <>
+                                      <Loader2 className="size-4 mr-1.5 animate-spin" />
+                                      Deleting...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="size-4 mr-1.5" />
+                                      Delete Permanently
+                                    </>
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
@@ -935,6 +941,6 @@ export function DecorationWorkspaceDialog({
           }}
         />
       )}
-    </>
+    </TooltipProvider>
   );
 }
