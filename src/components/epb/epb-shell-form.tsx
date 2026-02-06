@@ -46,14 +46,11 @@ import {
   ChevronUp,
   Users,
   User,
-  UserPlus,
-  Share2,
   Sparkles,
   ClipboardCheck,
   Archive,
   Rows2,
 } from "lucide-react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
@@ -1937,106 +1934,10 @@ export function EPBShellForm({
   }
 
   // No shell exists - show creation prompt
+  // (Member selector is already rendered in the page header "Viewing EPB for:")
   if (!currentShell) {
     return (
       <div className="space-y-6">
-        {/* Ratee Selector */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">EPB Shell</CardTitle>
-            <CardDescription>
-              Create and manage performance narrative statements for yourself or your team
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <div className="flex-1 max-w-xs">
-                <Select
-                  value={getSelectedRateeValue()}
-                  onValueChange={handleRateeChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select member..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="self">
-                      <span className="flex items-center gap-2">
-                        <User className="size-4" />
-                        Myself ({profile?.rank} {profile?.full_name})
-                      </span>
-                    </SelectItem>
-                    {subordinates.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                          Team Members
-                        </div>
-                        {subordinates.map((sub) => (
-                          <SelectItem key={sub.id} value={sub.id}>
-                            <span className="flex items-center gap-2">
-                              <Users className="size-4" />
-                              {sub.rank} {sub.full_name}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                    {managedMembers.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                          Managed Members
-                        </div>
-                        {managedMembers.map((member) => (
-                          <SelectItem key={member.id} value={`managed:${member.id}`}>
-                            <span className="flex items-center gap-2">
-                              <User className="size-4 opacity-60" />
-                              {member.rank} {member.full_name}
-                              {member.is_placeholder && (
-                                <Badge variant="secondary" className="text-[10px]">
-                                  Managed
-                                </Badge>
-                              )}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                    {sharedEPBOptions.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                          Shared with Me
-                        </div>
-                        {sharedEPBOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            <span className="flex items-center gap-2">
-                              <Share2 className="size-4 text-primary" />
-                              {opt.label}
-                              <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary border-primary/30">
-                                Shared
-                              </Badge>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                    <Separator className="my-1" />
-                    <Link
-                      href="/team"
-                      className="flex items-center gap-2 px-2 py-1.5 text-sm text-primary hover:bg-muted rounded-sm cursor-pointer"
-                    >
-                      <UserPlus className="size-4" />
-                      Add team member
-                    </Link>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Badge variant="outline" className="text-sm">
-                {cycleYear} Cycle
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Create Shell Prompt */}
         <Card className="border-dashed border-2">
           <CardContent className="py-12 flex flex-col items-center justify-center text-center">
             <div className="size-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
