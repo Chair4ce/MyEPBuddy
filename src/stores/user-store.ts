@@ -7,6 +7,7 @@ interface UserState {
   managedMembers: ManagedMember[];
   epbConfig: EPBConfig | null;
   isLoading: boolean;
+  termsAcceptedThisSession: boolean;
   setProfile: (profile: Profile | null) => void;
   setSubordinates: (subordinates: Profile[]) => void;
   setManagedMembers: (members: ManagedMember[]) => void;
@@ -15,7 +16,17 @@ interface UserState {
   removeManagedMember: (id: string) => void;
   setEpbConfig: (config: EPBConfig | null) => void;
   setIsLoading: (loading: boolean) => void;
+  setTermsAcceptedThisSession: (accepted: boolean) => void;
   reset: () => void;
+}
+
+// Check sessionStorage for existing session acceptance on store creation
+function getInitialSessionTerms(): boolean {
+  try {
+    return sessionStorage.getItem("epb_terms_accepted_session") === "true";
+  } catch {
+    return false;
+  }
 }
 
 export const useUserStore = create<UserState>((set) => ({
@@ -24,6 +35,7 @@ export const useUserStore = create<UserState>((set) => ({
   managedMembers: [],
   epbConfig: null,
   isLoading: true,
+  termsAcceptedThisSession: getInitialSessionTerms(),
   setProfile: (profile) => set({ profile }),
   setSubordinates: (subordinates) => set({ subordinates }),
   setManagedMembers: (managedMembers) => set({ managedMembers }),
@@ -43,6 +55,7 @@ export const useUserStore = create<UserState>((set) => ({
     })),
   setEpbConfig: (epbConfig) => set({ epbConfig }),
   setIsLoading: (isLoading) => set({ isLoading }),
+  setTermsAcceptedThisSession: (accepted) => set({ termsAcceptedThisSession: accepted }),
   reset: () =>
     set({
       profile: null,
@@ -50,6 +63,7 @@ export const useUserStore = create<UserState>((set) => ({
       managedMembers: [],
       epbConfig: null,
       isLoading: true,
+      termsAcceptedThisSession: false,
     }),
 }));
 

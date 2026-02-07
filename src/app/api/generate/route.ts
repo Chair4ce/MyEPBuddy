@@ -595,12 +595,12 @@ async function fetchExampleStatements(
 
   // PRIORITY 3: Community examples (if writing style is community)
   if (writingStyle === "community") {
-    // Fetch top 20 community-voted statements for the selected AFSC
-    // Optionally filtered by specific MPA for more targeted examples
+    // Fetch top 20 community statements by rating for the selected AFSC
+    // All community statements live exclusively in community_statements table
     let query = supabase
       .from("community_statements")
-      .select("mpa, statement, upvotes, downvotes")
-      .eq("afsc", communityAfsc) // Use selected community AFSC
+      .select("mpa, statement, average_rating, rating_count")
+      .eq("afsc", communityAfsc)
       .eq("is_approved", true);
     
     // If a specific MPA is selected, filter to that MPA's top 20
@@ -609,59 +609,21 @@ async function fetchExampleStatements(
     }
     
     const { data: communityData } = await query
-      .order("upvotes", { ascending: false })
-      .limit(50); // Fetch extra to sort by net votes
+      .order("average_rating", { ascending: false })
+      .order("rating_count", { ascending: false })
+      .limit(20);
 
     if (communityData) {
-      // Sort by net votes (upvotes - downvotes) and take top 20
-      const typedData = communityData as { mpa: string; statement: string; upvotes: number; downvotes: number }[];
-      const sortedByNetVotes = typedData
-        .map((s) => ({
-          ...s,
-          netVotes: s.upvotes - (s.downvotes || 0),
-        }))
-        .sort((a, b) => b.netVotes - a.netVotes)
-        .slice(0, 20);
-
-      sortedByNetVotes.forEach((s) => {
-        if (!existingStatements.has(s.statement)) {
-          existingStatements.add(s.statement);
-          examples.push({
-            mpa: s.mpa,
-            statement: s.statement,
-            source: "community" as const,
-          });
-        }
-      });
-    }
-    
-    // Also fetch from shared community statements (statement_shares with share_type='community')
-    let sharedQuery = supabase
-      .from("shared_statements_view")
-      .select("mpa, statement")
-      .eq("share_type", "community")
-      .eq("afsc", communityAfsc); // Use selected community AFSC
-    
-    if (communityMpaFilter) {
-      sharedQuery = sharedQuery.eq("mpa", communityMpaFilter);
-    }
-    
-    const { data: sharedCommunityData } = await sharedQuery
-      .order("created_at", { ascending: false })
-      .limit(20);
-    
-    if (sharedCommunityData) {
-      // Add shared community statements, avoiding duplicates
-      (sharedCommunityData as { mpa: string; statement: string }[])
-        .filter(s => !existingStatements.has(s.statement))
-        .slice(0, 10) // Limit to avoid too many
-        .forEach(s => {
-          existingStatements.add(s.statement);
-          examples.push({
-            mpa: s.mpa,
-            statement: s.statement,
-            source: "community" as const,
-          });
+      (communityData as { mpa: string; statement: string; average_rating: number; rating_count: number }[])
+        .forEach((s) => {
+          if (!existingStatements.has(s.statement)) {
+            existingStatements.add(s.statement);
+            examples.push({
+              mpa: s.mpa,
+              statement: s.statement,
+              source: "community" as const,
+            });
+          }
         });
     }
   }

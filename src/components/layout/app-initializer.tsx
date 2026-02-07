@@ -58,7 +58,11 @@ export function AppInitializer({
 
   // Use store profile for reactivity (updates when terms are accepted)
   const currentProfile = storeProfile ?? profile;
-  const showTermsDialog = currentProfile && !currentProfile.terms_accepted_at;
+  const { termsAcceptedThisSession } = useUserStore();
+  
+  // Show terms dialog on EVERY session until accepted this session
+  // This ensures the user sees the OPSEC/data handling notice each time they log in
+  const showTermsDialog = currentProfile && !termsAcceptedThisSession;
 
   return (
     <>

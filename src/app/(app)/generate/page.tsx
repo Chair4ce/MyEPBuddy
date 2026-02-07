@@ -269,14 +269,8 @@ export default function GeneratePage() {
         .select("afsc")
         .eq("is_approved", true);
       
-      const { data: sharedData } = await supabase
-        .from("shared_statements_view")
-        .select("afsc")
-        .eq("share_type", "community");
-      
       const afscs = new Set<string>();
       communityData?.forEach((d: { afsc: string }) => d.afsc && afscs.add(d.afsc));
-      sharedData?.forEach((d: { afsc: string }) => d.afsc && afscs.add(d.afsc));
       
       setAvailableAfscs(Array.from(afscs).sort());
     }

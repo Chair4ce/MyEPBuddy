@@ -65,6 +65,7 @@ interface CommunityStatementCardProps extends BaseStatementCardProps {
   onRate: (statementId: string, rating: number) => void;
   onRemoveRating?: (statementId: string) => void;
   onCopyToLibrary: (statement: CommunityStatement) => void;
+  onDeleteCommunity?: (id: string) => void;
   isCopying?: boolean;
 }
 
@@ -299,8 +300,7 @@ export function StatementCard(props: StatementCardProps) {
   }
 
   if (props.type === "community") {
-    const { statement, userRating, isRating, isTopRated, rank, currentUserId, onRate, onRemoveRating, onCopyToLibrary, isCopying, mpaLabel } = props;
-    const isRatable = statement.is_ratable !== false; // Default to true for backwards compatibility
+    const { statement, userRating, isRating, isTopRated, rank, currentUserId, onRate, onRemoveRating, onCopyToLibrary, onDeleteCommunity, isCopying, mpaLabel } = props;
     const isOwnStatement = currentUserId && statement.contributor_id === currentUserId;
 
     return (
@@ -320,8 +320,8 @@ export function StatementCard(props: StatementCardProps) {
                 <Badge variant="secondary" className="text-xs">{statement.rank}</Badge>
                 <Badge variant="secondary" className="text-xs">{statement.afsc}</Badge>
               </div>
-              {/* Star rating display - only show for ratable statements with ratings */}
-              {isRatable && (statement.rating_count > 0 || statement.average_rating > 0) && (
+              {/* Star rating display */}
+              {(statement.rating_count > 0 || statement.average_rating > 0) && (
                 <div className="shrink-0">
                   <StarRatingDisplay
                     averageRating={statement.average_rating || 0}
@@ -337,31 +337,25 @@ export function StatementCard(props: StatementCardProps) {
             
             {/* Footer with actions */}
             <div className="flex items-center justify-between gap-2 pt-1">
-              {/* Rating info or shared indicator */}
+              {/* Rating info */}
               <div className="text-xs text-muted-foreground shrink-0">
-                {isRatable ? (
-                  statement.rating_count > 0 
-                    ? `${statement.rating_count} rating${statement.rating_count !== 1 ? "s" : ""}`
-                    : "No ratings yet"
-                ) : (
-                  "Shared by community"
-                )}
+                {statement.rating_count > 0 
+                  ? `${statement.rating_count} rating${statement.rating_count !== 1 ? "s" : ""}`
+                  : "No ratings yet"}
               </div>
               
               {/* Actions */}
               <div className="flex gap-0.5 sm:gap-1 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                {/* Star Rating Popover - only for ratable statements */}
-                {isRatable && (
-                  <StarRating
-                    userRating={userRating ?? null}
-                    averageRating={statement.average_rating || 0}
-                    ratingCount={statement.rating_count || 0}
-                    isLoading={isRating}
-                    onRate={(rating) => onRate(statement.id, rating)}
-                    onRemoveRating={onRemoveRating ? () => onRemoveRating(statement.id) : undefined}
-                    size="sm"
-                  />
-                )}
+                {/* Star Rating Popover */}
+                <StarRating
+                  userRating={userRating ?? null}
+                  averageRating={statement.average_rating || 0}
+                  ratingCount={statement.rating_count || 0}
+                  isLoading={isRating}
+                  onRate={(rating) => onRate(statement.id, rating)}
+                  onRemoveRating={onRemoveRating ? () => onRemoveRating(statement.id) : undefined}
+                  size="sm"
+                />
                 
                 <Button
                   variant="ghost"
@@ -391,6 +385,17 @@ export function StatementCard(props: StatementCardProps) {
                       <Download className="size-3.5 sm:size-4 mr-1.5" />
                     )}
                     Save
+                  </Button>
+                )}
+                {isOwnStatement && onDeleteCommunity && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 sm:size-9 text-destructive hover:text-destructive"
+                    onClick={() => onDeleteCommunity(statement.id)}
+                    aria-label="Remove from community"
+                  >
+                    <Trash2 className="size-3.5 sm:size-4" />
                   </Button>
                 )}
               </div>

@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppInitializer } from "@/components/layout/app-initializer";
 import { PageTransition } from "@/components/layout/page-transition";
+import { FeedbackButton } from "@/components/layout/feedback-button";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
 // Prevent caching of user-specific data
@@ -97,6 +98,7 @@ export default async function AppLayout({
             </main>
           </div>
         </div>
+        <FeedbackButton />
       </div>
     </AppInitializer>
   );

@@ -166,7 +166,7 @@ export default function LibraryPage() {
         }
       }
 
-      // Load shares for my statements
+      // Load shares for my statements (team + user shares from statement_shares)
       if (myData && myData.length > 0) {
         const { data: sharesData } = await supabase
           .from("statement_shares")
@@ -180,6 +180,30 @@ export default function LibraryPage() {
           }
           sharesMap[share.statement_id].push(share);
         });
+
+        // Also check which statements are shared to community (lives in community_statements)
+        const { data: communitySharedData } = await supabase
+          .from("community_statements")
+          .select("source_statement_id")
+          .eq("contributor_id", profile.id)
+          .in("source_statement_id", myData.map((s: RefinedStatement) => s.id));
+
+        if (communitySharedData) {
+          (communitySharedData as { source_statement_id: string }[]).forEach((cs) => {
+            const sid = cs.source_statement_id;
+            if (!sharesMap[sid]) sharesMap[sid] = [];
+            // Add a synthetic "community" share entry for the UI indicator
+            sharesMap[sid].push({
+              id: `community-${sid}`,
+              statement_id: sid,
+              owner_id: profile.id,
+              share_type: "community",
+              shared_with_id: null,
+              created_at: "",
+            } as StatementShare);
+          });
+        }
+
         setMyStatementShares(sharesMap);
       }
 
@@ -193,88 +217,18 @@ export default function LibraryPage() {
 
       setSharedStatements((sharedData as SharedStatementView[]) || []);
 
-      // Load community statements from two sources:
-      // 1. The community_statements table (legacy/curated)
-      // 2. Statements shared to community via statement_shares
-      // Note: All users can see all community statements regardless of their AFSC
-      
-      // Source 1: Legacy community_statements table (all AFSCs)
+      // Load community statements exclusively from community_statements table
+      // When a user shares to community, the statement is COPIED here.
+      // This is a dedicated table - no cross-queries to refined_statements.
       const { data: communityData } = await supabase
         .from("community_statements")
         .select("*")
         .eq("is_approved", true)
-        .order("upvotes", { ascending: false })
-        .limit(100);
+        .order("average_rating", { ascending: false })
+        .order("rating_count", { ascending: false })
+        .limit(200);
 
-      const legacyCommunity: CommunityStatement[] = ((communityData as CommunityStatement[]) || []).map(s => ({
-        ...s,
-        is_ratable: true, // These are from community_statements table and can be rated
-      }));
-
-      // Source 2: Statements shared to community via sharing system (all AFSCs)
-      const { data: sharedCommunityData } = await supabase
-        .from("shared_statements_view")
-        .select("*")
-        .eq("share_type", "community")
-        .order("created_at", { ascending: false });
-
-      const sharedStatementIds = ((sharedCommunityData as SharedStatementView[]) || []).map(s => s.id);
-      
-      // Load rating stats for shared community statements
-      let ratingStatsMap: Record<string, { avg: number; count: number }> = {};
-      if (sharedStatementIds.length > 0) {
-        const { data: ratingStats } = await supabase
-          .from("statement_votes")
-          .select("statement_id, rating")
-          .in("statement_id", sharedStatementIds);
-        
-        if (ratingStats) {
-          // Aggregate ratings by statement_id
-          const statsAgg: Record<string, number[]> = {};
-          ratingStats.forEach((r: { statement_id: string; rating: number }) => {
-            if (!statsAgg[r.statement_id]) statsAgg[r.statement_id] = [];
-            statsAgg[r.statement_id].push(r.rating);
-          });
-          
-          Object.entries(statsAgg).forEach(([id, ratings]) => {
-            const sum = ratings.reduce((a, b) => a + b, 0);
-            ratingStatsMap[id] = {
-              avg: Math.round((sum / ratings.length) * 100) / 100,
-              count: ratings.length,
-            };
-          });
-        }
-      }
-
-      // Convert shared community statements to CommunityStatement format
-      const sharedCommunity: CommunityStatement[] = ((sharedCommunityData as SharedStatementView[]) || []).map((s) => ({
-        id: s.id,
-        contributor_id: s.owner_id,
-        refined_statement_id: s.id,
-        mpa: s.mpa,
-        afsc: s.afsc,
-        rank: s.rank,
-        statement: s.statement,
-        upvotes: 0,
-        downvotes: 0,
-        average_rating: ratingStatsMap[s.id]?.avg || 0,
-        rating_count: ratingStatsMap[s.id]?.count || 0,
-        is_approved: true,
-        created_at: s.created_at,
-        is_ratable: true, // Now ratable since we allow voting on refined_statements
-        // Extra fields for display
-        owner_name: s.owner_name,
-        owner_rank: s.owner_rank,
-      })) as CommunityStatement[];
-
-      // Combine and deduplicate (legacy community statements take precedence for voting)
-      const sharedCommunityIds = new Set(sharedCommunity.map(s => s.refined_statement_id));
-      const combinedCommunity = [
-        ...legacyCommunity,
-        ...sharedCommunity.filter(s => !legacyCommunity.some(lc => lc.refined_statement_id === s.refined_statement_id)),
-      ];
-
-      setCommunityStatements(combinedCommunity);
+      setCommunityStatements((communityData as CommunityStatement[]) || []);
 
       // Load user's ratings for community statements
       const { data: ratings } = await supabase
@@ -340,6 +294,18 @@ export default function LibraryPage() {
     setMyStatements((prev) => prev.filter((s) => s.id !== id));
     Analytics.libraryStatementDeleted("epb");
     toast.success("Statement deleted");
+  }
+
+  async function deleteCommunityStatement(id: string) {
+    try {
+      const { error } = await supabase.from("community_statements").delete().eq("id", id);
+      if (error) throw error;
+      setCommunityStatements((prev) => prev.filter((s) => s.id !== id));
+      toast.success("Community statement removed");
+    } catch (error) {
+      console.error("Error deleting community statement:", error);
+      toast.error("Failed to remove community statement");
+    }
   }
 
   async function saveEditedStatement() {
@@ -941,6 +907,7 @@ export default function LibraryPage() {
                         onRate={rateStatement}
                         onRemoveRating={removeRating}
                         onCopyToLibrary={copyToLibrary}
+                        onDeleteCommunity={deleteCommunityStatement}
                         isCopying={copyingId === statement.id}
                       />
                     );

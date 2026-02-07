@@ -11,12 +11,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, FlaskConical } from "lucide-react";
+
+const SESSION_TERMS_KEY = "epb_terms_accepted_session";
 
 interface TermsAgreementDialogProps {
   open: boolean;
@@ -26,7 +26,7 @@ interface TermsAgreementDialogProps {
 export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps) {
   const [isChecked, setIsChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { setProfile, profile } = useUserStore();
+  const { setProfile, profile, setTermsAcceptedThisSession } = useUserStore();
 
   const handleAcceptTerms = async () => {
     if (!isChecked) {
@@ -54,6 +54,16 @@ export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps
         setProfile({ ...profile, terms_accepted_at: acceptedAt });
       }
 
+      // Mark as accepted for this session (persists in zustand store, resets on page refresh/new tab)
+      setTermsAcceptedThisSession(true);
+
+      // Also persist in sessionStorage (survives in-page navigation but not tab close)
+      try {
+        sessionStorage.setItem(SESSION_TERMS_KEY, "true");
+      } catch {
+        // sessionStorage may not be available in some environments
+      }
+
       toast.success("Thank you for acknowledging the data handling requirements.");
     } catch (error) {
       console.error("Failed to accept terms:", error);
@@ -73,7 +83,7 @@ export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps
               <ShieldAlert className="h-5 w-5 sm:h-6 sm:w-6 text-destructive" aria-hidden="true" />
             </div>
             <AlertDialogTitle className="text-center text-base sm:text-lg font-semibold">
-              Important Data Handling Notice
+              Data Handling &amp; OPSEC Notice
             </AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
               Please read and acknowledge the data handling requirements before continuing.
@@ -84,13 +94,23 @@ export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="p-4 sm:p-6 space-y-4">
-            <p className="font-medium text-foreground text-xs sm:text-sm">
-              Before you continue, please read and acknowledge the following:
-            </p>
-            
+            {/* Prototype Disclaimer */}
+            <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="size-4 text-amber-600 shrink-0" aria-hidden="true" />
+                <p className="font-semibold text-amber-800 dark:text-amber-400 text-xs sm:text-sm">
+                  Prototype Application
+                </p>
+              </div>
+              <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-300/80">
+                This application is a prototype intended to validate features only. It is not an official DoD or DAF system. Data entered may be used for feature development and testing purposes.
+              </p>
+            </div>
+
+            {/* Data Handling */}
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
               <p className="font-semibold text-destructive text-xs sm:text-sm">
-                ⚠️ DO NOT submit any protected information:
+                DO NOT submit any protected information:
               </p>
               <ul className="space-y-1.5 text-xs sm:text-sm">
                 <li className="flex gap-2 text-muted-foreground">
@@ -115,7 +135,7 @@ export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps
                 </li>
                 <li className="flex gap-2 text-muted-foreground">
                   <span className="text-destructive flex-shrink-0 mt-0.5">•</span>
-                  <div><span className="font-medium text-foreground">OPSEC</span> — Operations, force movements, TTPs</div>
+                  <div><span className="font-medium text-foreground">OPSEC</span> — Operations, force movements, TTPs, unit capabilities</div>
                 </li>
                 <li className="flex gap-2 text-muted-foreground">
                   <span className="text-destructive flex-shrink-0 mt-0.5">•</span>
@@ -123,24 +143,40 @@ export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps
                 </li>
                 <li className="flex gap-2 text-muted-foreground">
                   <span className="text-destructive flex-shrink-0 mt-0.5">•</span>
-                  <div><span className="font-medium text-foreground">LES</span> — Law Enforcement Sensitive info</div>
-                </li>
-                <li className="flex gap-2 text-muted-foreground">
-                  <span className="text-destructive flex-shrink-0 mt-0.5">•</span>
-                  <div><span className="font-medium text-foreground">Proprietary</span> — Trade secrets, contractor data</div>
+                  <div><span className="font-medium text-foreground">LES / Proprietary</span> — Law enforcement sensitive or trade secret data</div>
                 </li>
               </ul>
             </div>
 
-            <div className="space-y-2 text-xs sm:text-sm">
-              <p>
-                <span className="font-semibold text-foreground">All data must be UNCLASSIFIED and publicly releasable.</span>{" "}
-                This application is not authorized for processing protected information.
+            {/* OPSEC Practices */}
+            <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
+              <p className="font-semibold text-foreground text-xs sm:text-sm">
+                Practice Good OPSEC
               </p>
-              <p className="text-muted-foreground">
-                Use general descriptions. Avoid details that could identify individuals or compromise security.
-              </p>
+              <ul className="space-y-1 text-xs sm:text-sm text-muted-foreground">
+                <li className="flex gap-2">
+                  <span className="shrink-0 mt-0.5">•</span>
+                  <span>Use <span className="font-medium text-foreground">general descriptions</span> instead of specific unit names, locations, or mission details</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="shrink-0 mt-0.5">•</span>
+                  <span>Avoid details that could <span className="font-medium text-foreground">identify individuals</span> or reveal sensitive capabilities</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="shrink-0 mt-0.5">•</span>
+                  <span>Statements shared to the <span className="font-medium text-foreground">community are visible to all users</span> — review before sharing</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="shrink-0 mt-0.5">•</span>
+                  <span>Data entered is stored in third-party cloud infrastructure — <span className="font-medium text-foreground">treat all input as publicly accessible</span></span>
+                </li>
+              </ul>
             </div>
+
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">All data must be UNCLASSIFIED and publicly releasable.</span>{" "}
+              This application is not authorized for processing protected information. Violations may result in account suspension and reporting to your chain of command.
+            </p>
           </div>
         </div>
 
@@ -157,7 +193,7 @@ export function TermsAgreementDialog({ open, userId }: TermsAgreementDialogProps
               className="mt-0.5 flex-shrink-0"
             />
             <span className="text-xs sm:text-sm font-medium leading-relaxed">
-              I acknowledge that I will not submit any protected information. All data I enter will be UNCLASSIFIED.
+              I acknowledge that I will not submit any protected information. All data I enter will be UNCLASSIFIED and I will practice good OPSEC.
             </span>
           </label>
 

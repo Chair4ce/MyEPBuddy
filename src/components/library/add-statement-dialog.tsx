@@ -448,7 +448,7 @@ export function AddStatementDialog({
       const shares: Array<{
         statement_id: string;
         owner_id: string;
-        share_type: "user" | "team" | "community";
+        share_type: "user" | "team";
         shared_with_id: string | null;
       }> = [];
 
@@ -474,21 +474,29 @@ export function AddStatementDialog({
         }
       }
 
-      // Share with community
-      if (shareWithCommunity) {
-        shares.push({
-          statement_id: newStatement.id,
-          owner_id: profile.id,
-          share_type: "community",
-          shared_with_id: null,
-        });
-      }
-
       if (shares.length > 0) {
         const { error: shareError } = await supabase
           .from("statement_shares")
           .insert(shares as never);
         if (shareError) throw shareError;
+      }
+
+      // Share with community: COPY into dedicated community_statements table
+      if (shareWithCommunity) {
+        const { error: communityError } = await supabase
+          .from("community_statements")
+          .insert({
+            contributor_id: profile.id,
+            refined_statement_id: newStatement.id,
+            source_statement_id: newStatement.id,
+            mpa: primaryMpa,
+            afsc: selectedAfsc.toUpperCase(),
+            rank: selectedRank,
+            statement: statementText.trim(),
+            upvotes: 0,
+            is_approved: true,
+          } as never);
+        if (communityError) throw communityError;
       }
 
       Analytics.libraryStatementAdded(statementType, selectedMpas[0] || "unknown");
@@ -1288,7 +1296,7 @@ export function AddStatementDialog({
                       <span className="text-sm font-medium">Share with Community</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Visible to all {selectedAfsc || "AFSC"} members for reference and voting
+                      A copy will be shared with the community. Future edits to your original will not affect it.
                     </p>
                   </div>
                 </label>

@@ -234,6 +234,7 @@ export interface CommunityStatement {
   id: string;
   contributor_id: string;
   refined_statement_id: string | null;
+  source_statement_id: string | null;
   mpa: string;
   afsc: string;
   rank: Rank;
@@ -244,8 +245,6 @@ export interface CommunityStatement {
   rating_count: number;
   is_approved: boolean;
   created_at: string;
-  /** Whether this statement can be rated (only true for statements from community_statements table) */
-  is_ratable?: boolean;
 }
 
 export type ShareType = "user" | "team" | "community";

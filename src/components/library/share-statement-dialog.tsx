@@ -78,6 +78,7 @@ export function ShareStatementDialog({
     setIsLoading(true);
 
     try {
+      // Load team + user shares from statement_shares
       const { data } = await supabase
         .from("statement_shares")
         .select("*")
@@ -88,7 +89,25 @@ export function ShareStatementDialog({
 
       // Set UI state based on existing shares
       setShareWithTeam(shares.some((s) => s.share_type === "team"));
-      setShareWithCommunity(shares.some((s) => s.share_type === "community"));
+
+      // Check if already shared to community (lives in community_statements table)
+      const { data: communityCheck } = await supabase
+        .from("community_statements")
+        .select("id")
+        .eq("source_statement_id", statement.id)
+        .eq("contributor_id", profile?.id || "")
+        .limit(1);
+
+      const isCommunityShared = (communityCheck || []).length > 0;
+      setShareWithCommunity(isCommunityShared);
+
+      // Synthesize a "community" share entry so hasChanges detection works
+      if (isCommunityShared) {
+        setExistingShares((prev) => [
+          ...prev,
+          { id: "community-placeholder", statement_id: statement.id, owner_id: profile?.id || "", share_type: "community" as const, shared_with_id: null, created_at: "" },
+        ]);
+      }
 
       // Load user details for individual shares
       const userShares = shares.filter((s) => s.share_type === "user" && s.shared_with_id);
@@ -156,16 +175,20 @@ export function ShareStatementDialog({
     setIsSaving(true);
 
     try {
-      // Delete all existing shares for this statement
+      const wasCommunity = existingShares.some((s) => s.share_type === "community");
+
+      // Delete all existing shares for this statement (team + user shares only)
+      // Community shares are handled separately via community_statements table
       await supabase
         .from("statement_shares")
         .delete()
-        .eq("statement_id", statement.id);
+        .eq("statement_id", statement.id)
+        .neq("share_type", "community");
 
       const newShares: Array<{
         statement_id: string;
         owner_id: string;
-        share_type: "user" | "team" | "community";
+        share_type: "user" | "team";
         shared_with_id?: string | null;
       }> = [];
 
@@ -175,16 +198,6 @@ export function ShareStatementDialog({
           statement_id: statement.id,
           owner_id: profile.id,
           share_type: "team",
-          shared_with_id: null,
-        });
-      }
-
-      // Add community share
-      if (shareWithCommunity) {
-        newShares.push({
-          statement_id: statement.id,
-          owner_id: profile.id,
-          share_type: "community",
           shared_with_id: null,
         });
       }
@@ -202,6 +215,33 @@ export function ShareStatementDialog({
       if (newShares.length > 0) {
         const { error } = await supabase.from("statement_shares").insert(newShares as never);
         if (error) throw error;
+      }
+
+      // Handle community sharing: COPY to community_statements table
+      if (shareWithCommunity && !wasCommunity) {
+        // User is sharing to community - copy statement into community_statements
+        const { error: communityError } = await supabase.from("community_statements").insert({
+          contributor_id: profile.id,
+          refined_statement_id: statement.id,
+          source_statement_id: statement.id,
+          mpa: statement.mpa,
+          afsc: statement.afsc,
+          rank: statement.rank,
+          statement: statement.statement,
+          upvotes: 0,
+          is_approved: true,
+        } as never);
+
+        if (communityError) throw communityError;
+      } else if (!shareWithCommunity && wasCommunity) {
+        // User is un-sharing from community - delete from community_statements
+        const { error: deleteError } = await supabase
+          .from("community_statements")
+          .delete()
+          .eq("source_statement_id", statement.id)
+          .eq("contributor_id", profile.id);
+
+        if (deleteError) throw deleteError;
       }
 
       // Track share types used
@@ -305,7 +345,7 @@ export function ShareStatementDialog({
                       <span className="text-sm font-medium">Community</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Make visible to all users for reference and learning
+                      A copy of this statement will be shared with all users. Future edits to your original will not change the community version.
                     </p>
                   </div>
                 </label>
