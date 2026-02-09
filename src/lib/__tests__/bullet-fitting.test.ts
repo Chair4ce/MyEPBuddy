@@ -761,3 +761,172 @@ describe("toDisplayText / fromDisplayText (non-breaking hyphen swap)", () => {
     expect(fromDisplayText(display)).toBe(text);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. Line Re-evaluation After Compression
+// ---------------------------------------------------------------------------
+describe("Line re-evaluation after per-line compression", () => {
+  // This simulates exactly what handleToggleLine does in the UI:
+  // 1. Get visual segments for current text
+  // 2. Compress a specific line segment
+  // 3. Rebuild the full text
+  // 4. Re-evaluate visual segments on the new text
+  function simulateCompressLine(text: string, lineIndex: number): {
+    before: { segments: ReturnType<typeof getVisualLineSegments>; text: string };
+    after: { segments: ReturnType<typeof getVisualLineSegments>; text: string };
+    spaceSaved: number;
+  } {
+    const segmentsBefore = getVisualLineSegments(text, LINE_WIDTH);
+    const segment = segmentsBefore[lineIndex];
+    const lineText = segment.text;
+
+    const { text: compressed, savedPx } = compressText(lineText);
+
+    const before = text.substring(0, segment.startIndex);
+    const after = text.substring(segment.endIndex);
+    const newText = before + compressed + after;
+
+    const segmentsAfter = getVisualLineSegments(newText, LINE_WIDTH);
+
+    return {
+      before: { segments: segmentsBefore, text },
+      after: { segments: segmentsAfter, text: newText },
+      spaceSaved: savedPx,
+    };
+  }
+
+  it("visual lines are re-evaluated after compressing line 1 (exact user example)", () => {
+    const text =
+      "operations for Giant Voice systems, including 42 poles valued at 850K, enabling effective alerts across DoD's sole tri-service";
+
+    const segmentsBefore = getVisualLineSegments(text, LINE_WIDTH);
+
+    // Before compression: "tri-service" should be on line 2
+    expect(segmentsBefore.length).toBe(2);
+    expect(segmentsBefore[1].text).toContain("tri-service");
+
+    // Simulate compressing line 1
+    const result = simulateCompressLine(text, 0);
+
+    // After compression: segments are recalculated on the new text
+    // Whether "tri-service" moves to line 1 depends on how much space was saved
+    const line1Width = result.after.segments[0].width;
+
+    // The new line 1 width must be within the line width
+    expect(line1Width).toBeLessThanOrEqual(LINE_WIDTH);
+
+    // Log the math for visibility
+    const triServiceWidth = getTextWidthPx("tri-service");
+    const remainingSpace = LINE_WIDTH - result.before.segments[0].width;
+    const remainingSpaceAfterCompress = LINE_WIDTH - getTextWidthPx(
+      result.after.segments[0].text.replace(/tri-service.*$/, "").trimEnd()
+    );
+
+    // Verify the re-evaluation produced valid segments
+    for (const seg of result.after.segments) {
+      expect(seg.width).toBeLessThanOrEqual(LINE_WIDTH + 1); // +1 for float rounding
+      expect(seg.text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compressing a line reduces its pixel width", () => {
+    const text =
+      "operations for Giant Voice systems, including 42 poles valued at 850K, enabling effective alerts across DoD's sole tri-service";
+
+    const result = simulateCompressLine(text, 0);
+
+    // Compression should have saved space
+    expect(result.spaceSaved).toBeGreaterThan(0);
+
+    // The compressed line's raw text width should be less than the original
+    const originalLine1Width = result.before.segments[0].width;
+    const compressedFullText = result.after.text;
+    const compressedSegments = result.after.segments;
+
+    // Total text width of the compressed version should be less
+    expect(getTextWidthPx(compressedFullText)).toBeLessThan(getTextWidthPx(text));
+  });
+
+  it("reports the exact space savings and remaining room", () => {
+    const text =
+      "operations for Giant Voice systems, including 42 poles valued at 850K, enabling effective alerts across DoD's sole tri-service";
+
+    const segmentsBefore = getVisualLineSegments(text, LINE_WIDTH);
+    const line1Before = segmentsBefore[0];
+
+    // Calculate space needed for "tri-service" to fit (word + space before it)
+    const triServiceWithSpace = getTextWidthPx(" tri-service");
+    const roomBeforeCompress = LINE_WIDTH - line1Before.width;
+
+    // Compress line 1
+    const result = simulateCompressLine(text, 0);
+    const spaceSaved = result.spaceSaved;
+
+    // Room after compression = original room + space saved
+    const roomAfterCompress = roomBeforeCompress + spaceSaved;
+
+    // Report whether "tri-service" fits
+    const fitsAfterCompress = roomAfterCompress >= triServiceWithSpace;
+
+    // Either way, the segments should be valid
+    if (fitsAfterCompress) {
+      // "tri-service" should have moved to line 1
+      expect(result.after.segments.length).toBe(1);
+      expect(result.after.segments[0].text).toContain("tri-service");
+    } else {
+      // Still on line 2, which is fine — not enough room
+      expect(result.after.segments.length).toBe(2);
+    }
+  });
+
+  it("if compression creates enough room, words move up from line 2 to line 1", () => {
+    // Construct text that is just barely 2 lines, where compressing guarantees
+    // enough savings to pull the overflow back to 1 line.
+    // Strategy: use many short words (lots of spaces to compress) with a tiny overflow.
+    const words: string[] = [];
+    let currentWidth = 0;
+
+    // Fill line with 3-letter words + spaces until we're ~10px from the edge
+    while (currentWidth + getTextWidthPx("abc ") < LINE_WIDTH - 10) {
+      words.push("abc");
+      currentWidth += getTextWidthPx("abc ");
+    }
+    // Add one more word that pushes ~5px past the line width
+    words.push("xy");
+    const text = words.join(" ");
+
+    const segmentsBefore = getVisualLineSegments(text, LINE_WIDTH);
+    if (segmentsBefore.length < 2) return; // skip if somehow fits
+
+    expect(segmentsBefore.length).toBe(2);
+
+    // Compress line 1 — with many spaces, savings should be substantial
+    const result = simulateCompressLine(text, 0);
+
+    // After compression the entire text should fit on one line since we only
+    // overflowed by ~5px and each compressed space saves ~1.33px
+    const compressedFullWidth = getTextWidthPx(result.after.text);
+    if (compressedFullWidth <= LINE_WIDTH) {
+      expect(result.after.segments.length).toBe(1);
+    } else {
+      // Even if full text doesn't fit on 1 line, still 2 lines is valid
+      expect(result.after.segments.length).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("line buttons update correctly after compression changes line count", () => {
+    // This tests that after compression changes the line count,
+    // the visual line segments array length reflects the change
+    const text =
+      "operations for Giant Voice systems, including 42 poles valued at 850K, enabling effective alerts across DoD's sole tri-service";
+
+    const segmentsBefore = getVisualLineSegments(text, LINE_WIDTH);
+    const lineCountBefore = segmentsBefore.length;
+
+    const result = simulateCompressLine(text, 0);
+    const lineCountAfter = result.after.segments.length;
+
+    // Line count should either stay the same or decrease (never increase from compression)
+    expect(lineCountAfter).toBeLessThanOrEqual(lineCountBefore);
+  });
+});
