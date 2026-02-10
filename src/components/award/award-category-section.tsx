@@ -200,7 +200,7 @@ function StatementSlotCard({
   totalSlots: number;
   accomplishments: Accomplishment[];
   onRemove: () => void;
-  onGenerate: (revisionMode?: "add" | "replace", revisionIntensity?: number) => Promise<void>; // revisionMode deprecated - LLM handles metric merging
+  onGenerate: (revisionMode?: "add" | "replace", revisionIntensity?: number, versionCount?: number) => Promise<string[]>; // Returns generated versions
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   model: string;
@@ -240,6 +240,10 @@ function StatementSlotCard({
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
   const [isRevising, setIsRevising] = useState(false);
   const [revisionResults, setRevisionResults] = useState<string[]>([]);
+  
+  // Version count for generation (like EPB page)
+  const [versionCount, setVersionCount] = useState(3);
+  const [generatedVersions, setGeneratedVersions] = useState<string[]>([]);
   
   // Revision intensity: 0-100, controls how much the statement gets rewritten
   // 0 = minimal changes (keep most original wording)
@@ -314,25 +318,32 @@ function StatementSlotCard({
     onUpdate({ draftText: newText, isDirty: true });
   }, [draftText, onUpdate]);
 
-  // Handle AI generation - store result as suggestion, don't replace
+  // Handle AI generation - generate multiple versions, don't auto-replace
   const handleGenerate = async () => {
     onUpdate({ isGenerating: true });
+    setGeneratedVersions([]); // Clear previous versions
     try {
-      // Pass intensity when there's existing content (LLM handles metric merging intelligently)
-      await onGenerate(
+      // Call the generation with version count and capture returned versions
+      const versions = await onGenerate(
         undefined,
-        hasContent ? revisionIntensity : undefined
+        hasContent ? revisionIntensity : undefined,
+        versionCount // Pass version count
       );
-      // After generation, the draftText will be updated
-      // For assistive mode, we could show as suggestion first
-      // For now, just close the panel
-      setShowAiPanel(false);
-      setGeneratedSuggestion(null);
+      if (versions && versions.length > 0) {
+        setGeneratedVersions(versions);
+      }
     } catch {
       toast.error("Failed to generate");
     } finally {
       onUpdate({ isGenerating: false });
     }
+  };
+  
+  // Handle using a generated version
+  const handleUseVersion = (version: string) => {
+    onUpdate({ draftText: version, isDirty: true });
+    setGeneratedVersions([]); // Clear versions after using one
+    toast.success("Statement applied to workspace");
   };
 
   // Check if can generate
@@ -910,6 +921,29 @@ function StatementSlotCard({
               </div>
             )}
 
+            {/* Version Count Selector */}
+            <div className="flex items-center gap-3 pt-2">
+              <Label className="text-xs text-muted-foreground">Versions:</Label>
+              <div className="inline-flex rounded-md border divide-x">
+                {[1, 2, 3].map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => setVersionCount(num)}
+                    className={cn(
+                      "px-2.5 py-1 text-xs transition-colors",
+                      num === 1 && "rounded-l-md",
+                      num === 3 && "rounded-r-md",
+                      versionCount === num
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Generate Button */}
             <div className="flex items-center justify-between pt-2 border-t">
               <Button
@@ -929,9 +963,64 @@ function StatementSlotCard({
                 ) : (
                   <Sparkles className="size-3.5 mr-1.5" />
                 )}
-                {hasContent ? "Generate Revision" : "Generate Statement"}
+                Generate {versionCount} {hasContent ? "Revision" : "Statement"}{versionCount > 1 ? "s" : ""}
               </Button>
             </div>
+
+            {/* Generated Versions List */}
+            {generatedVersions.length > 0 && (
+              <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-xs font-medium text-muted-foreground">
+                    Generated Statements ({generatedVersions.length})
+                  </h5>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setGeneratedVersions([])}
+                  >
+                    <X className="size-3 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+                {generatedVersions.map((version, index) => (
+                  <div
+                    key={index}
+                    className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        Version {index + 1}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(version);
+                            toast.success("Copied to clipboard");
+                          }}
+                          className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center"
+                        >
+                          <Copy className="size-3 mr-1" />
+                          Copy
+                        </button>
+                        <button
+                          onClick={() => handleUseVersion(version)}
+                          className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                        >
+                          <Check className="size-3 mr-1" />
+                          Use This
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm select-text cursor-text whitespace-pre-wrap leading-relaxed">
+                      {version}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -969,8 +1058,9 @@ export function AwardCategorySectionCard({
     slotIndex: number, 
     slotState: SectionSlotState,
     _revisionMode?: "add" | "replace", // Deprecated - LLM handles metric merging intelligently
-    revisionIntensity?: number
-  ) => {
+    revisionIntensity?: number,
+    versionCount: number = 3
+  ): Promise<string[]> => {
     onUpdateSlotState(categoryKey, slotIndex, { isGenerating: true });
     
     // Use per-slot lines setting
@@ -990,7 +1080,7 @@ export function AwardCategorySectionCard({
           awardLevel,
           awardCategory,
           awardPeriod: new Date().getFullYear().toString(),
-          versionsPerStatement: 1,
+          versionsPerStatement: versionCount,
           sentencesPerStatement: linesForSlot,
           categoriesToGenerate: [categoryKey],
           // Existing content for smart revision (LLM handles metric merging intelligently)
@@ -1019,14 +1109,17 @@ export function AwardCategorySectionCard({
       }
 
       const data = await response.json();
-      const generatedText = data.statements?.[0]?.statementGroups?.[0]?.versions?.[0] || "";
+      // Extract all versions from the response
+      const versions: string[] = data.statements?.[0]?.statementGroups?.[0]?.versions || [];
       
-      onUpdateSlotState(categoryKey, slotIndex, { draftText: generatedText, isGenerating: false, isDirty: true });
-      toast.success("Statement generated!");
+      onUpdateSlotState(categoryKey, slotIndex, { isGenerating: false });
+      toast.success(`Generated ${versions.length} statement${versions.length > 1 ? "s" : ""}!`);
+      return versions;
     } catch (error) {
       console.error("Generation error:", error);
       toast.error("Failed to generate statement");
       onUpdateSlotState(categoryKey, slotIndex, { isGenerating: false });
+      return [];
     }
   }, [nomineeRank, nomineeAfsc, nomineeName, model, awardLevel, awardCategory, categoryKey, accomplishments, onUpdateSlotState]);
 
@@ -1133,7 +1226,7 @@ export function AwardCategorySectionCard({
                   isCollapsed={collapsedSlots[s.slotIndex] ?? false}
                   onToggleCollapse={() => toggleSlotCollapse(s.slotIndex)}
                   onRemove={() => onRemoveSection(s.slotIndex)}
-                  onGenerate={(revisionMode, revisionIntensity) => generateStatement(s.slotIndex, s.slotState || getSlotState(s), revisionMode, revisionIntensity)}
+                  onGenerate={(revisionMode, revisionIntensity, versionCount) => generateStatement(s.slotIndex, s.slotState || getSlotState(s), revisionMode, revisionIntensity, versionCount)}
                   model={model}
                 />
               </AnimatedHeightWrapper>
