@@ -350,6 +350,15 @@ export function DecorationCitationEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [citationText]); // Only trigger on citation text changes
   
+  // Re-sync highlights when statements load (handles race condition where
+  // statementColors are set before statements finish loading from the DB)
+  useEffect(() => {
+    if (statements.length > 0 && Object.keys(statementColors).length > 0 && citationText.trim()) {
+      syncHighlightsLocally();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statements]); // Only trigger when statements array loads/changes
+  
   // Check if selection is a single word (no spaces, reasonable length)
   const isSingleWord = useMemo(() => {
     const trimmed = selectedText.trim();
