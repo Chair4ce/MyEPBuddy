@@ -274,45 +274,50 @@ export function DecorationCitationEditor({
     return score;
   }, [extractNumbers]);
   
-  // Sync highlights locally using smart matching
+  // Sync highlights locally using positional matching.
+  // The LLM generates accomplishment sentences in the same order the statements
+  // were selected (selectedStatementIds). We split the citation into sentences,
+  // strip the opening/closing template sentences, then map the Nth narrative
+  // sentence to the Nth selected+colored statement.
   const syncHighlightsLocally = useCallback(() => {
     if (!citationText.trim() || Object.keys(statementColors).length === 0) {
       clearCitationHighlights();
       return;
     }
     
-    // Get statements with colors assigned
-    const coloredStmts = statements.filter(stmt => statementColors[stmt.id]);
+    // Build an ordered list of colored statement IDs matching selection order
+    const orderedColoredIds = selectedStatementIds.filter(id => statementColors[id]);
     
-    if (coloredStmts.length === 0) {
+    if (orderedColoredIds.length === 0) {
       clearCitationHighlights();
       return;
     }
     
     // Split citation into sentences
-    const sentences = splitIntoSentences(citationText);
+    const allSentences = splitIntoSentences(citationText);
     
-    if (sentences.length === 0) {
+    if (allSentences.length === 0) {
       clearCitationHighlights();
       return;
     }
     
-    // Pre-compute numbers and keywords for each statement
-    // RefinedStatement has a single 'statement' field containing the full text
-    const statementData = coloredStmts.map(stmt => {
-      return {
-        stmt,
-        colorId: statementColors[stmt.id],
-        numbers: extractNumbers(stmt.statement),
-        keywords: extractKeywords(stmt.statement),
-      };
+    // Filter out the opening and closing template sentences — these are
+    // structural parts of the citation, not accomplishment content.
+    const narrativeSentences = allSentences.filter(s => {
+      const lower = s.text.toLowerCase().trim();
+      // Opening sentence: "... distinguished himself/herself ..."
+      if (lower.includes("distinguished")) return false;
+      // Closing sentence: "The distinctive accomplishments of ..."
+      //                   "... reflect credit upon ..."
+      if (lower.includes("distinctive accomplishments") || lower.includes("reflect credit")) return false;
+      return true;
     });
     
-    // Sort statements by how many unique numbers they have (more = easier to match = do first)
-    statementData.sort((a, b) => b.numbers.length - a.numbers.length);
+    if (narrativeSentences.length === 0) {
+      clearCitationHighlights();
+      return;
+    }
     
-    // Track which sentences have been assigned
-    const assignedSentences = new Set<number>();
     const newHighlights: Array<{ 
       startIndex: number; 
       endIndex: number; 
@@ -322,36 +327,75 @@ export function DecorationCitationEditor({
       keyNumbers: string[];
     }> = [];
     
-    // For each statement, find the best matching sentence
-    for (const { stmt, colorId, numbers, keywords } of statementData) {
-      if (!colorId) continue;
+    // Primary strategy: positional matching.
+    // The LLM may combine multiple accomplishments into one sentence or split
+    // one into many, so there may not be a 1:1 mapping. When there are equal
+    // or more narrative sentences than colored statements, use score-based
+    // matching to handle reordering / merging. Otherwise fall back to pure
+    // positional order.
+    
+    if (narrativeSentences.length >= orderedColoredIds.length) {
+      // Score-based matching with positional tiebreaker
+      const assignedSentences = new Set<number>();
       
-      let bestSentenceIdx = -1;
-      let bestScore = 0;
-      
-      for (let i = 0; i < sentences.length; i++) {
-        if (assignedSentences.has(i)) continue;
+      for (let stmtIdx = 0; stmtIdx < orderedColoredIds.length; stmtIdx++) {
+        const stmtId = orderedColoredIds[stmtIdx];
+        const stmt = statements.find(s => s.id === stmtId);
+        if (!stmt) continue;
         
-        const score = scoreSentenceMatch(sentences[i].text, numbers, keywords);
+        const colorId = statementColors[stmtId];
+        if (!colorId) continue;
         
-        if (score > bestScore) {
-          bestScore = score;
-          bestSentenceIdx = i;
+        const stmtNumbers = extractNumbers(stmt.statement);
+        const stmtKeywords = extractKeywords(stmt.statement);
+        
+        let bestSentenceIdx = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < narrativeSentences.length; i++) {
+          if (assignedSentences.has(i)) continue;
+          
+          let score = scoreSentenceMatch(narrativeSentences[i].text, stmtNumbers, stmtKeywords);
+          // Add a small positional bonus — sentence at the same index gets a nudge
+          if (i === stmtIdx) score += 2;
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestSentenceIdx = i;
+          }
+        }
+        
+        if (bestSentenceIdx >= 0) {
+          const sentence = narrativeSentences[bestSentenceIdx];
+          assignedSentences.add(bestSentenceIdx);
+          
+          newHighlights.push({
+            startIndex: sentence.start,
+            endIndex: sentence.end,
+            colorId,
+            statementId: stmtId,
+            matchedText: sentence.text,
+            keyNumbers: stmtNumbers,
+          });
         }
       }
-      
-      // Only match if we have a reasonable score (at least one number match or 3+ keywords)
-      if (bestSentenceIdx >= 0 && bestScore >= 3) {
-        const sentence = sentences[bestSentenceIdx];
-        assignedSentences.add(bestSentenceIdx);
+    } else {
+      // Fewer narrative sentences than statements — pure positional mapping
+      for (let i = 0; i < Math.min(narrativeSentences.length, orderedColoredIds.length); i++) {
+        const stmtId = orderedColoredIds[i];
+        const colorId = statementColors[stmtId];
+        if (!colorId) continue;
+        
+        const sentence = narrativeSentences[i];
+        const stmt = statements.find(s => s.id === stmtId);
         
         newHighlights.push({
           startIndex: sentence.start,
           endIndex: sentence.end,
           colorId,
-          statementId: stmt.id,
+          statementId: stmtId,
           matchedText: sentence.text,
-          keyNumbers: numbers,
+          keyNumbers: stmt ? extractNumbers(stmt.statement) : [],
         });
       }
     }
@@ -362,7 +406,7 @@ export function DecorationCitationEditor({
     // Clear and add new highlights
     clearCitationHighlights();
     newHighlights.forEach(h => addCitationHighlight(h));
-  }, [citationText, statementColors, statements, splitIntoSentences, extractNumbers, extractKeywords, scoreSentenceMatch, clearCitationHighlights, addCitationHighlight]);
+  }, [citationText, statementColors, statements, selectedStatementIds, splitIntoSentences, extractNumbers, extractKeywords, scoreSentenceMatch, clearCitationHighlights, addCitationHighlight]);
   
   // Ref always points to the latest syncHighlightsLocally — eliminates stale
   // closures when effects fire in different render cycles during page load.
