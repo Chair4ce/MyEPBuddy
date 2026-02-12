@@ -1024,7 +1024,7 @@ export function DecorationCitationEditor({
                   : "Click Generate to create a citation based on selected statements..."
               }
               className={cn(
-                "min-h-[280px] font-mono text-sm resize-none",
+                "min-h-[280px] font-mono text-sm resize-none text-justify",
                 "transition-colors duration-150 ease-in-out",
                 "focus-visible:ring-1 focus-visible:ring-primary",
                 isOverLimit && "border-destructive focus-visible:ring-destructive",
@@ -1040,7 +1040,7 @@ export function DecorationCitationEditor({
                 className={cn(
                   "absolute inset-[1px] pointer-events-none",
                   "rounded-[5px]",
-                  "font-mono text-sm whitespace-pre-wrap break-words",
+                  "font-mono text-sm whitespace-pre-wrap break-words text-justify",
                   "overflow-hidden px-3 py-2",
                   "transition-opacity duration-150 ease-in-out",
                   showColorOverlay ? "opacity-100" : "opacity-0"

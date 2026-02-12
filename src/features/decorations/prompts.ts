@@ -48,8 +48,9 @@ export function buildDecorationSystemPrompt(params: DecorationPromptParams): str
 
 **The entire citation (opening + narrative + closing) MUST be ≤ ${maxChars} characters.**
 - Count every character including spaces, periods, and commas.
-- If you cannot fit all accomplishments within ${maxChars} characters, condense or omit the least impactful details. NEVER exceed the limit.
-- Prefer shorter phrasing over longer phrasing in every sentence.
+- If you cannot fit all accomplishments within ${maxChars} characters, you MUST aggressively condense: combine related accomplishments into a single sentence, drop the least impactful details, and shorten phrasing. NEVER exceed the limit.
+- Prefer the shortest correct phrasing in every sentence.
+- The opening and closing sentences are mandatory templates (~200-300 chars each). That leaves roughly ${maxChars - 600} characters for the narrative accomplishment sentences. Plan accordingly.
 
 ## FORMAT RULES (MyDecs Reimagined)
 
@@ -90,24 +91,15 @@ ${params.approvedAbbreviations ? `   - **USER-APPROVED ABBREVIATIONS** — You M
 
 7. **PRONOUN CONSISTENCY** — Use "${pronoun}" and "${possessive}" throughout
 
-## CITATION STRUCTURE
+## CITATION STRUCTURE — SINGLE CONTINUOUS PARAGRAPH
 
-The citation MUST follow this exact structure:
+**CRITICAL FORMAT: The citation is ONE continuous paragraph. No line breaks, no newlines, no blank lines anywhere in the output. Every sentence flows directly after the previous one separated only by a single space.**
 
-### OPENING SENTENCE (Mandatory — use verbatim)
-${getOpeningTemplate(params)}
+The paragraph follows this structure:
 
-### NARRATIVE — Accomplishment Sentences
-- Write 2-4 concise sentences covering the accomplishments below.
-- Go DIRECTLY into the first accomplishment. Do NOT add filler or preamble such as "During this period," or "In this important assignment," — these waste characters.
-- Use SHORT transitions between accomplishments: "Additionally," "Furthermore," "Moreover," "Finally,"
-- Each sentence: ACTION → SCOPE → IMPACT (keep tight, no fluff)
-- Use rank-appropriate action verbs:
-  - Primary: ${verbs.primary.join(", ")}
-  - Secondary: ${verbs.secondary.join(", ")}
-
-### CLOSING SENTENCE (Mandatory — use verbatim)
-${getClosingTemplate(params, config.closingIntensity)}
+1. **OPENING SENTENCE** (use this verbatim): ${getOpeningTemplate(params)}
+2. **NARRATIVE** (2-4 concise sentences): Go DIRECTLY into the first accomplishment. Do NOT add filler or preamble such as "During this period," or "In this important assignment." Use short transitions: "Additionally," "Furthermore," "Finally," Each sentence: ACTION → SCOPE → IMPACT. Use rank-appropriate verbs: ${verbs.primary.join(", ")}, ${verbs.secondary.join(", ")}
+3. **CLOSING SENTENCE** (use this verbatim): ${getClosingTemplate(params, config.closingIntensity)}
 
 ## ACCOMPLISHMENTS TO INCORPORATE
 
@@ -118,12 +110,12 @@ ${params.accomplishments.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 - CONCISENESS is paramount — every word must earn its place
 - Use ACTIVE VOICE and FORCEFUL VERBS
 - Keep the SOURCE numbers and metrics from the accomplishments — do not inflate or convert them unnecessarily
-- Flow naturally as a single cohesive paragraph
-- **FINAL CHECK: Re-count your output. It MUST be ≤ ${maxChars} characters. If over, shorten sentences until it fits.**
+- **SINGLE PARAGRAPH** — no line breaks or newlines anywhere in the output
+- **FINAL CHECK: Re-count your output. It MUST be ≤ ${maxChars} characters total. If over, shorten or merge sentences until it fits.**
 
 ## OUTPUT
 
-Generate ONLY the complete citation text — no headers, notes, or commentary. Ready to paste directly onto ${config.afForm}.`;
+Generate ONLY the citation as a single continuous paragraph — no headers, notes, line breaks, or commentary. Ready to paste directly onto ${config.afForm}.`;
 }
 
 function getOpeningTemplate(params: DecorationPromptParams): string {
