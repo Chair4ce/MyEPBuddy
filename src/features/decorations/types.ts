@@ -45,12 +45,15 @@ export interface DecorationPromptParams {
   rank: string;
   fullName: string;
   dutyTitle: string;
-  unit: string;
+  /** Comma-separated assignment chain (e.g., "42 CS/SCOO, 67th Fighter Sq, Kadena AB, Japan") */
+  assignmentLine: string;
   startDate: string;
   endDate: string;
   accomplishments: string[];
   gender?: "male" | "female";
   maxCharacters?: number;
+  /** User-defined approved abbreviations for this citation (e.g., '"Command and Control" → "C2"') */
+  approvedAbbreviations?: string;
 }
 
 export interface GenerateDecorationRequest {

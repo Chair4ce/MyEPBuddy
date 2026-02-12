@@ -40,51 +40,73 @@ export function buildDecorationSystemPrompt(params: DecorationPromptParams): str
 **Rank:** ${params.rank}
 **Full Name:** ${params.fullName}
 **Duty Title:** ${params.dutyTitle}
-**Unit:** ${params.unit}
+**Assignment:** ${params.assignmentLine}
 **Period:** ${params.startDate} to ${params.endDate}
 **Award Reason:** ${formatReason(params.reason)}
 
+## HARD CHARACTER LIMIT — THIS IS YOUR #1 CONSTRAINT
+
+**The entire citation (opening + narrative + closing) MUST be ≤ ${maxChars} characters.**
+- Count every character including spaces, periods, and commas.
+- If you cannot fit all accomplishments within ${maxChars} characters, condense or omit the least impactful details. NEVER exceed the limit.
+- Prefer shorter phrasing over longer phrasing in every sentence.
+
 ## FORMAT RULES (MyDecs Reimagined)
 
-1. **ABBREVIATIONS** - Authorized if on DAF approved abbreviations list
-   - Geographic locations: spell out first reference
-   - Unit designations: can use common abbreviations (Sqdn, Gp, Wg)
+1. **ABBREVIATIONS — SPELL THINGS OUT (unless approved)**
+   - By default, spell out ALL abbreviations and acronyms in full. Decoration citations must be readable by anyone.
+   - WRONG: "DHA", "GSU", "C2", "AOR", "ex", "sq"
+   - RIGHT: "Defense Health Agency", "Geographically Separated Unit", "Command and Control", "Area of Responsibility", "exercise", "squadron"
+   - Always acceptable without spelling out: "U.S.", "DoD", "Department of Defense", "Air Force", "IT"
    - NEVER abbreviate member's rank or name
-   - Common approved abbreviations: NCO, SNCO, DoD, TDY, ISR
+   - NEVER copy office symbols or source identifiers (e.g., "SCOL", "SCOO") into the citation — replace with the member's rank and name
+${params.approvedAbbreviations ? `   - **USER-APPROVED ABBREVIATIONS** — You MAY use these abbreviations in the citation: ${params.approvedAbbreviations}` : ""}
 
 2. **NO SYMBOLS** except the dollar sign ($)
    - Write "percent" not "%"
+   - Write "and" not "&" — the ampersand is NEVER allowed in citations
+   - NEVER use "x" as a multiplier (e.g., "2x") — write "two" or the numeral
+   - NEVER use grade designators like "O-6", "E-7", etc. — use the rank title instead (e.g., "Colonel" not "O-6")
 
-3. **NUMBERS**
-   - 1-9: spell out (one, two, three) unless space-constrained
-   - 10+: numerals are acceptable
+3. **NUMBERS — USE NUMERALS TO SAVE SPACE**
+   - 1-9: spell out ONLY when space allows; use numerals if tight on characters
+   - 10+: ALWAYS use numerals (23, 350, 1,400) — NEVER spell out large numbers
+   - Thousands: use "K" shorthand where natural (3.5K, 13K, 362K)
+   - Millions: use "$740M" not "$740 million"
+   - WRONG: "twenty-three", "three hundred fifty", "one thousand four hundred"
+   - RIGHT: "23", "350", "1,400" or "1.4K"
 
-4. **DATE FORMAT** - No leading zeros (use "1 January" not "01 January")
+4. **CONTENT TO OMIT** — Never include in the citation:
+   - Coins received (commander coins, challenge coins, etc.)
+   - Internal awards or recognition (squadron awards, quarterly awards, etc.)
+   - These are informal recognition, not accomplishments — focus on mission impact instead
 
-5. **RANK FORMATTING**
+5. **DATE FORMAT** — No leading zeros (use "1 January" not "01 January")
+
+6. **RANK FORMATTING**
    - First mention: Full rank with name ("${params.rank} ${params.fullName}")
    - Subsequent mentions: Short rank with last name ("${shortRank} ${getLastName(params.fullName)}")
    - Never separate rank from name
 
-6. **PRONOUN CONSISTENCY** - Use "${pronoun}" and "${possessive}" throughout
+7. **PRONOUN CONSISTENCY** — Use "${pronoun}" and "${possessive}" throughout
 
 ## CITATION STRUCTURE
 
 The citation MUST follow this exact structure:
 
-### OPENING SENTENCE (Mandatory Template)
+### OPENING SENTENCE (Mandatory — use verbatim)
 ${getOpeningTemplate(params)}
 
-### NARRATIVE (Your Focus)
-- Start with: "During this period," or "In this important assignment,"
-- 2-4 sentences describing accomplishments with quantified impacts
-- Use transitions: "Additionally," "Furthermore," "Moreover," "Finally,"
-- Each accomplishment should have: ACTION → SCOPE → IMPACT
+### NARRATIVE — Accomplishment Sentences
+- Write 2-4 concise sentences covering the accomplishments below.
+- Go DIRECTLY into the first accomplishment. Do NOT add filler or preamble such as "During this period," or "In this important assignment," — these waste characters.
+- Use SHORT transitions between accomplishments: "Additionally," "Furthermore," "Moreover," "Finally,"
+- Each sentence: ACTION → SCOPE → IMPACT (keep tight, no fluff)
 - Use rank-appropriate action verbs:
   - Primary: ${verbs.primary.join(", ")}
   - Secondary: ${verbs.secondary.join(", ")}
 
-### CLOSING SENTENCE (Mandatory Template)
+### CLOSING SENTENCE (Mandatory — use verbatim)
 ${getClosingTemplate(params, config.closingIntensity)}
 
 ## ACCOMPLISHMENTS TO INCORPORATE
@@ -93,16 +115,15 @@ ${params.accomplishments.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 
 ## QUALITY STANDARDS
 
-- Capture SUBSTANCE with DIGNITY and CLARITY
+- CONCISENESS is paramount — every word must earn its place
 - Use ACTIVE VOICE and FORCEFUL VERBS
-- Be SPECIFIC with facts and metrics
-- Emphasize MISSION CONTRIBUTION
-- Flow naturally as a single cohesive narrative
-- **CRITICAL: Stay within ${maxChars} characters total**
+- Keep the SOURCE numbers and metrics from the accomplishments — do not inflate or convert them unnecessarily
+- Flow naturally as a single cohesive paragraph
+- **FINAL CHECK: Re-count your output. It MUST be ≤ ${maxChars} characters. If over, shorten sentences until it fits.**
 
 ## OUTPUT
 
-Generate ONLY the complete citation text. Do not include any headers, notes, or explanations. The citation should be ready to paste directly onto ${config.afForm}.`;
+Generate ONLY the complete citation text — no headers, notes, or commentary. Ready to paste directly onto ${config.afForm}.`;
 }
 
 function getOpeningTemplate(params: DecorationPromptParams): string {
@@ -110,31 +131,31 @@ function getOpeningTemplate(params: DecorationPromptParams): string {
   
   const templates: Record<DecorationAwardType, Record<string, string>> = {
     afam: {
-      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service as ${params.dutyTitle}, ${params.unit}.`,
-      outstanding_achievement: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.unit}.`,
+      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service as ${params.dutyTitle}, ${params.assignmentLine}.`,
+      outstanding_achievement: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.assignmentLine}.`,
     },
     afcm: {
-      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      outstanding_achievement: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      act_of_courage: `${params.rank} ${params.fullName} distinguished ${pronoun} by an act of courage as ${params.dutyTitle}, ${params.unit}.`,
-      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service as ${params.dutyTitle}, ${params.unit}.`,
+      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      outstanding_achievement: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      act_of_courage: `${params.rank} ${params.fullName} distinguished ${pronoun} by an act of courage as ${params.dutyTitle}, ${params.assignmentLine}.`,
+      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service as ${params.dutyTitle}, ${params.assignmentLine}.`,
     },
     msm: {
-      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      outstanding_achievement: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      retirement: `${params.rank} ${params.fullName} distinguished ${pronoun} in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      default: `${params.rank} ${params.fullName} distinguished ${pronoun} in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.unit}.`,
+      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      outstanding_achievement: `${params.rank} ${params.fullName} distinguished ${pronoun} by outstanding achievement as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      retirement: `${params.rank} ${params.fullName} distinguished ${pronoun} in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      default: `${params.rank} ${params.fullName} distinguished ${pronoun} in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.assignmentLine}.`,
     },
     lom: {
-      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} by exceptionally meritorious conduct in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      retirement: `${params.rank} ${params.fullName} distinguished ${pronoun} by exceptionally meritorious conduct in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by exceptionally meritorious conduct in the performance of outstanding service as ${params.dutyTitle}, ${params.unit}.`,
+      meritorious_service: `${params.rank} ${params.fullName} distinguished ${pronoun} by exceptionally meritorious conduct in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      retirement: `${params.rank} ${params.fullName} distinguished ${pronoun} by exceptionally meritorious conduct in the performance of outstanding service to the United States as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by exceptionally meritorious conduct in the performance of outstanding service as ${params.dutyTitle}, ${params.assignmentLine}.`,
     },
     bsm: {
-      combat_meritorious: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service in connection with military operations against an armed enemy while serving as ${params.dutyTitle}, ${params.unit}, from ${params.startDate} to ${params.endDate}.`,
-      combat_valor: `${params.rank} ${params.fullName} distinguished ${pronoun} by heroic achievement in connection with combat operations against an armed enemy while serving as ${params.dutyTitle}, ${params.unit}.`,
-      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious achievement in connection with military operations as ${params.dutyTitle}, ${params.unit}.`,
+      combat_meritorious: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious service in connection with military operations against an armed enemy while serving as ${params.dutyTitle}, ${params.assignmentLine}, from ${params.startDate} to ${params.endDate}.`,
+      combat_valor: `${params.rank} ${params.fullName} distinguished ${pronoun} by heroic achievement in connection with combat operations against an armed enemy while serving as ${params.dutyTitle}, ${params.assignmentLine}.`,
+      default: `${params.rank} ${params.fullName} distinguished ${pronoun} by meritorious achievement in connection with military operations as ${params.dutyTitle}, ${params.assignmentLine}.`,
     },
   };
   

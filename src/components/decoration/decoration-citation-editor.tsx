@@ -18,13 +18,11 @@ import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/sonner";
-import { trackGenerationForSurvey } from "@/components/modals/ai-model-survey-modal";
 import { cn } from "@/lib/utils";
 import { DECORATION_TYPES } from "@/features/decorations/constants";
 import {
   Copy,
   Check,
-  Sparkles,
   AlertTriangle,
   RotateCcw,
   Camera,
@@ -70,23 +68,16 @@ export function DecorationCitationEditor({
   const supabase = createClient();
   const { profile } = useUserStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
 
   const {
     awardType,
-    reason,
-    dutyTitle,
-    unit,
-    startDate,
-    endDate,
     citationText,
     setCitationText,
     selectedStatementIds,
-    getSelectedStatementTexts,
-    selectedRatee,
     selectedModel,
     currentShell,
     isGenerating,
-    setIsGenerating,
     snapshots,
     setSnapshots,
     addSnapshot,
@@ -98,8 +89,6 @@ export function DecorationCitationEditor({
     removeCitationHighlight,
     clearCitationHighlights,
     statementColors,
-    activeHighlightColor,
-    setActiveHighlightColor,
   } = useDecorationShellStore();
 
   const [copied, setCopied] = useState(false);
@@ -120,6 +109,10 @@ export function DecorationCitationEditor({
   const [stagedSynonym, setStagedSynonym] = useState<string | null>(null);
   const [originalWord, setOriginalWord] = useState<string>(""); // The original highlighted word
   const [synonymsLocked, setSynonymsLocked] = useState(false); // When true, popup stays open
+
+  // Color overlay state — overlay is visible when not hovering/focused/editing
+  const [isHoveringCitation, setIsHoveringCitation] = useState(false);
+  const [isCitationFocused, setIsCitationFocused] = useState(false);
   
   // Track previous citation length to detect major changes
   const prevCitationLengthRef = useRef(citationText.length);
@@ -162,6 +155,38 @@ export function DecorationCitationEditor({
       .filter(word => word.length > 2 && !stopWords.has(word));
   }, []);
   
+  // Helper: Check if a period is part of an abbreviation (not a sentence boundary)
+  const isAbbreviationPeriod = useCallback((text: string, dotIndex: number): boolean => {
+    // 1. Single-letter abbreviation pattern: "U.S.", "A.F.", "D.C."
+    //    A single uppercase letter immediately before the period, preceded by
+    //    whitespace, start of text, open paren, or another period.
+    if (dotIndex > 0 && /[A-Z]/.test(text[dotIndex - 1])) {
+      if (dotIndex === 1 || /[\s.,(]/.test(text[dotIndex - 2])) {
+        return true;
+      }
+    }
+
+    // 2. Decimal numbers: "99.7", "3.5" — digit on both sides of the period
+    if (
+      dotIndex > 0 &&
+      dotIndex < text.length - 1 &&
+      /\d/.test(text[dotIndex - 1]) &&
+      /\d/.test(text[dotIndex + 1])
+    ) {
+      return true;
+    }
+
+    // 3. Common military/general abbreviations ending with a period
+    const beforeDot = text.slice(Math.max(0, dotIndex - 10), dotIndex);
+    const abbrevPattern =
+      /(?:Mrs|Mr|Dr|Gen|Lt|Col|Sgt|Maj|Capt|Cpl|Pvt|Spc|SSgt|TSgt|MSgt|SMSgt|CMSgt|CMSAF|Jr|Sr|vs|etc|approx|dept|div|est|inc|govt|org|No|St|Ave|Blvd|Cdr|Cmdr|Adm|Brig|Ens|Pfc|Sq|Wg|Gp|Flt|Amn|SrA|A1C)$/i;
+    if (abbrevPattern.test(beforeDot)) {
+      return true;
+    }
+
+    return false;
+  }, []);
+
   // Helper: Split citation into sentences
   const splitIntoSentences = useCallback((text: string): Array<{ start: number; end: number; text: string }> => {
     const sentences: Array<{ start: number; end: number; text: string }> = [];
@@ -173,7 +198,26 @@ export function DecorationCitationEditor({
     }
     
     for (let i = sentenceStart; i < text.length; i++) {
-      if (text[i] === '.' || text[i] === ';') {
+      if (text[i] === ';') {
+        // Semicolons are always sentence boundaries
+        const sentenceEnd = i + 1;
+        const sentenceText = text.slice(sentenceStart, sentenceEnd);
+        
+        if (sentenceText.trim().length > 10) {
+          sentences.push({ start: sentenceStart, end: sentenceEnd, text: sentenceText });
+        }
+        
+        sentenceStart = sentenceEnd;
+        while (sentenceStart < text.length && /\s/.test(text[sentenceStart])) {
+          sentenceStart++;
+        }
+        i = sentenceStart - 1;
+      } else if (text[i] === '.') {
+        // Skip abbreviation periods — they don't end sentences
+        if (isAbbreviationPeriod(text, i)) {
+          continue;
+        }
+        
         const sentenceEnd = i + 1;
         const sentenceText = text.slice(sentenceStart, sentenceEnd);
         
@@ -190,9 +234,17 @@ export function DecorationCitationEditor({
         i = sentenceStart - 1;
       }
     }
+
+    // Capture any remaining text after the last sentence boundary
+    if (sentenceStart < text.length) {
+      const remaining = text.slice(sentenceStart).trim();
+      if (remaining.length > 10) {
+        sentences.push({ start: sentenceStart, end: text.length, text: text.slice(sentenceStart) });
+      }
+    }
     
     return sentences;
-  }, []);
+  }, [isAbbreviationPeriod]);
   
   // Helper: Score how well a sentence matches a refined statement
   const scoreSentenceMatch = useCallback((
@@ -312,25 +364,30 @@ export function DecorationCitationEditor({
     newHighlights.forEach(h => addCitationHighlight(h));
   }, [citationText, statementColors, statements, splitIntoSentences, extractNumbers, extractKeywords, scoreSentenceMatch, clearCitationHighlights, addCitationHighlight]);
   
+  // Ref always points to the latest syncHighlightsLocally — eliminates stale
+  // closures when effects fire in different render cycles during page load.
+  const syncHighlightsRef = useRef(syncHighlightsLocally);
+  syncHighlightsRef.current = syncHighlightsLocally;
+
   // Debounce ref for citation text changes
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Auto-sync when statement colors change
+  // Immediate sync when statement colors or statements change (covers initial
+  // page load where statementColors may arrive before statements finish loading)
   useEffect(() => {
     if (Object.keys(statementColors).length === 0) {
       clearCitationHighlights();
       return;
     }
-    
-    // Immediate sync when colors change
-    syncHighlightsLocally();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statementColors]); // Only trigger on color changes
+    if (statements.length === 0 || !citationText.trim()) return;
+
+    syncHighlightsRef.current();
+  }, [statementColors, statements, clearCitationHighlights, citationText]);
   
   // Debounced sync when citation text changes (user edits)
   useEffect(() => {
     if (Object.keys(statementColors).length === 0) return;
-    if (!citationText.trim()) return;
+    if (!citationText.trim() || statements.length === 0) return;
     
     // Clear existing timeout
     if (syncTimeoutRef.current) {
@@ -339,7 +396,7 @@ export function DecorationCitationEditor({
     
     // Debounce: wait 500ms after user stops typing before re-syncing
     syncTimeoutRef.current = setTimeout(() => {
-      syncHighlightsLocally();
+      syncHighlightsRef.current();
     }, 500);
     
     return () => {
@@ -349,15 +406,6 @@ export function DecorationCitationEditor({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [citationText]); // Only trigger on citation text changes
-  
-  // Re-sync highlights when statements load (handles race condition where
-  // statementColors are set before statements finish loading from the DB)
-  useEffect(() => {
-    if (statements.length > 0 && Object.keys(statementColors).length > 0 && citationText.trim()) {
-      syncHighlightsLocally();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statements]); // Only trigger when statements array loads/changes
   
   // Check if selection is a single word (no spaces, reasonable length)
   const isSingleWord = useMemo(() => {
@@ -451,79 +499,6 @@ export function DecorationCitationEditor({
     [setCitationText, setShowHistory]
   );
 
-  // Generate citation using API
-  const handleGenerate = useCallback(async () => {
-    if (selectedStatementIds.length === 0) {
-      toast.error("Please select at least one accomplishment");
-      return;
-    }
-
-    if (!selectedRatee) {
-      toast.error("No ratee selected");
-      return;
-    }
-
-    setIsGenerating(true);
-
-    try {
-      const statementTexts = getSelectedStatementTexts(statements);
-
-      const response = await fetch("/api/generate-decoration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateeId: selectedRatee.id,
-          rateeRank: selectedRatee.rank || "",
-          rateeName: selectedRatee.fullName || "",
-          rateeGender: selectedRatee.gender,
-          dutyTitle: dutyTitle || "member",
-          unit: unit || "the organization",
-          startDate: startDate || "",
-          endDate: endDate || "",
-          awardType,
-          reason,
-          accomplishments: statementTexts,
-          model: selectedModel,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to generate citation");
-      }
-
-      const data = await response.json();
-      setCitationText(data.citation);
-      trackGenerationForSurvey();
-
-      if (!data.metadata.withinLimit) {
-        toast.warning(
-          `Citation is ${data.metadata.characterCount} characters (${data.metadata.maxCharacters} max). Consider editing to shorten.`
-        );
-      } else {
-        toast.success("Citation generated successfully");
-      }
-    } catch (error) {
-      console.error("Generate error:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to generate citation");
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [
-    selectedStatementIds,
-    selectedRatee,
-    statements,
-    dutyTitle,
-    unit,
-    startDate,
-    endDate,
-    awardType,
-    reason,
-    selectedModel,
-    getSelectedStatementTexts,
-    setCitationText,
-    setIsGenerating,
-  ]);
 
   // Handle text selection for popup (highlight text to get expand/compress/rephrase options)
   const handleTextSelect = useCallback(() => {
@@ -741,6 +716,24 @@ export function DecorationCitationEditor({
     }, 300);
   }, []);
 
+  // Sync overlay scroll position with textarea
+  const handleCitationScroll = useCallback(() => {
+    if (textareaRef.current && overlayRef.current) {
+      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  }, []);
+
+  // Determine if the color overlay should be visible
+  // Hidden when: hovering, focused (editing), selection popup open, or generating
+  const showColorOverlay = !!(
+    renderHighlightedText &&
+    renderHighlightedText.length > 0 &&
+    !isHoveringCitation &&
+    !isCitationFocused &&
+    !showSelectionPopup &&
+    !isGenerating
+  );
+
   // Revise selected text
   const handleReviseSelection = useCallback(
     async (mode: "expand" | "compress" | "general") => {
@@ -920,26 +913,6 @@ export function DecorationCitationEditor({
                 <TooltipContent>Snapshot history</TooltipContent>
               </Tooltip>
 
-              {/* Generate button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerate}
-                disabled={isGenerating || selectedStatementIds.length === 0}
-                className="h-8"
-              >
-                {isGenerating ? (
-                  <>
-                    <Spinner size="sm" className="mr-1.5" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="size-4 mr-1.5" />
-                    Generate
-                  </>
-                )}
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -1027,15 +1000,24 @@ export function DecorationCitationEditor({
             </div>
           </div>
 
-          {/* Citation textarea */}
-          <div className="relative">
+          {/* Citation textarea with inline color overlay */}
+          <div
+            className="relative"
+            onMouseEnter={() => setIsHoveringCitation(true)}
+            onMouseLeave={() => setIsHoveringCitation(false)}
+          >
             <Textarea
               ref={textareaRef}
               value={citationText}
               onChange={(e) => setCitationText(e.target.value)}
               onMouseUp={handleTextSelect}
               onKeyUp={handleTextSelect}
-              onBlur={handleTextareaBlur}
+              onFocus={() => setIsCitationFocused(true)}
+              onBlur={() => {
+                setIsCitationFocused(false);
+                handleTextareaBlur();
+              }}
+              onScroll={handleCitationScroll}
               placeholder={
                 selectedStatementIds.length === 0
                   ? "Select statements from your library, then click Generate to create a citation..."
@@ -1043,11 +1025,46 @@ export function DecorationCitationEditor({
               }
               className={cn(
                 "min-h-[280px] font-mono text-sm resize-none",
+                "transition-colors duration-150 ease-in-out",
                 "focus-visible:ring-1 focus-visible:ring-primary",
-                isOverLimit && "border-destructive focus-visible:ring-destructive"
+                isOverLimit && "border-destructive focus-visible:ring-destructive",
+                showColorOverlay && "text-transparent"
               )}
               aria-label="Citation text editor"
             />
+
+            {/* Color overlay — sits on top of textarea, hidden on hover/focus for editing */}
+            {renderHighlightedText && renderHighlightedText.length > 0 && (
+              <div
+                ref={overlayRef}
+                className={cn(
+                  "absolute inset-[1px] pointer-events-none",
+                  "rounded-[5px]",
+                  "font-mono text-sm whitespace-pre-wrap break-words",
+                  "overflow-hidden px-3 py-2",
+                  "transition-opacity duration-150 ease-in-out",
+                  showColorOverlay ? "opacity-100" : "opacity-0"
+                )}
+                aria-hidden="true"
+              >
+                {renderHighlightedText.map((segment, index) => {
+                  if (segment.highlight) {
+                    const colorConfig = HIGHLIGHT_COLORS.find(c => c.id === segment.highlight?.colorId);
+                    return (
+                      <span
+                        key={index}
+                        style={{ color: colorConfig?.hex }}
+                        className="font-semibold"
+                      >
+                        {segment.text}
+                      </span>
+                    );
+                  }
+                  return <span key={index} className="text-foreground">{segment.text}</span>;
+                })}
+              </div>
+            )}
+
             {isGenerating && (
               <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-md">
                 <div className="flex flex-col items-center gap-2">
@@ -1059,33 +1076,6 @@ export function DecorationCitationEditor({
               </div>
             )}
           </div>
-          
-          {/* Highlighted preview - shows color-coded statements when colors are assigned */}
-          {renderHighlightedText && renderHighlightedText.length > 0 && (
-            <div className="p-3 rounded-md border bg-muted/30 font-mono text-sm whitespace-pre-wrap break-words">
-              {renderHighlightedText.map((segment, index) => {
-                if (segment.highlight) {
-                  const colorConfig = HIGHLIGHT_COLORS.find(c => c.id === segment.highlight?.colorId);
-                  const isActive = activeHighlightColor === segment.highlight.colorId;
-                  return (
-                    <span
-                      key={index}
-                      style={{ color: colorConfig?.hex }}
-                      className={cn(
-                        "font-semibold transition-all duration-200",
-                        isActive && "underline decoration-2"
-                      )}
-                      onMouseEnter={() => setActiveHighlightColor(segment.highlight!.colorId)}
-                      onMouseLeave={() => setActiveHighlightColor(null)}
-                    >
-                      {segment.text}
-                    </span>
-                  );
-                }
-                return <span key={index}>{segment.text}</span>;
-              })}
-            </div>
-          )}
 
           {/* Text Selection Popup - with smooth transition */}
           <div

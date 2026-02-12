@@ -800,9 +800,10 @@ interface SettingsState {
   // OPB settings (Officer Performance Brief)
   opbSystemPrompt: string;
   opbStyleGuidelines: string;
-  // Decoration settings (citations - no abbreviations/acronyms)
+  // Decoration settings
   decorationSystemPrompt: string;
   decorationStyleGuidelines: string;
+  decorationAbbreviations: Abbreviation[];
   // Duty description prompt (present tense, scope/responsibility)
   dutyDescriptionPrompt: string;
 }
@@ -848,9 +849,10 @@ export default function LLMSettingsPage() {
   const [opbSystemPrompt, setOpbSystemPrompt] = useState(DEFAULT_OPB_SYSTEM_PROMPT);
   const [opbStyleGuidelines, setOpbStyleGuidelines] = useState(DEFAULT_OPB_STYLE_GUIDELINES);
   
-  // Decoration-specific settings (citations - no abbreviations/acronyms)
+  // Decoration-specific settings
   const [decorationSystemPrompt, setDecorationSystemPrompt] = useState(DEFAULT_DECORATION_SYSTEM_PROMPT);
   const [decorationStyleGuidelines, setDecorationStyleGuidelines] = useState(DEFAULT_DECORATION_STYLE_GUIDELINES);
+  const [decorationAbbreviations, setDecorationAbbreviations] = useState<Abbreviation[]>([]);
   
   // Duty description prompt (present tense, scope/responsibility)
   const [dutyDescriptionPrompt, setDutyDescriptionPrompt] = useState(DEFAULT_DUTY_DESCRIPTION_PROMPT);
@@ -888,9 +890,10 @@ export default function LLMSettingsPage() {
       opbStyleGuidelines !== initialState.opbStyleGuidelines ||
       decorationSystemPrompt !== initialState.decorationSystemPrompt ||
       decorationStyleGuidelines !== initialState.decorationStyleGuidelines ||
+      JSON.stringify(decorationAbbreviations) !== JSON.stringify(initialState.decorationAbbreviations) ||
       dutyDescriptionPrompt !== initialState.dutyDescriptionPrompt
     );
-  }, [styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, mpaDescriptions, awardSystemPrompt, awardAbbreviations, awardStyleGuidelines, awardSentencesPerCategory, opbSystemPrompt, opbStyleGuidelines, decorationSystemPrompt, decorationStyleGuidelines, dutyDescriptionPrompt, isLoading, initialState]);
+  }, [styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, mpaDescriptions, awardSystemPrompt, awardAbbreviations, awardStyleGuidelines, awardSentencesPerCategory, opbSystemPrompt, opbStyleGuidelines, decorationSystemPrompt, decorationStyleGuidelines, decorationAbbreviations, dutyDescriptionPrompt, isLoading, initialState]);
 
   // Warn user before leaving with unsaved changes (browser close/refresh)
   useEffect(() => {
@@ -1003,9 +1006,11 @@ export default function LLMSettingsPage() {
         // Load Decoration settings
         const loadedDecorationSystemPrompt = settings.decoration_system_prompt || DEFAULT_DECORATION_SYSTEM_PROMPT;
         const loadedDecorationStyleGuidelines = settings.decoration_style_guidelines || DEFAULT_DECORATION_STYLE_GUIDELINES;
+        const loadedDecorationAbbreviations = settings.decoration_abbreviations || [];
         
         setDecorationSystemPrompt(loadedDecorationSystemPrompt);
         setDecorationStyleGuidelines(loadedDecorationStyleGuidelines);
+        setDecorationAbbreviations(loadedDecorationAbbreviations);
 
         // Load Duty Description prompt
         const loadedDutyDescriptionPrompt = settings.duty_description_prompt || DEFAULT_DUTY_DESCRIPTION_PROMPT;
@@ -1027,6 +1032,7 @@ export default function LLMSettingsPage() {
           opbStyleGuidelines: loadedOpbStyleGuidelines,
           decorationSystemPrompt: loadedDecorationSystemPrompt,
           decorationStyleGuidelines: loadedDecorationStyleGuidelines,
+          decorationAbbreviations: JSON.parse(JSON.stringify(loadedDecorationAbbreviations)),
           dutyDescriptionPrompt: loadedDutyDescriptionPrompt,
         });
       } else {
@@ -1046,6 +1052,7 @@ export default function LLMSettingsPage() {
           opbStyleGuidelines: DEFAULT_OPB_STYLE_GUIDELINES,
           decorationSystemPrompt: DEFAULT_DECORATION_SYSTEM_PROMPT,
           decorationStyleGuidelines: DEFAULT_DECORATION_STYLE_GUIDELINES,
+          decorationAbbreviations: [],
           dutyDescriptionPrompt: DEFAULT_DUTY_DESCRIPTION_PROMPT,
         });
       }
@@ -1085,6 +1092,7 @@ export default function LLMSettingsPage() {
         // Decoration settings
         decoration_system_prompt: decorationSystemPrompt,
         decoration_style_guidelines: decorationStyleGuidelines,
+        decoration_abbreviations: decorationAbbreviations,
         // Duty description prompt
         duty_description_prompt: dutyDescriptionPrompt,
       };
@@ -1118,6 +1126,7 @@ export default function LLMSettingsPage() {
         opbStyleGuidelines,
         decorationSystemPrompt,
         decorationStyleGuidelines,
+        decorationAbbreviations: JSON.parse(JSON.stringify(decorationAbbreviations)),
         dutyDescriptionPrompt,
       });
 
@@ -1764,9 +1773,9 @@ export default function LLMSettingsPage() {
                   <div className="text-xs text-amber-800 dark:text-amber-200 space-y-1">
                     <p className="font-medium">Decoration-Specific Rules</p>
                     <p className="text-amber-700 dark:text-amber-300">
-                      Decorations require everything to be spelled out per DAFMAN 36-2806. Abbreviations and acronyms 
-                      from your EPB/Award settings are <strong>not</strong> applied to decoration citations. Only the 
-                      rank-based verb progression is shared.
+                      By default, decorations spell out all abbreviations for readability per DAFMAN 36-2806.
+                      You can add approved abbreviations below that the AI is allowed to use in citations.
+                      EPB/Award abbreviations are <strong>not</strong> shared — manage decoration abbreviations separately.
                     </p>
                   </div>
                 </div>
@@ -1782,8 +1791,7 @@ export default function LLMSettingsPage() {
                 placeholder="Enter your custom decoration system prompt..."
               />
               <p className="text-[10px] sm:text-xs text-muted-foreground">
-                Available placeholders: {"{{ratee_rank}}"}, {"{{primary_verbs}}"}, {"{{rank_verb_guidance}}"}. 
-                Note: {"{{abbreviations_list}}"} and {"{{acronyms_list}}"} are intentionally excluded for decorations.
+                Available placeholders: {"{{ratee_rank}}"}, {"{{primary_verbs}}"}, {"{{rank_verb_guidance}}"}, {"{{decoration_abbreviations_list}}"}
               </p>
 
               <div className="flex items-center justify-between gap-2 pt-2">
@@ -1833,6 +1841,12 @@ export default function LLMSettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Decoration Approved Abbreviations */}
+          <AbbreviationEditor
+            abbreviations={decorationAbbreviations}
+            onChange={setDecorationAbbreviations}
+          />
         </TabsContent>
 
         {/* Rank Verbs */}

@@ -452,9 +452,10 @@ export interface UserLLMSettings {
   // OPB-specific settings (Officer Performance Brief)
   opb_system_prompt: string | null;
   opb_style_guidelines: string | null;
-  // Decoration-specific settings (citations - no abbreviations/acronyms, everything spelled out)
+  // Decoration-specific settings
   decoration_system_prompt: string | null;
   decoration_style_guidelines: string | null;
+  decoration_abbreviations: Abbreviation[];
   // Duty description prompt (present tense, scope/responsibility - separate from performance statements)
   duty_description_prompt: string | null;
   created_at: string;
@@ -926,7 +927,13 @@ export interface DecorationShell {
   award_type: DecorationAwardType;
   reason: DecorationReason;
   duty_title: string;
-  unit: string;
+  unit: string; // legacy — kept for backward compat; prefer office
+  office: string;
+  squadron: string;
+  group_name: string; // optional
+  wing: string;       // optional
+  base_name: string;
+  location: string;   // state or country
   start_date: string | null;
   end_date: string | null;
   citation_text: string;
@@ -1678,6 +1685,12 @@ export interface Database {
           reason: DecorationReason;
           duty_title: string;
           unit: string;
+          office: string;
+          squadron: string;
+          group_name: string;
+          wing: string;
+          base_name: string;
+          location: string;
           start_date: string | null;
           end_date: string | null;
           citation_text: string;
@@ -1695,6 +1708,12 @@ export interface Database {
           reason?: DecorationReason;
           duty_title?: string;
           unit?: string;
+          office?: string;
+          squadron?: string;
+          group_name?: string;
+          wing?: string;
+          base_name?: string;
+          location?: string;
           start_date?: string | null;
           end_date?: string | null;
           citation_text?: string;
@@ -1706,6 +1725,12 @@ export interface Database {
           reason?: DecorationReason;
           duty_title?: string;
           unit?: string;
+          office?: string;
+          squadron?: string;
+          group_name?: string;
+          wing?: string;
+          base_name?: string;
+          location?: string;
           start_date?: string | null;
           end_date?: string | null;
           citation_text?: string;

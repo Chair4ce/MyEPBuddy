@@ -22,9 +22,14 @@ interface GenerateDecorationRequest {
   rateeName: string;
   rateeGender?: "male" | "female";
   
-  // Position info
+  // Position / assignment info (structured)
   dutyTitle: string;
-  unit: string;
+  office: string;
+  squadron: string;
+  groupName: string;  // optional
+  wing: string;       // optional
+  baseName: string;
+  location: string;   // state or country
   startDate: string;
   endDate: string;
   
@@ -39,6 +44,26 @@ interface GenerateDecorationRequest {
   
   // AI config
   model: string;
+}
+
+/**
+ * Build the comma-separated assignment chain from structured fields.
+ * Example output: "42 CS/SCOO, 67th Fighter Squadron, 18th Operations Group,
+ *                  480 ISR Wing, Kadena Air Base, Japan"
+ * Group and Wing are optional — omitted when empty.
+ */
+function buildAssignmentLine(body: GenerateDecorationRequest): string {
+  const parts: string[] = [];
+
+  if (body.office?.trim()) parts.push(body.office.trim());
+  if (body.squadron?.trim()) parts.push(body.squadron.trim());
+  // Group and Wing are optional
+  if (body.groupName?.trim()) parts.push(body.groupName.trim());
+  if (body.wing?.trim()) parts.push(body.wing.trim());
+  if (body.baseName?.trim()) parts.push(body.baseName.trim());
+  if (body.location?.trim()) parts.push(body.location.trim());
+
+  return parts.length > 0 ? parts.join(", ") : "the organization";
 }
 
 export async function POST(request: Request) {
@@ -86,29 +111,34 @@ export async function POST(request: Request) {
     const apiKeys = await getDecryptedApiKeys();
     
     // Select model provider
-    const modelProvider = getModelProvider(body.model, apiKeys || {});
+    const { provider: modelProvider, error: modelError } = getModelProvider(body.model, apiKeys || {});
     if (!modelProvider) {
       return NextResponse.json(
-        { error: "No API key available for selected model" },
+        { error: modelError || "No API key available for selected model" },
         { status: 400 }
       );
     }
     
-    // Load user LLM settings for custom decoration prompt and rank verbs
+    // Load user LLM settings for custom decoration prompt, rank verbs, and abbreviations
     const { data: settingsData } = await supabase
       .from("user_llm_settings")
-      .select("decoration_system_prompt, decoration_style_guidelines, rank_verb_progression")
+      .select("decoration_system_prompt, decoration_style_guidelines, decoration_abbreviations, rank_verb_progression")
       .eq("user_id", user.id)
       .maybeSingle();
     
     const userSettings = settingsData as unknown as Partial<UserLLMSettings> | null;
+
+    // Build the approved abbreviations list (if user has defined any)
+    const decorationAbbrevs = (userSettings?.decoration_abbreviations || []) as Array<{ word: string; abbreviation: string }>;
+    const abbreviationsText = decorationAbbrevs.length > 0
+      ? decorationAbbrevs.map(a => `"${a.word}" → "${a.abbreviation}"`).join(", ")
+      : "";
     
     // Build system prompt - use user's custom decoration prompt if available
     let systemPrompt: string;
     
     if (userSettings?.decoration_system_prompt) {
-      // User has a custom decoration prompt - apply verb placeholder replacements
-      // Decorations do NOT get abbreviations or acronyms (everything spelled out)
+      // User has a custom decoration prompt - apply placeholder replacements
       const rankVerbs = userSettings.rank_verb_progression?.[body.rateeRank as keyof typeof userSettings.rank_verb_progression] || {
         primary: ["Led", "Managed"],
         secondary: ["Executed", "Coordinated"],
@@ -119,6 +149,10 @@ export async function POST(request: Request) {
       prompt = prompt.replace(/\{\{ratee_rank\}\}/g, body.rateeRank);
       prompt = prompt.replace(/\{\{primary_verbs\}\}/g, rankVerbs.primary.join(", "));
       prompt = prompt.replace(/\{\{rank_verb_guidance\}\}/g, rankVerbGuidance);
+      prompt = prompt.replace(
+        /\{\{decoration_abbreviations_list\}\}/g,
+        abbreviationsText || "None — spell out all abbreviations and acronyms."
+      );
       
       // Append style guidelines if available
       if (userSettings.decoration_style_guidelines) {
@@ -136,16 +170,18 @@ export async function POST(request: Request) {
         rank: body.rateeRank,
         fullName: body.rateeName,
         dutyTitle: body.dutyTitle || "member",
-        unit: body.unit || "the organization",
+        assignmentLine: buildAssignmentLine(body),
         startDate: body.startDate || "start date",
         endDate: body.endDate || "end date",
         accomplishments: body.accomplishments,
         gender: body.rateeGender,
         maxCharacters: decorationConfig.maxCharacters,
+        approvedAbbreviations: abbreviationsText,
       });
     }
     
     // Build user prompt with ratee details and accomplishments
+    const assignmentLine = buildAssignmentLine(body);
     const userPrompt = userSettings?.decoration_system_prompt
       ? `Generate a ${decorationConfig.name} (${decorationConfig.abbreviation}) citation.
 
@@ -153,7 +189,7 @@ export async function POST(request: Request) {
 - Rank: ${body.rateeRank}
 - Full Name: ${body.rateeName}
 - Duty Title: ${body.dutyTitle || "member"}
-- Unit: ${body.unit || "the organization"}
+- Assignment: ${assignmentLine}
 - Period: ${body.startDate || "start date"} to ${body.endDate || "end date"}
 - Award Reason: ${body.reason || "meritorious_service"}
 - Maximum Characters: ${decorationConfig.maxCharacters}
@@ -161,7 +197,7 @@ export async function POST(request: Request) {
 ## ACCOMPLISHMENTS TO INCORPORATE
 ${body.accomplishments.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 
-Generate the complete decoration citation. Output ONLY the citation text, ready to paste directly onto ${decorationConfig.afForm}.`
+HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} characters (including spaces). Use numerals for numbers 10+ (23, 350, 1.4K). Do NOT spell out large numbers. Do NOT add filler phrases like "During this period" or "In this important assignment." Go directly into accomplishments after the opening sentence. The opening sentence MUST use the assignment chain exactly as provided (e.g., "...as ${body.dutyTitle || "member"}, ${assignmentLine}..."). Output ONLY the citation text, ready to paste directly onto ${decorationConfig.afForm}.`
       : "Generate the complete decoration citation based on the provided information and accomplishments.";
 
     // Generate citation
@@ -169,7 +205,7 @@ Generate the complete decoration citation. Output ONLY the citation text, ready 
       model: modelProvider,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: 0.7,
+      temperature: 0.5,
       maxTokens: 2000,
     });
     
@@ -205,53 +241,49 @@ Generate the complete decoration citation. Output ONLY the citation text, ready 
   }
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  "gpt-": "OpenAI",
+  "claude-": "Anthropic",
+  "gemini-": "Google",
+  "grok-": "xAI (Grok)",
+};
+
 function getModelProvider(
   model: string,
   apiKeys: { openai_key?: string | null; anthropic_key?: string | null; google_key?: string | null; grok_key?: string | null }
-): LanguageModel | null {
+): { provider: LanguageModel | null; error?: string } {
   // Check user keys first, then fall back to env keys
   const openaiKey = apiKeys.openai_key || process.env.OPENAI_API_KEY;
   const anthropicKey = apiKeys.anthropic_key || process.env.ANTHROPIC_API_KEY;
   const googleKey = apiKeys.google_key || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   const xaiKey = apiKeys.grok_key || process.env.XAI_API_KEY;
   
-  if (model.startsWith("gpt-") && openaiKey) {
-    const openai = createOpenAI({ apiKey: openaiKey });
-    return openai(model);
+  // Match the selected model to its provider — return a clear error if key is missing
+  if (model.startsWith("gpt-")) {
+    if (!openaiKey) return { provider: null, error: "No OpenAI API key configured. Add one in Settings → API Keys." };
+    return { provider: createOpenAI({ apiKey: openaiKey })(model) };
   }
   
-  if (model.startsWith("claude-") && anthropicKey) {
-    const anthropic = createAnthropic({ apiKey: anthropicKey });
-    return anthropic(model);
+  if (model.startsWith("claude-")) {
+    if (!anthropicKey) return { provider: null, error: "No Anthropic API key configured. Add one in Settings → API Keys." };
+    return { provider: createAnthropic({ apiKey: anthropicKey })(model) };
   }
   
-  if (model.startsWith("gemini-") && googleKey) {
-    const google = createGoogleGenerativeAI({ apiKey: googleKey });
-    return google(model);
+  if (model.startsWith("gemini-")) {
+    if (!googleKey) return { provider: null, error: "No Google API key configured. The Gemini default model requires a GOOGLE_GENERATIVE_AI_API_KEY environment variable." };
+    return { provider: createGoogleGenerativeAI({ apiKey: googleKey })(model) };
   }
   
-  if (model.startsWith("grok-") && xaiKey) {
-    const xai = createXai({ apiKey: xaiKey });
-    return xai(model);
+  if (model.startsWith("grok-")) {
+    if (!xaiKey) return { provider: null, error: "No xAI API key configured. Add one in Settings → API Keys." };
+    return { provider: createXai({ apiKey: xaiKey })(model) };
   }
   
-  // Default fallback - try each provider in order
-  if (anthropicKey) {
-    const anthropic = createAnthropic({ apiKey: anthropicKey });
-    return anthropic("claude-sonnet-4-20250514");
-  }
-  if (openaiKey) {
-    const openai = createOpenAI({ apiKey: openaiKey });
-    return openai("gpt-4o");
-  }
-  if (googleKey) {
-    const google = createGoogleGenerativeAI({ apiKey: googleKey });
-    return google("gemini-2.0-flash");
-  }
-  if (xaiKey) {
-    const xai = createXai({ apiKey: xaiKey });
-    return xai("grok-2");
-  }
+  // Unknown model prefix — try fallback with whatever key is available
+  if (googleKey) return { provider: createGoogleGenerativeAI({ apiKey: googleKey })("gemini-2.0-flash") };
+  if (anthropicKey) return { provider: createAnthropic({ apiKey: anthropicKey })("claude-sonnet-4-20250514") };
+  if (openaiKey) return { provider: createOpenAI({ apiKey: openaiKey })("gpt-4o") };
+  if (xaiKey) return { provider: createXai({ apiKey: xaiKey })("grok-3-mini-fast-latest") };
   
-  return null;
+  return { provider: null, error: "No API keys configured. Add at least one in Settings → API Keys." };
 }

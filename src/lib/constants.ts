@@ -162,10 +162,10 @@ export const AI_MODELS = [
       "Solid upgrade over Flash. Produces more detailed and polished statements with better impact language.",
   },
   {
-    id: "grok-2",
-    name: "Grok 2",
+    id: "grok-3-mini",
+    name: "Grok 3 Mini",
     provider: "xai",
-    description: "xAI's powerful model",
+    description: "xAI's cost-effective model",
     quality: "good" as ModelQuality,
     statementTip:
       "Capable model with good general performance. May occasionally use non-standard military phrasing.",

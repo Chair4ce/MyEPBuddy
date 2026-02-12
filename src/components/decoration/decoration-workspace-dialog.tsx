@@ -36,11 +36,9 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
-import { ModelSelector } from "@/components/model-selector";
-import { AiModelSurveyModal, useAiModelSurvey } from "@/components/modals/ai-model-survey-modal";
+import { AiModelSurveyModal, useAiModelSurvey, trackGenerationForSurvey } from "@/components/modals/ai-model-survey-modal";
 import { DECORATION_TYPES, DECORATION_REASONS } from "@/features/decorations/constants";
 import { cn, getFullName } from "@/lib/utils";
 import {
@@ -55,6 +53,7 @@ import {
   RotateCcw,
   Trash2,
   AlertTriangle,
+  MoreVertical,
 } from "lucide-react";
 import {
   Tooltip,
@@ -63,8 +62,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Collapsible,
-  CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DecorationStatementSelector } from "@/components/decoration/decoration-statement-selector";
@@ -138,8 +142,18 @@ export function DecorationWorkspaceDialog({
     setReason,
     dutyTitle,
     setDutyTitle,
-    unit,
-    setUnit,
+    office,
+    setOffice,
+    squadron,
+    setSquadron,
+    groupName,
+    setGroupName,
+    wing,
+    setWing,
+    baseName,
+    setBaseName,
+    location,
+    setLocation,
     startDate,
     setStartDate,
     endDate,
@@ -150,8 +164,6 @@ export function DecorationWorkspaceDialog({
     statementColors,
     selectedRatee,
     setSelectedRatee,
-    selectedModel,
-    setSelectedModel,
     isLoadingShell,
     setIsLoadingShell,
     isSaving,
@@ -166,7 +178,7 @@ export function DecorationWorkspaceDialog({
 
   // Local state
   const [statements, setStatements] = useState<RefinedStatement[]>([]);
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [showReviewLinkDialog, setShowReviewLinkDialog] = useState(false);
   const [showFeedbackListDialog, setShowFeedbackListDialog] = useState(false);
@@ -289,12 +301,12 @@ export function DecorationWorkspaceDialog({
         isManagedMember: info.isManagedMember,
         gender: info.gender,
       });
-      // Set unit from ratee if not already set
-      if (!unit && info.unit) {
-        setUnit(info.unit);
+      // Auto-populate office from ratee profile if not already set
+      if (!office && info.unit) {
+        setOffice(info.unit);
       }
     }
-  }, [shell, profile, subordinates, managedMembers, setSelectedRatee, unit, setUnit]);
+  }, [shell, profile, subordinates, managedMembers, setSelectedRatee, office, setOffice]);
 
   // Load refined statements (finalized statements library) for the ratee
   useEffect(() => {
@@ -357,7 +369,12 @@ export function DecorationWorkspaceDialog({
           award_type: awardType,
           reason,
           duty_title: dutyTitle,
-          unit,
+          office,
+          squadron,
+          group_name: groupName,
+          wing,
+          base_name: baseName,
+          location,
           start_date: startDate || null,
           end_date: endDate || null,
           citation_text: citationText,
@@ -384,7 +401,12 @@ export function DecorationWorkspaceDialog({
     awardType,
     reason,
     dutyTitle,
-    unit,
+    office,
+    squadron,
+    groupName,
+    wing,
+    baseName,
+    location,
     startDate,
     endDate,
     citationText,
@@ -416,7 +438,12 @@ export function DecorationWorkspaceDialog({
           award_type: awardType,
           reason,
           duty_title: dutyTitle,
-          unit,
+          office,
+          squadron,
+          group_name: groupName,
+          wing,
+          base_name: baseName,
+          location,
           start_date: startDate || null,
           end_date: endDate || null,
           citation_text: citationText,
@@ -439,7 +466,12 @@ export function DecorationWorkspaceDialog({
     awardType,
     reason,
     dutyTitle,
-    unit,
+    office,
+    squadron,
+    groupName,
+    wing,
+    baseName,
+    location,
     startDate,
     endDate,
     citationText,
@@ -491,6 +523,73 @@ export function DecorationWorkspaceDialog({
       toast.error("Could not find matching section to apply suggestion");
     }
   }, [currentShell, setCitationText]);
+
+  // Generate citation — shared handler for both statement selector and citation editor
+  const handleGenerateCitation = useCallback(async () => {
+    // Read latest values from the store to avoid stale closures
+    const store = useDecorationShellStore.getState();
+
+    if (store.selectedStatementIds.length === 0) {
+      toast.error("Please select at least one statement");
+      return;
+    }
+    if (!store.selectedRatee) {
+      toast.error("No ratee selected");
+      return;
+    }
+
+    store.setIsGenerating(true);
+
+    try {
+      const statementTexts = store.getSelectedStatementTexts(statements);
+
+      const response = await fetch("/api/generate-decoration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateeId: store.selectedRatee.id,
+          rateeRank: store.selectedRatee.rank || "",
+          rateeName: store.selectedRatee.fullName || "",
+          rateeGender: store.selectedRatee.gender,
+          dutyTitle: store.dutyTitle || "member",
+          office: store.office || "",
+          squadron: store.squadron || "",
+          groupName: store.groupName || "",
+          wing: store.wing || "",
+          baseName: store.baseName || "",
+          location: store.location || "",
+          startDate: store.startDate || "",
+          endDate: store.endDate || "",
+          awardType: store.awardType,
+          reason: store.reason,
+          accomplishments: statementTexts,
+          model: store.selectedModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate citation");
+      }
+
+      const data = await response.json();
+      store.setCitationText(data.citation);
+      trackGenerationForSurvey();
+
+      if (!data.metadata.withinLimit) {
+        toast.warning(
+          `Citation is ${data.metadata.characterCount} characters (${data.metadata.maxCharacters} max). Consider editing to shorten.`
+        );
+      } else {
+        toast.success("Citation generated successfully");
+      }
+    } catch (error) {
+      console.error("Generate error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to generate citation");
+    } finally {
+      useDecorationShellStore.getState().setIsGenerating(false);
+    }
+  }, [statements]);
 
   // Determine if user can edit this shell
   const canEdit = useMemo(() => {
@@ -657,6 +756,62 @@ export function DecorationWorkspaceDialog({
                   </TooltipTrigger>
                   <TooltipContent>Share</TooltipContent>
                 </Tooltip>
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="size-4" />
+                        <span className="sr-only">More options</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        Delete Decoration
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="size-5 text-destructive" />
+                        Delete Decoration
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete this decoration for{" "}
+                        <strong>{rateeDisplayName}</strong>? This will permanently
+                        delete the citation and cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isDeleting}>
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteShell}
+                        disabled={isDeleting}
+                        className="bg-destructive text-white hover:bg-destructive/90"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <Loader2 className="size-4 mr-1.5 animate-spin" />
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="size-4 mr-1.5" />
+                            Delete Permanently
+                          </>
+                        )}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <div className="w-px h-5 bg-border mx-1" />
                 <DialogClose asChild>
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -702,160 +857,162 @@ export function DecorationWorkspaceDialog({
                       </div>
                     </div>
                   </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="pt-4 space-y-4">
-                      {/* Award Type and Reason */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs">Award Type</Label>
-                          <Select
-                            value={awardType}
-                            onValueChange={(v) => setAwardType(v as DecorationAwardType)}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DECORATION_TYPES.map((d) => (
-                                <SelectItem key={d.key} value={d.key}>
-                                  {d.abbreviation} - {d.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Reason</Label>
-                          <Select
-                            value={reason}
-                            onValueChange={(v) => setReason(v as DecorationReason)}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DECORATION_REASONS.map((r) => (
-                                <SelectItem key={r.key} value={r.key}>
-                                  {r.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Position Info */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs">Duty Title</Label>
-                          <Input
-                            value={dutyTitle}
-                            onChange={(e) => setDutyTitle(e.target.value)}
-                            placeholder="e.g., Flight Chief"
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Unit</Label>
-                          <Input
-                            value={unit}
-                            onChange={(e) => setUnit(e.target.value)}
-                            placeholder="e.g., 1st Fighter Squadron"
-                            className="h-9"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Dates */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs">Start Date</Label>
-                          <Input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">End Date</Label>
-                          <Input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="h-9"
-                          />
-                        </div>
-                      </div>
-
-                      {/* AI Model */}
-                      <div className="space-y-2">
-                        <Label className="text-xs">AI Model</Label>
-                        <ModelSelector
-                          value={selectedModel}
-                          onValueChange={setSelectedModel}
-                          compact
-                        />
-                      </div>
-
-                      {/* Danger Zone - Delete */}
-                      <Separator className="my-4" />
-                      <div className="space-y-2">
-                        <Label className="text-xs text-destructive">Danger Zone</Label>
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-destructive/30 bg-destructive/5">
-                          <div className="space-y-0.5">
-                            <p className="text-sm font-medium">Delete Decoration</p>
-                            <p className="text-xs text-muted-foreground">
-                              Permanently delete this decoration and its citation.
-                            </p>
+                  {/* Smooth animated expand */}
+                  <div
+                    className={cn(
+                      "grid transition-all duration-300 ease-in-out",
+                      showConfig ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="pt-3 space-y-3">
+                        {/* 2-column grid for symmetrical layout */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                          {/* Award | Reason */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Award</Label>
+                            <Select
+                              value={awardType}
+                              onValueChange={(v) => setAwardType(v as DecorationAwardType)}
+                            >
+                              <SelectTrigger className="h-8 w-full text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DECORATION_TYPES.map((d) => (
+                                  <SelectItem key={d.key} value={d.key}>
+                                    {d.abbreviation} - {d.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
-                          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm">
-                                <Trash2 className="size-4 mr-1.5" />
-                                Delete
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle className="flex items-center gap-2">
-                                  <AlertTriangle className="size-5 text-destructive" />
-                                  Delete Decoration
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this decoration for{" "}
-                                  <strong>{rateeDisplayName}</strong>? This will permanently
-                                  delete the citation and cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel disabled={isDeleting}>
-                                  Cancel
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={handleDeleteShell}
-                                  disabled={isDeleting}
-                                  className="bg-destructive text-white hover:bg-destructive/90"
-                                >
-                                  {isDeleting ? (
-                                    <>
-                                      <Loader2 className="size-4 mr-1.5 animate-spin" />
-                                      Deleting...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Trash2 className="size-4 mr-1.5" />
-                                      Delete Permanently
-                                    </>
-                                  )}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Reason</Label>
+                            <Select
+                              value={reason}
+                              onValueChange={(v) => setReason(v as DecorationReason)}
+                            >
+                              <SelectTrigger className="h-8 w-full text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DECORATION_REASONS.map((r) => (
+                                  <SelectItem key={r.key} value={r.key}>
+                                    {r.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Duty Title | Office */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Duty Title</Label>
+                            <Input
+                              aria-label="Duty Title"
+                              value={dutyTitle}
+                              onChange={(e) => setDutyTitle(e.target.value)}
+                              placeholder="e.g., Flight Chief"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Office</Label>
+                            <Input
+                              aria-label="Office"
+                              value={office}
+                              onChange={(e) => setOffice(e.target.value)}
+                              placeholder="e.g., 42 CS/SCOO"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+
+                          {/* Squadron | Group (optional) */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Squadron</Label>
+                            <Input
+                              aria-label="Squadron"
+                              value={squadron}
+                              onChange={(e) => setSquadron(e.target.value)}
+                              placeholder="e.g., 42d Communications Squadron"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              Group <span className="text-muted-foreground/60">(optional)</span>
+                            </Label>
+                            <Input
+                              aria-label="Group"
+                              value={groupName}
+                              onChange={(e) => setGroupName(e.target.value)}
+                              placeholder="e.g., 42d Mission Support Group"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+
+                          {/* Wing (optional) | Base */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              Wing <span className="text-muted-foreground/60">(optional)</span>
+                            </Label>
+                            <Input
+                              aria-label="Wing"
+                              value={wing}
+                              onChange={(e) => setWing(e.target.value)}
+                              placeholder="e.g., 42d Air Base Wing"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Base</Label>
+                            <Input
+                              aria-label="Base Name"
+                              value={baseName}
+                              onChange={(e) => setBaseName(e.target.value)}
+                              placeholder="e.g., Maxwell Air Force Base"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+
+                          {/* State/Country | Start | End */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">State / Country</Label>
+                            <Input
+                              aria-label="State or Country"
+                              value={location}
+                              onChange={(e) => setLocation(e.target.value)}
+                              placeholder="e.g., Alabama"
+                              className="h-8 w-full text-xs"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] text-muted-foreground">Start</Label>
+                              <Input
+                                type="date"
+                                aria-label="Start Date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="h-8 w-full text-xs"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] text-muted-foreground">End</Label>
+                              <Input
+                                type="date"
+                                aria-label="End Date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="h-8 w-full text-xs"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </CollapsibleContent>
+                  </div>
                 </Collapsible>
               )}
 
@@ -868,7 +1025,7 @@ export function DecorationWorkspaceDialog({
                 /* Main Content */
                 <div className="grid gap-4 lg:grid-cols-2">
                   {/* Statement Selector */}
-                  <DecorationStatementSelector statements={statements} />
+                  <DecorationStatementSelector statements={statements} onGenerate={handleGenerateCitation} />
 
                   {/* Citation Editor */}
                   <DecorationCitationEditor statements={statements} />

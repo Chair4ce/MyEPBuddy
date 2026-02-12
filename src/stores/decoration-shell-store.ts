@@ -72,7 +72,12 @@ interface DecorationShellState {
   
   // Ratee position info
   dutyTitle: string;
-  unit: string;
+  office: string;
+  squadron: string;
+  groupName: string;
+  wing: string;
+  baseName: string;
+  location: string;
   startDate: string;
   endDate: string;
   
@@ -122,7 +127,12 @@ interface DecorationShellState {
   
   // Position info
   setDutyTitle: (title: string) => void;
-  setUnit: (unit: string) => void;
+  setOffice: (office: string) => void;
+  setSquadron: (squadron: string) => void;
+  setGroupName: (groupName: string) => void;
+  setWing: (wing: string) => void;
+  setBaseName: (baseName: string) => void;
+  setLocation: (location: string) => void;
   setStartDate: (date: string) => void;
   setEndDate: (date: string) => void;
   
@@ -186,7 +196,12 @@ const getDefaultState = () => ({
   awardType: "afam" as DecorationAwardType,
   reason: "meritorious_service" as DecorationReason,
   dutyTitle: "",
-  unit: "",
+  office: "",
+  squadron: "",
+  groupName: "",
+  wing: "",
+  baseName: "",
+  location: "",
   startDate: "",
   endDate: "",
   citationText: "",
@@ -219,7 +234,12 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
         awardType: shell.award_type,
         reason: shell.reason,
         dutyTitle: shell.duty_title,
-        unit: shell.unit,
+        office: shell.office || shell.unit || "",
+        squadron: shell.squadron || "",
+        groupName: shell.group_name || "",
+        wing: shell.wing || "",
+        baseName: shell.base_name || "",
+        location: shell.location || "",
         startDate: shell.start_date || "",
         endDate: shell.end_date || "",
         citationText: shell.citation_text,
@@ -237,7 +257,12 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
   setReason: (reason) => set({ reason, isDirty: true }),
   
   setDutyTitle: (title) => set({ dutyTitle: title, isDirty: true }),
-  setUnit: (unit) => set({ unit, isDirty: true }),
+  setOffice: (office) => set({ office, isDirty: true }),
+  setSquadron: (squadron) => set({ squadron, isDirty: true }),
+  setGroupName: (groupName) => set({ groupName, isDirty: true }),
+  setWing: (wing) => set({ wing, isDirty: true }),
+  setBaseName: (baseName) => set({ baseName, isDirty: true }),
+  setLocation: (location) => set({ location, isDirty: true }),
   setStartDate: (date) => set({ startDate: date, isDirty: true }),
   setEndDate: (date) => set({ endDate: date, isDirty: true }),
   
@@ -331,7 +356,12 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
       awardType: shell.award_type,
       reason: shell.reason,
       dutyTitle: shell.duty_title,
-      unit: shell.unit,
+      office: shell.office || shell.unit || "",
+      squadron: shell.squadron || "",
+      groupName: shell.group_name || "",
+      wing: shell.wing || "",
+      baseName: shell.base_name || "",
+      location: shell.location || "",
       startDate: shell.start_date || "",
       endDate: shell.end_date || "",
       citationText: shell.citation_text,
