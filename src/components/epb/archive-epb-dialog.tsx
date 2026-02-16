@@ -126,7 +126,7 @@ export function ArchiveEPBDialog({
           particleCount: 100,
           spread: 70,
           origin: { y: 0.6 },
-          colors: ["#8b5cf6", "#6366f1", "#3b82f6"],
+          colors: ["#33c27f", "#1ea672", "#09825d"],
         });
       }
 

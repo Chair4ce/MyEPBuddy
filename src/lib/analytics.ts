@@ -19,14 +19,6 @@ import { track as vercelTrack } from "@vercel/analytics";
 const VERCEL_CUSTOM_EVENTS_ENABLED =
   process.env.NEXT_PUBLIC_VERCEL_CUSTOM_EVENTS?.toLowerCase() === "true";
 
-// ── One-time diagnostic (remove after confirming events flow) ──
-if (typeof window !== "undefined") {
-  const raw = process.env.NEXT_PUBLIC_VERCEL_CUSTOM_EVENTS;
-  console.info(
-    `[Analytics Diagnostic] NEXT_PUBLIC_VERCEL_CUSTOM_EVENTS = "${raw}" | enabled = ${VERCEL_CUSTOM_EVENTS_ENABLED} | window.va = ${typeof window.va}`
-  );
-}
-
 // Generate a session ID that persists for the browser session
 function getSessionId(): string {
   if (typeof window === "undefined") return "server";
@@ -51,13 +43,8 @@ async function trackEvent(eventName: string, properties?: Record<string, unknown
       // Vercel track() accepts string/number/boolean/null values only (no nested objects)
       // Our properties already conform to this via the server-side allowlist
       vercelTrack(eventName, properties as Record<string, string | number | boolean | null>);
-      // TODO: Remove after verifying Vercel events are flowing
-      if (process.env.NODE_ENV === "development") {
-        console.log(`[Analytics] Vercel event sent: ${eventName}`, properties);
-      }
-    } catch (err) {
+    } catch {
       // Vercel analytics should never break the app
-      console.warn(`[Analytics] Vercel track failed for "${eventName}":`, err);
     }
   }
 
