@@ -31,6 +31,9 @@ export interface MPASectionState {
   statement1Context: string; // Custom context for statement 1
   statement2Context: string; // Custom context for statement 2
   
+  // HLR-specific: selected award IDs to integrate into statement
+  selectedAwardIds: string[];
+  
   // Legacy - keeping for backwards compatibility
   selectedAccomplishmentIds: string[];
 }
@@ -129,7 +132,10 @@ interface EPBShellState {
   setIsDutyDescriptionDirty: (dirty: boolean) => void;
   setIsSavingDutyDescription: (saving: boolean) => void;
   
-  // Reset
+  // Reset EPB data but keep selectedRatee (for unmount cleanup during navigation)
+  resetShellData: () => void;
+  
+  // Full reset including selectedRatee
   reset: () => void;
 }
 
@@ -154,6 +160,9 @@ const getDefaultSectionState = (): MPASectionState => ({
   usesTwoStatements: true, // Default to two statements
   statement1Context: "",
   statement2Context: "",
+  
+  // HLR awards
+  selectedAwardIds: [],
   
   // Legacy
   selectedAccomplishmentIds: [],
@@ -427,8 +436,31 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   
   setIsSavingDutyDescription: (saving) => set({ isSavingDutyDescription: saving }),
 
+  resetShellData: () => {
+    const timers = get().autosaveTimers;
+    Object.values(timers).forEach((timer) => {
+      if (timer) clearTimeout(timer);
+    });
+
+    set((state) => ({
+      currentShell: null,
+      sections: {},
+      snapshots: {},
+      savedExamples: {},
+      sectionStates: {},
+      collapsedSections: {},
+      splitViewSections: {},
+      dutyDescriptionDraft: "",
+      isDutyDescriptionDirty: false,
+      isSavingDutyDescription: false,
+      isLoadingShell: false,
+      isCreatingShell: false,
+      loadVersion: state.loadVersion + 1,
+      autosaveTimers: {},
+    }));
+  },
+
   reset: () => {
-    // Clear all autosave timers
     const timers = get().autosaveTimers;
     Object.values(timers).forEach((timer) => {
       if (timer) clearTimeout(timer);

@@ -568,6 +568,19 @@ export interface AwardTeamMember {
   team_member?: ManagedMember;
 }
 
+export interface AwardSelection {
+  id: string;
+  name: string;
+  level?: string;
+  date?: string;
+  type: string;
+  presenter?: string;
+  isTeamAward?: boolean;
+  quarter?: string;
+  awardYear?: number;
+  category?: string;
+}
+
 export interface AwardRequest {
   id: string;
   requester_id: string;

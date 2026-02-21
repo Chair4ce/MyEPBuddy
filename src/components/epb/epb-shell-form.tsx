@@ -67,8 +67,51 @@ import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
 import { useShellFieldLocks } from "@/hooks/use-shell-field-locks";
 import { useIdleDetection } from "@/hooks/use-idle-detection";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, Profile, ManagedMember, UserLLMSettings, Rank, DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate, WritingStyle } from "@/types/database";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, Profile, ManagedMember, UserLLMSettings, Rank, DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate, WritingStyle, AwardSelection } from "@/types/database";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
+
+// Map raw award records to simplified selection format for statement integration
+interface RawAwardRecord {
+  id: string;
+  award_type: string;
+  award_name: string | null;
+  award_level: string | null;
+  coin_description: string | null;
+  coin_presenter: string | null;
+  coin_date: string | null;
+  quarter: string | null;
+  award_year: number | null;
+  award_category: string | null;
+  is_team_award: boolean;
+}
+
+// Re-export for convenience
+export type { AwardSelection } from "@/types/database";
+
+function mapAwardsToSelection(awards: RawAwardRecord[]): AwardSelection[] {
+  return awards.map((a) => {
+    let name = a.award_name || "";
+    if (a.award_type === "coin") {
+      name = a.coin_description || "Coin";
+    } else if (!name) {
+      const cat = a.award_category ? ` ${a.award_category.toUpperCase()}` : "";
+      const period = a.quarter ? ` ${a.quarter}` : "";
+      name = `${a.award_type === "quarterly" ? "Quarterly" : a.award_type === "annual" ? "Annual" : "Special"} Award${cat}${period}${a.award_year ? ` ${a.award_year}` : ""}`;
+    }
+    return {
+      id: a.id,
+      name,
+      level: a.award_level || undefined,
+      date: a.coin_date || undefined,
+      type: a.award_type,
+      presenter: a.coin_presenter || undefined,
+      isTeamAward: a.is_team_award || false,
+      quarter: a.quarter || undefined,
+      awardYear: a.award_year || undefined,
+      category: a.award_category || undefined,
+    };
+  });
+}
 
 // Shared EPB info - represents an EPB shell that has been shared with the current user
 interface SharedEPBInfo {
@@ -130,6 +173,7 @@ export function EPBShellForm({
   } = useEPBShellStore();
 
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
+  const [rateeAwards, setRateeAwards] = useState<AwardSelection[]>([]);
 
   const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [isTogglingMode, setIsTogglingMode] = useState(false);
@@ -859,6 +903,12 @@ export function EPBShellForm({
     // Only initialize if this is a new profile/cycle combination
     if (initializedFor === initKey) return;
     
+    // If store already has a ratee (preserved across navigation), just mark as initialized
+    if (useEPBShellStore.getState().selectedRatee) {
+      setInitializedFor(initKey);
+      return;
+    }
+    
     // Try to restore from localStorage (key includes profile ID to prevent cross-user issues)
     let rateeToUse: SelectedRatee | null = null;
     try {
@@ -1212,6 +1262,46 @@ export function EPBShellForm({
     }
 
     loadAccomplishments();
+  }, [selectedRatee, profile, supabase]);
+
+  // Load awards/coins for the selected ratee (for HLR award integration)
+  useEffect(() => {
+    async function loadRateeAwards() {
+      if (!selectedRatee || !profile) {
+        setRateeAwards([]);
+        return;
+      }
+
+      if (selectedRatee.isManagedMember) {
+        const { data } = await supabase
+          .from("awards")
+          .select("*")
+          .eq("recipient_team_member_id", selectedRatee.id)
+          .order("created_at", { ascending: false });
+
+        if (data) {
+          const awards = data as unknown as RawAwardRecord[];
+          setRateeAwards(mapAwardsToSelection(awards));
+        } else {
+          setRateeAwards([]);
+        }
+      } else {
+        const { data } = await supabase
+          .from("awards")
+          .select("*")
+          .eq("recipient_profile_id", selectedRatee.id)
+          .order("created_at", { ascending: false });
+
+        if (data) {
+          const awards = data as unknown as RawAwardRecord[];
+          setRateeAwards(mapAwardsToSelection(awards));
+        } else {
+          setRateeAwards([]);
+        }
+      }
+    }
+
+    loadRateeAwards();
   }, [selectedRatee, profile, supabase]);
 
   // Create a new shell (or handle conflicts with archived shells)
@@ -1635,6 +1725,8 @@ export function EPBShellForm({
       versionCount?: number;
       // HLR-specific: use all EPB statements to generate holistic assessment
       useEPBStatements?: boolean;
+      // Awards/coins to integrate into the statement
+      selectedAwards?: AwardSelection[];
       // Clarifying context from user answers (for regeneration with enhanced details)
       clarifyingContext?: string;
     }
@@ -1719,6 +1811,8 @@ export function EPBShellForm({
             dutyDescription: currentShell?.duty_description || "",
             // HLR-specific: pass all EPB statements for holistic assessment
             epbStatements: options.useEPBStatements ? epbStatements : undefined,
+            // Pass selected awards to integrate into statement
+            selectedAwards: options.selectedAwards,
             // Clarifying context from user answers (for regeneration)
             clarifyingContext: options.clarifyingContext,
             // Don't request more clarifying questions when regenerating with answers
@@ -2297,6 +2391,8 @@ export function EPBShellForm({
                 onToggleSplitView={() => toggleSplitView(mpa.key)}
                 // HLR-specific: count of MPA sections with content (for "Use EPB Statements" option)
                 epbStatementsCount={mpa.key === "hlr_assessment" ? getFilledMPACount() : 0}
+                // Awards/coins for this ratee (available in any MPA)
+                rateeAwards={rateeAwards}
               />
             </div>
           );

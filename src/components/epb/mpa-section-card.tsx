@@ -44,6 +44,7 @@ import {
   Trash2,
   Users,
   Rows2,
+  Trophy,
 } from "lucide-react";
 import { useEPBShellStore, type MPAWorkspaceMode, type SourceType } from "@/stores/epb-shell-store";
 import { LoadedActionCard } from "./loaded-action-card";
@@ -52,7 +53,7 @@ import { SentencePills, type DraggedSentence } from "./sentence-pills";
 import { SentenceDropOverlay } from "./sentence-drop-overlay";
 import { SplitViewEditor } from "./split-view-editor";
 // Per-section collaboration removed - using page-level collaboration instead
-import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment } from "@/types/database";
+import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, AwardSelection } from "@/types/database";
 import { useStyleFeedback, getMpaCategory } from "@/hooks/use-style-feedback";
 import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
@@ -100,6 +101,8 @@ interface MPASectionCardProps {
   onToggleSplitView?: () => void;
   // HLR-specific: EPB statements count for "Use EPB" source option
   epbStatementsCount?: number;
+  // Awards/coins available for this ratee (used in HLR and any MPA)
+  rateeAwards?: AwardSelection[];
 }
 
 interface GenerateOptions {
@@ -112,6 +115,8 @@ interface GenerateOptions {
   versionCount?: number;
   // HLR-specific: use all EPB statements to generate holistic assessment
   useEPBStatements?: boolean;
+  // Awards/coins to integrate into the statement
+  selectedAwards?: AwardSelection[];
   // Clarifying context from user answers (for regeneration with enhanced details)
   clarifyingContext?: string;
 }
@@ -263,6 +268,7 @@ const DEFAULT_SECTION_STATE = {
   usesTwoStatements: true, // Default to two statements
   statement1Context: "",
   statement2Context: "",
+  selectedAwardIds: [] as string[],
   selectedAccomplishmentIds: [] as string[],
 };
 
@@ -308,6 +314,7 @@ export function MPASectionCard({
   onToggleSplitView,
   // HLR-specific
   epbStatementsCount = 0,
+  rateeAwards = [],
 }: MPASectionCardProps) {
   const { mpa, isHLR, maxChars } = getMPAInfo(section.mpa);
   
@@ -729,6 +736,11 @@ export function MPASectionCard({
         ? [...state.statement1ActionIds, ...state.statement2ActionIds]
         : state.statement1ActionIds;
       
+      // Build selected awards to integrate into statement
+      const selectedAwardsForGen = state.selectedAwardIds?.length > 0
+        ? rateeAwards.filter((a) => state.selectedAwardIds.includes(a.id))
+        : undefined;
+
       const results = await onGenerateStatement({
         useAccomplishments: state.sourceType === "actions" && allActionIds.length > 0,
         accomplishmentIds: allActionIds,
@@ -739,6 +751,7 @@ export function MPASectionCard({
         versionCount: generateVersionCount,
         // HLR-specific: use EPB statements when source type is "epb-summary"
         useEPBStatements: state.sourceType === "epb-summary" && isHLR,
+        selectedAwards: selectedAwardsForGen,
       });
       if (results.length > 0) {
         setGeneratedStatements(results);
@@ -1675,6 +1688,74 @@ export function MPASectionCard({
                   />
                 )}
 
+                {/* Awards selector - include awards/coins in statement */}
+                {rateeAwards.length > 0 && (
+                  <div className="space-y-2 p-2 rounded-lg bg-background/50 border">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Trophy className="size-3.5 text-amber-500" />
+                        <span className="text-xs font-medium">Include Awards/Coins</span>
+                      </div>
+                      {(state.selectedAwardIds?.length || 0) > 0 && (
+                        <button
+                          onClick={() => updateSectionState(section.mpa, { selectedAwardIds: [] })}
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Select awards or coins to weave into the HLR statement
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {rateeAwards.map((award) => {
+                        const isSelected = state.selectedAwardIds?.includes(award.id);
+                        return (
+                          <button
+                            key={award.id}
+                            onClick={() => {
+                              const current = state.selectedAwardIds || [];
+                              const updated = isSelected
+                                ? current.filter((id) => id !== award.id)
+                                : [...current, award.id];
+                              updateSectionState(section.mpa, { selectedAwardIds: updated });
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-all",
+                              isSelected
+                                ? "bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200"
+                                : "bg-muted/50 border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                            )}
+                            aria-pressed={isSelected}
+                            aria-label={`${isSelected ? "Remove" : "Add"} ${award.name}`}
+                          >
+                            <Trophy className={cn("size-3", isSelected ? "text-amber-500" : "text-muted-foreground/50")} />
+                            <span className="truncate max-w-[220px]">
+                              {award.type === "coin" && award.presenter
+                                ? `${award.presenter} Coin${award.name && award.name !== "Coin" ? `: ${award.name}` : ""}`
+                                : (() => {
+                                    const lvlMap: Record<string, string> = { squadron: "Sq", group: "Gp", wing: "Wg", majcom: "MAJCOM", haf: "HAF" };
+                                    const lvl = award.level ? (lvlMap[award.level] || award.level) : "";
+                                    const typeLabel = award.type === "quarterly" ? "Qtr" : award.type === "annual" ? "Annual" : "";
+                                    const period = award.quarter || "";
+                                    const yr = award.awardYear ? ` '${String(award.awardYear).slice(-2)}` : "";
+                                    const parts = [lvl, period, typeLabel].filter(Boolean).join(" ");
+                                    return `${parts}${yr}${award.isTeamAward ? " (Team)" : ""}` || award.name;
+                                  })()}
+                            </span>
+                            {award.level && (
+                              <Badge variant="outline" className={cn("text-[9px] px-1 py-0 h-3.5", award.isTeamAward && "border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300")}>
+                                {(() => { const m: Record<string,string> = { squadron:"Sq", group:"Gp", wing:"Wg", majcom:"MAJCOM", haf:"HAF" }; return m[award.level!] || award.level; })()}
+                              </Badge>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Two-statement toggle */}
                 <div className="flex items-center justify-between p-2 rounded-lg bg-background/50 border">
                   <div className="space-y-0.5">
@@ -1979,6 +2060,9 @@ export function MPASectionCard({
             setGeneratedStatements([]);
             try {
               console.log("[MPASectionCard] Calling onGenerateStatement with clarifyingContext...");
+              const regenAwards = state.selectedAwardIds?.length > 0
+                ? rateeAwards.filter((a) => state.selectedAwardIds.includes(a.id))
+                : undefined;
               const results = await onGenerateStatement({
                 useAccomplishments: state.sourceType === "actions",
                 accomplishmentIds: state.usesTwoStatements
@@ -1989,8 +2073,8 @@ export function MPASectionCard({
                 statement1Context: state.statement1Context,
                 statement2Context: state.statement2Context,
                 versionCount: 3,
-                // Pass clarifying context as separate parameter - API will inject it properly
                 clarifyingContext,
+                selectedAwards: regenAwards,
               });
               console.log("[MPASectionCard] onGenerateStatement returned results:", results?.length);
               setGeneratedStatements(results);

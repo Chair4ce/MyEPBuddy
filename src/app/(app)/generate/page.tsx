@@ -67,7 +67,7 @@ import { FeedbackBadge } from "@/components/feedback/feedback-badge";
 
 export default function GeneratePage() {
   const { profile, subordinates, managedMembers } = useUserStore();
-  const { selectedRatee, setSelectedRatee, currentShell, setCurrentShell, sections: shellSections, updateSection, reset: resetShellStore } = useEPBShellStore();
+  const { selectedRatee, setSelectedRatee, currentShell, setCurrentShell, sections: shellSections, updateSection, resetShellData } = useEPBShellStore();
   
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
   const [writingStyle, setWritingStyle] = useState<WritingStyle>("personal");
@@ -241,9 +241,11 @@ export default function GeneratePage() {
     checkChain();
   }, [profile, supabase]);
 
-  // Load selectedRatee from localStorage on mount
+  // Restore selectedRatee from localStorage on mount (fallback for hard refresh / first visit)
   useEffect(() => {
     if (!profile || !cycleYear) return;
+    // If the store already has a ratee (preserved across navigation), skip localStorage restore
+    if (useEPBShellStore.getState().selectedRatee) return;
 
     const key = `epb-selected-ratee-${profile.id}-${cycleYear}`;
     const stored = localStorage.getItem(key);
@@ -252,10 +254,7 @@ export default function GeneratePage() {
       try {
         const { ratee } = JSON.parse(stored);
         if (ratee) {
-          // Set both the local state and the EPB shell store state
           setSelectedRatee(ratee);
-          // Also update the EPB shell store so the form components have access to it
-          useEPBShellStore.getState().setSelectedRatee(ratee);
         }
       } catch (error) {
         console.warn("Failed to parse stored ratee data:", error);
@@ -426,44 +425,35 @@ export default function GeneratePage() {
 
   const selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
 
-  // Reset shell store on unmount
+  // Clear shell data on unmount but preserve selectedRatee for navigation persistence
   useEffect(() => {
     return () => {
-      resetShellStore();
+      resetShellData();
     };
-  }, [resetShellStore]);
+  }, [resetShellData]);
 
   // Check if officer has any enlisted team members (for officers, rateeOptions doesn't include "self")
   const hasEnlistedTeamMembers = rateeOptions.length > 0;
   
   // Set default ratee selection when no selection exists and options are available
   useEffect(() => {
-    if (!profile || !rateeOptions.length || selectedRatee) return;
-
-    let defaultRatee: any = null;
+    if (!profile || !rateeOptions.length) return;
+    // Check store directly to avoid race with the localStorage restore effect
+    if (selectedRatee || useEPBShellStore.getState().selectedRatee) return;
 
     if (userIsOfficer && officerWorkspaceMode === "epb") {
-      // Officers default to first enlisted team member
       const firstOption = rateeOptions[0];
       if (firstOption) {
-        defaultRatee = firstOption.ratee;
-        setSelectedRatee(defaultRatee);
+        setSelectedRatee(firstOption.ratee as Parameters<typeof setSelectedRatee>[0]);
       }
     } else if (!userIsOfficer) {
-      // Non-officers default to self
-      defaultRatee = {
+      setSelectedRatee({
         id: profile.id,
         fullName: profile.full_name || null,
         rank: profile.rank || null,
         afsc: profile.afsc || null,
         isManagedMember: false,
-      };
-      setSelectedRatee(defaultRatee);
-    }
-
-    // Update EPB shell store with the default ratee
-    if (defaultRatee) {
-      useEPBShellStore.getState().setSelectedRatee(defaultRatee);
+      });
     }
   }, [profile, userIsOfficer, officerWorkspaceMode, selectedRatee, rateeOptions, setSelectedRatee]);
 
