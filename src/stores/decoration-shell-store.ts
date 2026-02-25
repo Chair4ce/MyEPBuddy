@@ -48,6 +48,15 @@ export type HighlightColorId = typeof HIGHLIGHT_COLORS[number]["id"];
 // Map of statement ID to highlight color ID
 export type StatementColorMap = Record<string, HighlightColorId>;
 
+// A parsed bulk statement (pasted by the user, parsed into individual items)
+export interface BulkStatement {
+  id: string;
+  text: string;
+}
+
+// Which view is active on the left pane
+export type LeftPaneMode = "library" | "bulk";
+
 // Citation text highlight range
 export interface CitationHighlight {
   id: string;
@@ -117,6 +126,12 @@ interface DecorationShellState {
   // Citation text highlights
   citationHighlights: CitationHighlight[];
   
+  // Bulk statement input (left pane alternate view)
+  leftPaneMode: LeftPaneMode;
+  bulkRawText: string;
+  bulkStatements: BulkStatement[];
+  isBulkParsing: boolean;
+  
   // Actions
   setSelectedRatee: (ratee: SelectedRatee | null) => void;
   setCurrentShell: (shell: DecorationShell | null) => void;
@@ -180,7 +195,16 @@ interface DecorationShellState {
   removeCitationHighlight: (id: string) => void;
   clearCitationHighlights: () => void;
   
-  // Get selected statement texts for generation
+  // Bulk statement input
+  setLeftPaneMode: (mode: LeftPaneMode) => void;
+  setBulkRawText: (text: string) => void;
+  setBulkStatements: (statements: BulkStatement[]) => void;
+  clearBulkStatements: () => void;
+  removeBulkStatement: (id: string) => void;
+  updateBulkStatementText: (id: string, text: string) => void;
+  setIsBulkParsing: (parsing: boolean) => void;
+  
+  // Get selected statement texts for generation (handles both library and bulk modes)
   getSelectedStatementTexts: (statements: RefinedStatement[]) => string[];
   
   // Initialize from shell
@@ -220,6 +244,10 @@ const getDefaultState = () => ({
   statementColors: {} as StatementColorMap,
   activeHighlightColor: null,
   citationHighlights: [] as CitationHighlight[],
+  leftPaneMode: "library" as LeftPaneMode,
+  bulkRawText: "",
+  bulkStatements: [] as BulkStatement[],
+  isBulkParsing: false,
 });
 
 export const useDecorationShellStore = create<DecorationShellState>((set, get) => ({
@@ -343,11 +371,41 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
   })),
   clearCitationHighlights: () => set({ citationHighlights: [] }),
   
+  // Bulk statement input
+  setLeftPaneMode: (mode) => set({ leftPaneMode: mode }),
+  setBulkRawText: (text) => set({ bulkRawText: text }),
+  setBulkStatements: (statements) => set({ bulkStatements: statements }),
+  clearBulkStatements: () => set({ bulkStatements: [], bulkRawText: "", statementColors: {} }),
+  removeBulkStatement: (id) => set((state) => {
+    const { [id]: _, ...restColors } = state.statementColors;
+    return {
+      bulkStatements: state.bulkStatements.filter(s => s.id !== id),
+      statementColors: restColors,
+    };
+  }),
+  updateBulkStatementText: (id, text) => set((state) => ({
+    bulkStatements: state.bulkStatements.map(s => s.id === id ? { ...s, text } : s),
+  })),
+  setIsBulkParsing: (parsing) => set({ isBulkParsing: parsing }),
+
   getSelectedStatementTexts: (statements) => {
-    const { selectedStatementIds } = get();
+    const { selectedStatementIds, leftPaneMode, bulkStatements, bulkRawText } = get();
+    if (leftPaneMode === "bulk") {
+      if (bulkStatements.length > 0) {
+        return bulkStatements.map(s => s.text);
+      }
+      // No parsed statements yet — split raw text into lines as accomplishments
+      if (bulkRawText.trim()) {
+        return bulkRawText
+          .split(/\n+/)
+          .map(l => l.trim())
+          .filter(l => l.length >= 20);
+      }
+      return [];
+    }
     return statements
       .filter(s => selectedStatementIds.includes(s.id))
-      .map(s => s.statement); // RefinedStatement has a single 'statement' field
+      .map(s => s.statement);
   },
   
   initializeFromShell: (shell) => {

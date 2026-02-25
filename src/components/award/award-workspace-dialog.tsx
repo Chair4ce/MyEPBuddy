@@ -65,6 +65,7 @@ import {
   Smartphone,
   Trash2,
   AlertTriangle,
+  CalendarDays,
 } from "lucide-react";
 import {
   Collapsible,
@@ -196,6 +197,10 @@ export function AwardWorkspaceDialog({
   const [awardTitle, setAwardTitle] = useState<string>("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   
+  // Award period date range
+  const [periodStartDate, setPeriodStartDate] = useState<string>("");
+  const [periodEndDate, setPeriodEndDate] = useState<string>("");
+  
   // Mobile orientation state
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
   const [dismissedLandscapeHint, setDismissedLandscapeHint] = useState(false);
@@ -254,6 +259,10 @@ export function AwardWorkspaceDialog({
           
           // Update title
           setAwardTitle(typedShellData.title || "");
+          
+          // Update period dates
+          setPeriodStartDate(typedShellData.period_start_date || "");
+          setPeriodEndDate(typedShellData.period_end_date || "");
         }
       } catch (error) {
         console.error("Error loading shell data:", error);
@@ -341,7 +350,9 @@ export function AwardWorkspaceDialog({
       reset();
       setAwardTitle("");
       setIsEditingTitle(false);
-      setDismissedLandscapeHint(false); // Reset hint for next time
+      setPeriodStartDate("");
+      setPeriodEndDate("");
+      setDismissedLandscapeHint(false);
     }
   }, [open, reset]);
 
@@ -377,6 +388,8 @@ export function AwardWorkspaceDialog({
           award_category: awardCategory,
           sentences_per_statement: sentencesPerStatement,
           title: awardTitle.trim() || null,
+          period_start_date: periodStartDate || null,
+          period_end_date: periodEndDate || null,
         } as never)
         .eq("id", shellId);
 
@@ -424,7 +437,7 @@ export function AwardWorkspaceDialog({
     } finally {
       setIsSaving(false);
     }
-  }, [nomineeInfo, profile, currentShell, awardLevel, awardCategory, sentencesPerStatement, awardTitle, slotStates, sections, supabase, onSaved]);
+  }, [nomineeInfo, profile, currentShell, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, onSaved]);
 
   // Delete the award shell
   const handleDeleteShell = useCallback(async () => {
@@ -589,6 +602,8 @@ export function AwardWorkspaceDialog({
           award_category: awardCategory,
           sentences_per_statement: sentencesPerStatement,
           title: awardTitle.trim() || null,
+          period_start_date: periodStartDate || null,
+          period_end_date: periodEndDate || null,
         } as never)
         .eq("id", shellId);
 
@@ -634,7 +649,7 @@ export function AwardWorkspaceDialog({
       console.error("Autosave error:", error);
       // Silent fail - user can still manually save
     }
-  }, [nomineeInfo, profile, currentShell, isSaving, awardLevel, awardCategory, sentencesPerStatement, awardTitle, slotStates, sections, supabase, updateSlotState]);
+  }, [nomineeInfo, profile, currentShell, isSaving, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, updateSlotState]);
 
   // Autosave effect - triggers 2 seconds after changes stop
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -951,6 +966,41 @@ export function AwardWorkspaceDialog({
                         />
                       </div>
                     </div>
+
+                    {/* Award Period Date Range */}
+                    <div className="pt-4 space-y-2">
+                      <Label className="text-xs flex items-center gap-1.5">
+                        <CalendarDays className="size-3.5" />
+                        Award Period
+                      </Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Start Date</Label>
+                          <Input
+                            type="date"
+                            value={periodStartDate}
+                            onChange={(e) => setPeriodStartDate(e.target.value)}
+                            className="h-9 text-sm"
+                            aria-label="Award period start date"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">End Date</Label>
+                          <Input
+                            type="date"
+                            value={periodEndDate}
+                            onChange={(e) => setPeriodEndDate(e.target.value)}
+                            className="h-9 text-sm"
+                            min={periodStartDate || undefined}
+                            aria-label="Award period end date"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Used to filter accomplishments during statement generation
+                      </p>
+                    </div>
+
                     <div className="flex items-center gap-2 pt-4">
                       <Button variant="ghost" size="sm" onClick={expandAll}>
                         Expand All
@@ -1044,6 +1094,8 @@ export function AwardWorkspaceDialog({
                         awardLevel={awardLevel}
                         awardCategory={awardCategory}
                         model={selectedModel}
+                        periodStartDate={periodStartDate || null}
+                        periodEndDate={periodEndDate || null}
                         isCollapsed={collapsedCategories[cat.key] || false}
                         onToggleCollapse={() => toggleCategoryCollapsed(cat.key)}
                         onUpdateSlotState={updateSlotState}

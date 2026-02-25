@@ -89,6 +89,8 @@ export function DecorationCitationEditor({
     removeCitationHighlight,
     clearCitationHighlights,
     statementColors,
+    leftPaneMode,
+    bulkStatements,
   } = useDecorationShellStore();
 
   const [copied, setCopied] = useState(false);
@@ -285,13 +287,25 @@ export function DecorationCitationEditor({
       return;
     }
     
-    // Build an ordered list of colored statement IDs matching selection order
-    const orderedColoredIds = selectedStatementIds.filter(id => statementColors[id]);
+    // Build an ordered list of colored statement IDs depending on mode.
+    // In library mode, use selectedStatementIds order. In bulk mode, use
+    // bulkStatements order (all are implicitly "selected").
+    const orderedColoredIds = leftPaneMode === "bulk"
+      ? bulkStatements.map(s => s.id).filter(id => statementColors[id])
+      : selectedStatementIds.filter(id => statementColors[id]);
     
     if (orderedColoredIds.length === 0) {
       clearCitationHighlights();
       return;
     }
+    
+    // Helper to get statement text by ID for either mode
+    const getStmtText = (id: string): string | null => {
+      if (leftPaneMode === "bulk") {
+        return bulkStatements.find(s => s.id === id)?.text ?? null;
+      }
+      return statements.find(s => s.id === id)?.statement ?? null;
+    };
     
     // Split citation into sentences
     const allSentences = splitIntoSentences(citationText);
@@ -305,10 +319,7 @@ export function DecorationCitationEditor({
     // structural parts of the citation, not accomplishment content.
     const narrativeSentences = allSentences.filter(s => {
       const lower = s.text.toLowerCase().trim();
-      // Opening sentence: "... distinguished himself/herself ..."
       if (lower.includes("distinguished")) return false;
-      // Closing sentence: "The distinctive accomplishments of ..."
-      //                   "... reflect credit upon ..."
       if (lower.includes("distinctive accomplishments") || lower.includes("reflect credit")) return false;
       return true;
     });
@@ -327,27 +338,19 @@ export function DecorationCitationEditor({
       keyNumbers: string[];
     }> = [];
     
-    // Primary strategy: positional matching.
-    // The LLM may combine multiple accomplishments into one sentence or split
-    // one into many, so there may not be a 1:1 mapping. When there are equal
-    // or more narrative sentences than colored statements, use score-based
-    // matching to handle reordering / merging. Otherwise fall back to pure
-    // positional order.
-    
     if (narrativeSentences.length >= orderedColoredIds.length) {
-      // Score-based matching with positional tiebreaker
       const assignedSentences = new Set<number>();
       
       for (let stmtIdx = 0; stmtIdx < orderedColoredIds.length; stmtIdx++) {
         const stmtId = orderedColoredIds[stmtIdx];
-        const stmt = statements.find(s => s.id === stmtId);
-        if (!stmt) continue;
+        const stmtText = getStmtText(stmtId);
+        if (!stmtText) continue;
         
         const colorId = statementColors[stmtId];
         if (!colorId) continue;
         
-        const stmtNumbers = extractNumbers(stmt.statement);
-        const stmtKeywords = extractKeywords(stmt.statement);
+        const stmtNumbers = extractNumbers(stmtText);
+        const stmtKeywords = extractKeywords(stmtText);
         
         let bestSentenceIdx = -1;
         let bestScore = -1;
@@ -356,7 +359,6 @@ export function DecorationCitationEditor({
           if (assignedSentences.has(i)) continue;
           
           let score = scoreSentenceMatch(narrativeSentences[i].text, stmtNumbers, stmtKeywords);
-          // Add a small positional bonus — sentence at the same index gets a nudge
           if (i === stmtIdx) score += 2;
           
           if (score > bestScore) {
@@ -380,14 +382,13 @@ export function DecorationCitationEditor({
         }
       }
     } else {
-      // Fewer narrative sentences than statements — pure positional mapping
       for (let i = 0; i < Math.min(narrativeSentences.length, orderedColoredIds.length); i++) {
         const stmtId = orderedColoredIds[i];
         const colorId = statementColors[stmtId];
         if (!colorId) continue;
         
         const sentence = narrativeSentences[i];
-        const stmt = statements.find(s => s.id === stmtId);
+        const stmtText = getStmtText(stmtId);
         
         newHighlights.push({
           startIndex: sentence.start,
@@ -395,18 +396,16 @@ export function DecorationCitationEditor({
           colorId,
           statementId: stmtId,
           matchedText: sentence.text,
-          keyNumbers: stmt ? extractNumbers(stmt.statement) : [],
+          keyNumbers: stmtText ? extractNumbers(stmtText) : [],
         });
       }
     }
     
-    // Sort highlights by position for consistent rendering
     newHighlights.sort((a, b) => a.startIndex - b.startIndex);
     
-    // Clear and add new highlights
     clearCitationHighlights();
     newHighlights.forEach(h => addCitationHighlight(h));
-  }, [citationText, statementColors, statements, selectedStatementIds, splitIntoSentences, extractNumbers, extractKeywords, scoreSentenceMatch, clearCitationHighlights, addCitationHighlight]);
+  }, [citationText, statementColors, statements, selectedStatementIds, leftPaneMode, bulkStatements, splitIntoSentences, extractNumbers, extractKeywords, scoreSentenceMatch, clearCitationHighlights, addCitationHighlight]);
   
   // Ref always points to the latest syncHighlightsLocally — eliminates stale
   // closures when effects fire in different render cycles during page load.
@@ -416,17 +415,17 @@ export function DecorationCitationEditor({
   // Debounce ref for citation text changes
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Immediate sync when statement colors or statements change (covers initial
-  // page load where statementColors may arrive before statements finish loading)
+  // Immediate sync when statement colors, statements, or bulk statements change
   useEffect(() => {
     if (Object.keys(statementColors).length === 0) {
       clearCitationHighlights();
       return;
     }
-    if (statements.length === 0 || !citationText.trim()) return;
+    const hasStatements = leftPaneMode === "bulk" ? bulkStatements.length > 0 : statements.length > 0;
+    if (!hasStatements || !citationText.trim()) return;
 
     syncHighlightsRef.current();
-  }, [statementColors, statements, clearCitationHighlights, citationText]);
+  }, [statementColors, statements, bulkStatements, leftPaneMode, clearCitationHighlights, citationText]);
   
   // Debounced sync when citation text changes (user edits)
   useEffect(() => {
@@ -1352,16 +1351,33 @@ export function DecorationCitationEditor({
 
           {/* Action buttons */}
           <div className="flex items-center justify-between pt-2 border-t">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClear}
-              disabled={!citationText || isGenerating}
-              className="h-8 text-xs"
-            >
-              <RotateCcw className="size-3 mr-1.5" />
-              Clear
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!citationText || isGenerating}
+                  className="h-8 text-xs"
+                >
+                  <RotateCcw className="size-3 mr-1.5" />
+                  Clear
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear citation text?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove all citation text. You can restore a previous version from snapshot history if you have one saved.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClear}>
+                    Clear Citation
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button
               variant="outline"
               size="sm"

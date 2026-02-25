@@ -6,6 +6,7 @@ import { useUserStore } from "@/stores/user-store";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Analytics } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -54,6 +55,8 @@ import {
   Trash2,
   AlertTriangle,
   MoreVertical,
+  Library,
+  ClipboardPaste,
 } from "lucide-react";
 import {
   Tooltip,
@@ -72,6 +75,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DecorationStatementSelector } from "@/components/decoration/decoration-statement-selector";
+import { BulkStatementInput } from "@/components/decoration/bulk-statement-input";
 import { DecorationCitationEditor } from "@/components/decoration/decoration-citation-editor";
 import { DecorationShellShareDialog } from "@/components/decoration/decoration-shell-share-dialog";
 import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
@@ -170,6 +174,9 @@ export function DecorationWorkspaceDialog({
     setIsSaving,
     isDirty,
     setIsDirty,
+    leftPaneMode,
+    setLeftPaneMode,
+    bulkStatements,
     reset,
   } = useDecorationShellStore();
 
@@ -529,8 +536,14 @@ export function DecorationWorkspaceDialog({
     // Read latest values from the store to avoid stale closures
     const store = useDecorationShellStore.getState();
 
-    if (store.selectedStatementIds.length === 0) {
+    const isBulkMode = store.leftPaneMode === "bulk";
+
+    if (!isBulkMode && store.selectedStatementIds.length === 0) {
       toast.error("Please select at least one statement");
+      return;
+    }
+    if (isBulkMode && store.bulkStatements.length === 0 && !store.bulkRawText.trim()) {
+      toast.error("Paste some statements first");
       return;
     }
     if (!store.selectedRatee) {
@@ -1024,8 +1037,56 @@ export function DecorationWorkspaceDialog({
               ) : (
                 /* Main Content */
                 <div className="grid gap-4 lg:grid-cols-2">
-                  {/* Statement Selector */}
-                  <DecorationStatementSelector statements={statements} onGenerate={handleGenerateCitation} />
+                  {/* Left Pane: Library / Bulk toggle + content */}
+                  <div className="space-y-0">
+                    {/* Tab toggle */}
+                    <div className="flex items-center rounded-t-lg border border-b-0 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setLeftPaneMode("library")}
+                        className={cn(
+                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                          leftPaneMode === "library"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                        )}
+                      >
+                        <Library className="size-3.5" />
+                        Statement Library
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLeftPaneMode("bulk")}
+                        className={cn(
+                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                          leftPaneMode === "bulk"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                        )}
+                      >
+                        <ClipboardPaste className="size-3.5" />
+                        Paste Statements
+                        {bulkStatements.length > 0 && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-0.5">
+                            {bulkStatements.length}
+                          </Badge>
+                        )}
+                      </button>
+                    </div>
+
+                    {leftPaneMode === "library" ? (
+                      <DecorationStatementSelector
+                        statements={statements}
+                        onGenerate={handleGenerateCitation}
+                        className="rounded-t-none border-t-0"
+                      />
+                    ) : (
+                      <BulkStatementInput
+                        onGenerate={handleGenerateCitation}
+                        className="rounded-t-none border-t-0"
+                      />
+                    )}
+                  </div>
 
                   {/* Citation Editor */}
                   <DecorationCitationEditor statements={statements} />

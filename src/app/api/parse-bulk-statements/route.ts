@@ -103,8 +103,8 @@ Return a JSON object with this exact structure:
 
 ## IMPORTANT
 - Return ONLY valid JSON, no markdown code blocks
-- Each statement should be 50-400 characters
-- Skip statements that are too short (<50 chars) or don't look like accomplishments
+- Each statement should be 20-400 characters
+- Skip statements that are too short (<20 chars) or don't look like accomplishments
 - If a statement spans multiple MPA sections, assign it to the most prominent MPA`;
 }
 
@@ -134,9 +134,9 @@ export async function POST(request: Request) {
     } = body;
     modelId = model;
 
-    if (!rawText || rawText.trim().length < 50) {
+    if (!rawText || rawText.trim().length < 10) {
       return NextResponse.json(
-        { error: "Please provide text to parse (minimum 50 characters)" },
+        { error: "Please provide some text to parse" },
         { status: 400 }
       );
     }
@@ -202,7 +202,7 @@ export async function POST(request: Request) {
 
     // Transform the parsed statements
     const statements: ParsedStatement[] = parsedResult.statements
-      .filter(s => s.text && s.text.length >= 50 && s.text.length <= 500)
+      .filter(s => s.text && s.text.length >= 20 && s.text.length <= 500)
       .map((s, index) => ({
         id: `stmt-${Date.now()}-${index}`,
         text: s.text.trim(),

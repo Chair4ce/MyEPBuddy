@@ -30,6 +30,7 @@ import {
   Trash2,
   CheckCircle2,
   Circle,
+  Info,
 } from "lucide-react";
 import { useEPBShellStore } from "@/stores/epb-shell-store";
 import type { DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate } from "@/types/database";
@@ -844,8 +845,18 @@ export function DutyDescriptionCard({
                 {/* Fill to max toggle */}
                 <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
                   <div className="space-y-0.5">
-                    <span className="text-xs font-medium">Fill to Maximum</span>
-                    <p className="text-[10px] text-muted-foreground">Target {maxChars - 10}-{maxChars} chars for maximum impact</p>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-medium">Attempt to Fill to Maximum</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="size-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[240px]">
+                          <p className="text-xs">AI models aren&apos;t precise at counting characters. It will aim for the target range but may fall short or exceed it slightly.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Target {maxChars - 10}-{maxChars} chars</p>
                   </div>
                   <button
                     onClick={() => {

@@ -45,6 +45,8 @@ import {
   Users,
   Rows2,
   Trophy,
+  Settings2,
+  Info,
 } from "lucide-react";
 import { useEPBShellStore, type MPAWorkspaceMode, type SourceType } from "@/stores/epb-shell-store";
 import { LoadedActionCard } from "./loaded-action-card";
@@ -53,10 +55,12 @@ import { SentencePills, type DraggedSentence } from "./sentence-pills";
 import { SentenceDropOverlay } from "./sentence-drop-overlay";
 import { SplitViewEditor } from "./split-view-editor";
 // Per-section collaboration removed - using page-level collaboration instead
-import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, AwardSelection } from "@/types/database";
+import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, AwardSelection, Rank } from "@/types/database";
 import { useStyleFeedback, getMpaCategory } from "@/hooks/use-style-feedback";
 import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
+import { PromptSettingsModal } from "./prompt-settings-modal";
+import { MpaDescriptionEditor } from "./mpa-description-editor";
 
 interface MPASectionCardProps {
   section: EPBShellSection;
@@ -103,6 +107,8 @@ interface MPASectionCardProps {
   epbStatementsCount?: number;
   // Awards/coins available for this ratee (used in HLR and any MPA)
   rateeAwards?: AwardSelection[];
+  // Ratee rank for prompt settings modal
+  rateeRank?: Rank | null;
 }
 
 interface GenerateOptions {
@@ -315,6 +321,8 @@ export function MPASectionCard({
   // HLR-specific
   epbStatementsCount = 0,
   rateeAwards = [],
+  // Ratee rank
+  rateeRank,
 }: MPASectionCardProps) {
   const { mpa, isHLR, maxChars } = getMPAInfo(section.mpa);
   
@@ -335,6 +343,7 @@ export function MPASectionCard({
   
   const [copied, setCopied] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -934,6 +943,8 @@ export function MPASectionCard({
               <ChevronUp className="size-3.5 sm:size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
             )}
           </button>
+          {/* MPA description info button */}
+          <MpaDescriptionEditor mpaKey={section.mpa} />
           {/* Split view toggle button - only for non-HLR sections */}
           {!isHLR && onToggleSplitView && (
             <Tooltip>
@@ -1279,6 +1290,23 @@ export function MPASectionCard({
                   </TooltipContent>
                 </Tooltip>
 
+                {/* Prompt Settings button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={cn(
+                        "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        showPromptSettings && "bg-accent text-accent-foreground"
+                      )}
+                      onClick={() => setShowPromptSettings(true)}
+                      aria-label="Prompt settings"
+                    >
+                      <Settings2 className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Prompt Settings</TooltipContent>
+                </Tooltip>
+
                 {/* Snapshot button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1525,8 +1553,18 @@ export function MPASectionCard({
                   {/* Fill to max toggle */}
                   <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
                     <div className="space-y-0.5">
-                      <span className="text-xs font-medium">Fill to Maximum</span>
-                      <p className="text-[10px] text-muted-foreground">Target {maxChars - 10}-{maxChars} chars for maximum impact</p>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-medium">Attempt to Fill to Maximum</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="size-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            <p className="text-xs">AI models aren&apos;t precise at counting characters. It will aim for the target range but may fall short or exceed it slightly.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Target {maxChars - 10}-{maxChars} chars</p>
                     </div>
                     <button
                       onClick={() => {
@@ -2087,6 +2125,13 @@ export function MPASectionCard({
           isRegenerating={state.isGenerating}
         />
       )}
+
+      {/* Prompt Settings Modal */}
+      <PromptSettingsModal
+        open={showPromptSettings}
+        onOpenChange={setShowPromptSettings}
+        rateeRank={rateeRank}
+      />
     </Card>
   );
 }

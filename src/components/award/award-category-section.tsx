@@ -41,6 +41,7 @@ import {
   Minimize2,
   RefreshCw,
   X,
+  CalendarDays,
 } from "lucide-react";
 import type { Accomplishment, AwardLevel, AwardCategory, AwardShellSection } from "@/types/database";
 import { useAwardShellStore } from "@/stores/award-shell-store";
@@ -73,6 +74,8 @@ interface AwardCategorySectionProps {
   awardLevel: AwardLevel;
   awardCategory: AwardCategory;
   model: string;
+  periodStartDate: string | null;
+  periodEndDate: string | null;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onUpdateSlotState: (category: string, slotIndex: number, updates: Partial<SectionSlotState>) => void;
@@ -190,6 +193,8 @@ function StatementSlotCard({
   slotIndex,
   totalSlots,
   accomplishments,
+  periodStartDate,
+  periodEndDate,
   onRemove,
   onGenerate,
   isCollapsed,
@@ -200,8 +205,10 @@ function StatementSlotCard({
   slotIndex: number;
   totalSlots: number;
   accomplishments: Accomplishment[];
+  periodStartDate: string | null;
+  periodEndDate: string | null;
   onRemove: () => void;
-  onGenerate: (revisionMode?: "add" | "replace", revisionIntensity?: number, versionCount?: number) => Promise<string[]>; // Returns generated versions
+  onGenerate: (revisionMode?: "add" | "replace", revisionIntensity?: number, versionCount?: number) => Promise<string[]>;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   model: string;
@@ -247,10 +254,20 @@ function StatementSlotCard({
   const [generatedVersions, setGeneratedVersions] = useState<string[]>([]);
   
   // Revision intensity: 0-100, controls how much the statement gets rewritten
-  // 0 = minimal changes (keep most original wording)
-  // 100 = aggressive rewrite (replace most words)
   const [revisionIntensity, setRevisionIntensity] = useState(50);
   
+  // Award period filter toggle — default to enabled when period dates exist
+  const hasPeriodDates = Boolean(periodStartDate && periodEndDate);
+  const [filterByPeriod, setFilterByPeriod] = useState(hasPeriodDates);
+  
+  const filteredAccomplishments = useMemo(() => {
+    if (!filterByPeriod || !periodStartDate || !periodEndDate) return accomplishments;
+    return accomplishments.filter((a) => {
+      const d = a.date;
+      return d >= periodStartDate && d <= periodEndDate;
+    });
+  }, [accomplishments, filterByPeriod, periodStartDate, periodEndDate]);
+
   // Auto-resize textarea to fit content
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -839,34 +856,63 @@ function StatementSlotCard({
 
             {/* Source Input */}
             {sourceType === "actions" ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Popover open={showActionSelector} onOpenChange={setShowActionSelector}>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-full justify-start h-auto py-2.5">
-                      {selectedActionIds.length === 0 ? (
-                        <span className="text-muted-foreground">Select performance actions...</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {relevantAccomplishments.slice(0, 3).map((a) => (
-                            <Badge key={a.id} variant="secondary" className="text-xs">
-                              {a.action_verb}
-                            </Badge>
-                          ))}
-                          {selectedActionIds.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{selectedActionIds.length - 3} more
-                            </Badge>
-                          )}
-                        </div>
-                      )}
+                    <Button variant="outline" size="sm" className="w-full justify-between h-auto py-2.5">
+                      <span className={cn(selectedActionIds.length === 0 && "text-muted-foreground")}>
+                        {selectedActionIds.length === 0
+                          ? "Select performance actions..."
+                          : `${selectedActionIds.length} action${selectedActionIds.length !== 1 ? "s" : ""} selected`}
+                      </span>
+                      <ChevronDown className="size-3.5 text-muted-foreground shrink-0 ml-2" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-80 p-2" align="start">
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {accomplishments.length === 0 ? (
-                        <p className="text-sm text-muted-foreground p-2">No performance actions available</p>
+                  <PopoverContent className="w-96 p-2" align="start">
+                    {/* Award period filter toggle */}
+                    {hasPeriodDates && (
+                      <div className="pb-2 mb-2 border-b">
+                        <button
+                          onClick={() => setFilterByPeriod(!filterByPeriod)}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors",
+                            filterByPeriod
+                              ? "bg-primary/10 text-primary border border-primary/30"
+                              : "text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          <CalendarDays className="size-3.5 shrink-0" />
+                          <span className="flex-1 text-left">
+                            Award period: {new Date(periodStartDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} – {new Date(periodEndDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                          <span className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                            filterByPeriod ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                          )}>
+                            {filterByPeriod ? "ON" : "OFF"}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                    <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                      {filteredAccomplishments.length === 0 ? (
+                        <div className="p-2 text-center">
+                          <p className="text-sm text-muted-foreground">
+                            {accomplishments.length === 0
+                              ? "No performance actions available"
+                              : "No actions in this award period"}
+                          </p>
+                          {filterByPeriod && accomplishments.length > 0 && (
+                            <button
+                              onClick={() => setFilterByPeriod(false)}
+                              className="text-xs text-primary hover:underline mt-1"
+                            >
+                              Show all actions
+                            </button>
+                          )}
+                        </div>
                       ) : (
-                        accomplishments.map((a) => {
+                        filteredAccomplishments.map((a) => {
                           const isSelected = selectedActionIds.includes(a.id);
                           return (
                             <button
@@ -882,20 +928,85 @@ function StatementSlotCard({
                                 isSelected ? "bg-primary/10 border border-primary/40" : "hover:bg-muted"
                               )}
                             >
-                              <p className="text-sm font-medium">{a.action_verb}</p>
-                              <p className="text-xs text-muted-foreground line-clamp-2">{a.details}</p>
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-medium">{a.action_verb}</p>
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+                                  {new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{a.details}</p>
                             </button>
                           );
                         })
                       )}
                     </div>
-                    <div className="pt-2 border-t mt-2">
-                      <Button size="sm" variant="outline" className="w-full" onClick={() => setShowActionSelector(false)}>
+                    <div className="pt-2 border-t mt-2 flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground">
+                        {filteredAccomplishments.length} action{filteredAccomplishments.length !== 1 ? "s" : ""}
+                        {filterByPeriod && accomplishments.length !== filteredAccomplishments.length && ` of ${accomplishments.length}`}
+                      </span>
+                      <Button size="sm" variant="outline" onClick={() => setShowActionSelector(false)}>
                         Done
                       </Button>
                     </div>
                   </PopoverContent>
                 </Popover>
+
+                {/* Selected actions detail list */}
+                {relevantAccomplishments.length > 0 && (
+                  <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                    {relevantAccomplishments.map((a) => (
+                      <div
+                        key={a.id}
+                        className="group relative p-2.5 rounded-md border bg-background text-left animate-in fade-in-0 duration-200"
+                      >
+                        <button
+                          onClick={() => {
+                            onUpdate({ selectedActionIds: selectedActionIds.filter(id => id !== a.id) });
+                          }}
+                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                          aria-label={`Remove ${a.action_verb}`}
+                        >
+                          <X className="size-3" />
+                        </button>
+                        <div className="flex items-start gap-2 pr-5">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium">{a.action_verb}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{a.details}</p>
+                            {(a.impact || a.metrics) && (
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                                {a.impact && (
+                                  <p className="text-[10px] text-muted-foreground">
+                                    <span className="font-medium text-foreground/70">Impact:</span> {a.impact}
+                                  </p>
+                                )}
+                                {a.metrics && (
+                                  <p className="text-[10px] text-muted-foreground">
+                                    <span className="font-medium text-foreground/70">Metrics:</span> {a.metrics}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {a.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {a.tags.map((tag) => (
+                                  <Badge key={tag} variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <Textarea
@@ -1055,6 +1166,8 @@ export function AwardCategorySectionCard({
   awardLevel,
   awardCategory,
   model,
+  periodStartDate,
+  periodEndDate,
   isCollapsed,
   onToggleCollapse,
   onUpdateSlotState,
@@ -1233,6 +1346,8 @@ export function AwardCategorySectionCard({
                   slotIndex={s.slotIndex}
                   totalSlots={sections.length}
                   accomplishments={accomplishments}
+                  periodStartDate={periodStartDate}
+                  periodEndDate={periodEndDate}
                   isCollapsed={collapsedSlots[s.slotIndex] ?? false}
                   onToggleCollapse={() => toggleSlotCollapse(s.slotIndex)}
                   onRemove={() => onRemoveSection(s.slotIndex)}

@@ -465,6 +465,18 @@ Put the strongest, most impressive result at the END of the statement:
 BAD: "...averting 220-node outage, streamlining network access for 58K users" (weaker ending)
 GOOD: "...sustaining uninterrupted network access for 58K users across the enterprise" (strong finish)
 
+BANNED FILLER CLOSERS (NEVER USE - these sound impressive but say NOTHING specific):
+- "ensuring mission success" / "ensuring mission readiness"
+- "bolstering global ops" / "bolstering global operations"
+- "vital to force projection"
+- "critical to national defense"
+- "enhancing combat capability"
+- "supporting warfighter needs"
+- "key to operational excellence"
+These are empty phrases that could apply to ANY accomplishment. The ending MUST be SPECIFIC to THIS accomplishment's actual impact with real metrics, beneficiaries, or outcomes.
+BAD ENDING: "...saving $50K, ensuring mission success." (generic filler)
+GOOD ENDING: "...saving $50K annually, sustaining network access for 58K users." (specific, measurable)
+
 VERB VARIETY (CRITICAL - MUST FOLLOW):
 When generating multiple statement versions:
 - Version 1, Version 2, and Version 3 MUST each start with a DIFFERENT verb

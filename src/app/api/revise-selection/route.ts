@@ -229,19 +229,33 @@ ${availableVerbs.slice(0, 20).join(", ")}
 - Acronyms (e.g., "O&M", "AFCYBER", "USCYBERCOM")
 - Proper nouns and organizational names
 
+**BANNED FILLER CLOSERS (NEVER USE - these sound impressive but say nothing specific):**
+- "ensuring mission success" / "ensuring mission readiness"
+- "bolstering global ops" / "bolstering global operations"
+- "vital to force projection"
+- "critical to national defense"
+- "enhancing combat capability"
+- "supporting warfighter needs"
+- "key to operational excellence"
+- Any generic closer that could apply to ANY accomplishment. The ending must be SPECIFIC to THIS accomplishment's actual impact.
+
+BAD ENDING: "...saving $50K, ensuring mission success." (generic - what mission? how?)
+GOOD ENDING: "...saving $50K annually, sustaining network access for 58K users." (specific, measurable)
+
 CRITICAL RULES:
 1. NEVER use any verb from the BANNED list - these are overused Air Force clichés
-2. Each of your ${versionCount} alternatives MUST use DIFFERENT opening verbs from each other
-3. Output ONLY the revised text for the selected portion - no quotes, no explanation
-4. Maintain the same general meaning but with appropriately varied phrasing based on aggressiveness level
-5. Maintain grammatical coherence with surrounding text
-6. NEVER use em-dashes (--) - use COMMAS instead to connect clauses
-7. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix
-8. READABILITY: Revised text should flow naturally when read aloud
-9. PARALLELISM: Use consistent verb tense throughout (all past tense OR all present participles)
-10. AVOID creating run-on laundry lists of 5+ actions - keep it focused
-11. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope)
-12. CONSISTENCY: Use either "&" OR "and" throughout - NEVER mix them. Prefer "&" when saving space.`;
+2. NEVER end with generic filler closers from the BANNED FILLER list - endings must reference SPECIFIC impacts
+3. Each of your ${versionCount} alternatives MUST use DIFFERENT opening verbs from each other
+4. Output ONLY the revised text for the selected portion - no quotes, no explanation
+5. Maintain the same general meaning but with appropriately varied phrasing based on aggressiveness level
+6. Maintain grammatical coherence with surrounding text
+7. NEVER use em-dashes (--) - use COMMAS instead to connect clauses
+8. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix
+9. READABILITY: Revised text should flow naturally when read aloud
+10. PARALLELISM: Use consistent verb tense throughout (all past tense OR all present participles)
+11. AVOID creating run-on laundry lists of 5+ actions - keep it focused
+12. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope)
+13. CONSISTENCY: Use either "&" OR "and" throughout - NEVER mix them. Prefer "&" when saving space.`;
 }
 
 export async function POST(request: Request) {

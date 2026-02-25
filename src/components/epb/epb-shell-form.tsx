@@ -2393,6 +2393,8 @@ export function EPBShellForm({
                 epbStatementsCount={mpa.key === "hlr_assessment" ? getFilledMPACount() : 0}
                 // Awards/coins for this ratee (available in any MPA)
                 rateeAwards={rateeAwards}
+                // Ratee rank for prompt settings modal
+                rateeRank={selectedRatee?.rank}
               />
             </div>
           );
