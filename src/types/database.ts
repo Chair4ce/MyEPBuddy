@@ -447,6 +447,7 @@ export interface UserLLMSettings {
   award_system_prompt: string;
   award_abbreviations: Abbreviation[];
   award_style_guidelines: string;
+  award_rank_verb_progression: RankVerbProgression;
   award_sentences_per_category: AwardSentencesPerCategory;
   award_period_text: string | null;
   // OPB-specific settings (Officer Performance Brief)
@@ -811,6 +812,13 @@ export interface AwardShellWin {
   created_at: string;
 }
 
+export interface AwardClarifyingAnswer {
+  question: string;
+  category: string;
+  answer: string;
+  hint?: string;
+}
+
 export interface AwardShellSection {
   id: string;
   shell_id: string;
@@ -821,6 +829,7 @@ export interface AwardShellSection {
   custom_context: string;
   selected_action_ids: string[];
   lines_per_statement: 2 | 3;
+  clarifying_answers: AwardClarifyingAnswer[];
   last_edited_by: string | null;
   created_at: string;
   updated_at: string;

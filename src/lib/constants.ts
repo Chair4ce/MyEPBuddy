@@ -612,33 +612,26 @@ export interface Award1206Category {
   description?: string; // Optional description for UI hints
 }
 
-// AF Form 1206 Award Categories (standard quarterly/annual award format)
+// AF Form 1206 Award Categories (updated format: two categories)
 export const AWARD_1206_CATEGORIES: Award1206Category[] = [
   { 
-    key: "leadership_job_performance", 
-    label: "Leadership & Job Performance", 
-    heading: "LEADERSHIP AND JOB PERFORMANCE IN PRIMARY DUTY",
+    key: "performance_in_primary_duty", 
+    label: "Performance in Primary Duty", 
+    heading: "PERFORMANCE IN PRIMARY DUTY",
     description: "Excellence, initiative, and mission accomplishment in core role. Highlight significant achievements beyond routine duties."
   },
   { 
-    key: "significant_self_improvement", 
-    label: "Self-Improvement", 
-    heading: "SIGNIFICANT SELF-IMPROVEMENT",
-    description: "Education (courses, degrees), professional development, skill acquisition, certifications, and leadership training."
-  },
-  { 
-    key: "base_community_involvement", 
-    label: "Base/Community", 
-    heading: "BASE OR COMMUNITY INVOLVEMENT",
-    description: "Volunteer work, base support activities, community service, cultural/religious activities, and public service."
+    key: "whole_airman_concept", 
+    label: "Whole Airman Concept", 
+    heading: "WHOLE AIRMAN CONCEPT",
+    description: "Self-improvement, base involvement, community service, volunteer work, education, and leadership development."
   },
 ];
 
 // Default sentences per category for awards
 export const DEFAULT_AWARD_SENTENCES: Record<string, number> = {
-  leadership_job_performance: 6,
-  significant_self_improvement: 3,
-  base_community_involvement: 3,
+  performance_in_primary_duty: 6,
+  whole_airman_concept: 6,
 };
 
 // ============================================

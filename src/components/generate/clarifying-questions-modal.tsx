@@ -42,8 +42,15 @@ import {
   type QuestionSourceContext,
 } from "@/stores/clarifying-questions-store";
 
+export interface AnsweredQuestion {
+  question: string;
+  category: string;
+  answer: string;
+  hint?: string;
+}
+
 interface ClarifyingQuestionsModalProps {
-  onRegenerate: (clarifyingContext: string, mpaKey: string) => void;
+  onRegenerate: (clarifyingContext: string, mpaKey: string, answeredQuestions?: AnsweredQuestion[]) => void;
   isRegenerating?: boolean;
 }
 
@@ -242,11 +249,19 @@ export function ClarifyingQuestionsModal({
       finalContext = `${context}\n\n=== ADDITIONAL CONTEXT FROM USER ===\n${additionalContext}`;
     }
 
+    // Collect answered Q&A pairs for persistence
+    const answeredQuestions: AnsweredQuestion[] = questionSet.questions
+      .filter(q => localAnswers[q.id]?.trim())
+      .map(q => ({
+        question: q.question,
+        category: q.category,
+        answer: localAnswers[q.id],
+        hint: q.hint,
+      }));
+
     console.log("[ClarifyingQuestionsModal] Calling onRegenerate with mpaKey:", mpaKey);
-    // Pass both context and mpaKey to ensure regeneration works
-    onRegenerate(finalContext, mpaKey);
+    onRegenerate(finalContext, mpaKey, answeredQuestions);
     
-    // Remove question set after regeneration
     removeQuestionSet(questionSet.id);
     closeModal();
   };

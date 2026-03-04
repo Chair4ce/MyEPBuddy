@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AwardShell, AwardShellSection, AwardShellSnapshot, Rank, AwardLevel, AwardCategory } from "@/types/database";
+import type { AwardShell, AwardShellSection, AwardShellSnapshot, AwardClarifyingAnswer, Rank, AwardLevel, AwardCategory } from "@/types/database";
 
 // Source type for statement generation
 export type SourceType = "actions" | "custom";
@@ -23,6 +23,9 @@ export interface SectionSlotState {
   
   // Lines per statement (2 or 3) - per-slot setting
   linesPerStatement: 2 | 3;
+  
+  // Persisted clarifying answers from follow-up questions
+  clarifyingAnswers: AwardClarifyingAnswer[];
 }
 
 // Ratee info for the selected member
@@ -115,6 +118,7 @@ const getDefaultSlotState = (): SectionSlotState => ({
   customContext: "",
   selectedActionIds: [],
   linesPerStatement: 2,
+  clarifyingAnswers: [],
 });
 
 const getSectionKey = (category: string, slotIndex: number) => `${category}:${slotIndex}`;
@@ -165,6 +169,7 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
         customContext: section.custom_context || "",
         selectedActionIds: section.selected_action_ids || [],
         linesPerStatement: section.lines_per_statement || 2,
+        clarifyingAnswers: section.clarifying_answers || [],
       };
     });
     
@@ -199,6 +204,7 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
       custom_context: "",
       selected_action_ids: [],
       lines_per_statement: state.sentencesPerStatement,
+      clarifying_answers: [],
       last_edited_by: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -269,6 +275,7 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
           customContext: section.custom_context,
           selectedActionIds: section.selected_action_ids || [],
           linesPerStatement: section.lines_per_statement || 2,
+          clarifyingAnswers: section.clarifying_answers || [],
         },
       },
     }));
@@ -333,7 +340,7 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
     // Sort by category then slot index
     statements.sort((a, b) => {
       if (a.category !== b.category) {
-        const order = ["leadership_job_performance", "significant_self_improvement", "base_community_involvement"];
+        const order = ["performance_in_primary_duty", "whole_airman_concept"];
         return order.indexOf(a.category) - order.indexOf(b.category);
       }
       return a.slotIndex - b.slotIndex;
