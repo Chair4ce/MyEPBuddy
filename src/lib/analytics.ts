@@ -306,20 +306,6 @@ export const Analytics = {
   accountUnlinked: (provider: string) =>
     trackEvent("account_unlinked", { provider }),
 
-  // ── AI Model Survey ──────────────────────────────
-  aiSurveyShown: (sourcePage: string) =>
-    trackEvent("ai_survey_shown", { source_page: sourcePage }),
-
-  aiSurveyCompleted: (preference: string, pricePoint: number | null, sourcePage: string) =>
-    trackEvent("ai_survey_completed", {
-      payment_preference: preference,
-      price_point: pricePoint,
-      source_page: sourcePage,
-    }),
-
-  aiSurveyDismissed: (sourcePage: string) =>
-    trackEvent("ai_survey_dismissed", { source_page: sourcePage }),
-
   // ── Feature Discovery & Errors ─────────────────
   featureViewed: (feature: string) => 
     trackEvent("feature_viewed", { feature }),

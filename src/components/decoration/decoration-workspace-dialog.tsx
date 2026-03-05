@@ -39,7 +39,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
-import { AiModelSurveyModal, useAiModelSurvey, trackGenerationForSurvey } from "@/components/modals/ai-model-survey-modal";
 import { DECORATION_TYPES, DECORATION_REASONS } from "@/features/decorations/constants";
 import { cn, getFullName } from "@/lib/utils";
 import {
@@ -179,9 +178,6 @@ export function DecorationWorkspaceDialog({
     bulkStatements,
     reset,
   } = useDecorationShellStore();
-
-  // AI model survey (one-time)
-  const aiSurvey = useAiModelSurvey("decoration");
 
   // Local state
   const [statements, setStatements] = useState<RefinedStatement[]>([]);
@@ -587,7 +583,6 @@ export function DecorationWorkspaceDialog({
 
       const data = await response.json();
       store.setCitationText(data.citation);
-      trackGenerationForSurvey();
 
       if (!data.metadata.withinLimit) {
         toast.warning(
@@ -1179,12 +1174,6 @@ export function DecorationWorkspaceDialog({
         />
       )}
 
-      {/* AI Model Survey - one-time */}
-      <AiModelSurveyModal
-        open={aiSurvey.showSurvey}
-        onOpenChange={aiSurvey.onOpenChange}
-        sourcePage={aiSurvey.sourcePage}
-      />
     </TooltipProvider>
   );
 }

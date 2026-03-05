@@ -5,10 +5,24 @@
  * Provides record locking so only one user can edit an MPA at a time
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import type { EPBSectionLock } from "@/types/database";
+
+function useDebouncedCallback<T extends (...args: never[]) => void>(fn: T, delay: number): T {
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+
+  return useMemo(() => {
+    const debounced = (...args: Parameters<T>) => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => fnRef.current(...args as never[]), delay);
+    };
+    return debounced as unknown as T;
+  }, [delay]);
+}
 
 interface UseSectionLocksOptions {
   shellId: string | null;
@@ -71,6 +85,10 @@ export function useSectionLocks({
     }
   }, [shellId, enabled, supabase]);
 
+  // Debounce Realtime-triggered refetches so rapid lock changes
+  // (e.g. acquire then immediately release) collapse into one call
+  const debouncedFetchLocks = useDebouncedCallback(fetchLocks, 300);
+
   // Subscribe to lock changes
   useEffect(() => {
     if (!shellId || !enabled) {
@@ -91,9 +109,7 @@ export function useSectionLocks({
           table: "epb_section_locks",
         },
         () => {
-          // Refetch locks to get the joined data with mpa_key and user info
-          // The raw payload only has section_id/user_id, not the joined data we need
-          fetchLocks();
+          debouncedFetchLocks();
         }
       )
       .subscribe();
@@ -101,7 +117,7 @@ export function useSectionLocks({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [shellId, enabled, supabase, fetchLocks]);
+  }, [shellId, enabled, supabase, fetchLocks, debouncedFetchLocks]);
 
   // Heartbeat to keep our locks alive
   useEffect(() => {
@@ -161,7 +177,6 @@ export function useSectionLocks({
       const result = data?.[0];
       if (result?.success) {
         ownLocksRef.current.add(sectionId);
-        fetchLocks(); // Refresh locks
         return { success: true };
       } else {
         const lockedBy = result?.locked_by_rank 
@@ -186,11 +201,10 @@ export function useSectionLocks({
       } as never);
       
       ownLocksRef.current.delete(sectionId);
-      fetchLocks(); // Refresh locks
     } catch (err) {
       console.error("Failed to release lock:", err);
     }
-  }, [profile, supabase, fetchLocks]);
+  }, [profile, supabase]);
 
   // Refresh a lock (heartbeat)
   const refreshLock = useCallback(async (sectionId: string) => {

@@ -71,24 +71,24 @@ export function DeleteAwardDialog({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await supabase
-        .from("award_shell_sections")
-        .delete()
-        .eq("shell_id", shellId);
-
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("award_shells")
         .delete()
-        .eq("id", shellId);
+        .eq("id", shellId)
+        .select("id");
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error("Unable to delete — you may not have permission to delete this award package.");
+      }
 
       Analytics.awardDeleted();
       toast.success("Award package deleted");
       onDeleteComplete();
     } catch (error) {
       console.error("Error deleting award shell:", error);
-      toast.error("Failed to delete award package");
+      toast.error(error instanceof Error ? error.message : "Failed to delete award package");
     } finally {
       setIsDeleting(false);
     }

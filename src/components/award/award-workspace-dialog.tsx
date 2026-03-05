@@ -34,7 +34,6 @@ import {
   AWARD_CATEGORIES,
 } from "@/lib/constants";
 import { ModelSelector } from "@/components/model-selector";
-import { AiModelSurveyModal, useAiModelSurvey } from "@/components/modals/ai-model-survey-modal";
 import { cn } from "@/lib/utils";
 import { toDisplayText, fromDisplayText } from "@/lib/bullet-fitting";
 import {
@@ -170,9 +169,6 @@ export function AwardWorkspaceDialog({
     setIsLoadingShell,
     reset,
   } = useAwardShellStore();
-
-  // AI model survey (one-time)
-  const aiSurvey = useAiModelSurvey("award");
 
   // Local state
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
@@ -1266,12 +1262,6 @@ export function AwardWorkspaceDialog({
         nomineeRank={nomineeInfo?.rank}
       />
 
-      {/* AI Model Survey - one-time */}
-      <AiModelSurveyModal
-        open={aiSurvey.showSurvey}
-        onOpenChange={aiSurvey.onOpenChange}
-        sourcePage={aiSurvey.sourcePage}
-      />
     </>
   );
 }

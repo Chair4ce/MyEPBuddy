@@ -331,14 +331,14 @@ async function extractUsedVerbsFromEPB(
     // Get the current EPB shell for this ratee and cycle
     const { data: epbShell } = await supabase
       .from("epb_shells")
-      .select("sections")
+      .select("*, sections:epb_shell_sections(mpa, statement_text)")
       .eq("cycle_year", cycleYear)
       .or(`user_id.eq.${rateeId},team_member_id.eq.${rateeId}`)
       .maybeSingle();
 
     if (!epbShell) return [];
 
-    const typedShell = epbShell as { sections: any[] };
+    const typedShell = epbShell as { sections: { mpa: string; statement_text: string | null }[] };
     if (!typedShell.sections || !Array.isArray(typedShell.sections)) return [];
 
     const usedVerbs = new Set<string>();
