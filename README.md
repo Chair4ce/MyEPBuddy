@@ -2,7 +2,7 @@
 
 **Your AI-Powered Air Force Performance Brief Assistant**
 
-My EPBuddy is a comprehensive web application designed for Air Force supervisors and their teams to efficiently track accomplishments, manage team hierarchies, and generate high-quality Enlisted Performance Brief (EPB) narrative statements compliant with AFI 36-2406.
+My EPBuddy is a comprehensive web application designed for Air Force supervisors and their teams to efficiently track accomplishments, manage team hierarchies, and generate high-quality Enlisted Performance Brief (EPB), Officer Performance Brief (OPB), and Decoration narrative statements compliant with AFI 36-2406 and AFMAN 36-2806.
 
 ---
 
@@ -28,62 +28,51 @@ Bring your own API keys for OpenAI, Anthropic, Google AI, or xAI. Keys are encry
 ## Key Features
 
 ### AI-Powered Statement Generation
-- **Multi-Model Support** - Choose from GPT-4o, Claude Sonnet/Haiku, Gemini 2.0 Flash, or Grok 2
-- **Three Writing Styles** - Personal (your refined examples), Community (crowdsourced), or Hybrid
-- **Smart Context** - AI considers rank, AFSC, and accomplishment history for tailored statements
-- **Character Optimization** - Automatically fits statements within the 350-character myEval limit
+- **Multi-Model Support** - Choose from GPT-4o, Claude 3.5 Sonnet, Gemini 2.0 Flash, or Grok 2.
+- **Three Writing Styles** - Personal (your refined examples), Community (crowdsourced), or Hybrid.
+- **Smart Context** - AI considers rank, AFSC, and accomplishment history for tailored statements.
+- **Character Optimization** - Automatically fits statements within the 350-character myEval limit.
+- **Synonym Finder** - Integrated tool to find high-impact military action verbs and alternatives.
 
-### EPB Workspace
-- **Section-by-Section Editing** - Duty Description, Executing the Mission, Leading People, Managing Resources, Improving the Unit
-- **Split View Mode** - Compare and edit statements side-by-side
-- **Real-Time Collaboration** - Multiple users can work on the same EPB with live cursor tracking
-- **Section Locking** - Prevents edit conflicts when collaborating
-- **AI Generate Button** - One-click generation per section with accomplishment context
-- **Archive & History** - Archive completed EPBs and track statement evolution
+### Performance & Decoration Workspaces
+- **EPB/OPB Workspace** - Section-by-section editing for all Major Performance Areas (MPAs).
+- **Decoration Generator** - Create citations for medals (AFCM, AFAM, MSM) with specific narrative constraints.
+- **Weekly Activity Reports (WAR)** - Generate consolidated weekly reports from daily accomplishment entries.
+- **Split View Mode** - Compare and edit statements side-by-side.
+- **Real-Time Collaboration** - Multiple users can work on the same document with live cursor tracking and section locking.
 
-### Team Management
-- **Supervision Tree Visualization** - Interactive org chart with 700+ member support
-- **Rank-Based Filtering** - Toggle visibility by rank tier (CMSgt through AB)
-- **Zoom & Pan Controls** - Navigate large hierarchies effortlessly
-- **Multi-Tab Organization** - Chain, Subs (subordinates), Sups (supervisors), Requests, History, Awards
-- **Managed Members** - Track team members who don't have accounts
-- **Team Activity Feed** - Real-time accomplishment updates from your entire chain
+### External Review System
+- **Token-Based Sharing** - Generate secure, time-limited review links for leadership or peers.
+- **Account-less Review** - Reviewers can provide feedback and edits without needing a MyEPBuddy account.
+- **Feedback Integration** - View and apply reviewer suggestions directly within your workspace.
+
+### Team & Project Management
+- **Supervision Tree Visualization** - Interactive org chart with support for 700+ members.
+- **Project Tracking** - Organize team accomplishments by specific missions, exercises, or deployments.
+- **Managed Members** - Track team members who don't have accounts yet.
+- **Team Activity Feed** - Real-time accomplishment updates from your entire chain.
+- **Rank-Based Filtering** - Toggle visibility by rank tier (Officer, SNCO, NCO, Enlisted).
 
 ### Award Packages (AF Form 1206)
-- **Full 1206 Support** - Create and manage award nominations for quarterly and annual awards
-- **Award Categories** - Amn, NCO, SNCO, CGO, FGO, Civilian categories
-- **Period Configuration** - Annual, Quarterly, or Custom date ranges with fiscal/calendar year options
-- **Workspace Integration** - Same powerful editing experience as EPB workspace
+- **Full 1206 Support** - Create and manage award nominations for quarterly and annual awards.
+- **Award Categories** - Amn, NCO, SNCO, CGO, FGO, and Civilian categories.
+- **Period Configuration** - Annual, Quarterly, or Custom date ranges with fiscal/calendar year options.
 
 ### Statement Library
-- **Personal Library** - Save and organize your refined statements
-- **Shared Statements** - Share statements with team members or your entire supervision chain
-- **Community Statements** - Crowdsourced examples filtered by AFSC with voting system
-- **Statement Workspace** - Combine and refine multiple statements into one
-- **Archived EPB Filter** - Quickly find statements from previous performance cycles
-
-### Secure API Key Management
-- **Bring Your Own Keys** - Use your personal API keys for OpenAI, Anthropic, Google AI, or xAI
-- **Encrypted Storage** - Keys are encrypted before storage and never exposed to the browser
-- **Provider Status** - Visual indicators show which providers are configured
-- **Cost Control** - Using your own keys gives you direct billing and higher rate limits
-
-### Officer Support
-- **OPB Workspace (Beta)** - Officer Performance Brief generation for commissioned officers
-- **Team EPB Mode** - Officers can generate and manage EPBs for their enlisted subordinates
-- **Rank-Aware UI** - Interface adapts based on whether user is officer, NCO, or junior enlisted
+- **Personal & Shared Libraries** - Save refined statements and share them with your supervision chain.
+- **Community Library** - Crowdsourced examples filtered by AFSC with a community voting system.
+- **Bulk Parsing** - Import existing statements in bulk to quickly build your personal library.
 
 ---
 
 ## Technical Features
 
-- **Real-Time Collaboration** - Supabase Realtime powers live cursor tracking and section locking
-- **Responsive Design** - Optimized for desktop, tablet, and mobile
-- **Dark/Light Mode** - System-aware theme switching
-- **Row Level Security** - Database-enforced access control for all data
-- **Version Checking** - Automatic app update notifications
-- **Idle Detection** - Collaboration presence management
-- **Confetti Celebrations** - Fun feedback when archiving completed EPBs
+- **Real-Time Collaboration** - Supabase Realtime powers live cursor tracking and section locking.
+- **AI Assessment** - Automated scoring and feedback for accomplishment entries to improve quality before generation.
+- **Secure API Key Management** - AES-256 encryption for user-provided LLM keys.
+- **Authentication Options** - Support for Email/Password, Google OAuth, and Phone-based login.
+- **Responsive Design** - Optimized for desktop, tablet, and mobile devices.
+- **Dark/Light Mode** - System-aware theme switching.
 
 ---
 
@@ -95,8 +84,8 @@ Bring your own API keys for OpenAI, Anthropic, Google AI, or xAI. Keys are encry
 | **Language** | TypeScript |
 | **Styling** | Tailwind CSS 4 + shadcn/ui |
 | **Database** | Supabase (PostgreSQL) |
-| **Authentication** | Supabase Auth (Email/Password, Google OAuth) |
-| **AI SDK** | Vercel AI SDK (OpenAI, Anthropic, Google, xAI providers) |
+| **Authentication** | Supabase Auth (Email, Google, Phone) |
+| **AI SDK** | Vercel AI SDK (OpenAI, Anthropic, Google, xAI) |
 | **State Management** | Zustand |
 | **Real-Time** | Supabase Realtime (Broadcast, Presence) |
 | **Icons** | Lucide React, Hugeicons |
@@ -110,14 +99,14 @@ Bring your own API keys for OpenAI, Anthropic, Google AI, or xAI. Keys are encry
 
 - Node.js 18+
 - npm, pnpm, or yarn
-- Supabase account (free tier works)
+- Supabase account
 - API key for at least one AI provider (OpenAI, Anthropic, Google, or xAI)
 
 ### Installation
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/yourusername/myepbuddy.git
+git clone https://github.com/Chair4ce/myepbuddy.git
 cd myepbuddy
 ```
 
@@ -131,27 +120,11 @@ npm install
 cp env.example .env.local
 ```
 
-Update `.env.local` with your values:
-```env
-# Supabase (Required)
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# App URL
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Fallback LLM API Keys (at least one recommended)
-OPENAI_API_KEY=your_openai_api_key
-ANTHROPIC_API_KEY=your_anthropic_api_key
-GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key
-XAI_API_KEY=your_xai_grok_api_key
-```
+Update `.env.local` with your Supabase credentials and fallback API keys.
 
 ### Database Setup
 
-1. Create a new Supabase project at [supabase.com](https://supabase.com)
-
+1. Create a new Supabase project.
 2. Run the migrations using Supabase CLI:
 ```bash
 # Local development
@@ -160,10 +133,6 @@ npm run db:push:local
 # Remote/Production
 npm run db:push:remote
 ```
-
-3. Enable Google OAuth (optional):
-   - Go to Authentication > Providers in Supabase Dashboard
-   - Enable Google provider and configure OAuth credentials
 
 ### Running Locally
 
@@ -179,73 +148,28 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### For All Users
 
-#### Dashboard
-- View your current cycle information and SCOD date
-- Quick access buttons to create entries and generate EPBs
-- See pending account links and prior data reviews
-- Supervisors see team activity feed with recent accomplishments
+#### Accomplishment Entries
+- Navigate to **Entries** to log daily/weekly wins.
+- Use the **AI Assess** feature to get immediate feedback on the strength of your action, impact, and metrics.
+- Tag entries to specific **Projects** for easier organization during award cycles.
 
-#### Adding Accomplishments
-1. Navigate to **Entries** from the sidebar
-2. Click **New Entry**
-3. Fill in the structured form:
-   - **Date** - When the accomplishment occurred
-   - **MPA** - Major Performance Area (Executing Mission, Leading People, etc.)
-   - **Action Verb** - Strong verb describing what you did
-   - **Details** - What you accomplished
-   - **Impact** - Results and outcomes
-   - **Metrics** - Quantifiable numbers (recommended)
+#### Generating Narratives
+1. Go to **Generate** (EPB/OPB) or **Decoration**.
+2. Select the ratee and the specific period/award type.
+3. Use **AI Generate** to turn raw entries into polished narrative statements.
+4. Use the **Synonym** tool to swap out overused verbs.
 
-#### Generating EPB Statements
-1. Go to **Generate** (EPB Workspace)
-2. Select the ratee (yourself or a subordinate)
-3. Configure AI settings:
-   - Choose your preferred AI model
-   - Select writing style (Personal, Community, or Hybrid)
-4. Expand each MPA section and click **AI Generate**
-5. Review, edit, and refine generated statements
-6. Use Split View for side-by-side comparison
-7. Archive when complete to save to your library
-
-#### Statement Library
-1. Navigate to **Library** to view your saved statements
-2. Use tabs to switch between My Library, Shared, and Community
-3. Filter by MPA, AFSC, Cycle Year, or Statement Type
-4. Use the Workspace to combine statements
-5. Share statements with team members
+#### External Review
+1. Click **Share for Review** in any workspace.
+2. Copy the generated token link.
+3. Send the link to your supervisor or mentor; they can edit and leave feedback directly.
 
 ### For Supervisors
 
-#### Managing Your Team
-1. Navigate to **My Team**
-2. View your supervision chain in the interactive tree
-3. Use rank filters to focus on specific tiers
-4. Click **Add Member** to add subordinates or managed members
-5. Use the **Projects** feature to organize team accomplishments
-
-#### Creating Award Packages
-1. Navigate to **Awards**
-2. Click **New Award** to create a 1206 package
-3. Select the nominee and award category
-4. Choose the award period (Annual, Quarterly, or Custom)
-5. Use the workspace to generate and refine award statements
-
-#### Sharing EPBs
-1. Open an EPB in the workspace
-2. Click the **Share** button
-3. Share with specific team members or your entire chain
-4. Collaborators can view and contribute in real-time
-
-### Adding Your Own API Keys
-
-1. Go to **Settings > API Keys**
-2. Enter API keys for any provider:
-   - **OpenAI** - GPT-4o, GPT-4o Mini
-   - **Anthropic** - Claude Sonnet, Claude Haiku
-   - **Google AI** - Gemini 1.5 Pro, Gemini 2.0 Flash
-   - **xAI** - Grok 2
-3. Keys are encrypted before storage
-4. Delete and re-add keys if you need to update them
+#### Team Management
+- Use the **My Team** tab to build your org chart.
+- View the **Activity Feed** to see what your subordinates are logging in real-time.
+- Create **Projects** and assign members to track group achievements for unit awards.
 
 ---
 
@@ -254,102 +178,40 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```
 src/
 ├── app/
-│   ├── (app)/              # Protected app routes
-│   │   ├── dashboard/      # Home dashboard
-│   │   ├── entries/        # Accomplishment entries
-│   │   ├── generate/       # EPB/OPB workspace
-│   │   ├── library/        # Statement library
-│   │   ├── team/           # Team management
-│   │   ├── award/          # Award packages (1206)
-│   │   ├── settings/       # User settings & API keys
-│   │   └── admin/          # Admin configuration
-│   ├── (auth)/             # Authentication routes
-│   │   ├── login/
-│   │   └── signup/
-│   ├── api/                # API routes
-│   │   └── generate/       # AI generation endpoints
-│   └── actions/            # Server actions
-├── components/
-│   ├── dashboard/          # Dashboard components
-│   ├── entries/            # Entry form components
-│   ├── epb/                # EPB shell & workspace
-│   ├── opb/                # OPB shell (officers)
-│   ├── team/               # Team management
-│   ├── award/              # Award package components
-│   ├── library/            # Statement library
-│   ├── generate/           # Generation workspace
-│   ├── layout/             # App layout (sidebar, header)
-│   └── ui/                 # shadcn/ui components
-├── hooks/
-│   ├── use-realtime-cursors.ts    # Live cursor collaboration
-│   ├── use-section-locks.ts       # Collaborative locking
-│   ├── use-epb-collaboration.ts   # EPB real-time sync
-│   └── use-workspace-collaboration.ts
-├── lib/
-│   ├── supabase/           # Supabase clients
-│   ├── constants.ts        # App constants, ranks, MPAs
-│   ├── encryption.ts       # API key encryption
-│   └── utils.ts            # Utility functions
-├── stores/                 # Zustand state stores
-└── types/                  # TypeScript types
+│   ├── (app)/              # Protected app routes (Dashboard, Entries, Team, etc.)
+│   ├── (auth)/             # Authentication (Login, Signup, Phone, Reset)
+│   ├── (legal)/            # Privacy and Terms
+│   ├── api/                # AI Generation, Analytics, and Review endpoints
+│   ├── review/             # Token-based external review pages
+│   └── actions/            # Server actions for database mutations
+├── features/               # Feature-specific logic (Decorations, WAR)
+├── components/             # UI components organized by feature
+├── hooks/                  # Real-time collaboration and workspace hooks
+├── lib/                    # Supabase clients, encryption, and military constants
+├── stores/                 # Zustand state management
+└── types/                  # TypeScript definitions
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key | Yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | Yes |
-| `NEXT_PUBLIC_APP_URL` | Your app URL | Yes |
-| `OPENAI_API_KEY` | OpenAI API key (fallback) | Recommended |
-| `ANTHROPIC_API_KEY` | Anthropic API key (fallback) | Optional |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Google AI key (fallback) | Optional |
-| `XAI_API_KEY` | xAI/Grok API key (fallback) | Optional |
-
----
-
-## Deployment
-
-### Deploy to Vercel
-
-1. Push your code to GitHub
-
-2. Import to Vercel:
-   - Go to [vercel.com](https://vercel.com)
-   - Import your GitHub repository
-   - Configure environment variables
-   - Deploy
-
-3. Configure Supabase for production:
-   - Update OAuth redirect URLs
-   - Ensure RLS policies are active
-   - Set up database backups
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Commit your changes (`git commit -m 'Add amazing feature'`)
-5. Push to the branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
-
----
-
-## License
-
-MIT License - see LICENSE file for details.
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (Server-side only) |
+| `NEXT_PUBLIC_APP_URL` | Base URL of the application |
+| `OPENAI_API_KEY` | Fallback OpenAI key |
+| `ANTHROPIC_API_KEY` | Fallback Anthropic key |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Fallback Google AI key |
+| `XAI_API_KEY` | Fallback xAI key |
 
 ---
 
 ## Disclaimer
 
-This application is not affiliated with, endorsed by, or connected to the U.S. Air Force, Department of Defense, or any government entity. It is a personal productivity tool designed to assist with EPB preparation.
+This application is not affiliated with, endorsed by, or connected to the U.S. Air Force, Department of Defense, or any government entity. It is a personal productivity tool designed to assist with performance brief preparation. Users are responsible for ensuring no Classified or Controlled Unclassified Information (CUI) is entered into the system.
 
 ---
 
