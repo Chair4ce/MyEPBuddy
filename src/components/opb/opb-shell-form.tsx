@@ -356,7 +356,7 @@ ${contextForGeneration}`;
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          if (handleUsageLimitResponse(errorData)) return;
+          if (handleUsageLimitResponse(errorData)) return [];
           console.error("Generate API error:", errorData);
           throw new Error(errorData.error || "Generation failed");
         }

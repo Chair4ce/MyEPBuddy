@@ -125,7 +125,7 @@ function validateChange(
   return { valid: true };
 }
 
-export async function POST(request: Request): Promise<NextResponse<ApplyFeedbackResponse>> {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
     const supabase = await createClient();
 

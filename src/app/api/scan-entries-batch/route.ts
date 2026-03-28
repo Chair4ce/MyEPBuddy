@@ -7,7 +7,6 @@ import {
   type SensitiveMatch,
 } from "@/lib/sensitive-data-scanner";
 
-// Allow up to 120s for batch processing
 export const maxDuration = 120;
 
 const BATCH_SIZE = 50;
@@ -22,8 +21,8 @@ interface BatchResult {
 /**
  * POST /api/scan-entries-batch
  *
- * Batch-scan existing accomplishments that have never been scanned
- * (sensitive_data_scanned_at IS NULL).  Processes up to BATCH_SIZE
+ * Batch-scan the authenticated user's accomplishments that have never been
+ * scanned (sensitive_data_scanned_at IS NULL). Processes up to BATCH_SIZE
  * entries per invocation to stay within serverless time limits.
  *
  * Body (optional): { limit?: number }
@@ -32,7 +31,6 @@ interface BatchResult {
  */
 export async function POST(request: Request) {
   try {
-    // Authenticate — only allow logged-in users
     const supabase = await createClient();
     const {
       data: { user },
@@ -45,12 +43,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const limit = Math.min(body.limit ?? BATCH_SIZE, BATCH_SIZE);
 
-    // Service client bypasses RLS to read/write scan columns and audit log
+    // Service client for writing scan metadata + audit log (restricted columns)
     const service = await createServiceClient();
 
-    // Fetch un-scanned entries ordered by oldest first
+    // Use the user-scoped client for reads — RLS ensures only their own data
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: entries, error: fetchError } = await (service as any)
+    const { data: entries, error: fetchError } = await (supabase as any)
       .from("accomplishments")
       .select("id, user_id, details, impact, metrics")
       .is("sensitive_data_scanned_at", null)

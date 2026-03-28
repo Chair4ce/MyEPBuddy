@@ -37,7 +37,8 @@ export async function POST() {
       );
     }
 
-    await supabase.from("api_usage").insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from("api_usage").insert({
       user_id: user.id,
       action_type: "refresh_style_signatures",
       used_default_key: true,
