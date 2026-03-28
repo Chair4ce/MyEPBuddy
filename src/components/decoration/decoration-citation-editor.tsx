@@ -8,6 +8,7 @@ import {
   type HighlightColorId,
 } from "@/stores/decoration-shell-store";
 import { useUserStore } from "@/stores/user-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -811,6 +812,7 @@ export function DecorationCitationEditor({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (handleUsageLimitResponse(errorData)) return;
           throw new Error(errorData.error || "Revision failed");
         }
 

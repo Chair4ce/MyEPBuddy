@@ -56,6 +56,13 @@ export function getProviderKeyName(provider: LLMProvider): keyof DecryptedApiKey
   return keyMap[provider];
 }
 
+const ENV_KEY_MAP: Record<LLMProvider, string> = {
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  google: "GOOGLE_GENERATIVE_AI_API_KEY",
+  xai: "XAI_API_KEY",
+};
+
 /**
  * Resolves the API key for a provider, checking user keys first then environment variables.
  * Returns null if no key is available (instead of empty string).
@@ -64,22 +71,30 @@ function resolveApiKey(
   provider: LLMProvider,
   userKeys: Partial<DecryptedApiKeys> | null,
 ): string | null {
-  const envKeyMap: Record<LLMProvider, string> = {
-    openai: "OPENAI_API_KEY",
-    anthropic: "ANTHROPIC_API_KEY",
-    google: "GOOGLE_GENERATIVE_AI_API_KEY",
-    xai: "XAI_API_KEY",
-  };
-
   const keyName = getProviderKeyName(provider);
   const userKey = userKeys?.[keyName];
 
   // Prefer user key, fall back to environment variable
   if (userKey && userKey.trim().length > 0) return userKey;
-  const envKey = process.env[envKeyMap[provider]];
+  const envKey = process.env[ENV_KEY_MAP[provider]];
   if (envKey && envKey.trim().length > 0) return envKey;
 
   return null;
+}
+
+/**
+ * Checks whether the app's default (environment) API key will be used
+ * for a given model+user combination. Returns true when the user has
+ * no personal key for the model's provider.
+ */
+export function isUsingDefaultKey(
+  modelId: string,
+  userKeys: Partial<DecryptedApiKeys> | null,
+): boolean {
+  const provider = detectProvider(modelId);
+  const keyName = getProviderKeyName(provider);
+  const userKey = userKeys?.[keyName];
+  return !userKey || userKey.trim().length === 0;
 }
 
 /**

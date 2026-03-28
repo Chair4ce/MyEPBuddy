@@ -43,7 +43,8 @@ export type LLMErrorCode =
   | "request_timeout"
   | "invalid_request"
   | "permission_denied"
-  | "generation_failed";
+  | "generation_failed"
+  | "usage_limit_exceeded";
 
 /**
  * Maps an error from an LLM API call to a user-friendly error response.
@@ -454,4 +455,21 @@ function sanitizeForUser(message: string): string {
 function containsAny(text: string, substrings: string[]): boolean {
   const lower = text.toLowerCase();
   return substrings.some((s) => lower.includes(s.toLowerCase()));
+}
+
+/**
+ * Returns a 429 response when the user has exceeded their weekly usage limit
+ * on the app's default API key.
+ */
+export function handleUsageLimitExceeded(
+  weeklyUsed: number,
+  weeklyLimit: number,
+): NextResponse<LLMErrorResponse> {
+  return NextResponse.json(
+    {
+      error: `You've used all ${weeklyLimit} free AI actions for this week (${weeklyUsed}/${weeklyLimit}). Add your own API key in Settings → API Keys for unlimited usage, or wait until the limit resets next Monday.`,
+      errorCode: "usage_limit_exceeded" as LLMErrorCode,
+    },
+    { status: 429 },
+  );
 }

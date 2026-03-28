@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 export const maxDuration = 60;
 
@@ -39,7 +40,15 @@ export async function POST(req: NextRequest) {
   
   const userKeys = await getDecryptedApiKeys();
   const model = userSettings?.preferred_model || "gpt-4o-mini";
-  const modelProvider = getModelProvider(model, userKeys);
+
+  // Usage tracking — enforce weekly limit for default-key users
+  const usageCheck = await checkAndTrackUsage(user.id, "adapt_sentence", model, userKeys);
+  if (!usageCheck.allowed) {
+    return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+  }
+
+  const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+  const modelProvider = getModelProvider(effectiveModel, userKeys);
 
   const currentLength = (sentence1?.length || 0) + (sentence2?.length || 0) + (sentence1 && sentence2 ? 1 : 0);
   const needsTrimming = currentLength > targetMax;

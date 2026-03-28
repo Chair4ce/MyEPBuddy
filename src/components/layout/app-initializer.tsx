@@ -5,6 +5,7 @@ import { useUserStore } from "@/stores/user-store";
 import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
 import { UpdatePrompt } from "@/components/layout/update-prompt";
 import { RankCompletionModal } from "@/components/modals/rank-completion-modal";
+import { UsageLimitDialog } from "@/components/modals/usage-limit-dialog";
 // TODO: Re-enable tutorial feature when ready
 // import { TourProvider } from "@/components/onboarding";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
@@ -77,6 +78,7 @@ export function AppInitializer({
       {!showTermsDialog && <RankCompletionModal />}
       {/* TODO: Re-enable tutorial feature when ready */}
       {/* {!showTermsDialog && <TourProvider />} */}
+      <UsageLimitDialog />
       {children}
     </>
   );

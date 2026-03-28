@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import type { Accomplishment, AwardLevel, AwardCategory, AwardShellSection } from "@/types/database";
 import { useAwardShellStore } from "@/stores/award-shell-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import type { SectionSlotState } from "@/stores/award-shell-store";
 import { compressText, normalizeSpaces, getVisualLineSegments, AF1206_LINE_WIDTH_PX, toDisplayText, fromDisplayText } from "@/lib/bullet-fitting";
 
@@ -430,6 +431,7 @@ function StatementSlotCard({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Revision failed");
       }
 
@@ -477,6 +479,7 @@ function StatementSlotCard({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Reshape failed");
       }
 
@@ -1227,6 +1230,10 @@ export function AwardCategorySectionCard({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) {
+          onUpdateSlotState(categoryKey, slotIndex, { isGenerating: false });
+          return [];
+        }
         throw new Error(errorData.error || "Generation failed");
       }
 

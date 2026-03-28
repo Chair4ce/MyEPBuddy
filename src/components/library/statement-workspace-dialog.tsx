@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -456,6 +457,7 @@ export function StatementWorkspaceDialog({
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Failed to fetch AI synonyms");
       }
       
@@ -639,6 +641,7 @@ export function StatementWorkspaceDialog({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Generation failed");
       }
 

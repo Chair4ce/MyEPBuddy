@@ -45,6 +45,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { ClarifyingQuestionsModal, ClarifyingQuestionsIndicator } from "./clarifying-questions-modal";
 
 // Types
@@ -816,6 +817,7 @@ export function CustomContextWorkspace({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Generation failed");
       }
 
@@ -927,6 +929,7 @@ export function CustomContextWorkspace({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Regeneration failed");
       }
 
@@ -994,6 +997,7 @@ export function CustomContextWorkspace({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Revision failed");
       }
 

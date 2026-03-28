@@ -6,7 +6,8 @@ import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, formatMPAContext, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
 import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
 import {
   performQualityControl,
@@ -808,6 +809,15 @@ export async function POST(request: Request) {
     // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
 
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "generate", model, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
+    // Cost reduction: force cheapest model for default-key users
+    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+
     // Fetch example statements based on AFSC and writing style
     // communityMpaFilter allows filtering to a specific MPA's top 20 examples
     // communityAfscFilter allows using examples from a different AFSC
@@ -872,10 +882,11 @@ export async function POST(request: Request) {
     }
 
     // Load style signature based on writing style preference
+    // Skip for default-key users to avoid extra DB queries and OpenAI signature costs
     let styleSignatureSection = "";
     const effectiveWritingStyle = writingStyle || "personal";
 
-    if (effectiveWritingStyle === "chain_of_command" && rateeAfsc) {
+    if (!usageCheck.usingDefaultKey && effectiveWritingStyle === "chain_of_command" && rateeAfsc) {
       // Chain of command: load the highest-ranking supervisor's style signature
       try {
         const chainResult = await getChainStyleSignature(
@@ -895,7 +906,7 @@ export async function POST(request: Request) {
         console.error("[generate] Chain style signature error:", err);
         // Continue without signature - graceful degradation
       }
-    } else if (effectiveWritingStyle === "personal" && rateeAfsc) {
+    } else if (!usageCheck.usingDefaultKey && effectiveWritingStyle === "personal" && rateeAfsc) {
       // Personal: optionally load the user's own signature for enhanced personalization
       try {
         const personalSig = await getUserStyleSignature(
@@ -916,7 +927,7 @@ export async function POST(request: Request) {
     // For "community" style: no signature injection, rely on community examples
 
     const systemPrompt = buildSystemPrompt(settings, rateeRank, examples, dutyDescription, styleSignatureSection);
-    const modelProvider = getModelProvider(model, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     // Group accomplishments by MPA (only if not using custom context)
     const accomplishmentsByMPA = hasCustomContext ? {} : accomplishments.reduce(
@@ -1816,8 +1827,8 @@ ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about
           let verifiedStatements = statements;
           let qcFeedback: string | undefined;
           
-          // Quality Control - re-enabled after fixing sanitization issues
-          const ENABLE_QC = true;
+          // Quality Control — disabled for default-key users to halve LLM cost per request
+          const ENABLE_QC = !usageCheck.usingDefaultKey;
           
           if (ENABLE_QC && shouldEnforceCharLimits && fillToMax) {
             // For multi-statement, just log and skip QC (LLM compression doesn't work well)

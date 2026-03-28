@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { STANDARD_MGAS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 
 interface Accomplishment {
   id: string;
@@ -251,6 +252,7 @@ export function StatementSelectionWorkspace({
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (handleUsageLimitResponse(errorData)) return;
           throw new Error(errorData.error || "Failed to generate statement 1");
         }
         const data = await response.json();
@@ -278,6 +280,7 @@ export function StatementSelectionWorkspace({
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (handleUsageLimitResponse(errorData)) return;
           throw new Error(errorData.error || "Failed to generate statement 2");
         }
         const data = await response.json();
@@ -332,6 +335,7 @@ export function StatementSelectionWorkspace({
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Revision failed");
       }
       

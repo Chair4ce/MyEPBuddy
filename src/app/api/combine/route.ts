@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
 import type { Rank, UserLLMSettings } from "@/types/database";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -68,7 +69,14 @@ export async function POST(request: Request) {
     // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
 
-    const modelProvider = getModelProvider(model, userKeys);
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "combine", model, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
+    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+    const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     let systemPrompt: string;
     let userPrompt: string;

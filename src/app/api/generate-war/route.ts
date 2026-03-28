@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -189,10 +190,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get user's API keys and model provider
     const userKeys = await getDecryptedApiKeys();
     modelId = model || DEFAULT_MODEL;
-    const modelProvider = getModelProvider(modelId, userKeys);
+
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "generate_war", modelId, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
+    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : modelId;
+    const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     // Build the prompt
     const prompt = buildWARPrompt(entries, categories, synthesisInstructions);

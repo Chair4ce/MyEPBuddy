@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -259,6 +260,7 @@ export function AddStatementDialog({
 
       if (!response.ok) {
         const error = await response.json();
+        if (handleUsageLimitResponse(error)) return;
         throw new Error(error.error || "Failed to parse statements");
       }
 

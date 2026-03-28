@@ -57,6 +57,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { MPASectionCard } from "./mpa-section-card";
 import { DutyDescriptionCard } from "./duty-description-card";
 import type { DraggedSentence } from "./sentence-pills";
@@ -1822,6 +1823,7 @@ export function EPBShellForm({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (handleUsageLimitResponse(errorData)) return null;
           throw new Error(errorData.error || "Generation failed");
         }
 
@@ -1924,6 +1926,7 @@ export function EPBShellForm({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return [];
         throw new Error(errorData.error || "Revision failed");
       }
 
@@ -1970,6 +1973,7 @@ export function EPBShellForm({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return [];
         throw new Error(errorData.error || "Revision failed");
       }
 
@@ -2045,6 +2049,7 @@ export function EPBShellForm({
 
       if (!response.ok) {
         const errorData = await response.json();
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Failed to assess EPB");
       }
 

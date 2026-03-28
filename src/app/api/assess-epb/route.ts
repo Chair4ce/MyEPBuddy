@@ -3,10 +3,11 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
 import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -121,6 +122,14 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
     modelId = model;
 
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "assess_epb", modelId, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
+    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : modelId;
+
     // Build the assessment prompt
     // Use duty description from request or fall back to what's stored in the shell
     const effectiveDutyDescription = dutyDescription || shell.duty_description || "";
@@ -133,7 +142,7 @@ export async function POST(request: Request) {
     );
 
     // Get model provider
-    const modelProvider = getModelProvider(modelId, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     // Generate the assessment
     const { text } = await generateText({

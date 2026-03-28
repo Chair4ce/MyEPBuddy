@@ -3,11 +3,12 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -161,8 +162,16 @@ export async function POST(request: Request) {
     // Get user API keys
     const userKeys = await getDecryptedApiKeys();
 
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "parse_bulk_statements", model, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
+    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+
     // Get the LLM model
-    const llmModel = getModelProvider(model, userKeys);
+    const llmModel = getModelProvider(effectiveModel, userKeys);
 
     // Build the parsing prompt
     const systemPrompt = buildParsingPrompt(mpaDetectionMode, manualMpa);

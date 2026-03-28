@@ -72,8 +72,21 @@ export async function fetchWithRetry(
 
       clearTimeout(timeoutId);
 
-      // Don't retry client errors (4xx) except specific retryable ones
+      // Don't retry client errors (4xx) except specific retryable ones.
+      // For 429s, peek at the body to skip retry on app-level usage limits
+      // (as opposed to provider-level rate limits which are transient).
       if (!response.ok && isRetryableStatus(response.status) && attempt < maxRetries) {
+        if (response.status === 429) {
+          const cloned = response.clone();
+          try {
+            const body = await cloned.json();
+            if (body?.errorCode === "usage_limit_exceeded") {
+              return response;
+            }
+          } catch {
+            // Not JSON — fall through to normal retry
+          }
+        }
         lastError = new Error(`HTTP ${response.status}`);
         await delay(baseDelay * Math.pow(2, attempt));
         continue;

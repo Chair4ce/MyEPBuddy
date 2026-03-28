@@ -3,7 +3,8 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -211,6 +212,13 @@ export async function POST(request: Request): Promise<NextResponse<ApplyFeedback
     // Text has changed or multiple occurrences - use LLM to intelligently apply the change
     const userKeys = await getDecryptedApiKeys();
     const feedbackModelId = "gemini-2.0-flash";
+
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "feedback_apply", feedbackModelId, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
     const feedbackModel = getModelProvider(feedbackModelId, userKeys);
 
     const systemPrompt = `You are a SURGICAL text editor. Apply ONE specific change to a document.

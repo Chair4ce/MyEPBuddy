@@ -43,6 +43,7 @@ import {
   Check,
 } from "lucide-react";
 import { AppLogo } from "@/components/layout/app-logo";
+import { UsageIndicator } from "@/components/layout/usage-indicator";
 import type { Profile } from "@/types/database";
 
 interface AppSidebarProps {
@@ -476,6 +477,9 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                 );
               })}
             </nav>
+
+            {/* Usage indicator for default-key users */}
+            <UsageIndicator isCollapsed={isCollapsed} />
 
             <Separator className="my-4 mx-3" />
 

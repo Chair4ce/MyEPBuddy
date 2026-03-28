@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import type { FeedAccomplishment } from "@/stores/team-feed-store";
 import {
   Dialog,
@@ -350,6 +351,7 @@ export function WARViewModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
         throw new Error(errorData.error || "Failed to generate WAR");
       }
 

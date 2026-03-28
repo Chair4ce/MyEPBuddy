@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
+import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { Analytics } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -582,6 +583,7 @@ export function DecorationWorkspaceDialog({
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(error)) return;
         throw new Error(error.error || "Failed to generate citation");
       }
 

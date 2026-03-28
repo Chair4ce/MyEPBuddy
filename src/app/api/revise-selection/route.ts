@@ -3,7 +3,7 @@ import { generateText, type LanguageModel } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
 import { 
   getUserStyleContext, 
   buildStyleGuidance, 
@@ -20,6 +20,7 @@ import {
 } from "@/lib/quality-control";
 import type { StyleExampleCategory, WritingStyle } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
+import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -403,8 +404,16 @@ STEP 5: Only output revisions that are ${targetMin}-${maxChars} characters
     // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
 
-    requestModelId = model;
-    const modelProvider = getModelProvider(model, userKeys);
+    // Usage tracking — enforce weekly limit for default-key users
+    const usageCheck = await checkAndTrackUsage(user.id, "revise_selection", model, userKeys);
+    if (!usageCheck.allowed) {
+      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    }
+
+    // Cost reduction: force cheapest model for default-key users
+    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+    requestModelId = effectiveModel;
+    const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     const beforeSelection = fullStatement.substring(0, selectionStart);
     const afterSelection = fullStatement.substring(selectionEnd);
@@ -447,8 +456,9 @@ Your goal is to SIGNIFICANTLY transform the selected text:
     const fewShotExamples = buildFewShotExamples(styleContext, "USER'S APPROVED STATEMENTS (match this style)");
 
     // Load style signature for chain_of_command or personal style (non-duty-description only)
+    // Skip for default-key users to avoid extra DB queries and OpenAI signature costs
     let styleSignatureSection = "";
-    if (!isDutyDescription && rateeRank && rateeAfsc) {
+    if (!usageCheck.usingDefaultKey && !isDutyDescription && rateeRank && rateeAfsc) {
       const effectiveStyle = writingStyle || "personal";
       if (effectiveStyle === "chain_of_command") {
         try {
@@ -550,12 +560,8 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
     }
 
     // POST-GENERATION QUALITY CONTROL
-    // Single consolidated QC pass that handles:
-    // - Character count enforcement (when fillToMax is enabled)
-    // - Statement diversity check
-    // - Instruction compliance verification
-    // This is ONE LLM call instead of multiple per-statement calls
-    if (fillToMax && maxCharacters) {
+    // Disabled for default-key users to halve LLM cost per request
+    if (!usageCheck.usingDefaultKey && fillToMax && maxCharacters) {
       const targetMin = maxCharacters - 10;
       
       // Check if QC is worth running
@@ -594,8 +600,10 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       }
     }
 
-    // Trigger async style processing (fire-and-forget)
-    triggerStyleProcessing(user.id);
+    // Trigger async style processing (fire-and-forget) — skip for default-key users
+    if (!usageCheck.usingDefaultKey) {
+      triggerStyleProcessing(user.id);
+    }
 
     return NextResponse.json({ 
       revisions,
