@@ -51,6 +51,10 @@ interface GenerateAwardRequest {
   // Revision mode for existing statements
   existingStatement?: string;
   revisionIntensity?: number; // 0-100, controls how much the statement gets rewritten
+  // Clarifying context from answered follow-up questions
+  clarifyingContext?: string;
+  // Previously saved answers for persistent context across sessions
+  savedClarifyingAnswers?: { question: string; category: string; answer: string }[];
 }
 
 interface StatementGroup {
@@ -58,56 +62,124 @@ interface StatementGroup {
   sourceAccomplishmentIds: string[];
 }
 
+interface ClarifyingQuestionResponse {
+  question: string;
+  category: "impact" | "scope" | "leadership" | "recognition" | "metrics" | "general";
+  hint?: string;
+}
+
+const AWARD_CLARIFYING_QUESTION_GUIDANCE = `
+=== CLARIFYING QUESTIONS (MANDATORY - ALWAYS INCLUDE 2-3) ===
+You MUST include 2-3 clarifying questions. Award statements are almost ALWAYS missing critical details. Analyze what the statement does NOT cover and ask about it.
+
+**CRITICAL CHECK - If the statement doesn't explicitly address ANY of these, you MUST ask:**
+1. Did this save TIME? How much? (hours, days, weeks saved)
+2. Did this save MONEY or RESOURCES? How much? ($, equipment, manpower)
+3. What was the SCOPE? (unit only, or group/wing/AF-wide impact?)
+4. How many PEOPLE were affected, led, trained, or served?
+5. Was there any RECOGNITION, selection, or competitive aspect?
+6. What is the measurable BEFORE vs AFTER? (%, rate, score improvement)
+
+**Question Categories:**
+- **impact**: Time/money/resources saved, mission readiness improvement, what would have happened otherwise
+- **scope**: Level of impact (flight → squadron → group → wing → AF), geographic reach, number of units affected
+- **leadership**: Team size, mentorship numbers, scope beyond normal duties
+- **recognition**: Hand-selected? Competitive selection? Awards or accolades received?
+- **metrics**: Specific numbers, percentages, dollar amounts, time durations, personnel counts, comparison baselines
+
+**Rules:**
+- Ask about what is MISSING from the statement, not what is already there
+- Focus on details that would make the biggest difference in statement impact
+- Be specific in your questions (not generic "tell me more")
+
+Include questions in a "clarifyingQuestions" field in your JSON response.
+`;
+
 // Default award system prompt
 const DEFAULT_AWARD_PROMPT = `You are an expert Air Force writer specializing in award nominations on AF Form 1206 using the current **narrative-style format** (mandated since October 2022 per DAFI 36-2406 and award guidance).
 
-**CRITICAL FORMAT REQUIREMENTS:**
-1. EVERY statement MUST begin with a dash and space: "- " followed by the statement text
-2. ABSOLUTELY NO EM-DASHES (--) ANYWHERE IN THE TEXT. This is strictly prohibited.
-3. Use ONLY commas to connect clauses. Never use semicolons, slashes, or em-dashes.
+CRITICAL RULES - NEVER VIOLATE THESE:
+1. Every statement MUST begin with "- " (dash space) followed by a single, standalone sentence that flows naturally when read aloud.
+2. NEVER use em-dashes (--). This is STRICTLY FORBIDDEN under any circumstances.
+3. NEVER use semicolons (;). Use ONLY commas to connect clauses into flowing sentences.
+4. NEVER use slash abbreviations (e.g., "w/", "w/o"). Write out words fully.
+5. Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
+6. AVOID the word "the" where possible - it wastes characters (e.g., "led the team" → "led 4-mbr team").
+7. CONSISTENCY: Use either "&" OR "and" throughout a statement - NEVER mix them. Prefer "&" when saving space.
 
-**FORBIDDEN PUNCTUATION (DO NOT USE):**
-- Em-dashes: -- (NEVER use these under any circumstances)
-- Semicolons: ;
-- Slashes: /
+SENTENCE STRUCTURE (CRITICAL - THE #1 RULE):
+Each statement MUST be a grammatically correct, complete sentence. Board members scan quickly - they need clear, punchy statements digestible in 2-3 seconds.
 
-**ALLOWED PUNCTUATION:**
-- Commas: , (use these to connect clauses)
-- Periods: .
-- The leading dash-space: "- " (only at the start of each statement)
+**GRAMMAR RULES:**
+- Each statement is ONE grammatically correct sentence - NOT a list of comma-spliced fragments
+- Use participial phrases (ending in -ing) to connect related actions naturally instead of stacking past-tense verbs separated by commas
+- When listing 3+ results or impacts, use "&" or "and" before the FINAL item (e.g., "improved X, strengthened Y & advanced Z")
+- Maximum 2-3 main clauses per statement - do NOT string together 4+ comma-separated verb phrases
+- Place the BIGGEST IMPACT at the END for punch
+- Read aloud test: If it sounds like a bullet list or run-on sentence, rewrite it
 
-Key guidelines for narrative-style statements:
-- Write clear, concise, plain-language paragraphs (1-3 sentences each; treat each as a standalone statement).
-- Each statement MUST be dense and high-impact: clearly describe the nominee's Action, cascading Results (immediate → unit → mission/AF-level), and broader Impact.
-- Start with a strong action verb in active voice; use third-person (e.g., "SSgt Smith led...") or implied subject for flow.
-- Quantify everything possible: numbers, percentages, dollar amounts, time saved, personnel affected, sorties generated, readiness rates, etc.
-- Chain impacts using COMMAS: "accomplished X, enabling Y, which drove Z across the squadron/wing/AF."
-- Connect to larger context: readiness, lethality, deployment capability, inspections (UCI, CCIP, etc.), strategic goals, or Air Force priorities.
-- Avoid fluff, vague words, excessive acronyms (explain on first use if needed), or personal pronouns unless natural.
+**BAD (comma-spliced fragments, no conjunctions - NOT a real sentence):**
+"- Guided 20 peers through NCO course, totaling 900 hrs, cultivated leadership talent, fortified team cohesion, directly supported SOUTHCOM CC's development goals."
 
-Example strong statement (note: NO em-dashes, only commas):
-"- Led a 12-person team in overhauling the unit's deployment processing line, slashing preparation time by 40% and enabling rapid response for 150 personnel, directly bolstered squadron readiness for contingency operations, contributing to wing's Excellent rating during recent UCI."
+**GOOD (proper grammar, participial phrases, conjunction before final item):**
+"- Directed 14-module NCO course, delivering 900 instructional hrs to 20 peers, enhancing leadership capabilities & fortifying sq readiness in direct support of SOUTHCOM CC's professional development goal."
+
+**MORE EXAMPLES OF CORRECT STRUCTURE:**
+"- Led 12-person team in overhauling deployment processing line, slashing preparation time by 40% & enabling rapid response for 150 personnel, directly contributing to wing's Excellent UCI rating."
+"- Managed $2.3M equipment account, identifying & resolving 47 discrepancies, recovering $180K in assets & driving 99.8% accountability rate across the squadron."
+
+ABBREVIATION POLICY (CRITICAL - DO NOT OVER-ABBREVIATE):
+- Standard acronyms are ALLOWED: NCO, SNCO, SOUTHCOM, CC, MAJCOM, AF, DoD, etc.
+- Common unit abbreviations are ALLOWED: sq, flt, wg, gp, mbr, Amn
+- Time/measurement abbreviations are ALLOWED: hrs, mins, mo, yr
+- NEVER create truncated or apostrophe abbreviations: "prof'l", "dvlpmt", "dev'd", "crse", "maint", "ldrshp", "trng"
+- NEVER use slash abbreviations: "w/", "w/o", "b/c"
+- When in doubt, SPELL OUT the full word (e.g., "professional" not "prof'l", "development" not "dvlpmt", "course" not "crse")
+- ONLY abbreviate additional words if they appear in the user's abbreviation list below
+
+BANNED VERBS - NEVER USE THESE (overused clichés):
+- "Spearheaded" - the most overused verb in Air Force writing
+- "Orchestrated" - overused
+- "Synergized" - corporate buzzword, not military
+- "Leveraged" - overused
+- "Facilitated" - weak and overused
+- "Utilized" - just say "used" or pick a stronger verb
+- "Impacted" - vague and overused
+
+VARIETY RULE: Each version you generate MUST start with a DIFFERENT action verb. Use varied, strong verbs:
+Led, Directed, Managed, Commanded, Guided, Championed, Drove, Transformed, Pioneered, Modernized, Accelerated, Streamlined, Optimized, Enhanced, Elevated, Secured, Protected, Fortified, Trained, Mentored, Developed, Resolved, Eliminated, Delivered, Produced, Established, Coordinated, Integrated, Analyzed, Assessed, Negotiated, Saved, Recovered
+
+BANNED FILLER CLOSERS (NEVER USE - these sound impressive but say nothing specific):
+- "ensuring mission success" / "ensuring mission readiness"
+- "bolstering global ops" / "bolstering global operations"
+- "vital to force projection"
+- "critical to national defense"
+- "enhancing combat capability"
+- "supporting warfighter needs"
+- "key to operational excellence"
+The ending MUST be SPECIFIC to THIS accomplishment's actual impact with real metrics, beneficiaries, or outcomes.
+BAD ENDING: "...saving $50K, ensuring mission success." (generic filler)
+GOOD ENDING: "...saving $50K annually, sustaining network access for 58K users." (specific, measurable)
 
 CHARACTER UTILIZATION STRATEGY (CRITICAL FOR 1206 SPACE CONSTRAINTS):
-The AF Form 1206 has no fixed character limit but is severely constrained by physical line/space fitting in the PDF form. Statements must maximize density to fit more content without overflowing lines.
-- AIM for high-density statements: Expand impacts with cascading effects, add mission context, chain results, and quantify aggressively.
-- Use your military knowledge to infer/enhance reasonable outcomes (e.g., link to readiness rates, cost savings, inspection success).
-- Minimize unnecessary whitespace in phrasing while maintaining readability.
-- Target 300-500 characters per statement (adjust based on award level; denser for higher awards) to fill available space effectively.
-- Prioritize narrow characters (e.g., i, l, t over m, w) where natural; use standard abbreviations to reduce width.
+The AF Form 1206 is constrained by physical line/space fitting in the PDF form.
+- Write dense, high-impact statements with cascading effects and quantified results
+- Use your military knowledge to infer/enhance reasonable outcomes (readiness rates, cost savings, inspection success)
+- Minimize unnecessary whitespace while maintaining readability
+- Quantify everything: numbers, percentages, dollar amounts, time saved, personnel affected
 
 RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
 Primary action verbs to use: {{primary_verbs}}
 {{rank_verb_guidance}}
 
-WORD ABBREVIATIONS (AUTO-APPLY):
+WORD ABBREVIATIONS (ONLY abbreviate words from this list - spell out everything else):
 {{abbreviations_list}}`;
 
 // Default settings for award generation
 const DEFAULT_AWARD_SETTINGS = {
   award_sentences_per_category: DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory,
   award_abbreviations: [],
-  award_style_guidelines: "MAXIMIZE density for 1206 space constraints. Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations liberally.",
+  award_style_guidelines: "MAXIMIZE density for 1206 space constraints. Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Spell out words fully unless listed in the user's abbreviation list.",
   rank_verb_progression: {
     AB: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Participated"] },
     Amn: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Executed"] },
@@ -125,7 +197,8 @@ function buildAwardSystemPrompt(
   settings: Partial<UserLLMSettings>,
   nomineeRank: Rank
 ): string {
-  const rankVerbs = settings.rank_verb_progression?.[nomineeRank] || 
+  // Use award-specific verb progression, falling back to the API default (NOT the EPB verbs)
+  const rankVerbs = settings.award_rank_verb_progression?.[nomineeRank] || 
     DEFAULT_AWARD_SETTINGS.rank_verb_progression[nomineeRank as keyof typeof DEFAULT_AWARD_SETTINGS.rank_verb_progression] || {
       primary: ["Led", "Managed"],
       secondary: ["Executed", "Coordinated"],
@@ -134,15 +207,24 @@ function buildAwardSystemPrompt(
   const abbreviations = settings.award_abbreviations || [];
   const abbreviationsList = abbreviations.length > 0
     ? abbreviations.map(a => `${a.word} → ${a.abbreviation}`).join(", ")
-    : "Use standard AF abbreviations (Amn, NCO, sq, flt, hrs, maint, ops, etc.)";
+    : "No custom abbreviations set. Only use standard acronyms (NCO, SNCO, AF, DoD, CC, MAJCOM) and common unit/time abbreviations (sq, flt, wg, gp, hrs, mo, yr, Amn, mbr). Spell out all other words fully.";
 
   const rankVerbGuidance = `Primary verbs: ${rankVerbs.primary.join(", ")}\nSecondary verbs: ${rankVerbs.secondary.join(", ")}`;
+
+  const styleGuidelines = settings.award_style_guidelines || DEFAULT_AWARD_SETTINGS.award_style_guidelines;
+
+  const acronyms = settings.acronyms || [];
+  const acronymsList = acronyms.length > 0
+    ? acronyms.map(a => `${a.acronym} = ${a.definition}`).join(", ")
+    : "Use standard AF acronyms as appropriate.";
 
   let prompt = settings.award_system_prompt || DEFAULT_AWARD_PROMPT;
   prompt = prompt.replace(/\{\{ratee_rank\}\}/g, nomineeRank);
   prompt = prompt.replace(/\{\{primary_verbs\}\}/g, rankVerbs.primary.join(", "));
   prompt = prompt.replace(/\{\{rank_verb_guidance\}\}/g, rankVerbGuidance);
+  prompt = prompt.replace(/\{\{style_guidelines\}\}/g, styleGuidelines);
   prompt = prompt.replace(/\{\{abbreviations_list\}\}/g, abbreviationsList);
+  prompt = prompt.replace(/\{\{acronyms_list\}\}/g, acronymsList);
 
   return prompt;
 }
@@ -266,10 +348,36 @@ export async function POST(request: Request) {
       customContext,
       existingStatement,
       revisionIntensity = 50,
+      clarifyingContext,
+      savedClarifyingAnswers,
     } = body;
 
     const isCustomContextMode = !!customContext && customContext.trim().length > 0;
     const isRevisionMode = !!existingStatement && existingStatement.trim().length > 0;
+    const hasClarifyingContext = !!clarifyingContext && clarifyingContext.trim().length > 0;
+    // Always request questions UNLESS this is a regeneration triggered from answered questions
+    const shouldRequestQuestions = !hasClarifyingContext;
+
+    // Build persistent context from saved answers + new clarifying context
+    const buildSavedAnswersContext = (): string => {
+      const parts: string[] = [];
+      if (savedClarifyingAnswers && savedClarifyingAnswers.length > 0) {
+        const answered = savedClarifyingAnswers.filter(a => a.answer.trim().length > 0);
+        if (answered.length > 0) {
+          parts.push("=== PREVIOUSLY PROVIDED DETAILS (use these to enhance the statement) ===");
+          answered.forEach(a => {
+            parts.push(`Q: ${a.question}`);
+            parts.push(`A: ${a.answer}`);
+            parts.push("");
+          });
+        }
+      }
+      if (hasClarifyingContext) {
+        parts.push(clarifyingContext!);
+      }
+      return parts.join("\n");
+    };
+    const savedContext = buildSavedAnswersContext();
     
     // Map intensity to descriptive guidance
     const getIntensityGuidance = (intensity: number): string => {
@@ -369,7 +477,7 @@ export async function POST(request: Request) {
     const sentencesPerCategory = settings.award_sentences_per_category || 
       DEFAULT_AWARD_SETTINGS.award_sentences_per_category;
 
-    const results: { category: string; statementGroups: StatementGroup[] }[] = [];
+    const results: { category: string; statementGroups: StatementGroup[]; clarifyingQuestions?: ClarifyingQuestionResponse[] }[] = [];
     const levelGuidance = getAwardLevelGuidance(awardLevel);
 
     // Filter categories to generate
@@ -387,10 +495,11 @@ Provide ${versionsPerStatement} different revised versions so the user can choos
 
 EXISTING STATEMENT TO REVISE:
 ${existingStatement}
-
+${savedContext ? `\n${savedContext}\n` : ''}
 **REVISION INSTRUCTIONS:**
 - Rewrite the statement to improve clarity, impact, and flow
 - Enhance the language while preserving the core accomplishments and metrics
+- If user-provided details are included above, incorporate them to strengthen the statement
 - Apply the rewrite intensity specified below to determine how much to change
 
 **REWRITE INTENSITY:**
@@ -415,22 +524,40 @@ This is a 3-LINE statement. You have more room for impacts and metrics.`}
 CRITICAL 1206 REQUIREMENTS:
 1. EVERY statement MUST start with "- " (dash space) followed by the text
 2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
-3. Typically ${sentencesPerStatement} sentences, but character count matters more
-4. Write in narrative-style (complete sentences/paragraphs)
-5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
-6. Start with strong action verbs in active voice
-7. Connect to ${awardLevel}-level mission impact
+3. Each statement MUST be ONE grammatically correct sentence - NOT comma-spliced fragments
+4. Use participial phrases (-ing verbs) to connect actions naturally, NOT chains of past-tense verbs separated by commas
+5. When listing 3+ items, use "&" or "and" before the final item
+6. Maximum 2-3 main clauses per statement
+7. Start with strong action verbs in active voice
+8. Connect to ${awardLevel}-level mission impact
+9. Place the BIGGEST IMPACT at the END
 
-**PUNCTUATION - EXTREMELY IMPORTANT:**
+**PUNCTUATION & GRAMMAR - EXTREMELY IMPORTANT:**
 - NEVER use em-dashes (--) - this is STRICTLY FORBIDDEN
 - NEVER use semicolons (;) or slashes (/)
-- ONLY use commas (,) to connect clauses and chain impacts
+- Use commas and conjunctions ("&" or "and") for proper sentence flow
+- Do NOT string together 4+ comma-separated verb phrases - that is a run-on sentence
+
+**ABBREVIATION RULES - DO NOT OVER-ABBREVIATE:**
+- NEVER create truncated abbreviations like "crse", "dvlpmt", "dev'd", "prof'l", "trng", "ldrshp", "maint"
+- NEVER use slash abbreviations like "w/", "w/o", "b/c"
+- SPELL OUT words fully: "course" not "crse", "development" not "dvlpmt", "professional" not "prof'l", "training" not "trng"
+- Only standard acronyms (NCO, AF, CC, MAJCOM) and common short forms (sq, flt, hrs, Amn) are allowed
 
 Generate EXACTLY 1 statement group with ${versionsPerStatement} alternative revised versions.
 AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
+${shouldRequestQuestions ? `
+${AWARD_CLARIFYING_QUESTION_GUIDANCE}
 
+Format as JSON object (EACH statement must start with "- "):
+{
+  "statements": ["- Version A", "- Version B", "- Version C"],
+  "clarifyingQuestions": [
+    {"question": "Question text?", "category": "impact", "hint": "Brief hint"}
+  ]
+}` : `
 Format as JSON array (EACH statement must start with "- "):
-["- Version A", "- Version B", "- Version C"]`;
+["- Version A", "- Version B", "- Version C"]`}`;
 
         try {
           const { text } = await generateText({
@@ -439,15 +566,33 @@ Format as JSON array (EACH statement must start with "- "):
             prompt: pureRevisionPrompt,
           });
 
-          const jsonMatch = text.match(/\[[\s\S]*\]/);
-          if (jsonMatch) {
-            const versions = JSON.parse(jsonMatch[0]) as string[];
+          let versions: string[] = [];
+          let clarifyingQuestions: ClarifyingQuestionResponse[] = [];
+
+          const jsonObjMatch = text.match(/\{[\s\S]*"statements"[\s\S]*\}/);
+          if (jsonObjMatch) {
+            const parsed = JSON.parse(jsonObjMatch[0]);
+            versions = parsed.statements || [];
+            if (Array.isArray(parsed.clarifyingQuestions)) {
+              clarifyingQuestions = parsed.clarifyingQuestions.filter(
+                (q: Record<string, unknown>) => typeof q.question === "string" && (q.question as string).length > 10
+              );
+            }
+          } else {
+            const jsonMatch = text.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              versions = JSON.parse(jsonMatch[0]) as string[];
+            }
+          }
+
+          if (versions.length > 0) {
             results.push({
               category: category.key,
               statementGroups: [{
                 versions: versions.map(v => v.trim()),
                 sourceAccomplishmentIds: [],
               }],
+              ...(clarifyingQuestions.length > 0 && { clarifyingQuestions }),
             });
           }
         } catch (error) {
@@ -497,7 +642,7 @@ ${revisionInstructions}
 
 SOURCE TEXT/CONTEXT:
 ${customContext}
-
+${savedContext ? `\n${savedContext}\n` : ''}
 TRANSFORMATION INSTRUCTIONS:
 - Extract and highlight key actions, achievements, and metrics from the text
 - Infer reasonable mission impacts based on the context (readiness, cost savings, efficiency)
@@ -522,23 +667,40 @@ The user will fine-tune character spacing after generation using our fitting too
 CRITICAL 1206 REQUIREMENTS:
 1. EVERY statement MUST start with "- " (dash space) followed by the text
 2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
-3. Typically ${sentencesPerStatement} sentences, but character count matters more than sentence count
-4. Write in narrative-style (complete sentences/paragraphs, not bullet format)
-5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
-6. Start with strong action verbs in active voice
-7. Connect to ${awardLevel}-level mission impact
-8. Include the nominee's name or rank naturally when appropriate
+3. Each statement MUST be ONE grammatically correct sentence - NOT comma-spliced fragments
+4. Use participial phrases (-ing verbs) to connect actions naturally, NOT chains of past-tense verbs separated by commas
+5. When listing 3+ items, use "&" or "and" before the final item
+6. Maximum 2-3 main clauses per statement
+7. Start with strong action verbs in active voice
+8. Connect to ${awardLevel}-level mission impact
+9. Include the nominee's name or rank naturally when appropriate
 
-**PUNCTUATION - EXTREMELY IMPORTANT:**
+**PUNCTUATION & GRAMMAR - EXTREMELY IMPORTANT:**
 - NEVER use em-dashes (--) - this is STRICTLY FORBIDDEN
 - NEVER use semicolons (;) or slashes (/)
-- ONLY use commas (,) to connect clauses and chain impacts
+- Use commas and conjunctions ("&" or "and") for proper sentence flow
+- Do NOT string together 4+ comma-separated verb phrases - that is a run-on sentence
+
+**ABBREVIATION RULES - DO NOT OVER-ABBREVIATE:**
+- NEVER create truncated abbreviations like "crse", "dvlpmt", "dev'd", "prof'l", "trng", "ldrshp", "maint"
+- NEVER use slash abbreviations like "w/", "w/o", "b/c"
+- SPELL OUT words fully: "course" not "crse", "development" not "dvlpmt", "professional" not "prof'l", "training" not "trng"
+- Only standard acronyms (NCO, AF, CC, MAJCOM) and common short forms (sq, flt, hrs, Amn) are allowed
 
 Generate EXACTLY 1 statement group with ${versionsPerStatement} alternative versions.
 AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
+${shouldRequestQuestions ? `
+${AWARD_CLARIFYING_QUESTION_GUIDANCE}
 
+Format as JSON object (EACH statement must start with "- "):
+{
+  "statements": ["- Version A", "- Version B", "- Version C"],
+  "clarifyingQuestions": [
+    {"question": "Question text?", "category": "impact", "hint": "Brief hint"}
+  ]
+}` : `
 Format as JSON array (EACH statement must start with "- "):
-["- Version A", "- Version B", "- Version C"]`;
+["- Version A", "- Version B", "- Version C"]`}`;
 
         try {
           const { text } = await generateText({
@@ -549,16 +711,35 @@ Format as JSON array (EACH statement must start with "- "):
             maxTokens: 2000,
           });
 
-          // Parse JSON array from response
-          const jsonMatch = text.match(/\[[\s\S]*\]/);
-          if (jsonMatch) {
-            const versions = JSON.parse(jsonMatch[0]) as string[];
+          let versions: string[] = [];
+          let clarifyingQuestions: ClarifyingQuestionResponse[] = [];
+
+          // Try to parse as JSON object with statements and clarifyingQuestions
+          const jsonObjMatch = text.match(/\{[\s\S]*"statements"[\s\S]*\}/);
+          if (jsonObjMatch) {
+            const parsed = JSON.parse(jsonObjMatch[0]);
+            versions = parsed.statements || [];
+            if (Array.isArray(parsed.clarifyingQuestions)) {
+              clarifyingQuestions = parsed.clarifyingQuestions.filter(
+                (q: Record<string, unknown>) => typeof q.question === "string" && (q.question as string).length > 10
+              );
+            }
+          } else {
+            // Fallback: parse as JSON array
+            const jsonMatch = text.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              versions = JSON.parse(jsonMatch[0]) as string[];
+            }
+          }
+
+          if (versions.length > 0) {
             results.push({
               category: category.key,
               statementGroups: [{
                 versions: versions.map(v => v.trim()),
                 sourceAccomplishmentIds: [],
               }],
+              ...(clarifyingQuestions.length > 0 && { clarifyingQuestions }),
             });
           }
         } catch (parseError) {
@@ -574,18 +755,20 @@ Format as JSON array (EACH statement must start with "- "):
     // ============================================================
     
     // Map MPAs to 1206 categories
-    // Leadership & Job Performance: executing_mission, leading_people, managing_resources
-    // Self-Improvement: improving_unit (education/training focused entries)
-    // Base/Community: volunteer work, community activities
+    // Performance in Primary Duty: executing_mission, leading_people, managing_resources
+    // Whole Airman Concept: improving_unit (education, volunteerism, community)
     const mpaTo1206Category: Record<string, string> = {
-      executing_mission: "leadership_job_performance",
-      leading_people: "leadership_job_performance",
-      managing_resources: "leadership_job_performance",
-      improving_unit: "significant_self_improvement",
+      executing_mission: "performance_in_primary_duty",
+      leading_people: "performance_in_primary_duty",
+      managing_resources: "performance_in_primary_duty",
+      improving_unit: "whole_airman_concept",
       // Allow direct mapping if entries are already tagged with 1206 categories
-      leadership_job_performance: "leadership_job_performance",
-      significant_self_improvement: "significant_self_improvement",
-      base_community_involvement: "base_community_involvement",
+      performance_in_primary_duty: "performance_in_primary_duty",
+      whole_airman_concept: "whole_airman_concept",
+      // Backwards compatibility for legacy entries
+      leadership_job_performance: "performance_in_primary_duty",
+      significant_self_improvement: "whole_airman_concept",
+      base_community_involvement: "whole_airman_concept",
     };
 
     // Group accomplishments by 1206 category
@@ -610,6 +793,7 @@ Format as JSON array (EACH statement must start with "- "):
       }
 
       const categoryResults: StatementGroup[] = [];
+      let categoryClarifyingQuestions: ClarifyingQuestionResponse[] = [];
 
       if (combineEntries) {
         // Build revision-specific instructions for accomplishments mode
@@ -663,6 +847,7 @@ COMBINATION INSTRUCTIONS:
 - Sum up any numerical metrics that can be combined
 - Create a cohesive narrative that covers all the key accomplishments
 - Prioritize the most impactful elements if space is limited
+${savedContext ? `\n${savedContext}\n` : ''}
 ${buildExamplesSection(awardExamples, category.key)}
 
 **LINE COUNT & CHARACTER BUDGET - CRITICAL:**
@@ -676,25 +861,44 @@ This is a 3-LINE statement. You have more room for impacts and metrics.`}
 CRITICAL 1206 REQUIREMENTS:
 1. EVERY statement MUST start with "- " (dash space) followed by the text
 2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
-3. Typically ${sentencesPerStatement} sentences, but character count matters more
-4. Write in narrative-style (complete sentences/paragraphs, not bullet format)
-5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
-6. Start with strong action verbs in active voice
-7. Connect to ${awardLevel}-level mission impact
+3. Each statement MUST be ONE grammatically correct sentence - NOT comma-spliced fragments
+4. Use participial phrases (-ing verbs) to connect actions naturally, NOT chains of past-tense verbs separated by commas
+5. When listing 3+ items, use "&" or "and" before the final item
+6. Maximum 2-3 main clauses per statement
+7. Start with strong action verbs in active voice
+8. Connect to ${awardLevel}-level mission impact
 
-**PUNCTUATION - EXTREMELY IMPORTANT:**
+**PUNCTUATION & GRAMMAR - EXTREMELY IMPORTANT:**
 - NEVER use em-dashes (--) - this is STRICTLY FORBIDDEN
 - NEVER use semicolons (;) or slashes (/)
-- ONLY use commas (,) to connect clauses and chain impacts
+- Use commas and conjunctions ("&" or "and") for proper sentence flow
+- Do NOT string together 4+ comma-separated verb phrases - that is a run-on sentence
+
+**ABBREVIATION RULES - DO NOT OVER-ABBREVIATE:**
+- NEVER create truncated abbreviations like "crse", "dvlpmt", "dev'd", "prof'l", "trng", "ldrshp", "maint"
+- NEVER use slash abbreviations like "w/", "w/o", "b/c"
+- SPELL OUT words fully: "course" not "crse", "development" not "dvlpmt", "professional" not "prof'l", "training" not "trng"
+- Only standard acronyms (NCO, AF, CC, MAJCOM) and common short forms (sq, flt, hrs, Amn) are allowed
 
 Generate EXACTLY ${statementsPerEntry} statement group(s), each with ${versionsPerStatement} alternative versions.
 AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
+${shouldRequestQuestions ? `
+${AWARD_CLARIFYING_QUESTION_GUIDANCE}
 
+Format as JSON object (EACH statement must start with "- "):
+{
+  "statements": [
+    ["- Version A of statement 1", "- Version B of statement 1", "- Version C of statement 1"]
+  ],
+  "clarifyingQuestions": [
+    {"question": "Question text?", "category": "impact", "hint": "Brief hint"}
+  ]
+}` : `
 Format as JSON array of arrays (EACH statement must start with "- "):
 [
   ["- Version A of statement 1", "- Version B of statement 1", "- Version C of statement 1"],
   ...
-]`;
+]`}`;
 
         try {
           const { text } = await generateText({
@@ -705,12 +909,38 @@ Format as JSON array of arrays (EACH statement must start with "- "):
             maxTokens: 3000,
           });
 
-          const parsed = parseStatementResponse(text, statementsPerEntry);
-          for (const versions of parsed) {
-            categoryResults.push({
-              versions,
-              sourceAccomplishmentIds: categoryAccomplishments.map(a => a.id),
-            });
+          let clarifyingQuestions: ClarifyingQuestionResponse[] = [];
+
+          // Try to parse as JSON object with statements and clarifyingQuestions
+          const jsonObjMatch = text.match(/\{[\s\S]*"statements"[\s\S]*\}/);
+          if (jsonObjMatch) {
+            const parsed = JSON.parse(jsonObjMatch[0]);
+            const statementsData = parsed.statements || [];
+            const parsedVersions = parseStatementResponse(JSON.stringify(statementsData), statementsPerEntry);
+            for (const versions of parsedVersions) {
+              categoryResults.push({
+                versions,
+                sourceAccomplishmentIds: categoryAccomplishments.map(a => a.id),
+              });
+            }
+            if (Array.isArray(parsed.clarifyingQuestions)) {
+              clarifyingQuestions = parsed.clarifyingQuestions.filter(
+                (q: Record<string, unknown>) => typeof q.question === "string" && (q.question as string).length > 10
+              );
+            }
+          } else {
+            // Fallback: parse as array format
+            const parsed = parseStatementResponse(text, statementsPerEntry);
+            for (const versions of parsed) {
+              categoryResults.push({
+                versions,
+                sourceAccomplishmentIds: categoryAccomplishments.map(a => a.id),
+              });
+            }
+          }
+
+          if (clarifyingQuestions.length > 0) {
+            categoryClarifyingQuestions = clarifyingQuestions;
           }
         } catch (error) {
           console.error(`Error generating combined for ${category.key}:`, error);
@@ -756,6 +986,7 @@ Details: ${accomplishment.details}
 Impact: ${accomplishment.impact}
 ${accomplishment.metrics ? `Metrics: ${accomplishment.metrics}` : ""}
 Date: ${new Date(accomplishment.date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+${savedContext ? `\n${savedContext}\n` : ''}
 ${buildExamplesSection(awardExamples, category.key)}
 
 **LINE COUNT & CHARACTER BUDGET - CRITICAL:**
@@ -769,26 +1000,45 @@ This is a 3-LINE statement. You have more room for impacts and metrics.`}
 CRITICAL 1206 REQUIREMENTS:
 1. EVERY statement MUST start with "- " (dash space) followed by the text
 2. **CHARACTER COUNT IS KEY** - aim for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} total characters
-3. Typically ${sentencesPerStatement} sentences, but character count matters more
-4. Write in narrative-style (complete sentences/paragraphs, not bullet format)
-5. MAXIMIZE density: Chain impacts, quantify aggressively, add mission context
-6. Start with strong action verbs in active voice
-7. Connect to ${awardLevel}-level mission impact
-8. Include the nominee's name or rank naturally when appropriate
+3. Each statement MUST be ONE grammatically correct sentence - NOT comma-spliced fragments
+4. Use participial phrases (-ing verbs) to connect actions naturally, NOT chains of past-tense verbs separated by commas
+5. When listing 3+ items, use "&" or "and" before the final item
+6. Maximum 2-3 main clauses per statement
+7. Start with strong action verbs in active voice
+8. Connect to ${awardLevel}-level mission impact
+9. Include the nominee's name or rank naturally when appropriate
 
-**PUNCTUATION - EXTREMELY IMPORTANT:**
+**PUNCTUATION & GRAMMAR - EXTREMELY IMPORTANT:**
 - NEVER use em-dashes (--) - this is STRICTLY FORBIDDEN
 - NEVER use semicolons (;) or slashes (/)
-- ONLY use commas (,) to connect clauses and chain impacts
+- Use commas and conjunctions ("&" or "and") for proper sentence flow
+- Do NOT string together 4+ comma-separated verb phrases - that is a run-on sentence
+
+**ABBREVIATION RULES - DO NOT OVER-ABBREVIATE:**
+- NEVER create truncated abbreviations like "crse", "dvlpmt", "dev'd", "prof'l", "trng", "ldrshp", "maint"
+- NEVER use slash abbreviations like "w/", "w/o", "b/c"
+- SPELL OUT words fully: "course" not "crse", "development" not "dvlpmt", "professional" not "prof'l", "training" not "trng"
+- Only standard acronyms (NCO, AF, CC, MAJCOM) and common short forms (sq, flt, hrs, Amn) are allowed
 
 Generate EXACTLY ${statementsPerEntry} statement group(s), each with ${versionsPerStatement} alternative versions.
 AIM for ${sentencesPerStatement === 2 ? "220-260" : "330-390"} characters per statement.
+${shouldRequestQuestions ? `
+${AWARD_CLARIFYING_QUESTION_GUIDANCE}
 
+Format as JSON object (EACH statement must start with "- "):
+{
+  "statements": [
+    ["- Version A of statement 1", "- Version B of statement 1", "- Version C of statement 1"]
+  ],
+  "clarifyingQuestions": [
+    {"question": "Question text?", "category": "impact", "hint": "Brief hint"}
+  ]
+}` : `
 Format as JSON array of arrays (EACH statement must start with "- "):
 [
   ["- Version A of statement 1", "- Version B of statement 1", "- Version C of statement 1"],
   ...
-]`;
+]`}`;
 
           try {
             const { text } = await generateText({
@@ -799,12 +1049,37 @@ Format as JSON array of arrays (EACH statement must start with "- "):
               maxTokens: 2000,
             });
 
-            const parsed = parseStatementResponse(text, statementsPerEntry);
-            for (const versions of parsed) {
-              categoryResults.push({
-                versions,
-                sourceAccomplishmentIds: [accomplishment.id],
-              });
+            let questionsParsed: ClarifyingQuestionResponse[] = [];
+
+            // Try to parse as JSON object with statements and clarifyingQuestions
+            const jsonObjMatch = text.match(/\{[\s\S]*"statements"[\s\S]*\}/);
+            if (jsonObjMatch) {
+              const parsedObj = JSON.parse(jsonObjMatch[0]);
+              const statementsData = parsedObj.statements || [];
+              const parsedVersions = parseStatementResponse(JSON.stringify(statementsData), statementsPerEntry);
+              for (const versions of parsedVersions) {
+                categoryResults.push({
+                  versions,
+                  sourceAccomplishmentIds: [accomplishment.id],
+                });
+              }
+              if (Array.isArray(parsedObj.clarifyingQuestions)) {
+                questionsParsed = parsedObj.clarifyingQuestions.filter(
+                  (q: Record<string, unknown>) => typeof q.question === "string" && (q.question as string).length > 10
+                );
+                if (questionsParsed.length > 0 && categoryClarifyingQuestions.length === 0) {
+                  categoryClarifyingQuestions = questionsParsed;
+                }
+              }
+            } else {
+              // Fallback: parse as array format
+              const parsed = parseStatementResponse(text, statementsPerEntry);
+              for (const versions of parsed) {
+                categoryResults.push({
+                  versions,
+                  sourceAccomplishmentIds: [accomplishment.id],
+                });
+              }
             }
           } catch (error) {
             console.error(`Error generating for ${category.key} entry:`, error);
@@ -813,7 +1088,11 @@ Format as JSON array of arrays (EACH statement must start with "- "):
       }
 
       if (categoryResults.length > 0) {
-        results.push({ category: category.key, statementGroups: categoryResults });
+        results.push({
+          category: category.key,
+          statementGroups: categoryResults,
+          ...(categoryClarifyingQuestions.length > 0 && { clarifyingQuestions: categoryClarifyingQuestions }),
+        });
       }
     }
 

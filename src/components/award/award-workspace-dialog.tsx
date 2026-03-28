@@ -17,17 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -37,7 +26,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 import {
@@ -46,7 +34,6 @@ import {
   AWARD_CATEGORIES,
 } from "@/lib/constants";
 import { ModelSelector } from "@/components/model-selector";
-import { AiModelSurveyModal, useAiModelSurvey } from "@/components/modals/ai-model-survey-modal";
 import { cn } from "@/lib/utils";
 import { toDisplayText, fromDisplayText } from "@/lib/bullet-fitting";
 import {
@@ -64,8 +51,9 @@ import {
   RotateCcw,
   Smartphone,
   Trash2,
-  AlertTriangle,
   CalendarDays,
+  MoreVertical,
+  Settings2,
 } from "lucide-react";
 import {
   Collapsible,
@@ -77,8 +65,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AwardCategorySectionCard } from "@/components/award/award-category-section";
+import { DeleteAwardDialog } from "@/components/award/delete-award-dialog";
 import { AwardShellShareDialog } from "@/components/award/award-shell-share-dialog";
+import { AwardPromptSettingsModal } from "@/components/award/award-prompt-settings-modal";
 import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
 import { FeedbackListDialog } from "@/components/feedback/feedback-list-dialog";
 import { FeedbackViewerDialog } from "@/components/feedback/feedback-viewer-dialog";
@@ -174,9 +170,6 @@ export function AwardWorkspaceDialog({
     reset,
   } = useAwardShellStore();
 
-  // AI model survey (one-time)
-  const aiSurvey = useAiModelSurvey("award");
-
   // Local state
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
   const [showConfig, setShowConfig] = useState(false);
@@ -189,8 +182,8 @@ export function AwardWorkspaceDialog({
   const [feedbackBadgeRefreshKey, setFeedbackBadgeRefreshKey] = useState(0);
   const [copiedAll, setCopiedAll] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [nomineeInfo, setNomineeInfo] = useState<NomineeInfo | null>(null);
   
   // Award title state
@@ -411,6 +404,7 @@ export function AwardWorkspaceDialog({
               source_type: slotState.sourceType,
               custom_context: slotState.customContext,
               selected_action_ids: slotState.selectedActionIds,
+              clarifying_answers: slotState.clarifyingAnswers || [],
               last_edited_by: profile.id,
             } as never);
         } else if (section) {
@@ -422,6 +416,7 @@ export function AwardWorkspaceDialog({
               source_type: slotState.sourceType,
               custom_context: slotState.customContext,
               selected_action_ids: slotState.selectedActionIds,
+              clarifying_answers: slotState.clarifyingAnswers || [],
               last_edited_by: profile.id,
             } as never)
             .eq("id", section.id);
@@ -439,39 +434,12 @@ export function AwardWorkspaceDialog({
     }
   }, [nomineeInfo, profile, currentShell, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, onSaved]);
 
-  // Delete the award shell
-  const handleDeleteShell = useCallback(async () => {
-    if (!currentShell) return;
-
-    setIsDeleting(true);
-
-    try {
-      // First delete all sections (cascade should handle this, but be explicit)
-      await supabase
-        .from("award_shell_sections")
-        .delete()
-        .eq("shell_id", currentShell.id);
-
-      // Then delete the shell
-      const { error } = await supabase
-        .from("award_shells")
-        .delete()
-        .eq("id", currentShell.id);
-
-      if (error) throw error;
-
-      Analytics.awardDeleted();
-      toast.success("Award package deleted");
-      setShowDeleteConfirm(false);
-      onOpenChange(false);
-      onSaved?.(); // Refresh the list
-    } catch (error) {
-      console.error("Error deleting award shell:", error);
-      toast.error("Failed to delete award package");
-    } finally {
-      setIsDeleting(false);
-    }
-  }, [currentShell, supabase, onOpenChange, onSaved]);
+  // Delete complete handler - called after DeleteAwardDialog finishes
+  const handleDeleteComplete = useCallback(() => {
+    setShowDeleteDialog(false);
+    onOpenChange(false);
+    onSaved?.();
+  }, [onOpenChange, onSaved]);
 
   // Combine all statements for preview - formatted like AF Form 1206
   const allStatementsForPreview = useMemo(() => {
@@ -625,6 +593,7 @@ export function AwardWorkspaceDialog({
               source_type: slotState.sourceType,
               custom_context: slotState.customContext,
               selected_action_ids: slotState.selectedActionIds,
+              clarifying_answers: slotState.clarifyingAnswers || [],
               last_edited_by: profile.id,
             } as never);
         } else if (section) {
@@ -636,6 +605,7 @@ export function AwardWorkspaceDialog({
               source_type: slotState.sourceType,
               custom_context: slotState.customContext,
               selected_action_ids: slotState.selectedActionIds,
+              clarifying_answers: slotState.clarifyingAnswers || [],
               last_edited_by: profile.id,
             } as never)
             .eq("id", section.id);
@@ -814,6 +784,39 @@ export function AwardWorkspaceDialog({
                   </TooltipTrigger>
                   <TooltipContent>Preview ({totalStatementsWithContent} statements)</TooltipContent>
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowPromptSettings(true)}
+                      className={cn("h-8 w-8 p-0", showPromptSettings && "bg-accent text-accent-foreground")}
+                    >
+                      <Settings2 className="size-4" />
+                      <span className="sr-only">LLM Prompt Settings</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>LLM Prompt Settings</TooltipContent>
+                </Tooltip>
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="size-4" />
+                        <span className="sr-only">More options</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => setShowDeleteDialog(true)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        Delete Award Package
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <div className="w-px h-5 bg-border mx-1" />
                 <DialogClose asChild>
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -1010,60 +1013,6 @@ export function AwardWorkspaceDialog({
                       </Button>
                     </div>
                     
-                    {/* Danger Zone - Delete */}
-                    <Separator className="my-4" />
-                    <div className="space-y-2">
-                      <Label className="text-xs text-destructive">Danger Zone</Label>
-                      <div className="flex items-center justify-between p-3 rounded-lg border border-destructive/30 bg-destructive/5">
-                        <div className="space-y-0.5">
-                          <p className="text-sm font-medium">Delete Award Package</p>
-                          <p className="text-xs text-muted-foreground">
-                            Permanently delete this award package and all statements.
-                          </p>
-                        </div>
-                        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="sm">
-                              <Trash2 className="size-4 mr-1.5" />
-                              Delete
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="flex items-center gap-2">
-                                <AlertTriangle className="size-5 text-destructive" />
-                                Delete Award Package
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete this award package for{" "}
-                                <strong>{nomineeDisplayName}</strong>? This will permanently delete
-                                all statements and cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={handleDeleteShell}
-                                disabled={isDeleting}
-                                className="bg-destructive text-white hover:bg-destructive/90"
-                              >
-                                {isDeleting ? (
-                                  <>
-                                    <Loader2 className="size-4 mr-1.5 animate-spin" />
-                                    Deleting...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Trash2 className="size-4 mr-1.5" />
-                                    Delete Permanently
-                                  </>
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
                   </CollapsibleContent>
                 </Collapsible>
               )}
@@ -1088,6 +1037,7 @@ export function AwardWorkspaceDialog({
                         categoryDescription={cat.description}
                         sections={categorySections}
                         accomplishments={accomplishments}
+                        nomineeId={nomineeInfo?.id || ""}
                         nomineeRank={nomineeInfo?.rank || ""}
                         nomineeName={nomineeInfo?.fullName || ""}
                         nomineeAfsc={nomineeInfo?.afsc || ""}
@@ -1291,12 +1241,27 @@ export function AwardWorkspaceDialog({
         />
       )}
 
-      {/* AI Model Survey - one-time */}
-      <AiModelSurveyModal
-        open={aiSurvey.showSurvey}
-        onOpenChange={aiSurvey.onOpenChange}
-        sourcePage={aiSurvey.sourcePage}
+      {/* Delete Award Dialog */}
+      {currentShell && (
+        <DeleteAwardDialog
+          isOpen={showDeleteDialog}
+          onClose={() => setShowDeleteDialog(false)}
+          shellId={currentShell.id}
+          nomineeName={nomineeDisplayName}
+          awardLevel={awardLevel}
+          awardCategory={awardCategory}
+          slotStates={slotStates}
+          onDeleteComplete={handleDeleteComplete}
+        />
+      )}
+
+      {/* Award Prompt Settings Modal - independent from EPB */}
+      <AwardPromptSettingsModal
+        open={showPromptSettings}
+        onOpenChange={setShowPromptSettings}
+        nomineeRank={nomineeInfo?.rank}
       />
+
     </>
   );
 }

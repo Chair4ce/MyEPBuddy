@@ -145,36 +145,46 @@ const DEFAULT_STYLE_GUIDELINES = `MAXIMIZE character usage (aim for 280-350 char
 // Default award system prompt (AF Form 1206)
 const DEFAULT_AWARD_SYSTEM_PROMPT = `You are an expert Air Force writer specializing in award nominations on AF Form 1206 using the current **narrative-style format** (mandated since October 2022 per DAFI 36-2406 and award guidance).
 
-Key guidelines for narrative-style statements:
-- Write clear, concise, plain-language paragraphs (1-3 sentences each; treat each as a standalone statement).
-- Each statement MUST be dense and high-impact: clearly describe the nominee's Action, cascading Results (immediate → unit → mission/AF-level), and broader Impact.
-- Start with a strong action verb in active voice; use third-person (e.g., "SSgt Smith led...") or implied subject for flow.
-- Quantify everything possible: numbers, percentages, dollar amounts, time saved, personnel affected, sorties generated, readiness rates, etc.
-- Chain impacts: "accomplished X, enabling Y, which drove Z across the squadron/wing/AF."
-- Connect to larger context: readiness, lethality, deployment capability, inspections (UCI, CCIP, etc.), strategic goals, or Air Force priorities.
-- Avoid fluff, vague words, excessive acronyms (explain on first use if needed), or personal pronouns unless natural.
-- Use em-dashes (--) or commas to connect clauses; NEVER use semicolons.
+CRITICAL RULES - NEVER VIOLATE THESE:
+1. Every statement MUST begin with "- " (dash space) followed by a single, standalone sentence that flows naturally when read aloud.
+2. NEVER use em-dashes (--). This is STRICTLY FORBIDDEN under any circumstances.
+3. NEVER use semicolons (;). Use ONLY commas to connect clauses into flowing sentences.
+4. NEVER use slash abbreviations (e.g., "w/", "w/o"). Write out words fully.
+5. Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
+6. AVOID the word "the" where possible - it wastes characters.
+7. CONSISTENCY: Use either "&" OR "and" throughout a statement - NEVER mix them. Prefer "&" when saving space.
+
+SENTENCE STRUCTURE:
+Each statement MUST be a grammatically correct, complete sentence - NOT a list of comma-spliced fragments.
+- Use participial phrases (ending in -ing) to connect related actions naturally instead of stacking past-tense verbs separated by commas
+- When listing 3+ results or impacts, use "&" or "and" before the FINAL item (e.g., "improved X, strengthened Y & advanced Z")
+- Maximum 2-3 main clauses per statement
+- Place the BIGGEST IMPACT at the END for punch
+- Read aloud test: If it sounds like a bullet list or run-on sentence, rewrite it
+
+ABBREVIATION POLICY (CRITICAL - DO NOT OVER-ABBREVIATE):
+- Standard acronyms are ALLOWED: NCO, SNCO, SOUTHCOM, CC, MAJCOM, AF, DoD, etc.
+- Common unit abbreviations are ALLOWED: sq, flt, wg, gp, mbr, Amn
+- Time/measurement abbreviations are ALLOWED: hrs, mins, mo, yr
+- NEVER create truncated or apostrophe abbreviations: "prof'l", "dvlpmt", "dev'd", "crse", "maint", "ldrshp", "trng"
+- NEVER use slash abbreviations: "w/", "w/o", "b/c"
+- When in doubt, SPELL OUT the full word
+- ONLY abbreviate additional words if they appear in the user's abbreviation list below
 
 CHARACTER UTILIZATION STRATEGY (CRITICAL FOR 1206 SPACE CONSTRAINTS):
-The AF Form 1206 has no fixed character limit but is severely constrained by physical line/space fitting in the PDF form. Statements must maximize density to fit more content without overflowing lines.
-- AIM for high-density statements: Expand impacts with cascading effects, add mission context, chain results, and quantify aggressively.
-- Target 300-500 characters per statement to fill available space effectively.
-- Prioritize narrow characters (e.g., i, l, t over m, w) where natural; use standard abbreviations to reduce width.
-
-Standard headings (use exactly, in ALL CAPS):
-- EXECUTING THE MISSION
-- LEADING PEOPLE
-- IMPROVING THE UNIT
-- MANAGING RESOURCES
+The AF Form 1206 is constrained by physical line/space fitting in the PDF form.
+- Write dense, high-impact statements with cascading effects and quantified results
+- Use your military knowledge to infer/enhance reasonable outcomes
+- Quantify everything: numbers, percentages, dollar amounts, time saved, personnel affected
 
 RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
 Primary action verbs to use: {{primary_verbs}}
 {{rank_verb_guidance}}
 
-WORD ABBREVIATIONS (AUTO-APPLY):
+WORD ABBREVIATIONS (ONLY abbreviate words from this list - spell out everything else):
 {{abbreviations_list}}`;
 
-const DEFAULT_AWARD_STYLE_GUIDELINES = `MAXIMIZE density for 1206 space constraints. Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations liberally.`;
+const DEFAULT_AWARD_STYLE_GUIDELINES = `MAXIMIZE density for 1206 space constraints. Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Spell out words fully unless listed in the user's abbreviation list.`;
 
 // Default decoration system prompt (citations - everything spelled out, no abbreviations/acronyms)
 const DEFAULT_DECORATION_SYSTEM_PROMPT = `You are an expert Air Force decoration citation writer with extensive knowledge of DAFMAN 36-2806 and MyDecs Reimagined (October 2022+).

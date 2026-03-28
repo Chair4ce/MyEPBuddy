@@ -34,7 +34,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { AI_MODELS, STANDARD_MGAS, ENTRY_MGAS, getActiveCycleYear, isOfficer, isEnlisted } from "@/lib/constants";
 import { ModelSelector } from "@/components/model-selector";
-import { AiModelSurveyModal, useAiModelSurvey } from "@/components/modals/ai-model-survey-modal";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -55,7 +54,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import Link from "next/link";
-import type { Accomplishment, WritingStyle, UserLLMSettings, Profile, ManagedMember, EPBShell, Rank } from "@/types/database";
+import type { Accomplishment, WritingStyle, Profile, ManagedMember, EPBShell, Rank } from "@/types/database";
 import { EPBShellForm } from "@/components/epb/epb-shell-form";
 import { EPBShellShareDialog } from "@/components/epb/epb-shell-share-dialog";
 import { OPBShellForm } from "@/components/opb/opb-shell-form";
@@ -75,7 +74,6 @@ export default function GeneratePage() {
   const [communityMpaFilter, setCommunityMpaFilter] = useState<string>("all");
   const [communityAfscFilter, setCommunityAfscFilter] = useState<string>("my-afsc");
   const [availableAfscs, setAvailableAfscs] = useState<string[]>([]);
-  const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [showReviewLinkDialog, setShowReviewLinkDialog] = useState(false);
@@ -87,9 +85,6 @@ export default function GeneratePage() {
   
   // Officer workspace mode: "opb" for personal OPB, "epb" for team EPBs
   const [officerWorkspaceMode, setOfficerWorkspaceMode] = useState<"opb" | "epb">("epb");
-
-  // AI model survey (one-time)
-  const aiSurvey = useAiModelSurvey("generate");
 
   // Accomplishment selection dialog
   const [showAccomplishmentDialog, setShowAccomplishmentDialog] = useState(false);
@@ -278,26 +273,6 @@ export default function GeneratePage() {
     }
     loadAvailableAfscs();
   }, [supabase]);
-
-  // Load user's LLM settings
-  useEffect(() => {
-    async function loadUserSettings() {
-      if (!profile) return;
-
-      const { data } = await supabase
-        .from("user_llm_settings")
-        .select("*")
-        .eq("user_id", profile.id)
-        .maybeSingle();
-
-      if (data) {
-        setUserSettings(data as unknown as UserLLMSettings);
-      }
-    }
-
-    loadUserSettings();
-  }, [profile, supabase]);
-
 
   // Load accomplishments for the dialog (EPB shell form loads its own for generation)
   useEffect(() => {
@@ -961,6 +936,7 @@ export default function GeneratePage() {
           model={selectedModel}
           writingStyle={writingStyle}
           onOpenAccomplishments={handleOpenAccomplishments}
+          accomplishments={accomplishments}
         />
       )}
 
@@ -1049,12 +1025,6 @@ export default function GeneratePage() {
         </DialogContent>
       </Dialog>
 
-      {/* AI Model Survey - one-time */}
-      <AiModelSurveyModal
-        open={aiSurvey.showSurvey}
-        onOpenChange={aiSurvey.onOpenChange}
-        sourcePage={aiSurvey.sourcePage}
-      />
     </div>
   );
 }

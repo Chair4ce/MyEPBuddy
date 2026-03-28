@@ -254,7 +254,7 @@ export async function generateStyleSignature(
     .eq("target_rank", targetRank)
     .eq("target_afsc", targetAfsc)
     .eq("mpa", mpa)
-    .single();
+    .maybeSingle();
 
   if (existing && (existing as { source_hash: string | null }).source_hash === sourceHash) {
     return false; // No change in source statements, skip regeneration
@@ -398,7 +398,7 @@ export async function getUserStyleSignature(
     .eq("target_rank", targetRank)
     .eq("target_afsc", targetAfsc)
     .eq("mpa", normalizedMpa)
-    .single();
+    .maybeSingle();
 
   if (exact) return exact as StyleSignature;
 
@@ -410,7 +410,7 @@ export async function getUserStyleSignature(
       .eq("target_rank", targetRank)
       .eq("target_afsc", targetAfsc)
       .eq("mpa", "general")
-      .single();
+      .maybeSingle();
 
     if (general) return general as StyleSignature;
   }
@@ -423,7 +423,7 @@ export async function getUserStyleSignature(
     .eq("target_afsc", targetAfsc)
     .order("updated_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (anyMpa) return anyMpa as StyleSignature;
 
@@ -434,7 +434,7 @@ export async function getUserStyleSignature(
     .eq("target_afsc", targetAfsc)
     .order("updated_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   return anyRank as StyleSignature | null;
 }
@@ -528,7 +528,7 @@ export async function getChainStyleSignature(
       .eq("target_rank", targetRank)
       .eq("target_afsc", targetAfsc)
       .eq("mpa", normalizedMpa)
-      .single();
+      .maybeSingle();
 
     if (exact) {
       return {
@@ -547,7 +547,7 @@ export async function getChainStyleSignature(
         .eq("target_rank", targetRank)
         .eq("target_afsc", targetAfsc)
         .eq("mpa", "general")
-        .single();
+        .maybeSingle();
 
       if (general) {
         return {
@@ -566,7 +566,7 @@ export async function getChainStyleSignature(
       .eq("target_afsc", targetAfsc)
       .order("updated_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (anyMatch) {
       return {

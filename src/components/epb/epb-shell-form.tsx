@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Analytics } from "@/lib/analytics";
-import { trackGenerationForSurvey } from "@/components/modals/ai-model-survey-modal";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -128,6 +127,7 @@ interface EPBShellFormProps {
   model: string;
   writingStyle: WritingStyle;
   onOpenAccomplishments: (mpa: string) => void;
+  accomplishments: Accomplishment[];
 }
 
 export function EPBShellForm({
@@ -135,6 +135,7 @@ export function EPBShellForm({
   model,
   writingStyle,
   onOpenAccomplishments,
+  accomplishments,
 }: EPBShellFormProps) {
   const supabase = createClient();
   const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
@@ -173,7 +174,6 @@ export function EPBShellForm({
     reset,
   } = useEPBShellStore();
 
-  const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
   const [rateeAwards, setRateeAwards] = useState<AwardSelection[]>([]);
 
   const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
@@ -1242,29 +1242,6 @@ export function EPBShellForm({
     };
   }, [currentShell?.id, profile, supabase, updateSection, isPageVisible, setCurrentShell]);
 
-  // Load accomplishments for the selected ratee
-  useEffect(() => {
-    async function loadAccomplishments() {
-      if (!selectedRatee || !profile) return;
-
-      let query = supabase
-        .from("accomplishments")
-        .select("*")
-        .order("date", { ascending: false });
-
-      if (selectedRatee.isManagedMember) {
-        query = query.eq("team_member_id", selectedRatee.id);
-      } else {
-        query = query.eq("user_id", selectedRatee.id).is("team_member_id", null);
-      }
-
-      const { data } = await query;
-      setAccomplishments((data as Accomplishment[]) || []);
-    }
-
-    loadAccomplishments();
-  }, [selectedRatee, profile, supabase]);
-
   // Load awards/coins for the selected ratee (for HLR award integration)
   useEffect(() => {
     async function loadRateeAwards() {
@@ -1881,8 +1858,6 @@ export function EPBShellForm({
       
       // Track generation success
       Analytics.generateCompleted(model, Date.now() - generateStartTime, validResults.length);
-      trackGenerationForSurvey();
-      
       return validResults;
     } catch (error) {
       console.error("Generate error:", error);

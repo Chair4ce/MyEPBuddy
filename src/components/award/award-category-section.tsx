@@ -23,7 +23,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "@/components/ui/sonner";
-import { trackGenerationForSurvey } from "@/components/modals/ai-model-survey-modal";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -42,11 +41,16 @@ import {
   RefreshCw,
   X,
   CalendarDays,
+  MessageSquareText,
+  Pencil,
 } from "lucide-react";
-import type { Accomplishment, AwardLevel, AwardCategory, AwardShellSection } from "@/types/database";
+import { Separator } from "@/components/ui/separator";
+import type { Accomplishment, AwardLevel, AwardCategory, AwardShellSection, AwardClarifyingAnswer } from "@/types/database";
 import { useAwardShellStore } from "@/stores/award-shell-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import type { SectionSlotState } from "@/stores/award-shell-store";
+import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
+import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
 import { compressText, normalizeSpaces, getVisualLineSegments, AF1206_LINE_WIDTH_PX, toDisplayText, fromDisplayText } from "@/lib/bullet-fitting";
 
 // ============================================================================
@@ -69,6 +73,7 @@ interface AwardCategorySectionProps {
   categoryDescription?: string;
   sections: SectionWithState[];
   accomplishments: Accomplishment[];
+  nomineeId: string;
   nomineeRank: string;
   nomineeName: string;
   nomineeAfsc: string;
@@ -201,6 +206,8 @@ function StatementSlotCard({
   isCollapsed,
   onToggleCollapse,
   model,
+  nomineeId,
+  categoryLabel,
 }: {
   categoryKey: string;
   slotIndex: number;
@@ -209,10 +216,12 @@ function StatementSlotCard({
   periodStartDate: string | null;
   periodEndDate: string | null;
   onRemove: () => void;
-  onGenerate: (revisionMode?: "add" | "replace", revisionIntensity?: number, versionCount?: number) => Promise<string[]>;
+  onGenerate: (revisionMode?: "add" | "replace", revisionIntensity?: number, versionCount?: number, clarifyingContext?: string) => Promise<string[]>;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   model: string;
+  nomineeId: string;
+  categoryLabel: string;
 }) {
   // Subscribe directly to the store for this slot's state
   const slotKey = `${categoryKey}:${slotIndex}`;
@@ -250,6 +259,14 @@ function StatementSlotCard({
   const [isRevising, setIsRevising] = useState(false);
   const [revisionResults, setRevisionResults] = useState<string[]>([]);
   
+  // Clarifying questions for this slot
+  const slotMpaKey = `award:${categoryKey}:${slotIndex}`;
+  const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
+
+  // Saved details panel state
+  const [showSavedDetails, setShowSavedDetails] = useState(false);
+  const [editingAnswerIndex, setEditingAnswerIndex] = useState<number | null>(null);
+
   // Version count for generation (like EPB page)
   const [versionCount, setVersionCount] = useState(3);
   const [generatedVersions, setGeneratedVersions] = useState<string[]>([]);
@@ -510,6 +527,16 @@ function StatementSlotCard({
           <Badge variant="outline" className="text-xs font-medium">
             Statement {slotIndex + 1}
           </Badge>
+          {/* Clarifying questions indicator */}
+          {nomineeId && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <ClarifyingQuestionsIndicator
+                mpaKey={slotMpaKey}
+                rateeId={nomineeId}
+                hasGenerated={generatedVersions.length > 0 || hasContent}
+              />
+            </div>
+          )}
           {/* Preview text when collapsed */}
           {isCollapsed && hasContent && (
             <span className="text-xs text-muted-foreground truncate max-w-[200px]">
@@ -845,6 +872,88 @@ function StatementSlotCard({
               </div>
             )}
 
+            {/* Saved Details Panel - shows persisted Q&A answers */}
+            {(slotState.clarifyingAnswers?.length > 0) && (
+              <div className="space-y-2">
+                <button
+                  onClick={() => setShowSavedDetails(!showSavedDetails)}
+                  className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+                >
+                  <MessageSquareText className="size-3.5" />
+                  <span>Saved Details ({slotState.clarifyingAnswers.length})</span>
+                  {showSavedDetails ? <ChevronUp className="size-3 ml-auto" /> : <ChevronDown className="size-3 ml-auto" />}
+                </button>
+                {showSavedDetails && (
+                  <div className="space-y-2 p-3 rounded-lg border bg-amber-500/5 border-amber-500/20 animate-in fade-in-0 duration-200">
+                    <p className="text-[10px] text-muted-foreground">
+                      These details are used in every generation to improve your statement. Click to edit.
+                    </p>
+                    {slotState.clarifyingAnswers.map((qa: AwardClarifyingAnswer, index: number) => (
+                      <div key={index} className="space-y-1">
+                        <p className="text-xs font-medium text-foreground">{qa.question}</p>
+                        {editingAnswerIndex === index ? (
+                          <div className="flex items-end gap-2">
+                            <Textarea
+                              defaultValue={qa.answer}
+                              className="min-h-[50px] text-xs resize-none flex-1"
+                              onBlur={(e) => {
+                                const updated = [...slotState.clarifyingAnswers];
+                                updated[index] = { ...qa, answer: e.target.value };
+                                onUpdate({ clarifyingAnswers: updated, isDirty: true });
+                                setEditingAnswerIndex(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  (e.target as HTMLTextAreaElement).blur();
+                                }
+                              }}
+                              autoFocus
+                              aria-label={`Edit answer for: ${qa.question}`}
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 shrink-0 text-destructive hover:text-destructive"
+                              onClick={() => {
+                                const updated = slotState.clarifyingAnswers.filter((_: AwardClarifyingAnswer, i: number) => i !== index);
+                                onUpdate({ clarifyingAnswers: updated, isDirty: true });
+                                setEditingAnswerIndex(null);
+                              }}
+                              aria-label="Remove this answer"
+                            >
+                              <Trash2 className="size-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingAnswerIndex(index)}
+                            className="w-full text-left text-xs text-muted-foreground p-2 rounded border border-transparent hover:border-border hover:bg-background transition-colors flex items-start gap-2"
+                          >
+                            <span className="flex-1">{qa.answer}</span>
+                            <Pencil className="size-3 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <Separator className="my-2" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[10px] text-muted-foreground hover:text-destructive px-2"
+                      onClick={() => {
+                        onUpdate({ clarifyingAnswers: [], isDirty: true });
+                        setShowSavedDetails(false);
+                      }}
+                    >
+                      <Trash2 className="size-3 mr-1" />
+                      Clear All Details
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Source Toggle */}
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">
@@ -1148,6 +1257,44 @@ function StatementSlotCard({
       )}
         </div>
       )}
+
+      {/* Clarifying Questions Modal */}
+      {nomineeId && activeQuestionSet?.mpaKey === slotMpaKey && (
+        <ClarifyingQuestionsModal
+          onRegenerate={async (clarifyingContext, _mpaKey, answeredQuestions) => {
+            // Merge new answers into persisted clarifying answers
+            if (answeredQuestions && answeredQuestions.length > 0) {
+              const existingAnswers = slotState.clarifyingAnswers || [];
+              const merged = [...existingAnswers];
+              for (const newAnswer of answeredQuestions) {
+                const existingIndex = merged.findIndex(a => a.question === newAnswer.question);
+                if (existingIndex >= 0) {
+                  merged[existingIndex] = newAnswer;
+                } else {
+                  merged.push(newAnswer);
+                }
+              }
+              onUpdate({ clarifyingAnswers: merged, isDirty: true });
+            }
+
+            setGeneratedVersions([]);
+            try {
+              const versions = await onGenerate(
+                undefined,
+                hasContent ? revisionIntensity : undefined,
+                versionCount,
+                clarifyingContext
+              );
+              if (versions && versions.length > 0) {
+                setGeneratedVersions(versions);
+              }
+            } catch (error) {
+              console.error("Regenerate with context error:", error);
+            }
+          }}
+          isRegenerating={slotState.isGenerating}
+        />
+      )}
     </div>
   );
 }
@@ -1163,6 +1310,7 @@ export function AwardCategorySectionCard({
   categoryDescription,
   sections,
   accomplishments,
+  nomineeId,
   nomineeRank,
   nomineeName,
   nomineeAfsc,
@@ -1177,22 +1325,28 @@ export function AwardCategorySectionCard({
   onAddSection,
   onRemoveSection,
 }: AwardCategorySectionProps) {
-  
+
+  const { addQuestionSet } = useClarifyingQuestionsStore();
+  const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
+
   const generateStatement = useCallback(async (
     slotIndex: number, 
     slotState: SectionSlotState,
-    _revisionMode?: "add" | "replace", // Deprecated - LLM handles metric merging intelligently
+    _revisionMode?: "add" | "replace",
     revisionIntensity?: number,
-    versionCount: number = 3
+    versionCount: number = 3,
+    clarifyingContext?: string
   ): Promise<string[]> => {
     onUpdateSlotState(categoryKey, slotIndex, { isGenerating: true });
     
-    // Use per-slot lines setting
     const linesForSlot = slotState.linesPerStatement || 2;
     const existingContent = slotState.draftText?.trim() || "";
     const hasExistingContent = existingContent.length > 0;
     
     try {
+      // Always pass saved clarifying answers for persistent context
+      const savedAnswers = slotState.clarifyingAnswers || [];
+      
       const response = await fetch("/api/generate-award", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1207,7 +1361,6 @@ export function AwardCategorySectionCard({
           versionsPerStatement: versionCount,
           sentencesPerStatement: linesForSlot,
           categoriesToGenerate: [categoryKey],
-          // Existing content for smart revision (LLM handles metric merging intelligently)
           ...(hasExistingContent && {
             existingStatement: existingContent,
             revisionIntensity: revisionIntensity ?? 50,
@@ -1225,6 +1378,8 @@ export function AwardCategorySectionCard({
               }))
             }
           ),
+          ...(clarifyingContext && { clarifyingContext }),
+          ...(savedAnswers.length > 0 && { savedClarifyingAnswers: savedAnswers }),
         }),
       });
 
@@ -1238,11 +1393,37 @@ export function AwardCategorySectionCard({
       }
 
       const data = await response.json();
-      // Extract all versions from the response
-      const versions: string[] = data.statements?.[0]?.statementGroups?.[0]?.versions || [];
+      const categoryResult = data.statements?.[0];
+      const versions: string[] = categoryResult?.statementGroups?.[0]?.versions || [];
+
+      // Store clarifying questions if returned
+      if (categoryResult?.clarifyingQuestions?.length > 0 && nomineeId) {
+        const slotMpaKey = `award:${categoryKey}:${slotIndex}`;
+        addQuestionSet({
+          mpaKey: slotMpaKey,
+          rateeId: nomineeId,
+          originalContext: slotState.customContext || "",
+          sourceContext: {
+            statement1Input: slotState.sourceType === "custom"
+              ? slotState.customContext
+              : accomplishments
+                  .filter(a => slotState.selectedActionIds.includes(a.id))
+                  .map(a => a.action_verb)
+                  .join(", "),
+            statement1Generated: versions[0],
+            mpaLabel: categoryLabel,
+          },
+          questions: categoryResult.clarifyingQuestions.map((q: { question: string; category?: string; hint?: string }) => ({
+            id: `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            question: q.question,
+            category: q.category || "general",
+            hint: q.hint,
+            answer: "",
+          })),
+        });
+      }
       
       onUpdateSlotState(categoryKey, slotIndex, { isGenerating: false });
-      trackGenerationForSurvey();
       toast.success(`Generated ${versions.length} statement${versions.length > 1 ? "s" : ""}!`);
       return versions;
     } catch (error) {
@@ -1251,7 +1432,7 @@ export function AwardCategorySectionCard({
       onUpdateSlotState(categoryKey, slotIndex, { isGenerating: false });
       return [];
     }
-  }, [nomineeRank, nomineeAfsc, nomineeName, model, awardLevel, awardCategory, categoryKey, accomplishments, onUpdateSlotState]);
+  }, [nomineeId, nomineeRank, nomineeAfsc, nomineeName, model, awardLevel, awardCategory, categoryKey, categoryLabel, accomplishments, onUpdateSlotState, addQuestionSet]);
 
   const completedCount = sections.filter(s => s.slotState?.draftText?.trim()).length;
 
@@ -1307,6 +1488,7 @@ export function AwardCategorySectionCard({
       customContext: s.section.custom_context || "",
       selectedActionIds: s.section.selected_action_ids || [],
       linesPerStatement: s.section.lines_per_statement || 2,
+      clarifyingAnswers: s.section.clarifying_answers || [],
     };
   };
 
@@ -1332,9 +1514,6 @@ export function AwardCategorySectionCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <code className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {categoryHeading}
-            </code>
             {isCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </div>
         </div>
@@ -1358,8 +1537,10 @@ export function AwardCategorySectionCard({
                   isCollapsed={collapsedSlots[s.slotIndex] ?? false}
                   onToggleCollapse={() => toggleSlotCollapse(s.slotIndex)}
                   onRemove={() => onRemoveSection(s.slotIndex)}
-                  onGenerate={(revisionMode, revisionIntensity, versionCount) => generateStatement(s.slotIndex, s.slotState || getSlotState(s), revisionMode, revisionIntensity, versionCount)}
+                  onGenerate={(revisionMode, revisionIntensity, versionCount, clarifyingContext) => generateStatement(s.slotIndex, s.slotState || getSlotState(s), revisionMode, revisionIntensity, versionCount, clarifyingContext)}
                   model={model}
+                  nomineeId={nomineeId}
+                  categoryLabel={categoryLabel}
                 />
               </AnimatedHeightWrapper>
             );
