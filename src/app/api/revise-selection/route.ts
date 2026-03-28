@@ -3,7 +3,7 @@ import { generateText, type LanguageModel } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { 
   getUserStyleContext, 
   buildStyleGuidance, 
@@ -20,7 +20,7 @@ import {
 } from "@/lib/quality-control";
 import type { StyleExampleCategory, WritingStyle } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
-import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
+import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -407,11 +407,13 @@ STEP 5: Only output revisions that are ${targetMin}-${maxChars} characters
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "revise_selection", model, userKeys);
     if (!usageCheck.allowed) {
-      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return usageCheck.rateLimited
+        ? handleBurstRateLimited()
+        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
     }
 
     // Cost reduction: force cheapest model for default-key users
-    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+    const effectiveModel = usageCheck.effectiveModel;
     requestModelId = effectiveModel;
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 

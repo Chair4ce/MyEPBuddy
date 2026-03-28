@@ -4,10 +4,10 @@ import { NextResponse } from "next/server";
 import { AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import type { Rank, UserLLMSettings, AwardLevel, AwardCategory, AwardSentencesPerCategory, WinLevel } from "@/types/database";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
-import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
+import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -463,10 +463,12 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_award", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return usageCheck.rateLimited
+        ? handleBurstRateLimited()
+        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
     }
 
-    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+    const effectiveModel = usageCheck.effectiveModel;
     const systemPrompt = buildAwardSystemPrompt(settings, nomineeRank);
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 

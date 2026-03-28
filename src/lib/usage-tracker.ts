@@ -42,14 +42,19 @@ export type BillableAction =
 export interface UsageCheckResult {
   allowed: boolean;
   usingDefaultKey: boolean;
+  effectiveModel: string;
   weeklyUsed: number;
   weeklyLimit: number;
   remainingThisWeek: number;
+  rateLimited?: boolean;
 }
 
 /**
  * Checks whether the user is within their weekly limit (if on the default key)
- * and records the action. Returns usage stats the client can display.
+ * and records the action atomically. Returns usage stats the client can display.
+ *
+ * Uses a Postgres RPC that serializes concurrent requests via row-level locks
+ * to prevent race-condition bypasses of the weekly limit.
  *
  * Call this ONCE at the top of each API route, before the LLM call.
  * If `allowed` is false, return a 429 immediately.
@@ -61,40 +66,78 @@ export async function checkAndTrackUsage(
   userKeys: Partial<DecryptedApiKeys> | null,
 ): Promise<UsageCheckResult> {
   const usingDefault = isUsingDefaultKey(modelId, userKeys);
-  const provider = detectProvider(modelId);
+  const effectiveModel = usingDefault ? DEFAULT_KEY_MODEL : modelId;
+  const provider = detectProvider(effectiveModel);
+  const supabase = await createClient();
+
+  const { data: countAfter, error } = await (supabase.rpc as Function)(
+    "check_and_record_usage",
+    {
+      p_user_id: userId,
+      p_action_type: action,
+      p_used_default_key: usingDefault,
+      p_model_id: effectiveModel,
+      p_provider: provider,
+      p_weekly_limit: WEEKLY_LIMIT,
+    },
+  ) as { data: number | null; error: { message: string } | null };
+
+  if (error) {
+    console.error("[usage-tracker] RPC error:", error.message);
+    return {
+      allowed: !usingDefault,
+      usingDefaultKey: usingDefault,
+      effectiveModel,
+      weeklyUsed: usingDefault ? WEEKLY_LIMIT : 0,
+      weeklyLimit: WEEKLY_LIMIT,
+      remainingThisWeek: 0,
+    };
+  }
+
+  const countResult = countAfter ?? 0;
+
+  // -1 = burst rate limit hit (too many actions in 60 seconds)
+  if (countResult === -1) {
+    return {
+      allowed: false,
+      usingDefaultKey: usingDefault,
+      effectiveModel,
+      weeklyUsed: 0,
+      weeklyLimit: WEEKLY_LIMIT,
+      remainingThisWeek: 0,
+      rateLimited: true,
+    };
+  }
 
   if (!usingDefault) {
-    await recordUsage(userId, action, false, modelId, provider);
     return {
       allowed: true,
       usingDefaultKey: false,
+      effectiveModel,
       weeklyUsed: 0,
       weeklyLimit: Infinity,
       remainingThisWeek: Infinity,
     };
   }
 
-  const weeklyUsed = await getWeeklyDefaultKeyUsage(userId);
-
-  if (weeklyUsed >= WEEKLY_LIMIT) {
+  if (countResult > WEEKLY_LIMIT) {
     return {
       allowed: false,
       usingDefaultKey: true,
-      weeklyUsed,
+      effectiveModel,
+      weeklyUsed: countResult,
       weeklyLimit: WEEKLY_LIMIT,
       remainingThisWeek: 0,
     };
   }
 
-  await recordUsage(userId, action, true, modelId, provider);
-
-  const newCount = weeklyUsed + 1;
   return {
     allowed: true,
     usingDefaultKey: true,
-    weeklyUsed: newCount,
+    effectiveModel,
+    weeklyUsed: countResult,
     weeklyLimit: WEEKLY_LIMIT,
-    remainingThisWeek: WEEKLY_LIMIT - newCount,
+    remainingThisWeek: WEEKLY_LIMIT - countResult,
   };
 }
 
@@ -136,28 +179,6 @@ async function getWeeklyDefaultKeyUsage(userId: string): Promise<number> {
   }
 
   return count ?? 0;
-}
-
-async function recordUsage(
-  userId: string,
-  action: BillableAction,
-  usedDefaultKey: boolean,
-  modelId: string,
-  provider: string,
-): Promise<void> {
-  const supabase = await createClient();
-
-  const { error } = await supabase.from("api_usage").insert({
-    user_id: userId,
-    action_type: action,
-    used_default_key: usedDefaultKey,
-    model_id: modelId,
-    provider,
-  });
-
-  if (error) {
-    console.error("[usage-tracker] Failed to record usage:", error);
-  }
 }
 
 /** Monday 00:00 UTC of the current week */

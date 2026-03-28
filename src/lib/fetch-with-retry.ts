@@ -80,7 +80,7 @@ export async function fetchWithRetry(
           const cloned = response.clone();
           try {
             const body = await cloned.json();
-            if (body?.errorCode === "usage_limit_exceeded") {
+            if (body?.errorCode === "usage_limit_exceeded" || body?.errorCode === "burst_rate_limited") {
               return response;
             }
           } catch {

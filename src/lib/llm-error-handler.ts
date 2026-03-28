@@ -44,7 +44,8 @@ export type LLMErrorCode =
   | "invalid_request"
   | "permission_denied"
   | "generation_failed"
-  | "usage_limit_exceeded";
+  | "usage_limit_exceeded"
+  | "burst_rate_limited";
 
 /**
  * Maps an error from an LLM API call to a user-friendly error response.
@@ -155,7 +156,7 @@ function parseAPICallError(
       return {
         status: 403,
         body: {
-          error: `Access denied by ${providerName}. Your API key may not have permission for this operation. ${providerMessage}`,
+          error: `Access denied by ${providerName}. Your API key may not have permission for this operation. ${sanitizeForUser(providerMessage)}`,
           errorCode: "permission_denied",
           provider: providerName,
         },
@@ -469,6 +470,16 @@ export function handleUsageLimitExceeded(
     {
       error: `You've used all ${weeklyLimit} free AI actions for this week (${weeklyUsed}/${weeklyLimit}). Add your own API key in Settings → API Keys for unlimited usage, or wait until the limit resets next Monday.`,
       errorCode: "usage_limit_exceeded" as LLMErrorCode,
+    },
+    { status: 429 },
+  );
+}
+
+export function handleBurstRateLimited(): NextResponse<LLMErrorResponse> {
+  return NextResponse.json(
+    {
+      error: "You're sending requests too quickly. Please wait a moment and try again.",
+      errorCode: "burst_rate_limited" as LLMErrorCode,
     },
     { status: 429 },
   );

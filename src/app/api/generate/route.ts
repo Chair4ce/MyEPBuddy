@@ -6,8 +6,8 @@ import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, formatMPAContext, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
-import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
 import {
   performQualityControl,
@@ -812,11 +812,13 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate", model, userKeys);
     if (!usageCheck.allowed) {
-      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return usageCheck.rateLimited
+        ? handleBurstRateLimited()
+        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
     }
 
     // Cost reduction: force cheapest model for default-key users
-    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : model;
+    const effectiveModel = usageCheck.effectiveModel;
 
     // Fetch example statements based on AFSC and writing style
     // communityMpaFilter allows filtering to a specific MPA's top 20 examples

@@ -3,13 +3,13 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { buildDecorationSystemPrompt, expandAbbreviations } from "@/lib/decoration-prompts";
 import type { DecorationAwardType, DecorationReason } from "@/lib/decoration-constants";
 import { DECORATION_TYPES } from "@/lib/decoration-constants";
 import type { UserLLMSettings } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
-import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
+import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 /** Format "2025-02-26" → "26 February 2025" for citation display */
 function formatCitationDate(dateStr: string | undefined): string {
@@ -125,10 +125,12 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_decoration", modelId, apiKeys);
     if (!usageCheck.allowed) {
-      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return usageCheck.rateLimited
+        ? handleBurstRateLimited()
+        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
     }
 
-    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : modelId;
+    const effectiveModel = usageCheck.effectiveModel;
     const modelProvider = getModelProvider(effectiveModel, apiKeys);
     
     // Load user LLM settings for custom decoration prompt, rank verbs, and abbreviations

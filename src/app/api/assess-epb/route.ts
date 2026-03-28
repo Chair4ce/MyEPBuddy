@@ -3,11 +3,11 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
-import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
+import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -125,10 +125,12 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "assess_epb", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return usageCheck.rateLimited
+        ? handleBurstRateLimited()
+        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
     }
 
-    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : modelId;
+    const effectiveModel = usageCheck.effectiveModel;
 
     // Build the assessment prompt
     // Use duty description from request or fall back to what's stored in the shell

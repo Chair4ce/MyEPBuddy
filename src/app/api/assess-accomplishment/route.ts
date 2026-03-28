@@ -3,7 +3,7 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded } from "@/lib/llm-error-handler";
+import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { 
   DEFAULT_MPA_DESCRIPTIONS, 
   ENTRY_MGAS,
@@ -15,7 +15,7 @@ import {
 import type { Rank } from "@/types/database";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
-import { checkAndTrackUsage, DEFAULT_KEY_MODEL } from "@/lib/usage-tracker";
+import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -257,10 +257,12 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "assess_accomplishment", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return usageCheck.rateLimited
+        ? handleBurstRateLimited()
+        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
     }
 
-    const effectiveModel = usageCheck.usingDefaultKey ? DEFAULT_KEY_MODEL : modelId;
+    const effectiveModel = usageCheck.effectiveModel;
 
     // Build the assessment prompt with rank-appropriate ACA rubric
     const assessmentPrompt = buildAccomplishmentAssessmentPrompt(
