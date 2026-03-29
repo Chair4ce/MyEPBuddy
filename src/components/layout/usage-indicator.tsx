@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -23,14 +23,20 @@ interface UsageIndicatorProps {
   isCollapsed: boolean;
 }
 
+const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
 export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
   const [stats, setStats] = useState<UsageStats | null>(null);
+  const hasOwnKeyRef = useRef(false);
 
   const fetchStats = useCallback(async () => {
+    if (hasOwnKeyRef.current) return;
     try {
       const res = await fetch("/api/usage");
       if (res.ok) {
-        setStats(await res.json());
+        const data: UsageStats = await res.json();
+        setStats(data);
+        hasOwnKeyRef.current = data.hasOwnKey;
       }
     } catch {
       // Silent fail — indicator is non-critical
@@ -40,12 +46,21 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
   useEffect(() => {
     fetchStats();
 
-    // Re-check every 60s in case usage changed in another tab
-    const interval = setInterval(fetchStats, 60_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchStats, POLL_INTERVAL);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && !hasOwnKeyRef.current) {
+        fetchStats();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchStats]);
 
-  // Don't render for users with their own API key
   if (!stats || stats.hasOwnKey) return null;
 
   const pct = Math.round((stats.weeklyUsed / stats.weeklyLimit) * 100);
