@@ -87,6 +87,8 @@ interface AwardCategorySectionProps {
   onUpdateSlotState: (category: string, slotIndex: number, updates: Partial<SectionSlotState>) => void;
   onAddSection: () => void;
   onRemoveSection: (slotIndex: number) => void;
+  isRemovable?: boolean;
+  onRemoveCategory?: () => void;
 }
 
 // ============================================================================
@@ -1324,6 +1326,8 @@ export function AwardCategorySectionCard({
   onUpdateSlotState,
   onAddSection,
   onRemoveSection,
+  isRemovable,
+  onRemoveCategory,
 }: AwardCategorySectionProps) {
 
   const { addQuestionSet } = useClarifyingQuestionsStore();
@@ -1514,6 +1518,25 @@ export function AwardCategorySectionCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {isRemovable && onRemoveCategory && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveCategory();
+                    }}
+                    aria-label={`Remove ${categoryLabel}`}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Remove {categoryLabel}</TooltipContent>
+              </Tooltip>
+            )}
             {isCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </div>
         </div>

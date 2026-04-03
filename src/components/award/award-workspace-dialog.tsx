@@ -54,6 +54,7 @@ import {
   CalendarDays,
   MoreVertical,
   Settings2,
+  Plus,
 } from "lucide-react";
 import {
   Collapsible,
@@ -198,6 +199,10 @@ export function AwardWorkspaceDialog({
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
   const [dismissedLandscapeHint, setDismissedLandscapeHint] = useState(false);
 
+  // Hidden categories (e.g. WAC can be removed)
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
+  const pendingDeleteSectionIdsRef = useRef<Set<string>>(new Set());
+
   // ============================================================================
   // Effects
   // ============================================================================
@@ -256,6 +261,20 @@ export function AwardWorkspaceDialog({
           // Update period dates
           setPeriodStartDate(typedShellData.period_start_date || "");
           setPeriodEndDate(typedShellData.period_end_date || "");
+
+          // Auto-detect hidden WAC: if primary_duty has sections but WAC has none,
+          // the user previously removed it
+          const hasPrimaryDutySections = sectionsData.some(
+            (s) => s.category === "performance_in_primary_duty"
+          );
+          const hasWacSections = sectionsData.some(
+            (s) => s.category === "whole_airman_concept"
+          );
+          if (hasPrimaryDutySections && !hasWacSections) {
+            setHiddenCategories(new Set(["whole_airman_concept"]));
+          } else {
+            setHiddenCategories(new Set());
+          }
         }
       } catch (error) {
         console.error("Error loading shell data:", error);
@@ -346,6 +365,8 @@ export function AwardWorkspaceDialog({
       setPeriodStartDate("");
       setPeriodEndDate("");
       setDismissedLandscapeHint(false);
+      setHiddenCategories(new Set());
+      pendingDeleteSectionIdsRef.current = new Set();
     }
   }, [open, reset]);
 
@@ -385,6 +406,16 @@ export function AwardWorkspaceDialog({
           period_end_date: periodEndDate || null,
         } as never)
         .eq("id", shellId);
+
+      // Delete sections that were removed (e.g. when WAC category was hidden)
+      if (pendingDeleteSectionIdsRef.current.size > 0) {
+        const idsToDelete = Array.from(pendingDeleteSectionIdsRef.current);
+        await supabase
+          .from("award_shell_sections")
+          .delete()
+          .in("id", idsToDelete);
+        pendingDeleteSectionIdsRef.current = new Set();
+      }
 
       // Save all sections
       for (const [key, slotState] of Object.entries(slotStates)) {
@@ -441,11 +472,46 @@ export function AwardWorkspaceDialog({
     onSaved?.();
   }, [onOpenChange, onSaved]);
 
+  // Remove an optional category (e.g. Whole Airman Concept)
+  const handleRemoveCategory = useCallback((categoryKey: string) => {
+    // Collect real (non-temp) section IDs for DB deletion on next save
+    Object.entries(sections).forEach(([key, section]) => {
+      if (key.startsWith(`${categoryKey}:`)) {
+        if (section.id && !section.id.startsWith("temp-")) {
+          pendingDeleteSectionIdsRef.current.add(section.id);
+        }
+        const slotIndex = parseInt(key.split(":")[1]);
+        removeSection(categoryKey, slotIndex);
+      }
+    });
+    setHiddenCategories((prev) => new Set([...prev, categoryKey]));
+  }, [sections, removeSection]);
+
+  // Re-add a previously removed category
+  const handleAddCategory = useCallback((categoryKey: string) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev);
+      next.delete(categoryKey);
+      return next;
+    });
+    // Clear any pending deletions for this category so they aren't removed on save
+    const idsToKeep = new Set(pendingDeleteSectionIdsRef.current);
+    // We don't restore old sections; user starts fresh with an empty section
+    pendingDeleteSectionIdsRef.current = idsToKeep;
+    addSection(categoryKey);
+  }, [addSection]);
+
+  // Categories visible in the workspace (excludes user-hidden ones)
+  const visibleCategories = useMemo(
+    () => AWARD_1206_CATEGORIES.filter((cat) => !hiddenCategories.has(cat.key)),
+    [hiddenCategories]
+  );
+
   // Combine all statements for preview - formatted like AF Form 1206
   const allStatementsForPreview = useMemo(() => {
     const lines: string[] = [];
 
-    AWARD_1206_CATEGORIES.forEach((cat) => {
+    visibleCategories.forEach((cat) => {
       const texts: string[] = [];
       Object.entries(slotStates).forEach(([key, state]) => {
         if (key.startsWith(`${cat.key}:`) && state.draftText.trim()) {
@@ -471,7 +537,7 @@ export function AwardWorkspaceDialog({
     }
 
     return lines.join("\n");
-  }, [slotStates]);
+  }, [slotStates, visibleCategories]);
 
   // State for editable preview text
   const [previewText, setPreviewText] = useState("");
@@ -574,6 +640,16 @@ export function AwardWorkspaceDialog({
           period_end_date: periodEndDate || null,
         } as never)
         .eq("id", shellId);
+
+      // Delete sections that were removed (e.g. when WAC category was hidden)
+      if (pendingDeleteSectionIdsRef.current.size > 0) {
+        const idsToDelete = Array.from(pendingDeleteSectionIdsRef.current);
+        await supabase
+          .from("award_shell_sections")
+          .delete()
+          .in("id", idsToDelete);
+        pendingDeleteSectionIdsRef.current = new Set();
+      }
 
       // Save all sections
       for (const [key, slotState] of Object.entries(slotStates)) {
@@ -1025,8 +1101,9 @@ export function AwardWorkspaceDialog({
               ) : (
                 /* Category Sections */
                 <div className="space-y-4">
-                  {AWARD_1206_CATEGORIES.map((cat) => {
+                  {visibleCategories.map((cat) => {
                     const categorySections = getSectionsForCategory(cat.key);
+                    const isOptional = cat.key === "whole_airman_concept";
 
                     return (
                       <AwardCategorySectionCard
@@ -1053,9 +1130,23 @@ export function AwardWorkspaceDialog({
                         onRemoveSection={(slotIndex) =>
                           removeSection(cat.key, slotIndex)
                         }
+                        isRemovable={isOptional && canEdit}
+                        onRemoveCategory={isOptional ? () => handleRemoveCategory(cat.key) : undefined}
                       />
                     );
                   })}
+
+                  {/* Add back hidden optional categories */}
+                  {hiddenCategories.has("whole_airman_concept") && canEdit && (
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2 border-dashed"
+                      onClick={() => handleAddCategory("whole_airman_concept")}
+                    >
+                      <Plus className="size-4" />
+                      Add Whole Airman Concept
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -1187,14 +1278,16 @@ export function AwardWorkspaceDialog({
           contentSnapshot={{
             title: currentShell.title || AWARD_CATEGORIES.find((c) => c.value === currentShell.award_category)?.label || currentShell.award_category,
             cycleYear: currentShell.cycle_year,
-            sections: Object.entries(slotStates).map(([key, state]) => {
-              const category = key.split(":")[0];
-              return {
-                key: category,
-                label: AWARD_1206_CATEGORIES.find((c) => c.key === category)?.label || category,
-                content: state.draftText,
-              };
-            }),
+            sections: Object.entries(slotStates)
+              .filter(([key]) => !hiddenCategories.has(key.split(":")[0]))
+              .map(([key, state]) => {
+                const category = key.split(":")[0];
+                return {
+                  key: category,
+                  label: AWARD_1206_CATEGORIES.find((c) => c.key === category)?.label || category,
+                  content: state.draftText,
+                };
+              }),
           }}
         />
       )}
