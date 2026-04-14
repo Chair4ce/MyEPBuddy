@@ -308,7 +308,7 @@ export function MemberStatementsDialog({
                 className="mt-4"
                 onClick={() => {
                   setOpen(false);
-                  window.location.href = "/generate";
+                  window.location.href = "/epb";
                 }}
               >
                 <ExternalLink className="size-4 mr-2" />

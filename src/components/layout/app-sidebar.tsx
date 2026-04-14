@@ -79,7 +79,7 @@ const navItems = [
   },
   {
     title: "EPBs",
-    href: "/generate",
+    href: "/epb",
     icon: Sparkles,
     roles: ["member", "admin"],
     tourId: "nav-epbs",

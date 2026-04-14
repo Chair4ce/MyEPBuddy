@@ -103,7 +103,7 @@ export default function DashboardPage() {
         )}
         {!userIsOfficer ? (
           <Button variant="outline" asChild>
-            <Link href="/generate">
+            <Link href="/epb">
               <Sparkles className="size-4 mr-2" />
               Generate EPB
             </Link>

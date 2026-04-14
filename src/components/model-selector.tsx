@@ -3,6 +3,10 @@
 import { useState, useEffect } from "react";
 import { AI_MODELS, type ModelQuality } from "@/lib/constants";
 import { type KeyStatus, getKeyStatus } from "@/app/actions/api-keys";
+import {
+  getAppDefaultModelId,
+  isModelAvailableForStatus,
+} from "@/lib/model-preferences";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -83,6 +87,7 @@ export function ModelSelector({
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(
     externalKeyStatus ?? null
   );
+  const defaultModelId = getAppDefaultModelId();
 
   // Fetch key status if not provided externally
   useEffect(() => {
@@ -105,17 +110,24 @@ export function ModelSelector({
   const selectedModel = AI_MODELS.find((m) => m.id === value);
 
   function isModelAvailable(model: (typeof AI_MODELS)[number]): boolean {
-    // App default model (Gemini Flash) is always available
-    if ("isAppDefault" in model && model.isAppDefault) return true;
-    if (!keyStatus) return false;
-    const keyName = PROVIDER_KEY_MAP[model.provider];
-    return keyName ? keyStatus[keyName] : false;
+    return isModelAvailableForStatus(model.id, keyStatus);
   }
 
   function handleSelect(modelId: string) {
+    const model = AI_MODELS.find((entry) => entry.id === modelId);
+    if (!model || !isModelAvailable(model)) return;
     onValueChange(modelId);
     setOpen(false);
   }
+
+  useEffect(() => {
+    if (!keyStatus) return;
+    if (value === defaultModelId) return;
+
+    if (!isModelAvailableForStatus(value, keyStatus)) {
+      onValueChange(defaultModelId);
+    }
+  }, [defaultModelId, keyStatus, onValueChange, value]);
 
   const selectedQuality = selectedModel
     ? QUALITY_CONFIG[selectedModel.quality]

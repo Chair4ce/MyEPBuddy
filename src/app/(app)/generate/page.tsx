@@ -34,6 +34,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { AI_MODELS, STANDARD_MGAS, ENTRY_MGAS, getActiveCycleYear, isOfficer, isEnlisted } from "@/lib/constants";
 import { ModelSelector } from "@/components/model-selector";
+import {
+  EPB_MODEL_PREFERENCE_STORAGE_KEY,
+  getStoredModelPreference,
+  setStoredModelPreference,
+} from "@/lib/model-preferences";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -68,7 +73,9 @@ export default function GeneratePage() {
   const { profile, subordinates, managedMembers } = useUserStore();
   const { selectedRatee, setSelectedRatee, currentShell, setCurrentShell, sections: shellSections, updateSection, resetShellData } = useEPBShellStore();
   
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
+  const [selectedModel, setSelectedModel] = useState<string>(() =>
+    getStoredModelPreference(EPB_MODEL_PREFERENCE_STORAGE_KEY),
+  );
   const [writingStyle, setWritingStyle] = useState<WritingStyle>("personal");
   const [hasChain, setHasChain] = useState(false); // Whether user has a supervisor chain
   const [communityMpaFilter, setCommunityMpaFilter] = useState<string>("all");
@@ -399,6 +406,10 @@ export default function GeneratePage() {
     : accomplishments;
 
   const selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
+  const handleModelSelectionChange = useCallback((model: string) => {
+    setSelectedModel(model);
+    setStoredModelPreference(EPB_MODEL_PREFERENCE_STORAGE_KEY, model);
+  }, []);
 
   // Clear shell data on unmount but preserve selectedRatee for navigation persistence
   useEffect(() => {
@@ -796,7 +807,7 @@ export default function GeneratePage() {
                   <Label>AI Model</Label>
                   <ModelSelector
                     value={selectedModel}
-                    onValueChange={setSelectedModel}
+                    onValueChange={handleModelSelectionChange}
                   />
                 </div>
 

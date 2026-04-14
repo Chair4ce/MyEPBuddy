@@ -1250,7 +1250,7 @@ export default function LLMSettingsPage() {
                   but these settings are still used when generating EPB statements for your enlisted subordinates.
                 </p>
                 <p className="text-xs text-blue-600 dark:text-blue-400">
-                  Access your OPB workspace from the <Link href="/generate" className="underline hover:text-blue-500">Generate page</Link> using the &quot;My OPB&quot; toggle.
+                  Access your OPB workspace from the <Link href="/epb" className="underline hover:text-blue-500">EPB page</Link> using the &quot;My OPB&quot; toggle.
                 </p>
               </div>
             </div>

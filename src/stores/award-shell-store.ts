@@ -1,5 +1,10 @@
 import { create } from "zustand";
 import type { AwardShell, AwardShellSection, AwardShellSnapshot, AwardClarifyingAnswer, Rank, AwardLevel, AwardCategory } from "@/types/database";
+import {
+  AWARD_MODEL_PREFERENCE_STORAGE_KEY,
+  getStoredModelPreference,
+  setStoredModelPreference,
+} from "@/lib/model-preferences";
 
 // Source type for statement generation
 export type SourceType = "actions" | "custom";
@@ -122,6 +127,7 @@ const getDefaultSlotState = (): SectionSlotState => ({
 });
 
 const getSectionKey = (category: string, slotIndex: number) => `${category}:${slotIndex}`;
+const getInitialAwardModel = () => getStoredModelPreference(AWARD_MODEL_PREFERENCE_STORAGE_KEY);
 
 export const useAwardShellStore = create<AwardShellState>((set, get) => ({
   selectedNominee: null,
@@ -135,7 +141,7 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
   sentencesPerStatement: 2,
   isLoadingShell: false,
   isCreatingShell: false,
-  selectedModel: "gemini-2.0-flash",
+  selectedModel: getInitialAwardModel(),
   
   setSelectedNominee: (nominee) => set({ selectedNominee: nominee }),
   
@@ -320,7 +326,10 @@ export const useAwardShellStore = create<AwardShellState>((set, get) => ({
   setAwardLevel: (level) => set({ awardLevel: level }),
   setAwardCategory: (category) => set({ awardCategory: category }),
   setSentencesPerStatement: (count) => set({ sentencesPerStatement: count }),
-  setSelectedModel: (model) => set({ selectedModel: model }),
+  setSelectedModel: (model) => {
+    setStoredModelPreference(AWARD_MODEL_PREFERENCE_STORAGE_KEY, model);
+    set({ selectedModel: model });
+  },
   
   setIsLoadingShell: (loading) => set({ isLoadingShell: loading }),
   setIsCreatingShell: (creating) => set({ isCreatingShell: creating }),
