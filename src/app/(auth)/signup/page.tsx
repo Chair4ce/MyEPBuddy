@@ -254,6 +254,15 @@ export default function SignupPage() {
             </div>
           </div>
 
+          <div className="rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2.5 dark:border-amber-700 dark:bg-amber-900/20">
+            <p className="text-xs font-medium text-amber-900 dark:text-amber-100">
+              Email deliverability tip
+            </p>
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+              Verification emails sent to <span className="font-semibold">us.af.mil</span> addresses may take longer to arrive and can end up in spam/quarantine. A personal email or phone sign-in is usually faster.
+            </p>
+          </div>
+
           <form onSubmit={handleEmailSignup} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

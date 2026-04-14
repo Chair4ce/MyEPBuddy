@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +15,6 @@ import { toast } from "sonner";
 
 export function FeedbackButton() {
   const { profile } = useUserStore();
-  const supabase = createClient();
   const pathname = usePathname();
 
   const [open, setOpen] = useState(false);
@@ -34,14 +32,25 @@ export function FeedbackButton() {
     setIsSubmitting(true);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from("user_feedback").insert({
-        user_id: profile.id,
-        feature: feature,
-        feedback: trimmed,
+      const response = await fetch("/api/user-feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          feature,
+          feedback: trimmed,
+        }),
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        const message =
+          typeof result.error === "string"
+            ? result.error
+            : "Failed to submit feedback. Please try again.";
+        throw new Error(message);
+      }
 
       toast.success("Thank you for your feedback!");
       setFeedback("");
@@ -53,7 +62,11 @@ export function FeedbackButton() {
       }, 3000);
     } catch (error) {
       console.error("Error submitting feedback:", error);
-      toast.error("Failed to submit feedback. Please try again.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to submit feedback. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
