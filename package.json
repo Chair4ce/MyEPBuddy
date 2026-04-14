@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "(docker ps --format '{{.Names}}' | grep -q 'supabase_db_myepbuddy' || supabase start) && next dev --turbopack",
-    "prebuild": "node scripts/generate-version.js",
+    "clean:next": "rm -rf .next",
+    "prebuild": "npm run clean:next && node scripts/generate-version.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
