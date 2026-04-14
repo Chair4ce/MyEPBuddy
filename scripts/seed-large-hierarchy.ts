@@ -16,8 +16,30 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "http://127.0.0.1:54321";
-const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+function isLocalSupabaseUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("❌ Missing required environment variables:");
+  console.error("   - SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)");
+  console.error("   - SUPABASE_SERVICE_ROLE_KEY");
+  process.exit(1);
+}
+
+if (!isLocalSupabaseUrl(SUPABASE_URL)) {
+  console.error("❌ Safety check failed: seed-large-hierarchy only runs against local Supabase.");
+  console.error(`   Received SUPABASE_URL: ${SUPABASE_URL}`);
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
