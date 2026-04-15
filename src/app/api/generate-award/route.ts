@@ -710,7 +710,7 @@ Format as JSON array (EACH statement must start with "- "):
             system: systemPrompt,
             prompt: customPrompt,
             temperature: 0.8,
-            maxTokens: 2000,
+            maxOutputTokens: 2000,
           });
 
           let versions: string[] = [];
@@ -908,7 +908,7 @@ Format as JSON array of arrays (EACH statement must start with "- "):
             system: systemPrompt,
             prompt: combinedPrompt,
             temperature: 0.75,
-            maxTokens: 3000,
+            maxOutputTokens: 3000,
           });
 
           let clarifyingQuestions: ClarifyingQuestionResponse[] = [];
@@ -1048,7 +1048,7 @@ Format as JSON array of arrays (EACH statement must start with "- "):
               system: systemPrompt,
               prompt: individualPrompt,
               temperature: 0.75,
-              maxTokens: 2000,
+              maxOutputTokens: 2000,
             });
 
             let questionsParsed: ClarifyingQuestionResponse[] = [];

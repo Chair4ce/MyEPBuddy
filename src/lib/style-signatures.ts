@@ -276,7 +276,7 @@ export async function generateStyleSignature(
     model: openai("gpt-4o-mini"),
     system: FINGERPRINT_META_PROMPT,
     prompt: userPrompt,
-    maxTokens: 800,
+    maxOutputTokens: 800,
     temperature: 0.3, // Low temperature for consistent analysis
   });
 

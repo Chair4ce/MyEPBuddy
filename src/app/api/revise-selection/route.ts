@@ -540,7 +540,7 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.8,
-      maxTokens: 500,
+      maxOutputTokens: 500,
     });
 
     let revisions: string[] = [];

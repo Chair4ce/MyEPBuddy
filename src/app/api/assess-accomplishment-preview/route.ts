@@ -241,7 +241,7 @@ export async function POST(request: Request) {
       model: modelProvider,
       prompt: assessmentPrompt,
       temperature: 0.2,
-      maxTokens: 1500,
+      maxOutputTokens: 1500,
     });
 
     // Parse the response

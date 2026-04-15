@@ -495,7 +495,7 @@ export async function performQualityControl(
       system: buildQCSystemPrompt(),
       prompt: qcPrompt,
       temperature: 0.3, // Lower temp for more consistent evaluation
-      maxTokens: 2000, // Enough for multiple statements + evaluation
+      maxOutputTokens: 2000, // Enough for multiple statements + evaluation
     });
 
     // Parse the QC response

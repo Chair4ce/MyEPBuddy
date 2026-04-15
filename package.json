@@ -17,10 +17,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.2.0",
-    "@ai-sdk/google": "^1.2.0",
-    "@ai-sdk/openai": "^1.2.0",
-    "@ai-sdk/xai": "^1.2.0",
+    "@ai-sdk/anthropic": "^2.0.74",
+    "@ai-sdk/google": "^2.0.68",
+    "@ai-sdk/openai": "^2.0.102",
+    "@ai-sdk/xai": "^2.0.67",
     "@hugeicons/core-free-icons": "^1.0.2",
     "@hugeicons/react": "^0.4.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -47,7 +47,7 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.12",
     "@vercel/analytics": "^1.6.1",
-    "ai": "^4.1.0",
+    "ai": "^5.0.173",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

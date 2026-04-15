@@ -99,7 +99,7 @@ Output as a JSON array of 3 strings (each starting with "- "):
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.7,
-      maxTokens: 1500,
+      maxOutputTokens: 1500,
     });
 
     let versions: string[] = [];

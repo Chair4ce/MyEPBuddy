@@ -220,7 +220,7 @@ HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} ch
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.5,
-      maxTokens: 1200,
+      maxOutputTokens: 1200,
     });
     
     // Post-process: strip line breaks (citation must be a single paragraph) and expand abbreviations

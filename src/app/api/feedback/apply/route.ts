@@ -268,7 +268,7 @@ Return valid JSON:`;
         system: systemPrompt,
         prompt: userPrompt,
         temperature: 0.1, // Low temperature for precise edits
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
       });
       text = result.text;
     } catch (llmError) {

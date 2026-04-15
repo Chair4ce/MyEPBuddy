@@ -281,7 +281,7 @@ export async function enforceCharacterLimits(
         system: `You are a precise text editor. Your ONLY job is to adjust the character count of a statement to meet exact requirements. You must be meticulous about counting characters. Every letter, number, space, and punctuation mark counts.`,
         prompt: correctionPrompt,
         temperature: 0.3, // Lower temperature for more precise adjustments
-        maxTokens: 500,
+        maxOutputTokens: 500,
       });
       
       // Clean the output

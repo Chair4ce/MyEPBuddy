@@ -211,7 +211,7 @@ Format as JSON array only:
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.75,
-      maxTokens: 1500,
+      maxOutputTokens: 1500,
     });
 
     let statements: string[] = [];

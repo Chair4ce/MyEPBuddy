@@ -110,7 +110,7 @@ Return ONLY a JSON array of strings:
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.7,
-      maxTokens: 500,
+      maxOutputTokens: 500,
     });
 
     let synonyms: string[] = [];

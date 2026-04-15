@@ -152,7 +152,7 @@ export async function POST(request: Request) {
       system: `You are an expert Air Force performance evaluator. You assess EPB statements using the official ACA (Airman Comprehensive Assessment) rubric from AF Form 931 (for AB through TSgt) or AF Form 932 (for MSgt through SMSgt). Respond only with valid JSON.`,
       prompt: assessmentPrompt,
       temperature: 0.3, // Lower temperature for more consistent evaluations
-      maxTokens: 4000,
+      maxOutputTokens: 4000,
     });
 
     // Parse the response

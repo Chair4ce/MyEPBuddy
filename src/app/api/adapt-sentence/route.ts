@@ -94,7 +94,7 @@ Return ONLY the adapted statement (both sentences combined). Do not include any 
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.7,
-      maxTokens: 500,
+      maxOutputTokens: 500,
     });
 
     const adaptedStatement = text.trim();

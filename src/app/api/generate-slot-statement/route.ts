@@ -138,7 +138,7 @@ Output ONLY the statement (no period at the end).`;
       system: systemPrompt,
       prompt: userPrompt,
       temperature: 0.7,
-      maxTokens: 500,
+      maxOutputTokens: 500,
     });
 
     // Clean up the response

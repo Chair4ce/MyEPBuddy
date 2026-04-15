@@ -1538,7 +1538,7 @@ Output ONLY the statement text, no quotes or JSON.`;
               system: systemPrompt,
               prompt: perAccPrompt,
               temperature: 0.7,
-              maxTokens: 500,
+              maxOutputTokens: 500,
             });
             
             const cleanedStatement = accText.trim().replace(/^["']|["']$/g, "");
@@ -1738,7 +1738,7 @@ ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about
           system: systemPrompt,
           prompt: finalPrompt,
           temperature: 0.75, // Slightly higher for creative expansion
-          maxTokens: 2500, // Increased to allow room for clarifying questions JSON
+          maxOutputTokens: 2500, // Increased to allow room for clarifying questions JSON
         });
 
         let statements: string[] = [];

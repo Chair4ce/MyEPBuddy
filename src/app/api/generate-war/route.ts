@@ -212,7 +212,7 @@ export async function POST(request: Request) {
       model: modelProvider,
       prompt,
       temperature: 0.3, // Lower temperature for more consistent output
-      maxTokens: 2000,
+      maxOutputTokens: 2000,
     });
 
     // Parse the JSON response

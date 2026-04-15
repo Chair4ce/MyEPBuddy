@@ -184,7 +184,7 @@ export async function POST(request: Request) {
       system: systemPrompt,
       prompt: `Parse the following EPB text and extract individual performance statements:\n\n${cleanedText}`,
       temperature: 0.3, // Lower temperature for more consistent parsing
-      maxTokens: 4000,
+      maxOutputTokens: 4000,
     });
 
     // Parse the LLM response
