@@ -1,5 +1,7 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 import type { ManagedMember, Rank } from "@/types/database";
+
+type BrowserSupabaseClient = ReturnType<typeof createClient>;
 
 export interface ExistingUserMatch {
   id: string;
@@ -18,7 +20,7 @@ export interface CreateManagedMemberInput {
 }
 
 export async function lookupProfileByEmail(
-  supabase: SupabaseClient,
+  supabase: BrowserSupabaseClient,
   email: string
 ): Promise<ExistingUserMatch | null> {
   const normalizedEmail = email.trim().toLowerCase();
@@ -32,20 +34,21 @@ export async function lookupProfileByEmail(
     .eq("email", normalizedEmail)
     .maybeSingle();
 
-  if (!existingProfile) {
+  const profile = existingProfile as ExistingUserMatch | null;
+  if (!profile) {
     return null;
   }
 
   return {
-    id: existingProfile.id,
-    email: existingProfile.email || normalizedEmail,
-    full_name: existingProfile.full_name,
-    rank: existingProfile.rank as Rank | null,
+    id: profile.id,
+    email: profile.email || normalizedEmail,
+    full_name: profile.full_name,
+    rank: profile.rank,
   };
 }
 
 export async function createManagedTeamMember(
-  supabase: SupabaseClient,
+  supabase: BrowserSupabaseClient,
   input: CreateManagedMemberInput
 ): Promise<{ member: ManagedMember; existingMatch: ExistingUserMatch | null }> {
   const email = input.email?.trim().toLowerCase() || null;
