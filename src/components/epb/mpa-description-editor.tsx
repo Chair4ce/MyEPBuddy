@@ -1,317 +1,262 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { createPortal } from "react-dom";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useRef } from "react";
 import { useUserStore } from "@/stores/user-store";
+import { useEPBShellStore } from "@/stores/epb-shell-store";
 import { cn } from "@/lib/utils";
-import { toast } from "@/components/ui/sonner";
-import { Label } from "@/components/ui/label";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Info, Save, Loader2, X, Pencil } from "lucide-react";
-import type { MPADescriptions, MPADescription, UserLLMSettings } from "@/types/database";
-import { DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
+import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
+import { Info, Loader2, X } from "lucide-react";
 
-interface MpaDescriptionEditorProps {
+/** MPAs shown in the reference panel (excludes Miscellaneous) */
+const REFERENCE_MPAS = STANDARD_MGAS.filter((mpa) => mpa.key !== "miscellaneous");
+
+interface MpaDescriptionToggleButtonProps {
   mpaKey: string;
 }
 
-export function MpaDescriptionEditor({ mpaKey }: MpaDescriptionEditorProps) {
+export function MpaDescriptionToggleButton({ mpaKey }: MpaDescriptionToggleButtonProps) {
   const { profile } = useUserStore();
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const mpaDescriptionDrawerOpen = useEPBShellStore((s) => s.mpaDescriptionDrawerOpen);
+  const focusedMpaKey = useEPBShellStore((s) => s.focusedMpaKey);
+  const toggleMpaDescriptionDrawer = useEPBShellStore((s) => s.toggleMpaDescriptionDrawer);
+  const fetchMpaDescriptions = useEPBShellStore((s) => s.fetchMpaDescriptions);
+  const isLoadingMpaDescriptions = useEPBShellStore((s) => s.isLoadingMpaDescriptions);
 
-  const [description, setDescription] = useState("");
-  const [subCompetencies, setSubCompetencies] = useState<Record<string, string>>({});
-  const [initialDescription, setInitialDescription] = useState("");
-  const [initialSubCompetencies, setInitialSubCompetencies] = useState<Record<string, string>>({});
+  const isActive = mpaDescriptionDrawerOpen && focusedMpaKey === mpaKey;
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
-
-  const defaults = DEFAULT_MPA_DESCRIPTIONS[mpaKey];
-
-  const hasChanges =
-    description !== initialDescription ||
-    JSON.stringify(subCompetencies) !== JSON.stringify(initialSubCompetencies);
-
-  const loadDescription = useCallback(async () => {
-    if (!profile) return;
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("user_llm_settings")
-        .select("mpa_descriptions")
-        .eq("user_id", profile.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      const row = data as Record<string, unknown> | null;
-      const descriptions = (row?.mpa_descriptions as MPADescriptions) || DEFAULT_MPA_DESCRIPTIONS;
-      const mpa = descriptions[mpaKey] || defaults;
-
-      setDescription(mpa?.description || "");
-      setSubCompetencies({ ...(mpa?.sub_competencies || {}) });
-      setInitialDescription(mpa?.description || "");
-      setInitialSubCompetencies({ ...(mpa?.sub_competencies || {}) });
-    } catch (error) {
-      console.error("Failed to load MPA description:", error);
-      if (defaults) {
-        setDescription(defaults.description);
-        setSubCompetencies({ ...defaults.sub_competencies });
-        setInitialDescription(defaults.description);
-        setInitialSubCompetencies({ ...defaults.sub_competencies });
-      }
-    } finally {
-      setIsLoading(false);
+  const handleClick = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (profile?.id) {
+      await fetchMpaDescriptions(profile.id);
     }
-  }, [profile, supabase, mpaKey, defaults]);
-
-  useEffect(() => {
-    if (isOpen && profile) {
-      loadDescription();
+    const wasOpen = mpaDescriptionDrawerOpen;
+    const wasSameKey = focusedMpaKey === mpaKey;
+    toggleMpaDescriptionDrawer(mpaKey);
+    if (!wasOpen || !wasSameKey) {
+      scrollMpaDescriptionPanelTo(mpaKey);
     }
-  }, [isOpen, profile, loadDescription]);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        if (!hasChanges) {
-          setIsOpen(false);
-          setIsEditing(false);
-        }
-      }
-    };
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsOpen(false);
-        setIsEditing(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [isOpen, hasChanges]);
-
-  const handleSave = async () => {
-    if (!profile) return;
-    setIsSaving(true);
-    try {
-      const { data: existing } = await supabase
-        .from("user_llm_settings")
-        .select("mpa_descriptions")
-        .eq("user_id", profile.id)
-        .maybeSingle();
-
-      const existingRow = existing as Record<string, unknown> | null;
-      const currentDescriptions = (existingRow?.mpa_descriptions as MPADescriptions) || { ...DEFAULT_MPA_DESCRIPTIONS };
-
-      const updated: MPADescriptions = {
-        ...currentDescriptions,
-        [mpaKey]: {
-          title: defaults?.title || mpaKey,
-          description,
-          sub_competencies: subCompetencies,
-        },
-      };
-
-      if (existing) {
-        const { error } = await supabase
-          .from("user_llm_settings")
-          .update({ mpa_descriptions: updated } as never)
-          .eq("user_id", profile.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("user_llm_settings")
-          .insert({ user_id: profile.id, mpa_descriptions: updated } as never);
-        if (error) throw error;
-      }
-
-      setInitialDescription(description);
-      setInitialSubCompetencies({ ...subCompetencies });
-      setIsEditing(false);
-      toast.success("MPA description saved");
-    } catch (error) {
-      console.error("Failed to save MPA description:", error);
-      toast.error("Failed to save");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setDescription(initialDescription);
-    setSubCompetencies({ ...initialSubCompetencies });
-    setIsEditing(false);
-  };
-
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-
-  // Recalculate position when opening
-  useEffect(() => {
-    if (isOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const panelWidth = window.innerWidth < 640 ? Math.min(320, window.innerWidth - 32) : 560;
-      let left = rect.left;
-      if (left + panelWidth > window.innerWidth - 16) {
-        left = window.innerWidth - panelWidth - 16;
-      }
-      if (left < 16) left = 16;
-      setPanelPos({ top: rect.bottom + 4, left });
-    }
-  }, [isOpen]);
-
-  const formatSubCompLabel = (key: string) =>
-    key.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  }, [profile?.id, fetchMpaDescriptions, toggleMpaDescriptionDrawer, mpaKey, mpaDescriptionDrawerOpen, focusedMpaKey]);
 
   return (
-    <div className="inline-flex">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            ref={triggerRef}
-            className={cn(
-              "inline-flex items-center justify-center rounded-md size-5 sm:size-6 transition-colors shrink-0",
-              isOpen
-                ? "text-primary bg-primary/10"
-                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted"
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsOpen(!isOpen);
-              if (isOpen) setIsEditing(false);
-            }}
-            aria-label="MPA description"
-          >
-            <Info className="size-3 sm:size-3.5" />
-          </button>
-        </TooltipTrigger>
-        {!isOpen && (
-          <TooltipContent side="bottom">
-            <p>MPA Description</p>
-          </TooltipContent>
-        )}
-      </Tooltip>
-
-      {isOpen && createPortal(
-        <div
-          ref={panelRef}
-          className="fixed z-[100] w-[calc(100vw-2rem)] sm:w-[560px] rounded-lg border bg-popover text-popover-foreground shadow-xl animate-in fade-in-0 zoom-in-95 duration-150 max-h-[80vh] overflow-y-auto"
-          style={{ top: panelPos.top, left: panelPos.left }}
-          onClick={(e) => e.stopPropagation()}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center justify-center rounded-md size-5 sm:size-6 transition-colors shrink-0",
+            isActive || mpaDescriptionDrawerOpen
+              ? "text-primary bg-primary/10"
+              : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted"
+          )}
+          onClick={handleClick}
+          disabled={isLoadingMpaDescriptions}
+          aria-label="MPA descriptions reference"
+          aria-expanded={mpaDescriptionDrawerOpen}
         >
-          {isLoading ? (
+          {isLoadingMpaDescriptions ? (
+            <Loader2 className="size-3 sm:size-3.5 animate-spin" />
+          ) : (
+            <Info className="size-3 sm:size-3.5" />
+          )}
+        </button>
+      </TooltipTrigger>
+      {!mpaDescriptionDrawerOpen && (
+        <TooltipContent side="bottom">
+          <p>MPA Descriptions</p>
+        </TooltipContent>
+      )}
+    </Tooltip>
+  );
+}
+
+function formatSubCompLabel(key: string) {
+  return key.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+const PANEL_WIDTH_CLASS = "w-64 sm:w-72 lg:w-80";
+
+let panelScrollToMpa: ((mpaKey: string) => void) | null = null;
+
+/** Scroll the MPA description panel so the given section is visible */
+export function scrollMpaDescriptionPanelTo(mpaKey: string) {
+  panelScrollToMpa?.(mpaKey);
+}
+
+function scrollItemWithinContainer(container: HTMLDivElement, item: HTMLDivElement) {
+  const padding = 12;
+  const itemTop = item.offsetTop;
+  const itemBottom = itemTop + item.offsetHeight;
+  const viewTop = container.scrollTop;
+  const viewBottom = viewTop + container.clientHeight;
+  const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+
+  if (itemTop >= viewTop + padding && itemBottom <= viewBottom - padding) {
+    return;
+  }
+
+  let targetScroll = itemTop - Math.max(padding, container.clientHeight * 0.12);
+
+  container.scrollTo({
+    top: Math.min(maxScroll, Math.max(0, targetScroll)),
+    behavior: "smooth",
+  });
+}
+
+export function MpaDescriptionPanel() {
+  const mpaDescriptionDrawerOpen = useEPBShellStore((s) => s.mpaDescriptionDrawerOpen);
+  const focusedMpaKey = useEPBShellStore((s) => s.focusedMpaKey);
+  const mpaDescriptionsCache = useEPBShellStore((s) => s.mpaDescriptionsCache);
+  const isLoadingMpaDescriptions = useEPBShellStore((s) => s.isLoadingMpaDescriptions);
+  const closeMpaDescriptionDrawer = useEPBShellStore((s) => s.closeMpaDescriptionDrawer);
+
+  const descriptions = mpaDescriptionsCache || DEFAULT_MPA_DESCRIPTIONS;
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const scrollToMpa = useCallback((mpaKey: string) => {
+    if (!useEPBShellStore.getState().mpaDescriptionDrawerOpen) return;
+    const container = scrollContainerRef.current;
+    const item = itemRefs.current[mpaKey];
+    if (!container || !item) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollItemWithinContainer(container, item);
+      });
+    });
+  }, []);
+
+  const handleScrollContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollContainerRef.current = node;
+      if (node) {
+        panelScrollToMpa = scrollToMpa;
+      } else if (panelScrollToMpa === scrollToMpa) {
+        panelScrollToMpa = null;
+      }
+    },
+    [scrollToMpa]
+  );
+
+  const handleClose = () => {
+    closeMpaDescriptionDrawer();
+  };
+
+  return (
+    <aside
+      aria-label="MPA descriptions reference"
+      aria-hidden={!mpaDescriptionDrawerOpen}
+      className={cn(
+        "shrink-0 self-start transition-[width,margin] duration-300 ease-in-out sticky top-6 z-10",
+        mpaDescriptionDrawerOpen
+          ? cn(PANEL_WIDTH_CLASS, "ml-4 lg:ml-6")
+          : "w-0 ml-0 pointer-events-none overflow-hidden"
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-h-0 flex-col border-l bg-background shadow-sm",
+          PANEL_WIDTH_CLASS,
+          "h-[calc(100svh-9rem)] max-h-[calc(100dvh-9rem)]"
+        )}
+      >
+        <div className="shrink-0 border-b px-3 py-3 sm:px-4 sm:py-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold leading-snug">MPA Descriptions</h2>
+              <p id="mpa-description-panel-desc" className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                Reference while editing. Active section highlights automatically.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="inline-flex items-center justify-center rounded-md size-7 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Close MPA descriptions"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+
+        <div
+          ref={handleScrollContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4"
+        >
+          {isLoadingMpaDescriptions ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <>
-              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b sticky top-0 bg-popover z-10">
-                <span className="text-sm font-semibold">
-                  {defaults?.title || mpaKey}
-                </span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {isEditing && hasChanges && (
-                    <button
-                      onClick={handleSave}
-                      disabled={isSaving}
-                      className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                    >
-                      {isSaving ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <Save className="size-3.5 mr-1" />}
-                      Save
-                    </button>
-                  )}
-                  {isEditing && (
-                    <button
-                      onClick={handleCancel}
-                      className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                  {!isEditing && (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-input"
-                    >
-                      <Pencil className="size-3.5 mr-1" />
-                      Edit
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { setIsOpen(false); setIsEditing(false); }}
-                    className="inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            <div className="space-y-2.5">
+              {REFERENCE_MPAS.map((mpa) => {
+                const desc = descriptions[mpa.key] || DEFAULT_MPA_DESCRIPTIONS[mpa.key];
+                const isFocused = focusedMpaKey === mpa.key;
+                const subCompetencies = desc?.sub_competencies || {};
+
+                return (
+                  <div
+                    key={mpa.key}
+                    ref={(el) => {
+                      itemRefs.current[mpa.key] = el;
+                    }}
+                    className={cn(
+                      "rounded-lg border p-3 transition-colors duration-200",
+                      isFocused
+                        ? "border-primary/50 bg-primary/5 shadow-sm ring-1 ring-primary/15"
+                        : "border-border/60 bg-muted/20"
+                    )}
+                    aria-current={isFocused ? "true" : undefined}
                   >
-                    <X className="size-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="px-5 py-4 space-y-5">
-                {/* Description */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Description</Label>
-                  {isEditing ? (
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-vertical"
-                      rows={4}
-                    />
-                  ) : (
-                    <p className="text-sm text-foreground/80 leading-relaxed">
-                      {description || "No description set."}
+                    <h3
+                      className={cn(
+                        "text-xs sm:text-sm font-semibold leading-snug",
+                        isFocused ? "text-primary" : "text-foreground"
+                      )}
+                    >
+                      {desc?.title || mpa.label}
+                    </h3>
+                    <p className="mt-1.5 text-xs text-foreground/80 leading-relaxed">
+                      {desc?.description || "No description available."}
                     </p>
-                  )}
-                </div>
 
-                {/* Sub-competencies */}
-                {Object.keys(subCompetencies).length > 0 && (
-                  <div className="space-y-4">
-                    <Label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Sub-Competencies</Label>
-                    {Object.entries(subCompetencies).map(([key, value]) => (
-                      <div key={key} className="space-y-1.5">
-                        <span className="text-xs font-semibold text-foreground">
-                          {formatSubCompLabel(key)}
-                        </span>
-                        {isEditing ? (
-                          <textarea
-                            value={value}
-                            onChange={(e) =>
-                              setSubCompetencies({ ...subCompetencies, [key]: e.target.value })
-                            }
-                            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-vertical"
-                            rows={3}
-                          />
-                        ) : (
-                          <p className="text-sm text-muted-foreground leading-relaxed">
-                            {value}
-                          </p>
-                        )}
+                    {Object.keys(subCompetencies).length > 0 && (
+                      <div className="mt-2.5 space-y-2 border-t border-border/40 pt-2.5">
+                        {Object.entries(subCompetencies).map(([key, value]) => (
+                          <div key={key}>
+                            <p className="text-[11px] font-semibold text-foreground/90">
+                              {formatSubCompLabel(key)}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
+                              {value}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            </>
+                );
+              })}
+              {/* Spacer so last MPAs (HLR) can scroll up into view without scrolling the main page */}
+              <div aria-hidden className="h-[40vh] min-h-56 shrink-0" />
+            </div>
           )}
-        </div>,
-        document.body
-      )}
-    </div>
+        </div>
+      </div>
+    </aside>
   );
+}
+
+/** @deprecated Use MpaDescriptionPanel */
+export function MpaDescriptionDrawer() {
+  return <MpaDescriptionPanel />;
+}
+
+/** @deprecated Use MpaDescriptionToggleButton */
+export function MpaDescriptionEditor({ mpaKey }: MpaDescriptionToggleButtonProps) {
+  return <MpaDescriptionToggleButton mpaKey={mpaKey} />;
 }

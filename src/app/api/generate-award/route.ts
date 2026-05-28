@@ -475,10 +475,6 @@ export async function POST(request: Request) {
     // Fetch user-curated award examples
     const awardExamples = await fetchAwardExampleStatements(supabase, user.id);
 
-    // Get sentences per category from settings or use defaults
-    const sentencesPerCategory = settings.award_sentences_per_category || 
-      DEFAULT_AWARD_SETTINGS.award_sentences_per_category;
-
     const results: { category: string; statementGroups: StatementGroup[]; clarifyingQuestions?: ClarifyingQuestionResponse[] }[] = [];
     const levelGuidance = getAwardLevelGuidance(awardLevel);
 

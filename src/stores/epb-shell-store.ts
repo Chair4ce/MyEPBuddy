@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Rank } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Rank, MPADescriptions } from "@/types/database";
 
 // MPA workspace mode for each section
 export type MPAWorkspaceMode = "view" | "edit" | "ai-assist";
@@ -86,6 +88,12 @@ interface EPBShellState {
   
   // Autosave debounce tracking
   autosaveTimers: Record<string, NodeJS.Timeout | null>;
+
+  // MPA description reference drawer
+  mpaDescriptionDrawerOpen: boolean;
+  focusedMpaKey: string | null;
+  mpaDescriptionsCache: MPADescriptions | null;
+  isLoadingMpaDescriptions: boolean;
   
   // Actions
   setSelectedRatee: (ratee: SelectedRatee | null) => void;
@@ -126,6 +134,12 @@ interface EPBShellState {
   // Autosave management
   setAutosaveTimer: (mpa: string, timer: NodeJS.Timeout | null) => void;
   clearAutosaveTimer: (mpa: string) => void;
+
+  // MPA description drawer
+  toggleMpaDescriptionDrawer: (mpaKey?: string) => void;
+  closeMpaDescriptionDrawer: () => void;
+  setFocusedMpaKey: (mpaKey: string | null) => void;
+  fetchMpaDescriptions: (userId: string) => Promise<MPADescriptions>;
   
   // Duty description management
   setDutyDescriptionDraft: (text: string) => void;
@@ -184,6 +198,10 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   isCreatingShell: false,
   loadVersion: 0,
   autosaveTimers: {},
+  mpaDescriptionDrawerOpen: false,
+  focusedMpaKey: null,
+  mpaDescriptionsCache: null,
+  isLoadingMpaDescriptions: false,
 
   setSelectedRatee: (ratee) => {
     // Clear autosave timers when switching members
@@ -205,6 +223,8 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       dutyDescriptionDraft: "",
       isDutyDescriptionDirty: false,
       loadVersion: state.loadVersion + 1,
+      mpaDescriptionDrawerOpen: false,
+      focusedMpaKey: null,
     }));
   },
   
@@ -436,6 +456,48 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   
   setIsSavingDutyDescription: (saving) => set({ isSavingDutyDescription: saving }),
 
+  toggleMpaDescriptionDrawer: (mpaKey) => {
+    const { mpaDescriptionDrawerOpen, focusedMpaKey } = get();
+    if (mpaDescriptionDrawerOpen && focusedMpaKey === mpaKey) {
+      set({ mpaDescriptionDrawerOpen: false });
+      return;
+    }
+    set({
+      mpaDescriptionDrawerOpen: true,
+      focusedMpaKey: mpaKey ?? focusedMpaKey,
+    });
+  },
+
+  closeMpaDescriptionDrawer: () => set({ mpaDescriptionDrawerOpen: false }),
+
+  setFocusedMpaKey: (mpaKey) => set({ focusedMpaKey: mpaKey }),
+
+  fetchMpaDescriptions: async (userId) => {
+    const cached = get().mpaDescriptionsCache;
+    if (cached) return cached;
+
+    set({ isLoadingMpaDescriptions: true });
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("user_llm_settings")
+        .select("mpa_descriptions")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const row = data as Record<string, unknown> | null;
+      const descriptions = (row?.mpa_descriptions as MPADescriptions) || DEFAULT_MPA_DESCRIPTIONS;
+      set({ mpaDescriptionsCache: descriptions, isLoadingMpaDescriptions: false });
+      return descriptions;
+    } catch (error) {
+      console.error("Failed to load MPA descriptions:", error);
+      set({ mpaDescriptionsCache: DEFAULT_MPA_DESCRIPTIONS, isLoadingMpaDescriptions: false });
+      return DEFAULT_MPA_DESCRIPTIONS;
+    }
+  },
+
   resetShellData: () => {
     const timers = get().autosaveTimers;
     Object.values(timers).forEach((timer) => {
@@ -457,6 +519,10 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       isCreatingShell: false,
       loadVersion: state.loadVersion + 1,
       autosaveTimers: {},
+      mpaDescriptionDrawerOpen: false,
+      focusedMpaKey: null,
+      mpaDescriptionsCache: null,
+      isLoadingMpaDescriptions: false,
     }));
   },
 
@@ -482,6 +548,10 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       isCreatingShell: false,
       loadVersion: state.loadVersion + 1,
       autosaveTimers: {},
+      mpaDescriptionDrawerOpen: false,
+      focusedMpaKey: null,
+      mpaDescriptionsCache: null,
+      isLoadingMpaDescriptions: false,
     }));
   },
 }));

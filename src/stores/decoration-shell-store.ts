@@ -81,7 +81,6 @@ interface DecorationShellState {
   
   // Ratee position info
   dutyTitle: string;
-  office: string;
   squadron: string;
   groupName: string;
   wing: string;
@@ -142,7 +141,6 @@ interface DecorationShellState {
   
   // Position info
   setDutyTitle: (title: string) => void;
-  setOffice: (office: string) => void;
   setSquadron: (squadron: string) => void;
   setGroupName: (groupName: string) => void;
   setWing: (wing: string) => void;
@@ -220,7 +218,6 @@ const getDefaultState = () => ({
   awardType: "afam" as DecorationAwardType,
   reason: "meritorious_service" as DecorationReason,
   dutyTitle: "",
-  office: "",
   squadron: "",
   groupName: "",
   wing: "",
@@ -257,12 +254,16 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
   
   setCurrentShell: (shell) => {
     if (shell) {
+      const { currentShell, isDirty } = get();
+      if (currentShell?.id === shell.id && isDirty) {
+        set({ currentShell: shell });
+        return;
+      }
       set({
         currentShell: shell,
         awardType: shell.award_type,
         reason: shell.reason,
         dutyTitle: shell.duty_title,
-        office: shell.office || shell.unit || "",
         squadron: shell.squadron || "",
         groupName: shell.group_name || "",
         wing: shell.wing || "",
@@ -285,7 +286,6 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
   setReason: (reason) => set({ reason, isDirty: true }),
   
   setDutyTitle: (title) => set({ dutyTitle: title, isDirty: true }),
-  setOffice: (office) => set({ office, isDirty: true }),
   setSquadron: (squadron) => set({ squadron, isDirty: true }),
   setGroupName: (groupName) => set({ groupName, isDirty: true }),
   setWing: (wing) => set({ wing, isDirty: true }),
@@ -414,7 +414,6 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
       awardType: shell.award_type,
       reason: shell.reason,
       dutyTitle: shell.duty_title,
-      office: shell.office || shell.unit || "",
       squadron: shell.squadron || "",
       groupName: shell.group_name || "",
       wing: shell.wing || "",

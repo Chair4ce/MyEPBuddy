@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
@@ -18,11 +18,15 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PageSpinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -46,7 +50,10 @@ import {
   Loader2,
   Plus,
   UserPlus,
+  PenLine,
   RefreshCw,
+  Link2,
+  AlertCircle,
   FileText,
   Calendar,
   CheckCircle2,
@@ -61,6 +68,17 @@ import {
 import { DecorationWorkspaceDialog } from "@/components/decoration/decoration-workspace-dialog";
 import { DECORATION_TYPES, DECORATION_REASONS } from "@/features/decorations/constants";
 import { cn, getFullName } from "@/lib/utils";
+import {
+  ENLISTED_RANKS,
+  OFFICER_RANKS,
+  CIVILIAN_RANK,
+  isOfficer,
+} from "@/lib/constants";
+import {
+  createManagedTeamMember,
+  lookupProfileByEmail,
+  type ExistingUserMatch,
+} from "@/lib/managed-member-create";
 import type {
   DecorationShell,
   DecorationAwardType,
@@ -83,10 +101,22 @@ interface RateeOption {
   isManagedMember: boolean;
 }
 
+type RecipientMode = "member" | "manual";
+
+function getAvailableSubordinateRanks(supervisorRank: Rank | null | undefined) {
+  const supervisorIsOfficer = isOfficer(supervisorRank ?? null);
+  return {
+    enlisted: ENLISTED_RANKS,
+    officers: supervisorIsOfficer ? OFFICER_RANKS : [],
+    civilian: CIVILIAN_RANK,
+  };
+}
+
 interface DecorationShellWithDetails {
   id: string;
   user_id: string;
   team_member_id: string | null;
+  recipient_name: string | null;
   created_by: string;
   award_type: DecorationAwardType;
   reason: DecorationReason;
@@ -111,7 +141,7 @@ interface DecorationShellWithDetails {
 export default function DecorationPage() {
   const router = useRouter();
   const supabase = createClient();
-  const { profile, subordinates, managedMembers } = useUserStore();
+  const { profile, subordinates, managedMembers, addManagedMember } = useUserStore();
 
   // Decoration shell store (for reset functionality)
   const { reset: resetDecorationStore } = useDecorationShellStore();
@@ -124,6 +154,13 @@ export default function DecorationPage() {
   // Create dialog state
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedRateeId, setSelectedRateeId] = useState<string>("self");
+  const [recipientMode, setRecipientMode] = useState<RecipientMode>("member");
+  const [manualRecipientName, setManualRecipientName] = useState("");
+  const [manualRecipientRank, setManualRecipientRank] = useState<Rank | "">("");
+  const [manualRecipientEmail, setManualRecipientEmail] = useState("");
+  const [existingUserMatch, setExistingUserMatch] = useState<ExistingUserMatch | null>(null);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [createManagedAccount, setCreateManagedAccount] = useState(true);
   const [createAwardType, setCreateAwardType] = useState<DecorationAwardType>("afam");
   const [createReason, setCreateReason] = useState<DecorationReason>("meritorious_service");
   const [isCreating, setIsCreating] = useState(false);
@@ -162,6 +199,36 @@ export default function DecorationPage() {
       isManagedMember: true,
     })),
   ];
+
+  const availableSubordinateRanks = useMemo(
+    () => getAvailableSubordinateRanks(profile?.rank as Rank | null),
+    [profile?.rank]
+  );
+
+  const resetManualRecipientFields = () => {
+    setManualRecipientName("");
+    setManualRecipientRank("");
+    setManualRecipientEmail("");
+    setExistingUserMatch(null);
+    setIsCheckingEmail(false);
+    setCreateManagedAccount(true);
+  };
+
+  const handleManualEmailBlur = async () => {
+    const email = manualRecipientEmail.trim();
+    if (!email) {
+      setExistingUserMatch(null);
+      return;
+    }
+
+    setIsCheckingEmail(true);
+    try {
+      const match = await lookupProfileByEmail(supabase, email);
+      setExistingUserMatch(match);
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
 
   // ============================================================================
   // Load Decorations
@@ -204,7 +271,10 @@ export default function DecorationPage() {
               }
             }
           } else {
-            if (shell.user_id === profile.id) {
+            if (shell.recipient_name) {
+              // Manual non-account recipient — name stored on shell
+              ownerProfile = null;
+            } else if (shell.user_id === profile.id) {
               ownerProfile = profile;
             } else {
               const sub = subordinates.find((s) => s.id === shell.user_id);
@@ -287,27 +357,100 @@ export default function DecorationPage() {
     }
   };
 
+  const resetCreateForm = () => {
+    setSelectedRateeId("self");
+    setRecipientMode("member");
+    resetManualRecipientFields();
+    setCreateAwardType("afam");
+    setCreateReason("meritorious_service");
+  };
+
+  const handleCreateDialogChange = (open: boolean) => {
+    setShowCreateDialog(open);
+    if (!open) {
+      resetCreateForm();
+    }
+  };
+
   const handleCreateDecoration = async () => {
     if (!profile) return;
 
-    const ratee = rateeOptions.find((r) => r.id === selectedRateeId);
-    if (!ratee) return;
+    const trimmedManualName = manualRecipientName.trim();
+
+    if (recipientMode === "manual") {
+      if (!trimmedManualName) {
+        toast.error("Recipient name is required");
+        return;
+      }
+    } else {
+      const ratee = rateeOptions.find((r) => r.id === selectedRateeId);
+      if (!ratee) return;
+    }
 
     setIsCreating(true);
 
     try {
-      const isManagedMember = ratee.isManagedMember;
-      const actualRateeId = isManagedMember
-        ? selectedRateeId.replace("managed:", "")
-        : selectedRateeId === "self"
-        ? profile.id
-        : selectedRateeId;
+      let teamMemberId: string | null = null;
+      let recipientName: string | null = null;
+      let shellUserId = profile.id;
+      let ownerProfile: Profile | null = null;
+      let ownerTeamMember: ManagedMember | null = null;
+      let pendingLinkMatch: ExistingUserMatch | null = null;
+
+      if (recipientMode === "manual") {
+        if (createManagedAccount) {
+          const email = manualRecipientEmail.trim().toLowerCase() || null;
+          if (email && !email.includes("@")) {
+            toast.error("Please enter a valid email address");
+            setIsCreating(false);
+            return;
+          }
+
+          const { member, existingMatch } = await createManagedTeamMember(supabase, {
+            supervisorId: profile.id,
+            parentProfileId: profile.id,
+            fullName: trimmedManualName,
+            email,
+            rank: manualRecipientRank || null,
+            existingUser: existingUserMatch,
+          });
+
+          pendingLinkMatch = existingMatch;
+
+          teamMemberId = member.id;
+          ownerTeamMember = member;
+          addManagedMember(member);
+          Analytics.managedMemberAdded();
+          Analytics.teamMemberAdded("managed");
+        } else {
+          recipientName = trimmedManualName;
+        }
+      } else {
+        const ratee = rateeOptions.find((r) => r.id === selectedRateeId)!;
+        const isManagedMember = ratee.isManagedMember;
+        const actualRateeId = isManagedMember
+          ? selectedRateeId.replace("managed:", "")
+          : selectedRateeId === "self"
+          ? profile.id
+          : selectedRateeId;
+
+        if (isManagedMember) {
+          teamMemberId = actualRateeId;
+          ownerTeamMember = managedMembers.find((m) => m.id === actualRateeId) || null;
+        } else if (selectedRateeId === "self") {
+          ownerProfile = profile;
+        } else {
+          shellUserId = actualRateeId;
+          ownerProfile = subordinates.find((s) => s.id === actualRateeId) || null;
+        }
+      }
 
       const { data: newShell, error: createError } = await supabase
         .from("decoration_shells")
         .insert({
-          user_id: isManagedMember ? profile.id : actualRateeId,
-          team_member_id: isManagedMember ? actualRateeId : null,
+          user_id: shellUserId,
+          team_member_id: teamMemberId,
+          recipient_name: recipientName,
           created_by: profile.id,
           award_type: createAwardType,
           reason: createReason,
@@ -318,32 +461,31 @@ export default function DecorationPage() {
       if (createError) throw createError;
 
       Analytics.decorationCreated(createAwardType, createReason);
-      toast.success("Decoration draft created");
+      toast.success("Decoration draft created", {
+        description: pendingLinkMatch
+          ? `Supervisor request sent to ${pendingLinkMatch.full_name || pendingLinkMatch.email}.`
+          : undefined,
+      });
       setShowCreateDialog(false);
+      resetCreateForm();
 
-      // Reset form
-      setSelectedRateeId("self");
-      setCreateAwardType("afam");
-      setCreateReason("meritorious_service");
-
-      // Open the workspace dialog
       if (newShell) {
         const typedShell = newShell as unknown as DecorationShellWithDetails;
         const enrichedShell: DecorationShellWithDetails = {
           ...typedShell,
-          owner_profile: isManagedMember ? null : (ratee.id === "self" ? profile : null),
-          owner_team_member: isManagedMember ? managedMembers.find((m) => m.id === actualRateeId) || null : null,
+          owner_profile: ownerProfile,
+          owner_team_member: ownerTeamMember,
           creator_profile: profile,
         };
         setSelectedDecoration(enrichedShell);
         setShowWorkspaceDialog(true);
       }
 
-      // Reload the list
       await loadDecorations();
     } catch (error) {
       console.error("Error creating decoration:", error);
-      toast.error("Failed to create decoration");
+      const message = error instanceof Error ? error.message : "Failed to create decoration";
+      toast.error(message);
     } finally {
       setIsCreating(false);
     }
@@ -368,15 +510,19 @@ export default function DecorationPage() {
   // Get owner display name
   const getOwnerDisplayName = (decoration: DecorationShellWithDetails) => {
     if (decoration.owner_team_member) {
-      // Managed members only have full_name
       return `${decoration.owner_team_member.rank || ""} ${decoration.owner_team_member.full_name}`.trim();
     }
+    if (decoration.recipient_name) {
+      return decoration.recipient_name;
+    }
     if (decoration.owner_profile) {
-      // Use getFullName for profiles to properly combine first_name + last_name
       return `${decoration.owner_profile.rank || ""} ${getFullName(decoration.owner_profile)}`.trim();
     }
     return "Unknown";
   };
+
+  const canCreateDraft =
+    recipientMode === "member" || manualRecipientName.trim().length > 0;
 
   // ============================================================================
   // Render
@@ -516,7 +662,7 @@ export default function DecorationPage() {
       )}
 
       {/* Create Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={handleCreateDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -524,39 +670,200 @@ export default function DecorationPage() {
               New Decoration
             </DialogTitle>
             <DialogDescription>
-              Create a new decoration draft for yourself or a team member.
+              Create a new decoration draft for yourself, a team member, or someone without an account.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Ratee Selection */}
+            {/* Recipient Selection */}
             <div className="space-y-2">
               <Label className="text-sm">Recipient</Label>
-              <Select value={selectedRateeId} onValueChange={handleRateeChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select recipient" />
-                </SelectTrigger>
-                <SelectContent>
-                  {rateeOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{option.label}</span>
-                        {option.isManagedMember && (
-                          <Badge variant="outline" className="text-[10px]">
-                            Managed
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="add-member">
-                    <div className="flex items-center gap-2 text-primary">
-                      <UserPlus className="size-4" />
-                      <span>Add Team Member...</span>
+
+              {recipientMode === "member" ? (
+                <>
+                  <Select value={selectedRateeId} onValueChange={handleRateeChange}>
+                    <SelectTrigger aria-label="Select decoration recipient">
+                      <SelectValue placeholder="Select recipient" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rateeOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{option.label}</span>
+                            {option.isManagedMember && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Managed
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="add-member">
+                        <div className="flex items-center gap-2 text-primary">
+                          <UserPlus className="size-4" />
+                          <span>Add Team Member...</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-muted-foreground hover:text-primary"
+                    onClick={() => setRecipientMode("manual")}
+                  >
+                    <PenLine className="size-3.5 mr-1.5" />
+                    Enter name manually
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Input
+                    id="manual-recipient-name"
+                    value={manualRecipientName}
+                    onChange={(e) => setManualRecipientName(e.target.value)}
+                    placeholder="Full name (e.g., John Smith)"
+                    aria-label="Recipient full name"
+                    autoComplete="name"
+                  />
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                    <Checkbox
+                      id="create-managed-account"
+                      checked={createManagedAccount}
+                      onCheckedChange={(checked) => {
+                        const enabled = checked === true;
+                        setCreateManagedAccount(enabled);
+                        if (!enabled) {
+                          setManualRecipientRank("");
+                          setManualRecipientEmail("");
+                          setExistingUserMatch(null);
+                        }
+                      }}
+                      aria-label="Create managed team member for this recipient"
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="create-managed-account" className="cursor-pointer font-medium">
+                        Create managed team member
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Adds them to your team for tracking accomplishments. Uncheck to create a
+                        decoration draft with just the name.
+                      </p>
                     </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                  </div>
+
+                  {createManagedAccount && (
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="manual-recipient-rank" className="text-sm">
+                            Rank{" "}
+                            <span className="text-muted-foreground text-xs">(optional)</span>
+                          </Label>
+                          <Select
+                            value={manualRecipientRank}
+                            onValueChange={(value) => setManualRecipientRank(value as Rank)}
+                          >
+                            <SelectTrigger id="manual-recipient-rank" aria-label="Recipient rank">
+                              <SelectValue placeholder="Select rank" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectLabel>Enlisted</SelectLabel>
+                                {availableSubordinateRanks.enlisted.map((rank) => (
+                                  <SelectItem key={rank.value} value={rank.value}>
+                                    {rank.value}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                              {availableSubordinateRanks.officers.length > 0 && (
+                                <SelectGroup>
+                                  <SelectLabel>Officer</SelectLabel>
+                                  {availableSubordinateRanks.officers.map((rank) => (
+                                    <SelectItem key={rank.value} value={rank.value}>
+                                      {rank.value}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              )}
+                              <SelectGroup>
+                                <SelectLabel>Civilian</SelectLabel>
+                                {availableSubordinateRanks.civilian.map((rank) => (
+                                  <SelectItem key={rank.value} value={rank.value}>
+                                    {rank.value}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="manual-recipient-email" className="text-sm">
+                            Email{" "}
+                            <span className="text-muted-foreground text-xs">(optional)</span>
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="manual-recipient-email"
+                              type="email"
+                              value={manualRecipientEmail}
+                              onChange={(e) => {
+                                setManualRecipientEmail(e.target.value);
+                                setExistingUserMatch(null);
+                              }}
+                              onBlur={handleManualEmailBlur}
+                              placeholder="john.doe@us.af.mil"
+                              aria-label="Recipient email for account linking"
+                              autoComplete="email"
+                              className={existingUserMatch ? "pr-10 border-amber-500" : ""}
+                            />
+                            {isCheckingEmail && (
+                              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+                            )}
+                            {existingUserMatch && !isCheckingEmail && (
+                              <Link2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-amber-500" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {existingUserMatch && (
+                        <div className="flex items-start gap-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                          <AlertCircle className="size-4 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-medium">Account found</p>
+                            <p className="text-xs opacity-80">
+                              {existingUserMatch.rank} {existingUserMatch.full_name || existingUserMatch.email}{" "}
+                              already has an account. A supervisor request will be sent when you create
+                              this decoration.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {!existingUserMatch && !manualRecipientEmail.trim() && (
+                        <p className="text-xs text-muted-foreground">
+                          If they sign up with this email later, they&apos;ll be prompted to link their account.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-muted-foreground hover:text-primary"
+                    onClick={() => {
+                      setRecipientMode("member");
+                      resetManualRecipientFields();
+                    }}
+                  >
+                    Back to member selection
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Award Type */}
@@ -617,7 +924,10 @@ export default function DecorationPage() {
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateDecoration} disabled={isCreating}>
+            <Button
+              onClick={handleCreateDecoration}
+              disabled={isCreating || !canCreateDraft}
+            >
               {isCreating ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />

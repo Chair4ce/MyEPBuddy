@@ -73,8 +73,8 @@ import {
   Users,
   Sparkles,
 } from "lucide-react";
-import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, AwardSentencesPerCategory, MPADescriptions, Rank } from "@/types/database";
-import { RANKS, STANDARD_MGAS, AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, isOfficer, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
+import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, MPADescriptions, Rank } from "@/types/database";
+import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, isOfficer, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
 import Link from "next/link";
 import { Award, Medal } from "lucide-react";
 
@@ -125,6 +125,7 @@ IMPACT AMPLIFICATION TECHNIQUES:
 - Reference inspections: "contributed to Excellent rating"
 - Tie to deployments: "supported X deployed members"
 - Quantify time: "reduced processing by X hrs/days"
+- Show leadership/management scope (2D depth): combine vertical org level (office/flight → sq → gp → wing → NAF → MAJCOM → HAF) with horizontal scale (# Amn led/managed/unified); e.g., "Led 12-Amn team & unified 4 orgs for wing-level project" outweighs "Led 3-mbr team on sq-level project"; layer time/money/resource metrics for additional impact
 
 MAJOR PERFORMANCE AREAS:
 {{mga_list}}
@@ -671,8 +672,8 @@ function AcronymEditor({
   }, [acronyms, onChange]);
 
   return (
-    <Card className="w-full">
-      <CardHeader className="px-3 py-3 sm:px-6 sm:py-4 space-y-3">
+    <Card className="w-full flex flex-col">
+      <CardHeader className="px-3 py-3 sm:px-6 sm:py-4 space-y-3 shrink-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <CardTitle className="text-base sm:text-lg">Acronyms</CardTitle>
@@ -718,8 +719,8 @@ function AcronymEditor({
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-3">
-        <div className="relative">
+      <CardContent className="flex flex-col flex-1 min-h-0 px-3 pb-4 sm:px-6 sm:pb-6 gap-3">
+        <div className="relative shrink-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
             placeholder="Search..."
@@ -730,8 +731,8 @@ function AcronymEditor({
           />
         </div>
 
-        {/* Mobile: Card layout */}
-        <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md md:hidden">
+        {/* Mobile: Card layout — fills remaining viewport height */}
+        <ScrollArea className="min-h-[280px] h-[max(calc(100vh-20rem),calc(100dvh-20rem))] border rounded-md overscroll-contain md:hidden">
           <div className="p-1.5 space-y-1">
             {filteredAcronyms.map((acr) => (
               <div 
@@ -756,8 +757,8 @@ function AcronymEditor({
           </div>
         </ScrollArea>
 
-        {/* Desktop: Table layout */}
-        <ScrollArea className="h-[400px] border rounded-md hidden md:block">
+        {/* Desktop: Table layout — fills remaining viewport height */}
+        <ScrollArea className="min-h-[320px] h-[max(calc(100vh-17rem),calc(100dvh-17rem))] border rounded-md overscroll-contain hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -806,7 +807,6 @@ interface SettingsState {
   awardSystemPrompt: string;
   awardAbbreviations: Abbreviation[];
   awardStyleGuidelines: string;
-  awardSentencesPerCategory: AwardSentencesPerCategory;
   // OPB settings (Officer Performance Brief)
   opbSystemPrompt: string;
   opbStyleGuidelines: string;
@@ -851,9 +851,6 @@ export default function LLMSettingsPage() {
   const [awardSystemPrompt, setAwardSystemPrompt] = useState(DEFAULT_AWARD_SYSTEM_PROMPT);
   const [awardAbbreviations, setAwardAbbreviations] = useState<Abbreviation[]>([]);
   const [awardStyleGuidelines, setAwardStyleGuidelines] = useState(DEFAULT_AWARD_STYLE_GUIDELINES);
-  const [awardSentencesPerCategory, setAwardSentencesPerCategory] = useState<AwardSentencesPerCategory>(
-    DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory
-  );
   
   // OPB-specific settings (Officer Performance Brief)
   const [opbSystemPrompt, setOpbSystemPrompt] = useState(DEFAULT_OPB_SYSTEM_PROMPT);
@@ -895,7 +892,6 @@ export default function LLMSettingsPage() {
       awardSystemPrompt !== initialState.awardSystemPrompt ||
       JSON.stringify(awardAbbreviations) !== JSON.stringify(initialState.awardAbbreviations) ||
       awardStyleGuidelines !== initialState.awardStyleGuidelines ||
-      JSON.stringify(awardSentencesPerCategory) !== JSON.stringify(initialState.awardSentencesPerCategory) ||
       opbSystemPrompt !== initialState.opbSystemPrompt ||
       opbStyleGuidelines !== initialState.opbStyleGuidelines ||
       decorationSystemPrompt !== initialState.decorationSystemPrompt ||
@@ -903,7 +899,7 @@ export default function LLMSettingsPage() {
       JSON.stringify(decorationAbbreviations) !== JSON.stringify(initialState.decorationAbbreviations) ||
       dutyDescriptionPrompt !== initialState.dutyDescriptionPrompt
     );
-  }, [styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, mpaDescriptions, awardSystemPrompt, awardAbbreviations, awardStyleGuidelines, awardSentencesPerCategory, opbSystemPrompt, opbStyleGuidelines, decorationSystemPrompt, decorationStyleGuidelines, decorationAbbreviations, dutyDescriptionPrompt, isLoading, initialState]);
+  }, [styleGuidelines, systemPrompt, rankVerbs, acronyms, abbreviations, mpaDescriptions, awardSystemPrompt, awardAbbreviations, awardStyleGuidelines, opbSystemPrompt, opbStyleGuidelines, decorationSystemPrompt, decorationStyleGuidelines, decorationAbbreviations, dutyDescriptionPrompt, isLoading, initialState]);
 
   // Warn user before leaving with unsaved changes (browser close/refresh)
   useEffect(() => {
@@ -999,12 +995,10 @@ export default function LLMSettingsPage() {
         const loadedAwardPrompt = settings.award_system_prompt || DEFAULT_AWARD_SYSTEM_PROMPT;
         const loadedAwardAbbreviations = settings.award_abbreviations || [];
         const loadedAwardStyleGuidelines = settings.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES;
-        const loadedAwardSentences = settings.award_sentences_per_category || DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory;
         
         setAwardSystemPrompt(loadedAwardPrompt);
         setAwardAbbreviations(loadedAwardAbbreviations);
         setAwardStyleGuidelines(loadedAwardStyleGuidelines);
-        setAwardSentencesPerCategory(loadedAwardSentences);
 
         // Load OPB settings
         const loadedOpbSystemPrompt = settings.opb_system_prompt || DEFAULT_OPB_SYSTEM_PROMPT;
@@ -1037,7 +1031,6 @@ export default function LLMSettingsPage() {
           awardSystemPrompt: loadedAwardPrompt,
           awardAbbreviations: JSON.parse(JSON.stringify(loadedAwardAbbreviations)),
           awardStyleGuidelines: loadedAwardStyleGuidelines,
-          awardSentencesPerCategory: JSON.parse(JSON.stringify(loadedAwardSentences)),
           opbSystemPrompt: loadedOpbSystemPrompt,
           opbStyleGuidelines: loadedOpbStyleGuidelines,
           decorationSystemPrompt: loadedDecorationSystemPrompt,
@@ -1057,7 +1050,6 @@ export default function LLMSettingsPage() {
           awardSystemPrompt: DEFAULT_AWARD_SYSTEM_PROMPT,
           awardAbbreviations: [],
           awardStyleGuidelines: DEFAULT_AWARD_STYLE_GUIDELINES,
-          awardSentencesPerCategory: JSON.parse(JSON.stringify(DEFAULT_AWARD_SENTENCES)),
           opbSystemPrompt: DEFAULT_OPB_SYSTEM_PROMPT,
           opbStyleGuidelines: DEFAULT_OPB_STYLE_GUIDELINES,
           decorationSystemPrompt: DEFAULT_DECORATION_SYSTEM_PROMPT,
@@ -1095,7 +1087,7 @@ export default function LLMSettingsPage() {
         award_system_prompt: awardSystemPrompt,
         award_abbreviations: awardAbbreviations,
         award_style_guidelines: awardStyleGuidelines,
-        award_sentences_per_category: awardSentencesPerCategory,
+        award_sentences_per_category: DEFAULT_AWARD_SENTENCES,
         // OPB settings
         opb_system_prompt: opbSystemPrompt,
         opb_style_guidelines: opbStyleGuidelines,
@@ -1131,7 +1123,6 @@ export default function LLMSettingsPage() {
         awardSystemPrompt,
         awardAbbreviations: JSON.parse(JSON.stringify(awardAbbreviations)),
         awardStyleGuidelines,
-        awardSentencesPerCategory: JSON.parse(JSON.stringify(awardSentencesPerCategory)),
         opbSystemPrompt,
         opbStyleGuidelines,
         decorationSystemPrompt,
@@ -1173,7 +1164,6 @@ export default function LLMSettingsPage() {
     setAwardSystemPrompt(DEFAULT_AWARD_SYSTEM_PROMPT);
     setAwardAbbreviations([]);
     setAwardStyleGuidelines(DEFAULT_AWARD_STYLE_GUIDELINES);
-    setAwardSentencesPerCategory(DEFAULT_AWARD_SENTENCES as unknown as AwardSentencesPerCategory);
     // Reset decoration settings
     setDecorationSystemPrompt(DEFAULT_DECORATION_SYSTEM_PROMPT);
     setDecorationStyleGuidelines(DEFAULT_DECORATION_STYLE_GUIDELINES);
@@ -1682,34 +1672,6 @@ export default function LLMSettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-4 sm:space-y-6">
-              {/* Sentences per category */}
-              <div className="space-y-3">
-                <Label className="text-xs sm:text-sm">Statements per Category</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {AWARD_1206_CATEGORIES.map((cat) => (
-                    <div key={cat.key} className="space-y-1.5">
-                      <Label htmlFor={`award-${cat.key}`} className="text-[10px] sm:text-xs text-muted-foreground">
-                        {cat.label.split(" ")[0]}
-                      </Label>
-                      <Input
-                        id={`award-${cat.key}`}
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={awardSentencesPerCategory[cat.key as keyof AwardSentencesPerCategory] || 3}
-                        onChange={(e) => setAwardSentencesPerCategory({
-                          ...awardSentencesPerCategory,
-                          [cat.key]: Math.min(10, Math.max(1, parseInt(e.target.value) || 3))
-                        })}
-                        className="h-9"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Separator />
-
               {/* Award Style Guidelines */}
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Award Style Guidelines</Label>
@@ -2227,7 +2189,7 @@ export default function LLMSettingsPage() {
         </TabsContent>
 
         {/* Acronyms */}
-        <TabsContent value="acronyms" className="w-full min-h-[580px]">
+        <TabsContent value="acronyms" className="w-full mt-0 focus-visible:outline-none">
           <AcronymEditor acronyms={acronyms} onChange={setAcronyms} />
         </TabsContent>
       </Tabs>

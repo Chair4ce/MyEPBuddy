@@ -61,6 +61,7 @@ import {
 import Link from "next/link";
 import type { Accomplishment, WritingStyle, Profile, ManagedMember, EPBShell, Rank } from "@/types/database";
 import { EPBShellForm } from "@/components/epb/epb-shell-form";
+import { MpaDescriptionPanel } from "@/components/epb/mpa-description-editor";
 import { EPBShellShareDialog } from "@/components/epb/epb-shell-share-dialog";
 import { OPBShellForm } from "@/components/opb/opb-shell-form";
 import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
@@ -444,7 +445,9 @@ export default function GeneratePage() {
   }, [profile, userIsOfficer, officerWorkspaceMode, selectedRatee, rateeOptions, setSelectedRatee]);
 
   return (
-    <div className="space-y-6 min-w-0 w-full max-w-7xl pb-8">
+    <div className="w-full pb-8 overflow-x-auto">
+      <div className="flex items-start justify-center gap-0 min-w-min w-full">
+        <div className="space-y-6 min-w-0 w-full max-w-7xl shrink-0">
       {/* Page Header with Title and Share Button */}
       <div className="flex items-center justify-between gap-4 min-w-0">
         <div className="min-w-0">
@@ -1036,6 +1039,14 @@ export default function GeneratePage() {
         </DialogContent>
       </Dialog>
 
+        </div>
+
+        {profile &&
+          (!userIsOfficer ||
+            (userIsOfficer && officerWorkspaceMode === "epb" && hasEnlistedTeamMembers)) && (
+          <MpaDescriptionPanel />
+        )}
+      </div>
     </div>
   );
 }

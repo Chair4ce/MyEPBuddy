@@ -60,7 +60,7 @@ import { useStyleFeedback, getMpaCategory } from "@/hooks/use-style-feedback";
 import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 import { PromptSettingsModal } from "./prompt-settings-modal";
-import { MpaDescriptionEditor } from "./mpa-description-editor";
+import { MpaDescriptionToggleButton, scrollMpaDescriptionPanelTo } from "./mpa-description-editor";
 
 interface MPASectionCardProps {
   section: EPBShellSection;
@@ -331,6 +331,8 @@ export function MPASectionCard({
   const storedState = sectionStates[section.mpa];
   const updateSectionState = useEPBShellStore((s) => s.updateSectionState);
   const initializeSectionState = useEPBShellStore((s) => s.initializeSectionState);
+  const setFocusedMpaKey = useEPBShellStore((s) => s.setFocusedMpaKey);
+  const mpaDescriptionDrawerOpen = useEPBShellStore((s) => s.mpaDescriptionDrawerOpen);
   
   // Get active clarifying question set for modal rendering
   const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
@@ -627,6 +629,11 @@ export function MPASectionCard({
     
     // Mark as editing IMMEDIATELY (enables idle detection)
     setIsEditing(true);
+
+    if (mpaDescriptionDrawerOpen) {
+      setFocusedMpaKey(section.mpa);
+      scrollMpaDescriptionPanelTo(section.mpa);
+    }
     
     // Set presence indicator (doesn't block other users)
     if (onAcquireLock && !isCollaborating) {
@@ -944,7 +951,7 @@ export function MPASectionCard({
             )}
           </button>
           {/* MPA description info button */}
-          <MpaDescriptionEditor mpaKey={section.mpa} />
+          <MpaDescriptionToggleButton mpaKey={section.mpa} />
           {/* Split view toggle button - only for non-HLR sections */}
           {!isHLR && onToggleSplitView && (
             <Tooltip>
@@ -1034,7 +1041,15 @@ export function MPASectionCard({
 
       {/* Content - conditionally rendered instead of using Collapsible */}
       {!isCollapsed && (
-        <CardContent className="pt-0 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 duration-200 px-3 sm:px-6">
+        <CardContent
+          className="pt-0 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 duration-200 px-3 sm:px-6"
+          onFocusCapture={() => {
+            if (mpaDescriptionDrawerOpen) {
+              setFocusedMpaKey(section.mpa);
+              scrollMpaDescriptionPanelTo(section.mpa);
+            }
+          }}
+        >
             {/* Working Statement Area - ALWAYS at top */}
             <div className="space-y-3">
               {/* Presence indicator - shows who else is editing (collaborative) */}

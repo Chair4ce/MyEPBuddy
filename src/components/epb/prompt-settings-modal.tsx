@@ -87,6 +87,7 @@ IMPACT AMPLIFICATION TECHNIQUES:
 - Reference inspections: "contributed to Excellent rating"
 - Tie to deployments: "supported X deployed members"
 - Quantify time: "reduced processing by X hrs/days"
+- Show leadership/management scope (2D depth): combine vertical org level (office/flight → sq → gp → wing → NAF → MAJCOM → HAF) with horizontal scale (# Amn led/managed/unified); e.g., "Led 12-Amn team & unified 4 orgs for wing-level project" outweighs "Led 3-mbr team on sq-level project"; layer time/money/resource metrics for additional impact
 
 MAJOR PERFORMANCE AREAS:
 {{mga_list}}

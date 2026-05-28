@@ -1152,6 +1152,59 @@ export const ACA_RUBRIC_SENIOR = {
   },
 };
 
+/** Rank-calibrated leadership scope expectations for ACA EPB assessment */
+function getRankCalibratedScopeGuidance(rateeRank: string): string {
+  const rank = rateeRank?.trim() || "Unknown";
+
+  const juniorEnlisted = ["AB", "Amn", "A1C", "SrA"];
+  const nco = ["SSgt", "TSgt"];
+  const snco = ["MSgt", "SMSgt", "CMSgt"];
+
+  if (juniorEnlisted.includes(rank)) {
+    return `**Rank-calibrated expectations for ${rank} (Junior Enlisted)**:
+- Flight- or squadron-level leadership is **strong and appropriate**—do NOT penalize absence of wing/MAJCOM scope; junior Airmen rarely have access to those opportunities.
+- Leading small teams (2–8 members) on flight/squadron projects should score **high** when execution and impact are clear.
+- Score lower only if statements show purely individual task work with **no** leadership, team, or scope context at all.
+- Recommendations (if needed): seek flight/squadron volunteer roles, small-team lead positions, or mentorship opportunities—not wing/base-level roles beyond typical access for this rank.`;
+  }
+
+  if (rank === "SSgt") {
+    return `**Rank-calibrated expectations for SSgt (First-Line Supervisor)**:
+- Flight- and squadron-level leadership with teams of ~4–12 members is **expected and should score well**.
+- Group- or base-level involvement is a **plus**, not a requirement—acknowledge rank-limited access.
+- Score lower if statements show only individual contributor work with no supervisory scope for a new NCO.
+- Recommendations (if scope is low): pursue flight chief/supervisor roles, squadron working groups, or group-level collateral duty—not wing staff unless already demonstrated as a gap.`;
+  }
+
+  if (rank === "TSgt") {
+    return `**Rank-calibrated expectations for TSgt (E-6, Experienced NCO)**:
+- Squadron-level leadership is baseline; **group- or wing-level** scope and **larger teams (8+ members)** are expected for high scores.
+- A TSgt leading only a **2-member team on a squadron-level event** should score **lower** in leadership subcategories—scope is below rank expectations.
+- Wing/base-level or multi-org coordination should score **higher** when present.
+- Recommendations (if scope is low): volunteer for wing staff working groups, base-level councils, group-wide process teams, or roles unifying multiple squadrons—seek broader vertical AND horizontal scope before next cycle.`;
+  }
+
+  if (rank === "MSgt") {
+    return `**Rank-calibrated expectations for MSgt (E-7, SNCO)**:
+- **Wing-, group-, or base-level** impact with **significant horizontal scope** (multiple teams, cross-org unity) is expected for high scores.
+- Squadron-only scope with **small teams (≤4 members)** should score **noticeably lower**—insufficient for SNCO leadership tier.
+- MAJCOM- or installation-wide initiatives should score highest when supported by statements.
+- Recommendations (if scope is low): pursue wing/group staff roles, base-level integrated teams, multi-squadron program leadership, or group superintendent-level projects—MSgt EPBs should reflect organizational leadership beyond a single flight.`;
+  }
+
+  if (rank === "SMSgt" || rank === "CMSgt") {
+    return `**Rank-calibrated expectations for ${rank} (Senior SNCO)**:
+- **Wing, NAF, MAJCOM, or HAF-level** scope with broad horizontal reach (many personnel/units/orgs) is expected for top scores.
+- Squadron-only or small-team leadership should score **low** relative to rank—senior chiefs operate at enterprise scale.
+- Recommendations (if scope is low): seek wing/MAJCOM staff, base-wide strategic initiatives, cross-functional enterprise teams, or roles shaping policy across multiple organizations.`;
+  }
+
+  return `**Rank-calibrated expectations for ${rank}**:
+- Calibrate vertical and horizontal scope against typical leadership access and responsibility for this rank per AFI 36-2618.
+- Do not apply SNCO/wing-level expectations to junior enlisted, or junior-enlisted expectations to SNCOs.
+- Score based on whether demonstrated scope matches, exceeds, or falls short of what is reasonable for ${rank}.`;
+}
+
 // Build the assessment prompt with the appropriate ACA rubric based on rank
 export function buildACAAssessmentPrompt(
   rateeRank: string,
@@ -1230,17 +1283,37 @@ ${formattedStatements}
 2. **Proficiency Levels**:
 ${levelGuidance}
 
+3. **Leadership & Management Scope (Critical for Scoring — Rank-Calibrated)**: Scope is a **two-dimensional, rank-relative** evaluation—not an absolute scale. Always compare demonstrated scope against what is **appropriate and accessible** for ${rateeRank} before scoring or recommending.
+
+   - **Vertical scope** (organizational level): office/flight → squadron → group → wing → Numbered Air Force (NAF) → MAJCOM → Headquarters Air Force (HAF).
+   - **Horizontal scope** (people/units affected): number of Airmen led, managed, trained, unified, or coordinated across organizations.
+
+   ${getRankCalibratedScopeGuidance(rateeRank)}
+
+   **Scoring principle**: The same statement can score differently by rank. Example: "Led 4-Amn team on squadron project" → **strong** for SrA/SSgt, **adequate-to-weak** for TSgt, **low** for MSgt+. Always state in justifications whether scope meets, exceeds, or falls short of **${rateeRank}** expectations—not generic Air Force ideals.
+
+   Also weigh supporting quantifiers (time saved, dollars managed/saved, resources recovered) as additional impact depth.
+
+4. **Recommendations When Scope Is Low (Rank-Appropriate Only)**: Only recommend scope expansion when demonstrated leadership **falls below expectations for ${rateeRank}**. Do NOT tell junior enlisted to pursue wing-level roles they typically cannot access—praise appropriate flight/squadron scope instead.
+
+   When scope IS below rank expectations (e.g., TSgt/MSgt with only 2-member squadron teams), include constructive \`recommendations\` tailored to **realistic next steps for ${rateeRank}**:
+   - Acknowledge current accomplishments at the level shown
+   - Identify the specific gap (vertical level, team size, or both) relative to rank
+   - Suggest **achievable** higher-scope opportunities (base councils, wing working groups, multi-org projects) only where rank and access make that reasonable
+   - Never recommend wing/MAJCOM involvement to AB–SrA solely because scope is "low"—for them, flight/squadron leadership IS the target
+
 ## ACA RUBRIC REFERENCE (${formUsed})
 ${rubricSection}
 
 ## SCORING PROCESS
 
 1. Read each performance statement carefully.
-2. For each category and subcategory, identify relevant elements from the statements.
-3. Match described behaviors to the closest proficiency level. If not addressed, note as "not_applicable".
-4. Provide justification for each score, quoting or referencing parts of the statement.
-5. Assign an overall score for each category by summarizing subcategory scores.
-6. End with an overall performance strength summary.
+2. For leadership-related statements, assess vertical org level AND horizontal people/units scope **relative to ${rateeRank} expectations** before assigning proficiency levels.
+3. For each category and subcategory, identify relevant elements from the statements.
+4. Match described behaviors to the closest proficiency level. If not addressed, note as "not_applicable".
+5. Provide justification for each score, quoting or referencing parts of the statement—including scope analysis where relevant.
+6. Assign an overall score for each category by summarizing subcategory scores.
+7. End with an overall performance strength summary.
 
 **Objectivity**: Base scores on rubric descriptions only. Avoid bias; use evidence. If ambiguous, err toward lower level and explain.
 
@@ -1268,7 +1341,7 @@ Respond with a valid JSON object in this exact structure:
     }
   ],
   "recommendations": [
-    "Actionable recommendation to strengthen statements",
+    "Rank-appropriate recommendation (only suggest higher scope—base/wing/multi-org—when scope falls below ${rateeRank} expectations; praise appropriate flight/squadron scope for junior enlisted)",
     "Another specific improvement suggestion"
   ],
   "timestamp": "${new Date().toISOString()}"

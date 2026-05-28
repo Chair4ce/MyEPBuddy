@@ -945,6 +945,7 @@ export interface DecorationShell {
   id: string;
   user_id: string;
   team_member_id: string | null;
+  recipient_name: string | null;
   created_by: string;
   award_type: DecorationAwardType;
   reason: DecorationReason;

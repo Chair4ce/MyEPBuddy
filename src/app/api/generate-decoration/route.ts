@@ -34,7 +34,6 @@ interface GenerateDecorationRequest {
   
   // Position / assignment info (structured)
   dutyTitle: string;
-  office: string;
   squadron: string;
   groupName: string;  // optional
   wing: string;       // optional
@@ -58,14 +57,13 @@ interface GenerateDecorationRequest {
 
 /**
  * Build the comma-separated assignment chain from structured fields.
- * Example output: "42 CS/SCOO, 67th Fighter Squadron, 18th Operations Group,
+ * Example output: "67th Fighter Squadron, 18th Operations Group,
  *                  480 ISR Wing, Kadena Air Base, Japan"
  * Group and Wing are optional — omitted when empty.
  */
 function buildAssignmentLine(body: GenerateDecorationRequest): string {
   const parts: string[] = [];
 
-  if (body.office?.trim()) parts.push(body.office.trim());
   if (body.squadron?.trim()) parts.push(body.squadron.trim());
   // Group and Wing are optional
   if (body.groupName?.trim()) parts.push(body.groupName.trim());

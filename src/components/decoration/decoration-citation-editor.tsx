@@ -873,7 +873,7 @@ export function DecorationCitationEditor({
 
   return (
     <TooltipProvider>
-      <Card className={className}>
+      <Card className={cn("flex flex-col", className)}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
@@ -961,7 +961,7 @@ export function DecorationCitationEditor({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex min-h-0 flex-1 flex-col space-y-3">
           {/* Character count bar */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">

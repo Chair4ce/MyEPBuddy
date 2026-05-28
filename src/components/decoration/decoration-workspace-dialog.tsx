@@ -36,7 +36,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
@@ -57,6 +56,8 @@ import {
   MoreVertical,
   Library,
   ClipboardPaste,
+  Pencil,
+  Check,
 } from "lucide-react";
 import {
   Tooltip,
@@ -101,6 +102,7 @@ interface DecorationShellInput {
   id: string;
   user_id: string;
   team_member_id: string | null;
+  recipient_name?: string | null;
   created_by: string;
   award_type: DecorationAwardType;
   reason: DecorationReason;
@@ -146,8 +148,6 @@ export function DecorationWorkspaceDialog({
     setReason,
     dutyTitle,
     setDutyTitle,
-    office,
-    setOffice,
     squadron,
     setSquadron,
     groupName,
@@ -192,6 +192,13 @@ export function DecorationWorkspaceDialog({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [rateeInfo, setRateeInfo] = useState<RateeInfo | null>(null);
+  const [isEditingManualName, setIsEditingManualName] = useState(false);
+  const [manualRecipientName, setManualRecipientName] = useState("");
+  const [isSavingManualName, setIsSavingManualName] = useState(false);
+
+  const isManualNameOnly = Boolean(
+    currentShell?.recipient_name != null && !currentShell?.team_member_id
+  );
 
   // Mobile orientation state
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
@@ -248,44 +255,53 @@ export function DecorationWorkspaceDialog({
     }
 
     loadShellData();
-  }, [open, shell, supabase, setCurrentShell, setIsLoadingShell]);
+  }, [open, shell.id, supabase, setCurrentShell, setIsLoadingShell]);
 
   // Determine ratee info from shell
   useEffect(() => {
     if (!shell || !profile) return;
 
+    const recipientName =
+      currentShell?.recipient_name ?? shell.recipient_name ?? null;
+
     let info: RateeInfo | null = null;
 
     if (shell.team_member_id) {
-      // It's a managed member
       const member = managedMembers.find((m) => m.id === shell.team_member_id);
       if (member) {
         info = {
           id: member.id,
-          fullName: member.full_name, // Managed members only have full_name
+          fullName: member.full_name,
           rank: member.rank as Rank | null,
           afsc: member.afsc,
           unit: member.unit,
           isManagedMember: true,
         };
       }
+    } else if (recipientName) {
+      info = {
+        id: shell.id,
+        fullName: recipientName,
+        rank: null,
+        afsc: null,
+        unit: null,
+        isManagedMember: false,
+      };
     } else if (shell.user_id === profile.id) {
-      // It's the user's own shell
       info = {
         id: profile.id,
-        fullName: getFullName(profile), // Use utility to get proper full name
+        fullName: getFullName(profile),
         rank: profile.rank as Rank | null,
         afsc: profile.afsc,
         unit: profile.unit,
         isManagedMember: false,
       };
     } else {
-      // It's a subordinate's shell
       const sub = subordinates.find((s) => s.id === shell.user_id);
       if (sub) {
         info = {
           id: sub.id,
-          fullName: getFullName(sub), // Use utility to get proper full name
+          fullName: getFullName(sub),
           rank: sub.rank as Rank | null,
           afsc: sub.afsc,
           unit: sub.unit,
@@ -305,17 +321,40 @@ export function DecorationWorkspaceDialog({
         isManagedMember: info.isManagedMember,
         gender: info.gender,
       });
-      // Auto-populate office from ratee profile if not already set
-      if (!office && info.unit) {
-        setOffice(info.unit);
-      }
     }
-  }, [shell, profile, subordinates, managedMembers, setSelectedRatee, office, setOffice]);
+  }, [shell, currentShell?.recipient_name, profile, subordinates, managedMembers, setSelectedRatee]);
+
+  useEffect(() => {
+    if (!open) {
+      setIsEditingManualName(false);
+      setManualRecipientName("");
+      return;
+    }
+    if (isManualNameOnly && !isEditingManualName) {
+      setManualRecipientName(currentShell?.recipient_name ?? rateeInfo?.fullName ?? "");
+    }
+  }, [
+    open,
+    currentShell?.recipient_name,
+    currentShell?.id,
+    isManualNameOnly,
+    rateeInfo?.fullName,
+    isEditingManualName,
+  ]);
 
   // Load refined statements (finalized statements library) for the ratee
   useEffect(() => {
     async function loadStatements() {
       if (!rateeInfo) return;
+
+      const isManualRecipient =
+        Boolean(currentShell?.recipient_name ?? shell.recipient_name) &&
+        !rateeInfo.isManagedMember;
+
+      if (isManualRecipient) {
+        setStatements([]);
+        return;
+      }
 
       if (rateeInfo.isManagedMember) {
         // For managed members, get their refined statements
@@ -337,7 +376,7 @@ export function DecorationWorkspaceDialog({
       }
     }
     loadStatements();
-  }, [rateeInfo, supabase]);
+  }, [rateeInfo, currentShell, shell, supabase]);
 
   // Reset store when dialog closes
   useEffect(() => {
@@ -350,6 +389,58 @@ export function DecorationWorkspaceDialog({
   // ============================================================================
   // Handlers
   // ============================================================================
+
+  const handleStartEditManualName = useCallback(() => {
+    setManualRecipientName(currentShell?.recipient_name ?? rateeInfo?.fullName ?? "");
+    setIsEditingManualName(true);
+  }, [currentShell?.recipient_name, rateeInfo?.fullName]);
+
+  const handleCancelEditManualName = useCallback(() => {
+    setManualRecipientName(currentShell?.recipient_name ?? rateeInfo?.fullName ?? "");
+    setIsEditingManualName(false);
+  }, [currentShell?.recipient_name, rateeInfo?.fullName]);
+
+  const handleSaveManualName = useCallback(async () => {
+    if (!currentShell) return;
+
+    const trimmed = manualRecipientName.trim();
+    if (!trimmed) {
+      toast.error("Recipient name is required");
+      return;
+    }
+
+    setIsSavingManualName(true);
+    try {
+      const { error } = await supabase
+        .from("decoration_shells")
+        .update({ recipient_name: trimmed } as never)
+        .eq("id", currentShell.id);
+
+      if (error) throw error;
+
+      setCurrentShell({ ...currentShell, recipient_name: trimmed });
+      setRateeInfo((prev) => (prev ? { ...prev, fullName: trimmed } : prev));
+      if (selectedRatee) {
+        setSelectedRatee({ ...selectedRatee, fullName: trimmed });
+      }
+      setIsEditingManualName(false);
+      toast.success("Recipient name updated");
+      onSaved?.();
+    } catch (error) {
+      console.error("Error updating recipient name:", error);
+      toast.error("Failed to update recipient name");
+    } finally {
+      setIsSavingManualName(false);
+    }
+  }, [
+    currentShell,
+    manualRecipientName,
+    selectedRatee,
+    supabase,
+    setCurrentShell,
+    setSelectedRatee,
+    onSaved,
+  ]);
 
   // Save shell
   const handleSaveShell = useCallback(async () => {
@@ -373,7 +464,6 @@ export function DecorationWorkspaceDialog({
           award_type: awardType,
           reason,
           duty_title: dutyTitle,
-          office,
           squadron,
           group_name: groupName,
           wing,
@@ -395,7 +485,8 @@ export function DecorationWorkspaceDialog({
       onSaved?.();
     } catch (error) {
       console.error("Error saving decoration shell:", error);
-      toast.error("Failed to save decoration");
+      const message = error instanceof Error ? error.message : "Failed to save decoration";
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -405,7 +496,6 @@ export function DecorationWorkspaceDialog({
     awardType,
     reason,
     dutyTitle,
-    office,
     squadron,
     groupName,
     wing,
@@ -442,7 +532,6 @@ export function DecorationWorkspaceDialog({
           award_type: awardType,
           reason,
           duty_title: dutyTitle,
-          office,
           squadron,
           group_name: groupName,
           wing,
@@ -470,7 +559,6 @@ export function DecorationWorkspaceDialog({
     awardType,
     reason,
     dutyTitle,
-    office,
     squadron,
     groupName,
     wing,
@@ -562,7 +650,6 @@ export function DecorationWorkspaceDialog({
           rateeName: store.selectedRatee.fullName || "",
           rateeGender: store.selectedRatee.gender,
           dutyTitle: store.dutyTitle || "member",
-          office: store.office || "",
           squadron: store.squadron || "",
           groupName: store.groupName || "",
           wing: store.wing || "",
@@ -694,10 +781,75 @@ export function DecorationWorkspaceDialog({
                 <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <Medal className="size-5 text-primary" />
                 </div>
-                <div className="min-w-0">
-                  <DialogTitle className="text-sm font-semibold leading-tight truncate">
-                    {rateeDisplayName}&apos;s Decoration
-                  </DialogTitle>
+                <div className="min-w-0 flex-1">
+                  {isManualNameOnly && isEditingManualName ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Input
+                        value={manualRecipientName}
+                        onChange={(e) => setManualRecipientName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleSaveManualName();
+                          if (e.key === "Escape") handleCancelEditManualName();
+                        }}
+                        aria-label="Edit recipient name"
+                        className="h-8 max-w-[min(100%,220px)] text-sm"
+                        disabled={isSavingManualName}
+                        autoFocus
+                      />
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => void handleSaveManualName()}
+                          disabled={isSavingManualName}
+                          aria-label="Save recipient name"
+                        >
+                          {isSavingManualName ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Check className="size-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={handleCancelEditManualName}
+                          disabled={isSavingManualName}
+                          aria-label="Cancel editing recipient name"
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </div>
+                      <span className="text-sm font-semibold shrink-0">&apos;s Decoration</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-0.5 min-w-0">
+                      <DialogTitle className="text-sm font-semibold leading-tight truncate">
+                        {rateeDisplayName}&apos;s Decoration
+                      </DialogTitle>
+                      {isManualNameOnly && canEdit && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 shrink-0 p-0"
+                              onClick={handleStartEditManualName}
+                              aria-label="Edit recipient name"
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Edit recipient name</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  )}
                   <DialogDescription className="text-xs text-muted-foreground">
                     {decorationConfig?.name || "Decoration"} •{" "}
                     {decorationConfig?.abbreviation || awardType.toUpperCase()}
@@ -833,7 +985,7 @@ export function DecorationWorkspaceDialog({
             </div>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 min-h-0 relative">
+          <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Floating landscape hint button */}
             {isMobilePortrait && dismissedLandscapeHint && (
               <Button
@@ -847,205 +999,194 @@ export function DecorationWorkspaceDialog({
               </Button>
             )}
 
-            <div className="p-3 sm:p-6 space-y-4">
-              {/* Settings Collapsible */}
+            {/* Left column: settings + statement library */}
+            <div className="flex w-1/2 min-w-0 flex-col border-r overflow-hidden">
               {canEdit && (
-                <Collapsible open={showConfig} onOpenChange={setShowConfig}>
-                  <CollapsibleTrigger asChild>
-                    <div className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-                      <span className="text-sm font-medium">Settings</span>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>
-                          {decorationConfig?.abbreviation || awardType.toUpperCase()} •{" "}
-                          {DECORATION_REASONS.find((r) => r.key === reason)?.label || reason}
-                        </span>
-                        {showConfig ? (
-                          <ChevronUp className="size-4" />
-                        ) : (
-                          <ChevronDown className="size-4" />
-                        )}
+                <div className="shrink-0 border-b px-5 pt-4 pb-4">
+                  <Collapsible open={showConfig} onOpenChange={setShowConfig}>
+                    <CollapsibleTrigger asChild>
+                      <div className="flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-muted/50">
+                        <span className="text-sm font-medium">Settings</span>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {decorationConfig?.abbreviation || awardType.toUpperCase()} •{" "}
+                            {DECORATION_REASONS.find((r) => r.key === reason)?.label || reason}
+                          </span>
+                          {showConfig ? (
+                            <ChevronUp className="size-4" />
+                          ) : (
+                            <ChevronDown className="size-4" />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </CollapsibleTrigger>
-                  {/* Smooth animated expand */}
-                  <div
-                    className={cn(
-                      "grid transition-all duration-300 ease-in-out",
-                      showConfig ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-                    )}
-                  >
-                    <div className="overflow-hidden">
-                      <div className="pt-3 space-y-3">
-                        {/* 2-column grid for symmetrical layout */}
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                          {/* Award | Reason */}
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">Award</Label>
-                            <Select
-                              value={awardType}
-                              onValueChange={(v) => setAwardType(v as DecorationAwardType)}
-                            >
-                              <SelectTrigger className="h-8 w-full text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {DECORATION_TYPES.map((d) => (
-                                  <SelectItem key={d.key} value={d.key}>
-                                    {d.abbreviation} - {d.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">Reason</Label>
-                            <Select
-                              value={reason}
-                              onValueChange={(v) => setReason(v as DecorationReason)}
-                            >
-                              <SelectTrigger className="h-8 w-full text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {DECORATION_REASONS.map((r) => (
-                                  <SelectItem key={r.key} value={r.key}>
-                                    {r.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                    </CollapsibleTrigger>
+                    <div
+                      className={cn(
+                        "grid transition-all duration-300 ease-in-out",
+                        showConfig ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                      )}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="space-y-4 pt-4">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-4 xl:grid-cols-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">Award</Label>
+                              <Select
+                                value={awardType}
+                                onValueChange={(v) => setAwardType(v as DecorationAwardType)}
+                              >
+                                <SelectTrigger className="h-9 w-full text-sm">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {DECORATION_TYPES.map((d) => (
+                                    <SelectItem key={d.key} value={d.key}>
+                                      {d.abbreviation} - {d.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                          {/* Duty Title | Office */}
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">Duty Title</Label>
-                            <Input
-                              aria-label="Duty Title"
-                              value={dutyTitle}
-                              onChange={(e) => setDutyTitle(e.target.value)}
-                              placeholder="e.g., Flight Chief"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">Office</Label>
-                            <Input
-                              aria-label="Office"
-                              value={office}
-                              onChange={(e) => setOffice(e.target.value)}
-                              placeholder="e.g., 42 CS/SCOO"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">Reason</Label>
+                              <Select
+                                value={reason}
+                                onValueChange={(v) => setReason(v as DecorationReason)}
+                              >
+                                <SelectTrigger className="h-9 w-full text-sm">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {DECORATION_REASONS.map((r) => (
+                                    <SelectItem key={r.key} value={r.key}>
+                                      {r.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                          {/* Squadron | Group (optional) */}
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">Squadron</Label>
-                            <Input
-                              aria-label="Squadron"
-                              value={squadron}
-                              onChange={(e) => setSquadron(e.target.value)}
-                              placeholder="e.g., 42d Communications Squadron"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">
-                              Group <span className="text-muted-foreground/60">(optional)</span>
-                            </Label>
-                            <Input
-                              aria-label="Group"
-                              value={groupName}
-                              onChange={(e) => setGroupName(e.target.value)}
-                              placeholder="e.g., 42d Mission Support Group"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
-
-                          {/* Wing (optional) | Base */}
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">
-                              Wing <span className="text-muted-foreground/60">(optional)</span>
-                            </Label>
-                            <Input
-                              aria-label="Wing"
-                              value={wing}
-                              onChange={(e) => setWing(e.target.value)}
-                              placeholder="e.g., 42d Air Base Wing"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">Base</Label>
-                            <Input
-                              aria-label="Base Name"
-                              value={baseName}
-                              onChange={(e) => setBaseName(e.target.value)}
-                              placeholder="e.g., Maxwell Air Force Base"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
-
-                          {/* State/Country | Start | End */}
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">State / Country</Label>
-                            <Input
-                              aria-label="State or Country"
-                              value={location}
-                              onChange={(e) => setLocation(e.target.value)}
-                              placeholder="e.g., Alabama"
-                              className="h-8 w-full text-xs"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label className="text-[11px] text-muted-foreground">Start</Label>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">Duty Title</Label>
                               <Input
-                                type="date"
-                                aria-label="Start Date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="h-8 w-full text-xs"
+                                aria-label="Duty Title"
+                                value={dutyTitle}
+                                onChange={(e) => setDutyTitle(e.target.value)}
+                                placeholder="e.g., Flight Chief"
+                                className="h-9 w-full text-sm"
                               />
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-[11px] text-muted-foreground">End</Label>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-4 xl:grid-cols-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">Squadron</Label>
                               <Input
-                                type="date"
-                                aria-label="End Date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="h-8 w-full text-xs"
+                                aria-label="Squadron"
+                                value={squadron}
+                                onChange={(e) => setSquadron(e.target.value)}
+                                placeholder="e.g., 42d Communications Squadron"
+                                className="h-9 w-full text-sm"
                               />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">
+                                Group <span className="font-normal text-muted-foreground/70">(optional)</span>
+                              </Label>
+                              <Input
+                                aria-label="Group"
+                                value={groupName}
+                                onChange={(e) => setGroupName(e.target.value)}
+                                placeholder="e.g., 42d Mission Support Group"
+                                className="h-9 w-full text-sm"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">
+                                Wing <span className="font-normal text-muted-foreground/70">(optional)</span>
+                              </Label>
+                              <Input
+                                aria-label="Wing"
+                                value={wing}
+                                onChange={(e) => setWing(e.target.value)}
+                                placeholder="e.g., 42d Air Base Wing"
+                                className="h-9 w-full text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-4 xl:grid-cols-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">Base</Label>
+                              <Input
+                                aria-label="Base Name"
+                                value={baseName}
+                                onChange={(e) => setBaseName(e.target.value)}
+                                placeholder="e.g., Maxwell Air Force Base"
+                                className="h-9 w-full text-sm"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-muted-foreground">State / Country</Label>
+                              <Input
+                                aria-label="State or Country"
+                                value={location}
+                                onChange={(e) => setLocation(e.target.value)}
+                                placeholder="e.g., Alabama"
+                                className="h-9 w-full text-sm"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-x-4">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs font-medium text-muted-foreground">Period Start</Label>
+                                <Input
+                                  type="date"
+                                  aria-label="Start Date"
+                                  value={startDate}
+                                  onChange={(e) => setStartDate(e.target.value)}
+                                  className="h-9 w-full text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs font-medium text-muted-foreground">Period End</Label>
+                                <Input
+                                  type="date"
+                                  aria-label="End Date"
+                                  value={endDate}
+                                  onChange={(e) => setEndDate(e.target.value)}
+                                  className="h-9 w-full text-sm"
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </Collapsible>
+                  </Collapsible>
+                </div>
               )}
 
-              {/* Loading State */}
-              {isLoadingShell ? (
-                <div className="flex items-center justify-center py-12">
-                  <Spinner size="lg" />
-                </div>
-              ) : (
-                /* Main Content */
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {/* Left Pane: Library / Bulk toggle + content */}
-                  <div className="space-y-0">
-                    {/* Tab toggle */}
-                    <div className="flex items-center rounded-t-lg border border-b-0 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-auto px-5 pb-5">
+                {isLoadingShell ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Spinner size="lg" />
+                  </div>
+                ) : (
+                  <div className="space-y-0 pt-4">
+                    <div className="flex items-center overflow-hidden rounded-t-lg border border-b-0">
                       <button
                         type="button"
                         onClick={() => setLeftPaneMode("library")}
                         className={cn(
-                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                          "flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
                           leftPaneMode === "library"
                             ? "bg-primary text-primary-foreground"
-                            : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
                         )}
                       >
                         <Library className="size-3.5" />
@@ -1055,16 +1196,16 @@ export function DecorationWorkspaceDialog({
                         type="button"
                         onClick={() => setLeftPaneMode("bulk")}
                         className={cn(
-                          "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                          "flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
                           leftPaneMode === "bulk"
                             ? "bg-primary text-primary-foreground"
-                            : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
                         )}
                       >
                         <ClipboardPaste className="size-3.5" />
                         Paste Statements
                         {bulkStatements.length > 0 && (
-                          <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-0.5">
+                          <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px]">
                             {bulkStatements.length}
                           </Badge>
                         )}
@@ -1084,13 +1225,24 @@ export function DecorationWorkspaceDialog({
                       />
                     )}
                   </div>
+                )}
+              </div>
+            </div>
 
-                  {/* Citation Editor */}
-                  <DecorationCitationEditor statements={statements} />
+            {/* Right column: citation — stays aligned to top, unaffected by settings height */}
+            <div className="flex w-1/2 min-w-0 flex-col overflow-hidden px-5 py-4">
+              {isLoadingShell ? (
+                <div className="flex flex-1 items-center justify-center">
+                  <Spinner size="lg" />
                 </div>
+              ) : (
+                <DecorationCitationEditor
+                  statements={statements}
+                  className="flex h-full min-h-0 flex-col"
+                />
               )}
             </div>
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
