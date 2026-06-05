@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
 import { Info, Loader2, X } from "lucide-react";
+import { EPB_ZEN_PANEL_ATTR, getEpbZenModeClassName } from "./epb-zen-mode";
 
 /** MPAs shown in the reference panel (excludes Miscellaneous) */
 const REFERENCE_MPAS = STANDARD_MGAS.filter((mpa) => mpa.key !== "miscellaneous");
@@ -48,7 +49,7 @@ export function MpaDescriptionToggleButton({ mpaKey }: MpaDescriptionToggleButto
         <button
           type="button"
           className={cn(
-            "inline-flex items-center justify-center rounded-md size-5 sm:size-6 transition-colors shrink-0",
+            "inline-flex items-center justify-center rounded-md size-6 sm:size-7 transition-colors shrink-0",
             isActive || mpaDescriptionDrawerOpen
               ? "text-primary bg-primary/10"
               : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted"
@@ -59,9 +60,9 @@ export function MpaDescriptionToggleButton({ mpaKey }: MpaDescriptionToggleButto
           aria-expanded={mpaDescriptionDrawerOpen}
         >
           {isLoadingMpaDescriptions ? (
-            <Loader2 className="size-3 sm:size-3.5 animate-spin" />
+            <Loader2 className="size-4 sm:size-5 animate-spin" />
           ) : (
-            <Info className="size-3 sm:size-3.5" />
+            <Info className="size-4 sm:size-5" />
           )}
         </button>
       </TooltipTrigger>
@@ -110,6 +111,7 @@ function scrollItemWithinContainer(container: HTMLDivElement, item: HTMLDivEleme
 export function MpaDescriptionPanel() {
   const mpaDescriptionDrawerOpen = useEPBShellStore((s) => s.mpaDescriptionDrawerOpen);
   const focusedMpaKey = useEPBShellStore((s) => s.focusedMpaKey);
+  const zenModeMpaKey = useEPBShellStore((s) => s.zenModeMpaKey);
   const mpaDescriptionsCache = useEPBShellStore((s) => s.mpaDescriptionsCache);
   const isLoadingMpaDescriptions = useEPBShellStore((s) => s.isLoadingMpaDescriptions);
   const closeMpaDescriptionDrawer = useEPBShellStore((s) => s.closeMpaDescriptionDrawer);
@@ -148,12 +150,14 @@ export function MpaDescriptionPanel() {
 
   return (
     <aside
+      {...{ [EPB_ZEN_PANEL_ATTR]: "" }}
       aria-label="MPA descriptions reference"
       aria-hidden={!mpaDescriptionDrawerOpen}
       className={cn(
-        "shrink-0 self-start transition-[width,margin] duration-300 ease-in-out sticky top-6 z-10",
+        "shrink-0 self-start transition-[width,margin] duration-300 ease-in-out sticky top-6",
+        zenModeMpaKey ? "z-30" : "z-10",
         mpaDescriptionDrawerOpen
-          ? cn(PANEL_WIDTH_CLASS, "ml-4 lg:ml-6")
+          ? PANEL_WIDTH_CLASS
           : "w-0 ml-0 pointer-events-none overflow-hidden"
       )}
     >
@@ -164,7 +168,7 @@ export function MpaDescriptionPanel() {
           "h-[calc(100svh-9rem)] max-h-[calc(100dvh-9rem)]"
         )}
       >
-        <div className="shrink-0 border-b px-3 py-3 sm:px-4 sm:py-4">
+        <div className="shrink-0 border-b px-4 py-4 sm:px-5 sm:py-5">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h2 className="text-sm font-semibold leading-snug">MPA Descriptions</h2>
@@ -185,14 +189,14 @@ export function MpaDescriptionPanel() {
 
         <div
           ref={handleScrollContainerRef}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
         >
           {isLoadingMpaDescriptions ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="space-y-3 sm:space-y-3.5">
               {REFERENCE_MPAS.map((mpa) => {
                 const desc = descriptions[mpa.key] || DEFAULT_MPA_DESCRIPTIONS[mpa.key];
                 const isFocused = focusedMpaKey === mpa.key;
@@ -205,10 +209,11 @@ export function MpaDescriptionPanel() {
                       itemRefs.current[mpa.key] = el;
                     }}
                     className={cn(
-                      "rounded-lg border p-3 transition-colors duration-200",
+                      "rounded-lg border p-4 transition-colors duration-200",
                       isFocused
                         ? "border-primary/50 bg-primary/5 shadow-sm ring-1 ring-primary/15"
-                        : "border-border/60 bg-muted/20"
+                        : "border-border/60 bg-muted/20",
+                      zenModeMpaKey && getEpbZenModeClassName(zenModeMpaKey, mpa.key)
                     )}
                     aria-current={isFocused ? "true" : undefined}
                   >

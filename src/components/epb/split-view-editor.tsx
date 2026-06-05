@@ -27,6 +27,8 @@ interface SplitViewEditorProps {
   draggedSentence?: DraggedSentence | null;
   // Animation props
   isClosing?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 // Strip ALL periods from text (periods are added automatically when combining)
@@ -52,6 +54,8 @@ export function SplitViewEditor({
   onDrop,
   draggedSentence,
   isClosing = false,
+  onFocus,
+  onBlur,
 }: SplitViewEditorProps) {
   // Local state for each sentence (stored WITHOUT trailing periods)
   const [sentence1, setSentence1] = useState("");
@@ -288,6 +292,8 @@ export function SplitViewEditor({
             <textarea
               value={sentence1}
               onChange={(e) => handleS1Change(e.target.value)}
+              onFocus={onFocus}
+              onBlur={onBlur}
               disabled={disabled}
               placeholder={placeholder}
               rows={3}
@@ -360,6 +366,8 @@ export function SplitViewEditor({
             <textarea
               value={sentence2}
               onChange={(e) => handleS2Change(e.target.value)}
+              onFocus={onFocus}
+              onBlur={onBlur}
               disabled={disabled}
               placeholder="Second sentence (optional)..."
               rows={3}

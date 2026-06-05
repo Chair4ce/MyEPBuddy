@@ -63,6 +63,7 @@ import Link from "next/link";
 import type { Accomplishment, WritingStyle, Profile, ManagedMember, EPBShell, Rank } from "@/types/database";
 import { EPBShellForm } from "@/components/epb/epb-shell-form";
 import { MpaDescriptionPanel } from "@/components/epb/mpa-description-editor";
+import { getEpbZenChromeClassName, handleEpbZenPointerDown } from "@/components/epb/epb-zen-mode";
 import { EPBShellShareDialog } from "@/components/epb/epb-shell-share-dialog";
 import { OPBShellForm } from "@/components/opb/opb-shell-form";
 import { CreateReviewLinkDialog } from "@/components/review/create-review-link-dialog";
@@ -73,7 +74,7 @@ import { FeedbackBadge } from "@/components/feedback/feedback-badge";
 
 export default function GeneratePage() {
   const { profile, subordinates, managedMembers } = useUserStore();
-  const { selectedRatee, setSelectedRatee, currentShell, setCurrentShell, sections: shellSections, updateSection, resetShellData } = useEPBShellStore();
+  const { selectedRatee, setSelectedRatee, currentShell, setCurrentShell, sections: shellSections, updateSection, resetShellData, zenModeMpaKey } = useEPBShellStore();
   
   const [selectedModel, setSelectedModel] = useState<string>(() =>
     getStoredModelPreference(EPB_MODEL_PREFERENCE_STORAGE_KEY),
@@ -472,11 +473,15 @@ export default function GeneratePage() {
   }, [profile, userIsOfficer, officerWorkspaceMode, selectedRatee, rateeOptions, setSelectedRatee]);
 
   return (
-    <div className="w-full pb-8 overflow-x-auto">
-      <div className="flex items-start justify-center gap-0 min-w-min w-full">
-        <div className="space-y-6 min-w-0 w-full max-w-7xl shrink-0">
+    <div
+      className="w-full pb-10 sm:pb-12 overflow-x-auto"
+      onPointerDownCapture={handleEpbZenPointerDown}
+    >
+      <div className="flex items-start justify-center gap-4 lg:gap-6 xl:gap-8 min-w-min w-full">
+        <div className="space-y-6 sm:space-y-8 min-w-0 w-full max-w-7xl shrink-0">
+      <div className={cn("space-y-4 sm:space-y-5", getEpbZenChromeClassName(zenModeMpaKey))}>
       {/* Page Header with Title and Share Button */}
-      <div className="flex items-center justify-between gap-4 min-w-0">
+      <div className="flex items-center justify-between gap-4 min-w-0 pt-0.5">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight truncate">
             {userIsOfficer && officerWorkspaceMode === "opb" 
@@ -721,8 +726,8 @@ export default function GeneratePage() {
       {/* Viewing EPB for Selector - Only for EPB mode, always rendered to prevent layout shift */}
       {(!userIsOfficer || officerWorkspaceMode === "epb") && (
         <Card className="bg-muted/30 overflow-hidden">
-          <CardContent className="py-2 sm:py-3 px-3 sm:px-6">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <CardContent className="py-3 sm:py-4 px-4 sm:px-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
               <span className="text-xs sm:text-sm text-muted-foreground shrink-0">Viewing EPB for:</span>
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <Select
@@ -983,6 +988,8 @@ export default function GeneratePage() {
         </Card>
       </Collapsible>
       )}
+
+      </div>
 
       {/* OPB Shell Form - For officers in OPB mode */}
       {profile && userIsOfficer && officerWorkspaceMode === "opb" && (

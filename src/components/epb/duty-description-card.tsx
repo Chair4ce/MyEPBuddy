@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -37,7 +37,13 @@ import { useStyleFeedback } from "@/hooks/use-style-feedback";
 import { SaveDutyDescriptionTemplateDialog } from "./save-duty-description-template-dialog";
 import { DutyDescriptionTemplatesPanel } from "./duty-description-templates-panel";
 import { FileText } from "lucide-react";
-
+import { getEpbZenModeClassName, ZEN_MODE_DUTY_DESCRIPTION_KEY } from "./epb-zen-mode";
+import {
+  EpbAnimatedCollapse,
+  EPB_GENERATED_RESULTS_CLOSE_MS,
+  EPB_PANEL_CLOSE_MS,
+} from "./epb-animated-collapse";
+import { animateEpbShellResize } from "./epb-resize-transition";
 interface DutyDescriptionCardProps {
   currentDutyDescription: string;
   isCollapsed: boolean;
@@ -110,6 +116,9 @@ export function DutyDescriptionCard({
     setIsSavingDutyDescription,
   } = useEPBShellStore();
 
+  const zenModeMpaKey = useEPBShellStore((s) => s.zenModeMpaKey);
+  const setZenModeMpaKey = useEPBShellStore((s) => s.setZenModeMpaKey);
+
   const [copied, setCopied] = useState(false);
   // Initialize from prop (source of truth), not from store
   const [localText, setLocalText] = useState(currentDutyDescription || "");
@@ -125,9 +134,21 @@ export function DutyDescriptionCard({
   const [showTemplatesPanel, setShowTemplatesPanel] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+  const [isRevisePanelClosing, setIsRevisePanelClosing] = useState(false);
+  const [isRevisionsResultsClosing, setIsRevisionsResultsClosing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const cardBodyShellRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(currentDutyDescription);
   const revisePanelRef = useRef<HTMLDivElement>(null);
+  const statementAreaRef = useRef<HTMLDivElement>(null);
+  const generatedRevisionsResultsRef = useRef<HTMLDivElement>(null);
+  const generatedRevisionsRef = useRef<string[]>([]);
+  const zenExitGuardRef = useRef({
+    showRevisePanel: false,
+    isRevisePanelClosing: false,
+    isRevisionsResultsClosing: false,
+  });
   // Track if component is mounted to prevent blur handler from running after unmount
   const isMountedRef = useRef(true);
   
@@ -141,6 +162,137 @@ export function DutyDescriptionCard({
   
   // Style learning feedback (non-blocking, fire-and-forget)
   const styleFeedback = useStyleFeedback();
+
+  const getStatementScrollTarget = useCallback(() => {
+    return textareaRef.current ?? statementAreaRef.current ?? cardRef.current;
+  }, []);
+
+  const scrollStatementIntoView = useCallback(() => {
+    const target = getStatementScrollTarget();
+    if (!target) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+      });
+    });
+  }, [getStatementScrollTarget]);
+
+  const scrollGeneratedRevisionsIntoView = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const resultsEl = generatedRevisionsResultsRef.current;
+        if (!resultsEl) return;
+
+        resultsEl.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+
+        window.setTimeout(() => {
+          const lastItem = resultsEl.querySelector<HTMLElement>("[data-epb-revision-item]:last-child");
+          if (!lastItem) return;
+
+          const lastRect = lastItem.getBoundingClientRect();
+          const inView = lastRect.top >= 24 && lastRect.bottom <= window.innerHeight - 24;
+          if (!inView) {
+            lastItem.scrollIntoView({
+              behavior: "smooth",
+              block: "nearest",
+              inline: "nearest",
+            });
+          }
+        }, 350);
+      });
+    });
+  }, []);
+
+  const resizeCardBody = useCallback((update: () => void, onComplete?: () => void) => {
+    animateEpbShellResize(cardBodyShellRef.current, update, onComplete);
+  }, []);
+
+  generatedRevisionsRef.current = generatedRevisions;
+
+  zenExitGuardRef.current = {
+    showRevisePanel,
+    isRevisePanelClosing,
+    isRevisionsResultsClosing,
+  };
+
+  const isUseThisClosing = isRevisePanelClosing || isRevisionsResultsClosing;
+
+  const enterZenMode = useCallback(() => {
+    setZenModeMpaKey(ZEN_MODE_DUTY_DESCRIPTION_KEY);
+  }, [setZenModeMpaKey]);
+
+  const tryExitZenMode = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (cardRef.current?.contains(document.activeElement)) return;
+      const {
+        showRevisePanel: reviseOpen,
+        isRevisePanelClosing: reviseClosing,
+        isRevisionsResultsClosing: revisionsClosing,
+      } = zenExitGuardRef.current;
+      if (reviseOpen || reviseClosing || revisionsClosing) return;
+      if (useEPBShellStore.getState().zenModeMpaKey === ZEN_MODE_DUTY_DESCRIPTION_KEY) {
+        setZenModeMpaKey(null);
+      }
+    });
+  }, [setZenModeMpaKey]);
+
+  const closeRevisePanelWithScroll = useCallback(() => {
+    const hasRevisions = generatedRevisionsRef.current.length > 0;
+
+    const closePanel = () => {
+      setIsRevisePanelClosing(true);
+      setTimeout(() => {
+        animateEpbShellResize(cardBodyShellRef.current, () => {
+          setShowRevisePanel(false);
+          setGeneratedRevisions([]);
+          setReviseContext("");
+          setIsRevisePanelClosing(false);
+          setIsRevisionsResultsClosing(false);
+        }, tryExitZenMode);
+      }, EPB_PANEL_CLOSE_MS);
+    };
+
+    if (hasRevisions) {
+      scrollStatementIntoView();
+      setIsRevisionsResultsClosing(true);
+      setTimeout(closePanel, EPB_GENERATED_RESULTS_CLOSE_MS);
+      return;
+    }
+
+    scrollStatementIntoView();
+    closePanel();
+  }, [scrollStatementIntoView, tryExitZenMode]);
+
+  const handleCancelRevise = () => {
+    const dismissRevisePanel = () => {
+      resizeCardBody(() => {
+        setShowRevisePanel(false);
+        setGeneratedRevisions([]);
+        setReviseContext("");
+        setIsRevisionsResultsClosing(false);
+        tryExitZenMode();
+      });
+    };
+
+    if (generatedRevisionsRef.current.length > 0) {
+      scrollStatementIntoView();
+      setIsRevisionsResultsClosing(true);
+      setTimeout(dismissRevisePanel, EPB_GENERATED_RESULTS_CLOSE_MS);
+      return;
+    }
+
+    scrollStatementIntoView();
+    dismissRevisePanel();
+  };
 
   // Sync local text with prop when it changes (from shell load or realtime update)
   // This is the source of truth - always sync unless user is actively editing
@@ -166,6 +318,7 @@ export function DutyDescriptionCard({
   // Handle focus - set presence (no blocking, just show who's editing)
   const handleTextFocus = async () => {
     setIsEditing(true);
+    enterZenMode();
     
     // Set presence indicator (doesn't block other users)
     if (onAcquireLock) {
@@ -179,6 +332,7 @@ export function DutyDescriptionCard({
     if (!isMountedRef.current) return;
     
     setIsEditing(false);
+    tryExitZenMode();
     
     // Clear presence
     if (onReleaseLock) {
@@ -280,7 +434,7 @@ export function DutyDescriptionCard({
     try {
       const results = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
       if (results.length > 0) {
-        setGeneratedRevisions(results);
+        resizeCardBody(() => setGeneratedRevisions(results), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
       }
@@ -297,9 +451,6 @@ export function DutyDescriptionCard({
     setLocalText(version);
     setDutyDescriptionDraft(version);
     setIsDutyDescriptionDirty(version !== currentDutyDescription);
-    setGeneratedRevisions([]);
-    setShowRevisePanel(false);
-    setReviseContext("");
     toast.success("Revision applied");
     
     // Track for style learning (fire-and-forget)
@@ -310,23 +461,40 @@ export function DutyDescriptionCard({
       category: "duty_description",
       aggressiveness: reviseAggressiveness,
     });
+
+    closeRevisePanelWithScroll();
+  };
+
+  const handleToggleCollapse = () => {
+    if (!isCollapsed) {
+      textareaRef.current?.blur();
+      if (useEPBShellStore.getState().zenModeMpaKey === ZEN_MODE_DUTY_DESCRIPTION_KEY) {
+        setZenModeMpaKey(null);
+      }
+    }
+    onToggleCollapse();
   };
 
   return (
     <Card
+      ref={cardRef}
+      data-epb-zen-focus={ZEN_MODE_DUTY_DESCRIPTION_KEY}
+      onFocusCapture={!isCollapsed ? enterZenMode : undefined}
+      onBlurCapture={!isCollapsed ? tryExitZenMode : undefined}
       className={cn(
-        "transition-all duration-300 ease-in-out overflow-hidden",
+        "transition-all duration-300 ease-in-out overflow-hidden scroll-mt-20 gap-3 sm:gap-4 py-3 sm:py-5",
         "border-primary-300/30 dark:border-primary-700/30 bg-background dark:bg-muted/30",
         hasUnsavedChanges && "ring-1 ring-amber-400/50",
-        isComplete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10"
+        isComplete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10",
+        getEpbZenModeClassName(zenModeMpaKey, ZEN_MODE_DUTY_DESCRIPTION_KEY)
       )}
     >
       {/* Header */}
-      <CardHeader className="pb-2 px-3 sm:px-6">
+      <CardHeader className="pb-3 px-4 sm:px-6">
         <div className="flex items-center justify-between gap-1.5 sm:gap-2">
           <button
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
-            onClick={onToggleCollapse}
+            onClick={handleToggleCollapse}
           >
             <span className="font-semibold text-base sm:text-lg truncate">
               Duty Description
@@ -403,7 +571,8 @@ export function DutyDescriptionCard({
 
       {/* Content */}
       {!isCollapsed && (
-        <CardContent className="pt-0 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 duration-200 px-3 sm:px-6">
+        <CardContent className="pt-0 pb-4 sm:pb-5 animate-in slide-in-from-top-2 duration-200 px-4 sm:px-6">
+          <div ref={cardBodyShellRef} className="space-y-4 sm:space-y-5">
           {/* Presence indicator - shows who else is editing (collaborative, not blocking) */}
           {isLockedByOther && lockedByInfo && (
             <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-xs text-muted-foreground">
@@ -415,7 +584,7 @@ export function DutyDescriptionCard({
           )}
           
           {/* Textarea */}
-          <div className="space-y-3">
+          <div ref={statementAreaRef} className="space-y-3">
             <textarea
               ref={textareaRef}
               value={localText}
@@ -458,22 +627,28 @@ export function DutyDescriptionCard({
           </div>
 
           {/* Tools Bar */}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t">
+          <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4 border-t">
             <div className="flex items-center gap-1.5">
               {/* Revise button - only show when there's content */}
               {hasContent && onReviseStatement && (
                 <button
                   onClick={() => {
                     const opening = !showRevisePanel;
-                    setShowRevisePanel(opening);
-                    setShowHistoryPanel(false);
-                    setShowExamplesPanel(false);
-                    setShowTemplatesPanel(false);
                     if (opening) {
-                      setGeneratedRevisions([]);
-                      setTimeout(() => {
-                        revisePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                      }, 100);
+                      resizeCardBody(() => {
+                        setShowRevisePanel(true);
+                        setShowHistoryPanel(false);
+                        setShowExamplesPanel(false);
+                        setShowTemplatesPanel(false);
+                        setGeneratedRevisions([]);
+                        enterZenMode();
+                      }, () => {
+                        setTimeout(() => {
+                          revisePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                        }, 100);
+                      });
+                    } else {
+                      handleCancelRevise();
                     }
                   }}
                   className={cn(
@@ -497,10 +672,12 @@ export function DutyDescriptionCard({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => {
-                      setShowHistoryPanel(!showHistoryPanel);
-                      setShowExamplesPanel(false);
-                      setShowTemplatesPanel(false);
-                      setShowRevisePanel(false);
+                      resizeCardBody(() => {
+                        setShowHistoryPanel(!showHistoryPanel);
+                        setShowExamplesPanel(false);
+                        setShowTemplatesPanel(false);
+                        setShowRevisePanel(false);
+                      });
                     }}
                     className={cn(
                       "size-7 rounded-md inline-flex items-center justify-center transition-colors",
@@ -522,10 +699,12 @@ export function DutyDescriptionCard({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => {
-                      setShowExamplesPanel(!showExamplesPanel);
-                      setShowHistoryPanel(false);
-                      setShowTemplatesPanel(false);
-                      setShowRevisePanel(false);
+                      resizeCardBody(() => {
+                        setShowExamplesPanel(!showExamplesPanel);
+                        setShowHistoryPanel(false);
+                        setShowTemplatesPanel(false);
+                        setShowRevisePanel(false);
+                      });
                     }}
                     className={cn(
                       "size-7 rounded-md inline-flex items-center justify-center transition-colors",
@@ -551,10 +730,12 @@ export function DutyDescriptionCard({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => {
-                      setShowTemplatesPanel(!showTemplatesPanel);
-                      setShowExamplesPanel(false);
-                      setShowHistoryPanel(false);
-                      setShowRevisePanel(false);
+                      resizeCardBody(() => {
+                        setShowTemplatesPanel(!showTemplatesPanel);
+                        setShowExamplesPanel(false);
+                        setShowHistoryPanel(false);
+                        setShowRevisePanel(false);
+                      });
                     }}
                     className={cn(
                       "size-7 rounded-md inline-flex items-center justify-center transition-colors",
@@ -595,7 +776,7 @@ export function DutyDescriptionCard({
           {/* History Panel */}
           {showHistoryPanel && (
             <div className="rounded-lg border bg-muted/30 animate-in fade-in-0 duration-200">
-              <div className="p-3 border-b">
+              <div className="p-4 border-b">
                 <h4 className="font-medium text-sm">Snapshot History</h4>
                 <p className="text-xs text-muted-foreground">
                   {snapshots.length} snapshot{snapshots.length !== 1 && "s"}
@@ -610,7 +791,7 @@ export function DutyDescriptionCard({
                   snapshots.map((snap) => (
                     <div
                       key={snap.id}
-                      className="p-3 border-b last:border-0"
+                      className="p-4 border-b last:border-0"
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <span className="text-[10px] text-muted-foreground">
@@ -687,7 +868,7 @@ export function DutyDescriptionCard({
                   savedExamples.map((example) => (
                     <div
                       key={example.id}
-                      className="p-3 border-b last:border-0"
+                      className="p-4 border-b last:border-0"
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <span className="text-[10px] text-muted-foreground">
@@ -735,27 +916,31 @@ export function DutyDescriptionCard({
               templates={templates}
               onApply={handleApplyTemplate}
               onDelete={onDeleteTemplate}
-              onClose={() => setShowTemplatesPanel(false)}
+              onClose={() => resizeCardBody(() => setShowTemplatesPanel(false))}
             />
           )}
 
           {/* Revise Panel */}
-          {showRevisePanel && onReviseStatement && (
-            <div
-              ref={revisePanelRef}
-              className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300"
+          {onReviseStatement && (
+            <EpbAnimatedCollapse
+              visible={showRevisePanel || isRevisePanelClosing}
+              closing={isRevisePanelClosing}
+              durationMs={EPB_PANEL_CLOSE_MS}
             >
+              <div
+                ref={revisePanelRef}
+                className={cn(
+                  "rounded-lg border bg-muted/30 p-4 sm:p-5 space-y-4 sm:space-y-5 animate-in fade-in-0 duration-300",
+                  isUseThisClosing && "pointer-events-none"
+                )}
+              >
               <div className="flex items-center justify-between">
                 <h4 className="font-medium text-sm flex items-center gap-2">
                   <Wand2 className="size-4" />
                   Revise Current Statement
                 </h4>
                 <button
-                  onClick={() => {
-                    setShowRevisePanel(false);
-                    setGeneratedRevisions([]);
-                    setReviseContext("");
-                  }}
+                  onClick={handleCancelRevise}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancel
@@ -858,15 +1043,23 @@ export function DutyDescriptionCard({
               </div>
 
               {/* Generated Revisions */}
-              {generatedRevisions.length > 0 && (
-                <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
+              <EpbAnimatedCollapse
+                visible={generatedRevisions.length > 0 || isRevisionsResultsClosing}
+                closing={isRevisionsResultsClosing}
+                durationMs={EPB_GENERATED_RESULTS_CLOSE_MS}
+              >
+                <div
+                  ref={generatedRevisionsResultsRef}
+                  className="space-y-4 pt-4 border-t animate-in fade-in-0 duration-300"
+                >
                   <h5 className="text-xs font-medium text-muted-foreground">
                     Revisions ({generatedRevisions.length})
                   </h5>
                   {generatedRevisions.map((version, index) => (
                     <div
                       key={index}
-                      className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
+                      data-epb-revision-item
+                      className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
                       style={{ animationDelay: `${index * 100}ms` }}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -899,7 +1092,8 @@ export function DutyDescriptionCard({
                             <TooltipTrigger asChild>
                               <button
                                 onClick={() => handleUseRevision(version, index)}
-                                className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                disabled={isUseThisClosing}
+                                className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"
                               >
                                 <Check className="size-3 mr-1" />
                                 Use This
@@ -920,9 +1114,11 @@ export function DutyDescriptionCard({
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </EpbAnimatedCollapse>
+              </div>
+            </EpbAnimatedCollapse>
           )}
+          </div>
         </CardContent>
       )}
 

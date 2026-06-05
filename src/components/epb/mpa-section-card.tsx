@@ -60,7 +60,17 @@ import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/compon
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 import { PromptSettingsModal } from "./prompt-settings-modal";
 import { MpaDescriptionToggleButton, scrollMpaDescriptionPanelTo } from "./mpa-description-editor";
-
+import { getEpbZenModeClassName } from "./epb-zen-mode";
+import {
+  EpbAnimatedCollapse,
+  EPB_GENERATED_RESULTS_CLOSE_MS,
+  EPB_PANEL_CLOSE_MS,
+} from "./epb-animated-collapse";
+import {
+  animateEpbShellResize,
+  animateEpbShellResizeAfter,
+  EPB_SPLIT_INNER_CLOSE_MS,
+} from "./epb-resize-transition";
 interface MPASectionCardProps {
   section: EPBShellSection;
   /** Ratee ID for clarifying questions feature */
@@ -155,7 +165,7 @@ function SourceToggle({
             : "text-muted-foreground hover:text-foreground hover:bg-muted"
         )}
       >
-        <Zap className="size-3.5 sm:size-4" />
+        <Zap className="size-4 sm:size-5" />
         <span className="font-medium hidden sm:inline">Performance Actions</span>
         <span className="font-medium sm:hidden">Actions</span>
         {actionsCount > 0 && sourceType === "actions" && (
@@ -173,7 +183,7 @@ function SourceToggle({
             : "text-muted-foreground hover:text-foreground hover:bg-muted"
         )}
       >
-        <FileText className="size-3.5 sm:size-4" />
+        <FileText className="size-4 sm:size-5" />
         <span className="font-medium hidden sm:inline">Custom Context</span>
         <span className="font-medium sm:hidden">Custom</span>
       </button>
@@ -206,7 +216,7 @@ function HLRSourceToggle({
               : "text-muted-foreground hover:text-foreground hover:bg-muted"
           )}
         >
-          <Zap className="size-3.5 sm:size-4" />
+          <Zap className="size-4 sm:size-5" />
           <span className="font-medium hidden sm:inline">Actions</span>
           <span className="font-medium sm:hidden">Actions</span>
           {actionsCount > 0 && sourceType === "actions" && (
@@ -224,7 +234,7 @@ function HLRSourceToggle({
               : "text-muted-foreground hover:text-foreground hover:bg-muted"
           )}
         >
-          <FileText className="size-3.5 sm:size-4" />
+          <FileText className="size-4 sm:size-5" />
           <span className="font-medium hidden sm:inline">Custom</span>
           <span className="font-medium sm:hidden">Custom</span>
         </button>
@@ -239,7 +249,7 @@ function HLRSourceToggle({
             : "text-muted-foreground hover:text-foreground hover:bg-amber-100 dark:hover:bg-amber-900/30 border border-amber-300/50 dark:border-amber-700/50"
         )}
       >
-        <Crown className="size-3.5 sm:size-4" />
+        <Crown className="size-4 sm:size-5" />
         <span className="font-medium">Use EPB Statements</span>
         {epbStatementsCount > 0 && (
           <Badge 
@@ -332,6 +342,8 @@ export function MPASectionCard({
   const initializeSectionState = useEPBShellStore((s) => s.initializeSectionState);
   const setFocusedMpaKey = useEPBShellStore((s) => s.setFocusedMpaKey);
   const mpaDescriptionDrawerOpen = useEPBShellStore((s) => s.mpaDescriptionDrawerOpen);
+  const zenModeMpaKey = useEPBShellStore((s) => s.zenModeMpaKey);
+  const setZenModeMpaKey = useEPBShellStore((s) => s.setZenModeMpaKey);
   
   // Get active clarifying question set for modal rendering
   const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
@@ -349,7 +361,12 @@ export function MPASectionCard({
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSplitViewClosing, setIsSplitViewClosing] = useState(false);
+  const [isRevisePanelClosing, setIsRevisePanelClosing] = useState(false);
+  const [isRevisionsResultsClosing, setIsRevisionsResultsClosing] = useState(false);
+  const [isStatementsResultsClosing, setIsStatementsResultsClosing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mpaCardBodyShellRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
   
   // Revise panel state
@@ -375,6 +392,179 @@ export function MPASectionCard({
   // Refs for scrolling panels into view
   const aiGeneratePanelRef = useRef<HTMLDivElement>(null);
   const revisePanelRef = useRef<HTMLDivElement>(null);
+  const statementAreaRef = useRef<HTMLDivElement>(null);
+  const generatedRevisionsResultsRef = useRef<HTMLDivElement>(null);
+  const generatedStatementsResultsRef = useRef<HTMLDivElement>(null);
+  const generatedRevisionsRef = useRef<string[]>([]);
+  const generatedStatementsRef = useRef<string[]>([]);
+  const zenExitGuardRef = useRef({
+    showRevisePanel: false,
+    isRevisePanelClosing: false,
+    isRevisionsResultsClosing: false,
+    isStatementsResultsClosing: false,
+    mode: "edit" as MPAWorkspaceMode,
+  });
+
+  const getStatementScrollTarget = useCallback(() => {
+    return textareaRef.current ?? statementAreaRef.current ?? cardRef.current;
+  }, []);
+
+  const scrollStatementIntoView = useCallback(() => {
+    const target = getStatementScrollTarget();
+    if (!target) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+      });
+    });
+  }, [getStatementScrollTarget]);
+
+  const scrollResultsIntoView = useCallback(
+    (
+      resultsEl: HTMLDivElement | null,
+      itemSelector: string
+    ) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!resultsEl) return;
+
+          resultsEl.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest",
+          });
+
+          window.setTimeout(() => {
+            const lastItem = resultsEl.querySelector<HTMLElement>(`${itemSelector}:last-child`);
+            if (!lastItem) return;
+
+            const lastRect = lastItem.getBoundingClientRect();
+            const inView = lastRect.top >= 24 && lastRect.bottom <= window.innerHeight - 24;
+            if (!inView) {
+              lastItem.scrollIntoView({
+                behavior: "smooth",
+                block: "nearest",
+                inline: "nearest",
+              });
+            }
+          }, 350);
+        });
+      });
+    },
+    []
+  );
+
+  const scrollGeneratedRevisionsIntoView = useCallback(() => {
+    scrollResultsIntoView(generatedRevisionsResultsRef.current, "[data-epb-revision-item]");
+  }, [scrollResultsIntoView]);
+
+  const scrollGeneratedStatementsIntoView = useCallback(() => {
+    scrollResultsIntoView(generatedStatementsResultsRef.current, "[data-epb-statement-item]");
+  }, [scrollResultsIntoView]);
+
+  const resizeCardBody = useCallback((update: () => void, onComplete?: () => void) => {
+    animateEpbShellResize(mpaCardBodyShellRef.current, update, onComplete);
+  }, []);
+
+  const resizeCardBodyAfter = useCallback(
+    async (update: () => void | Promise<void>, onComplete?: () => void) => {
+      await animateEpbShellResizeAfter(mpaCardBodyShellRef.current, update, onComplete);
+    },
+    []
+  );
+
+  generatedRevisionsRef.current = generatedRevisions;
+  generatedStatementsRef.current = generatedStatements;
+
+  zenExitGuardRef.current = {
+    showRevisePanel,
+    isRevisePanelClosing,
+    isRevisionsResultsClosing,
+    isStatementsResultsClosing,
+    mode: state.mode,
+  };
+
+  const isUseThisClosing =
+    isRevisePanelClosing || isRevisionsResultsClosing || isStatementsResultsClosing;
+
+  const syncFocusedMpaDescription = useCallback(() => {
+    if (mpaDescriptionDrawerOpen) {
+      setFocusedMpaKey(section.mpa);
+      scrollMpaDescriptionPanelTo(section.mpa);
+    }
+  }, [mpaDescriptionDrawerOpen, section.mpa, setFocusedMpaKey]);
+
+  const enterZenMode = useCallback(() => {
+    setZenModeMpaKey(section.mpa);
+    syncFocusedMpaDescription();
+  }, [section.mpa, setZenModeMpaKey, syncFocusedMpaDescription]);
+
+  const tryExitZenMode = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (cardRef.current?.contains(document.activeElement)) return;
+      const {
+        showRevisePanel: reviseOpen,
+        isRevisePanelClosing: reviseClosing,
+        isRevisionsResultsClosing: revisionsClosing,
+        isStatementsResultsClosing: statementsClosing,
+        mode,
+      } = zenExitGuardRef.current;
+      if (reviseOpen || reviseClosing || revisionsClosing || statementsClosing || mode === "ai-assist") {
+        return;
+      }
+      if (useEPBShellStore.getState().zenModeMpaKey === section.mpa) {
+        setZenModeMpaKey(null);
+      }
+    });
+  }, [section.mpa, setZenModeMpaKey]);
+
+  const closeRevisePanelWithScroll = useCallback(() => {
+    const hasRevisions = generatedRevisionsRef.current.length > 0;
+
+    const closePanel = () => {
+      setIsRevisePanelClosing(true);
+      setTimeout(() => {
+        animateEpbShellResize(mpaCardBodyShellRef.current, () => {
+          setShowRevisePanel(false);
+          setGeneratedRevisions([]);
+          setReviseContext("");
+          setIsRevisePanelClosing(false);
+          setIsRevisionsResultsClosing(false);
+        }, tryExitZenMode);
+      }, EPB_PANEL_CLOSE_MS);
+    };
+
+    if (hasRevisions) {
+      scrollStatementIntoView();
+      setIsRevisionsResultsClosing(true);
+      setTimeout(closePanel, EPB_GENERATED_RESULTS_CLOSE_MS);
+      return;
+    }
+
+    scrollStatementIntoView();
+    closePanel();
+  }, [scrollStatementIntoView, tryExitZenMode]);
+
+  const closeGeneratedStatementsWithScroll = useCallback(() => {
+    if (generatedStatementsRef.current.length === 0) {
+      scrollStatementIntoView();
+      return;
+    }
+
+    scrollStatementIntoView();
+    setIsStatementsResultsClosing(true);
+    setTimeout(() => {
+      animateEpbShellResize(mpaCardBodyShellRef.current, () => {
+        setGeneratedStatements([]);
+        setIsStatementsResultsClosing(false);
+      });
+    }, EPB_GENERATED_RESULTS_CLOSE_MS);
+  }, [scrollStatementIntoView]);
   
   // LOCAL state for textarea - initialized from section prop (source of truth)
   // This prevents constant re-renders during typing which causes ref composition loops
@@ -628,10 +818,7 @@ export function MPASectionCard({
     // Mark as editing IMMEDIATELY (enables idle detection)
     setIsEditing(true);
 
-    if (mpaDescriptionDrawerOpen) {
-      setFocusedMpaKey(section.mpa);
-      scrollMpaDescriptionPanelTo(section.mpa);
-    }
+    enterZenMode();
     
     // Set presence indicator (doesn't block other users)
     if (onAcquireLock && !isCollaborating) {
@@ -646,6 +833,7 @@ export function MPASectionCard({
     
     // Mark as no longer editing (disables idle detection)
     setIsEditing(false);
+    tryExitZenMode();
     
     // Clear any pending collab sync
     if (collabSyncTimerRef.current) {
@@ -728,6 +916,12 @@ export function MPASectionCard({
     }
     
     updateSectionState(section.mpa, { mode: newMode });
+
+    if (newMode === "ai-assist") {
+      enterZenMode();
+    } else if (newMode !== "edit") {
+      tryExitZenMode();
+    }
   };
 
 
@@ -768,7 +962,7 @@ export function MPASectionCard({
         selectedAwards: selectedAwardsForGen,
       });
       if (results.length > 0) {
-        setGeneratedStatements(results);
+        resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
       } else {
         toast.error("No statements generated");
       }
@@ -788,8 +982,8 @@ export function MPASectionCard({
       draftText: statement,
       isDirty: true,
     });
-    setGeneratedStatements([]);
     toast.success("Statement applied");
+    closeGeneratedStatementsWithScroll();
   };
   
   // Save a statement to the examples scratchpad
@@ -818,7 +1012,7 @@ export function MPASectionCard({
     try {
       const revisions = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
       if (revisions.length > 0) {
-        setGeneratedRevisions(revisions);
+        resizeCardBody(() => setGeneratedRevisions(revisions), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
       }
@@ -832,9 +1026,25 @@ export function MPASectionCard({
   
   // Cancel revise panel
   const handleCancelRevise = () => {
-    setShowRevisePanel(false);
-    setGeneratedRevisions([]);
-    setReviseContext("");
+    const dismissRevisePanel = () => {
+      resizeCardBody(() => {
+        setShowRevisePanel(false);
+        setGeneratedRevisions([]);
+        setReviseContext("");
+        setIsRevisionsResultsClosing(false);
+        tryExitZenMode();
+      });
+    };
+
+    if (generatedRevisionsRef.current.length > 0) {
+      scrollStatementIntoView();
+      setIsRevisionsResultsClosing(true);
+      setTimeout(dismissRevisePanel, EPB_GENERATED_RESULTS_CLOSE_MS);
+      return;
+    }
+
+    scrollStatementIntoView();
+    dismissRevisePanel();
   };
   
   // Use a generated revision (replace current statement)
@@ -845,9 +1055,6 @@ export function MPASectionCard({
       draftText: revision,
       isDirty: true,
     });
-    setShowRevisePanel(false);
-    setGeneratedRevisions([]);
-    setReviseContext("");
     toast.success("Revision applied");
     
     // Track for style learning (fire-and-forget)
@@ -858,6 +1065,8 @@ export function MPASectionCard({
       category: mpaCategory,
       aggressiveness: reviseAggressiveness,
     });
+
+    closeRevisePanelWithScroll();
   };
 
   // Handle action selection for statement 1
@@ -884,6 +1093,16 @@ export function MPASectionCard({
     });
   };
 
+  const handleToggleCollapse = () => {
+    if (!isCollapsed) {
+      textareaRef.current?.blur();
+      if (useEPBShellStore.getState().zenModeMpaKey === section.mpa) {
+        setZenModeMpaKey(null);
+      }
+    }
+    onToggleCollapse();
+  };
+
   // Check if we can generate
   const canGenerate = state.sourceType === "actions"
     ? (state.statement1ActionIds.length > 0 || (state.usesTwoStatements && state.statement2ActionIds.length > 0))
@@ -893,23 +1112,28 @@ export function MPASectionCard({
 
   return (
     <Card
+      ref={cardRef}
+      data-epb-zen-focus={section.mpa}
+      onFocusCapture={!isCollapsed ? enterZenMode : undefined}
+      onBlurCapture={!isCollapsed ? tryExitZenMode : undefined}
       className={cn(
-        "transition-all duration-300 ease-in-out overflow-hidden",
+        "transition-all duration-300 ease-in-out overflow-hidden scroll-mt-20 gap-3 sm:gap-4 py-3 sm:py-5",
         "border-primary-300/30 dark:border-primary-700/30 bg-background dark:bg-muted/30",
         isHLR && "border-primary-300/30 dark:border-primary-700/30",
         hasUnsavedChanges && "ring-1 ring-amber-400/50",
         section.is_complete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10",
-        isHighlighted && "animate-pulse-highlight"
+        isHighlighted && "animate-pulse-highlight",
+        getEpbZenModeClassName(zenModeMpaKey, section.mpa)
       )}
     >
       {/* Header - NO Collapsible/Radix components to avoid ref issues */}
-      <CardHeader className="pb-2 px-3 sm:px-6">
+      <CardHeader className="pb-3 px-4 sm:px-6">
         <div className="flex items-center justify-between gap-1.5 sm:gap-2">
           <button 
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
-            onClick={onToggleCollapse}
+            onClick={handleToggleCollapse}
           >
-            {isHLR && <Crown className="size-4 sm:size-5 text-amber-600 shrink-0" />}
+            {isHLR && <Crown className="size-5 sm:size-6 text-amber-600 shrink-0" />}
             <span className="font-semibold text-base sm:text-lg truncate">
               {mpa?.label || section.mpa}
             </span>
@@ -920,14 +1144,14 @@ export function MPASectionCard({
                 className="text-[9px] sm:text-[10px] shrink-0 text-muted-foreground border-border gap-0.5 sm:gap-1 hidden sm:flex"
                 title={`${lockedByInfo.rank || ""} ${lockedByInfo.name} is also editing this section`}
               >
-                <Users className="size-2.5 sm:size-3" />
+                <Users className="size-4 sm:size-5" />
                 <span className="hidden md:inline">{lockedByInfo.rank || ""} {lockedByInfo.name.split(" ")[0]} editing</span>
                 <span className="md:hidden">Collab</span>
               </Badge>
             )}
             {/* Mobile lock indicator */}
             {isLockedByOther && (
-              <Lock className="size-3 text-amber-600 shrink-0 sm:hidden" />
+              <Lock className="size-4 text-amber-600 shrink-0 sm:hidden" />
             )}
             {isAutosaving && (
               <Badge variant="outline" className="text-[9px] sm:text-[10px] text-blue-600 border-blue-600/30 shrink-0 animate-pulse px-1 sm:px-1.5">
@@ -942,9 +1166,9 @@ export function MPASectionCard({
               </Badge>
             )}
             {isCollapsed ? (
-              <ChevronDown className="size-3.5 sm:size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
+              <ChevronDown className="size-4 sm:size-5 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
             ) : (
-              <ChevronUp className="size-3.5 sm:size-4 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
+              <ChevronUp className="size-4 sm:size-5 text-muted-foreground group-hover:text-foreground transition-colors ml-auto shrink-0" />
             )}
           </button>
           {/* MPA description info button */}
@@ -955,28 +1179,34 @@ export function MPASectionCard({
               <TooltipTrigger asChild>
                 <button
                   className={cn(
-                    "inline-flex items-center justify-center rounded-md size-6 shrink-0 transition-colors",
+                    "inline-flex items-center justify-center rounded-md size-7 shrink-0 transition-colors",
                     isSplitView
                       ? "text-primary hover:bg-primary/10"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    // If closing split view, animate first then toggle
-                    if (isSplitView && !isSplitViewClosing) {
+                    if (isSplitViewClosing) return;
+
+                    if (isSplitView) {
                       setIsSplitViewClosing(true);
-                      // Wait for close animation to complete (300ms)
-                      setTimeout(() => {
-                        setIsSplitViewClosing(false);
-                        onToggleSplitView();
-                      }, 300);
-                    } else if (!isSplitView) {
-                      onToggleSplitView();
+                      window.setTimeout(() => {
+                        animateEpbShellResize(
+                          mpaCardBodyShellRef.current,
+                          onToggleSplitView,
+                          () => setIsSplitViewClosing(false)
+                        );
+                      }, EPB_SPLIT_INNER_CLOSE_MS);
+                    } else {
+                      animateEpbShellResize(
+                        mpaCardBodyShellRef.current,
+                        onToggleSplitView
+                      );
                     }
                   }}
                   disabled={isSplitViewClosing}
                 >
-                  <Rows2 className="size-4" />
+                  <Rows2 className="size-5" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -990,7 +1220,7 @@ export function MPASectionCard({
               <TooltipTrigger asChild>
                 <button
                   className={cn(
-                    "inline-flex items-center justify-center rounded-md size-6 shrink-0 transition-colors",
+                    "inline-flex items-center justify-center rounded-md size-7 shrink-0 transition-colors",
                     section.is_complete
                       ? "text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -1001,9 +1231,9 @@ export function MPASectionCard({
                   }}
                 >
                   {section.is_complete ? (
-                    <CheckCircle2 className="size-4" />
+                    <CheckCircle2 className="size-5" />
                   ) : (
-                    <Circle className="size-4" />
+                    <Circle className="size-5" />
                   )}
                 </button>
               </TooltipTrigger>
@@ -1017,10 +1247,10 @@ export function MPASectionCard({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className="inline-flex items-center justify-center rounded-md size-6 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                  className="inline-flex items-center justify-center rounded-md size-7 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                   onClick={handleCopy}
                 >
-                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -1039,16 +1269,11 @@ export function MPASectionCard({
       {/* Content - conditionally rendered instead of using Collapsible */}
       {!isCollapsed && (
         <CardContent
-          className="pt-0 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 duration-200 px-3 sm:px-6"
-          onFocusCapture={() => {
-            if (mpaDescriptionDrawerOpen) {
-              setFocusedMpaKey(section.mpa);
-              scrollMpaDescriptionPanelTo(section.mpa);
-            }
-          }}
+          className="pt-0 pb-4 sm:pb-5 animate-in slide-in-from-top-2 duration-200 px-4 sm:px-6"
         >
+          <div ref={mpaCardBodyShellRef} className="space-y-4 sm:space-y-5">
             {/* Working Statement Area - ALWAYS at top */}
-            <div className="space-y-3">
+            <div ref={statementAreaRef} className="space-y-3">
               {/* Presence indicator - shows who else is editing (collaborative) */}
               {isLockedByOther && lockedByInfo && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-muted-foreground text-xs animate-in fade-in-0 duration-200">
@@ -1064,48 +1289,52 @@ export function MPASectionCard({
                 </div>
               )}
 
-              {/* Textarea or Split View Editor */}
-              {isSplitView && !isHLR ? (
-                <SplitViewEditor
-                  text={localText}
-                  onChange={handleTextChange}
-                  maxChars={maxChars}
-                  disabled={isLockedByOther}
-                  placeholder={`Enter your ${mpa?.label || "statement"} here...`}
-                  mpaKey={section.mpa}
-                  onDragStart={onSentenceDragStart}
-                  onDragEnd={onSentenceDragEnd}
-                  onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
-                  draggedSentence={draggedSentence}
-                  isClosing={isSplitViewClosing}
-                />
-              ) : (
-                <div className="relative">
-                  <textarea
-                    ref={textareaRef}
-                    value={localText}
-                    onChange={(e) => handleTextChange(e.target.value)}
-                    onFocus={handleTextFocus}
-                    onBlur={handleTextBlur}
+              {/* Textarea or Split View Editor — card body resizes smoothly on toggle */}
+              <div>
+                {isSplitView && !isHLR ? (
+                  <SplitViewEditor
+                    text={localText}
+                    onChange={handleTextChange}
+                    maxChars={maxChars}
+                    disabled={isLockedByOther}
                     placeholder={`Enter your ${mpa?.label || "statement"} here...`}
-                    rows={5}
-                    className={cn(
-                      "flex w-full rounded-md border-2 border-border/60 bg-transparent px-3 py-2 text-sm shadow-sm ring-1 ring-ring/10 transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
-                      isOverLimit && "border-destructive focus-visible:ring-destructive"
-                    )}
+                    mpaKey={section.mpa}
+                    onDragStart={onSentenceDragStart}
+                    onDragEnd={onSentenceDragEnd}
+                    onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
+                    draggedSentence={draggedSentence}
+                    isClosing={isSplitViewClosing}
+                    onFocus={enterZenMode}
+                    onBlur={tryExitZenMode}
                   />
-                  
-                  {/* Drop overlay - shows when dragging a sentence from another MPA */}
-                  {!isHLR && !isLockedByOther && (
-                    <SentenceDropOverlay
-                      statementText={localText}
-                      mpaKey={section.mpa}
-                      draggedSentence={draggedSentence ?? null}
-                      onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
+                ) : (
+                  <div className="relative">
+                    <textarea
+                      ref={textareaRef}
+                      value={localText}
+                      onChange={(e) => handleTextChange(e.target.value)}
+                      onFocus={handleTextFocus}
+                      onBlur={handleTextBlur}
+                      placeholder={`Enter your ${mpa?.label || "statement"} here...`}
+                      rows={5}
+                      className={cn(
+                        "flex w-full rounded-md border-2 border-border/60 bg-transparent px-3 py-2 text-sm shadow-sm ring-1 ring-ring/10 transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 resize-none",
+                        isOverLimit && "border-destructive focus-visible:ring-destructive"
+                      )}
                     />
-                  )}
-                </div>
-              )}
+
+                    {/* Drop overlay - shows when dragging a sentence from another MPA */}
+                    {!isHLR && !isLockedByOther && (
+                      <SentenceDropOverlay
+                        statementText={localText}
+                        mpaKey={section.mpa}
+                        draggedSentence={draggedSentence ?? null}
+                        onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
               
               {/* Action bar below textarea - hidden in split view */}
               {!isSplitView && (
@@ -1137,7 +1366,7 @@ export function MPASectionCard({
                         onClick={handleReset} 
                         className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                       >
-                        <RotateCcw className="size-3 mr-1" />
+                        <RotateCcw className="size-4 mr-1.5" />
                         <span className="hidden sm:inline">Reset</span>
                       </button>
                     )}
@@ -1146,7 +1375,7 @@ export function MPASectionCard({
                       disabled={!hasContent}
                       className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                     >
-                      {copied ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                      {copied ? <Check className="size-4 mr-1.5" /> : <Copy className="size-4 mr-1.5" />}
                       <span className="hidden sm:inline">Copy</span>
                     </button>
                   </div>
@@ -1161,7 +1390,7 @@ export function MPASectionCard({
                       onClick={handleReset} 
                       className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                     >
-                      <RotateCcw className="size-3 mr-1" />
+                      <RotateCcw className="size-4 mr-1.5" />
                       <span className="hidden sm:inline">Reset</span>
                     </button>
                   )}
@@ -1170,7 +1399,7 @@ export function MPASectionCard({
                     disabled={!hasContent}
                     className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                   >
-                    {copied ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                    {copied ? <Check className="size-4 mr-1.5" /> : <Copy className="size-4 mr-1.5" />}
                     <span className="hidden sm:inline">Copy</span>
                   </button>
                 </div>
@@ -1178,23 +1407,23 @@ export function MPASectionCard({
             </div>
 
             {/* AI Options Bar - below working statement */}
-            <div className="flex items-center justify-between gap-2 pt-2 border-t">
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4 border-t">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {/* AI Assist button - always visible */}
                 <button
                   onClick={() => {
                     const isCurrentlyOpen = state.mode === "ai-assist" && !showRevisePanel;
                     if (isCurrentlyOpen) {
-                      // Toggle off - go back to edit mode
-                      handleModeChange("edit");
+                      void resizeCardBodyAfter(() => handleModeChange("edit"));
                     } else {
-                      // Toggle on
-                      handleModeChange("ai-assist");
-                      setShowRevisePanel(false);
-                      // Scroll panel into view after it renders
-                      setTimeout(() => {
-                        aiGeneratePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                      }, 100);
+                      void resizeCardBodyAfter(async () => {
+                        await handleModeChange("ai-assist");
+                        setShowRevisePanel(false);
+                      }, () => {
+                        setTimeout(() => {
+                          aiGeneratePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                        }, 100);
+                      });
                     }
                   }}
                   className={cn(
@@ -1204,7 +1433,7 @@ export function MPASectionCard({
                       : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
                   )}
                 >
-                  <Sparkles className="size-3 mr-1" />
+                  <Sparkles className="size-4 mr-1.5" />
                   <span className="hidden sm:inline">AI Generate</span>
                   <span className="sm:hidden">AI</span>
                 </button>
@@ -1214,13 +1443,17 @@ export function MPASectionCard({
                   <button
                     onClick={() => {
                       const opening = !showRevisePanel;
-                      setShowRevisePanel(opening);
-                      setGeneratedRevisions([]);
-                      // Scroll panel into view after it renders
                       if (opening) {
-                        setTimeout(() => {
-                          revisePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                        }, 100);
+                        resizeCardBody(() => {
+                          setShowRevisePanel(true);
+                          setGeneratedRevisions([]);
+                        }, () => {
+                          setTimeout(() => {
+                            revisePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                          }, 100);
+                        });
+                      } else {
+                        handleCancelRevise();
                       }
                     }}
                     disabled={isRevising}
@@ -1231,7 +1464,7 @@ export function MPASectionCard({
                         : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
                     )}
                   >
-                    <Wand2 className="size-3 mr-1" />
+                    <Wand2 className="size-4 mr-1.5" />
                     <span className="hidden sm:inline">Revise Statement</span>
                     <span className="sm:hidden">Revise</span>
                   </button>
@@ -1245,13 +1478,13 @@ export function MPASectionCard({
                     <TooltipTrigger asChild>
                       <button
                         className={cn(
-                          "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                          "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                           isRefreshing && "animate-spin"
                         )}
                         onClick={handleRefresh}
                         disabled={isRefreshing}
                       >
-                        <RefreshCw className="size-3.5" />
+                        <RefreshCw className="size-4" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Refresh</TooltipContent>
@@ -1263,15 +1496,17 @@ export function MPASectionCard({
                   <TooltipTrigger asChild>
                     <button
                       className={cn(
-                        "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showHistory && "bg-accent text-accent-foreground"
                       )}
                       onClick={() => {
-                        setShowHistory(!showHistory);
-                        if (!showHistory) setShowExamples(false);
+                        resizeCardBody(() => {
+                          setShowHistory(!showHistory);
+                          if (!showHistory) setShowExamples(false);
+                        });
                       }}
                     >
-                      <History className="size-3.5" />
+                      <History className="size-4" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>History</TooltipContent>
@@ -1282,18 +1517,20 @@ export function MPASectionCard({
                   <TooltipTrigger asChild>
                     <button
                       className={cn(
-                        "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showExamples && "bg-accent text-accent-foreground"
                       )}
                       onClick={() => {
-                        setShowExamples(!showExamples);
-                        if (!showExamples) setShowHistory(false);
+                        resizeCardBody(() => {
+                          setShowExamples(!showExamples);
+                          if (!showExamples) setShowHistory(false);
+                        });
                       }}
                     >
                       {savedExamples.length > 0 ? (
-                        <BookMarked className="size-3.5" />
+                        <BookMarked className="size-5" />
                       ) : (
-                        <Bookmark className="size-3.5" />
+                        <Bookmark className="size-5" />
                       )}
                     </button>
                   </TooltipTrigger>
@@ -1307,13 +1544,13 @@ export function MPASectionCard({
                   <TooltipTrigger asChild>
                     <button
                       className={cn(
-                        "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showPromptSettings && "bg-accent text-accent-foreground"
                       )}
                       onClick={() => setShowPromptSettings(true)}
                       aria-label="Prompt settings"
                     >
-                      <Settings2 className="size-3.5" />
+                      <Settings2 className="size-4" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>Prompt Settings</TooltipContent>
@@ -1324,13 +1561,13 @@ export function MPASectionCard({
                   <TooltipTrigger asChild>
                     <button
                       className={cn(
-                        "inline-flex items-center justify-center rounded-md size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none",
+                        "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none",
                         isCreatingSnapshot && "animate-pulse"
                       )}
                       disabled={!hasContent || isCreatingSnapshot}
                       onClick={handleCreateSnapshot}
                     >
-                      <Camera className="size-3.5" />
+                      <Camera className="size-4" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>Save snapshot</TooltipContent>
@@ -1341,7 +1578,7 @@ export function MPASectionCard({
             {/* History Panel - inline dropdown */}
             {showHistory && (
               <div className="rounded-lg border bg-card shadow-lg animate-in fade-in-0 duration-200">
-                <div className="p-3 border-b">
+                <div className="p-4 border-b">
                   <h4 className="font-medium text-sm">Snapshot History</h4>
                   <p className="text-xs text-muted-foreground">
                     {snapshots.length} snapshot{snapshots.length !== 1 && "s"}
@@ -1356,7 +1593,7 @@ export function MPASectionCard({
                     snapshots.map((snap) => (
                       <div
                         key={snap.id}
-                        className="p-3 border-b last:border-0"
+                        className="p-4 border-b last:border-0"
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <p className="text-xs text-muted-foreground">
@@ -1368,7 +1605,7 @@ export function MPASectionCard({
                                 onClick={() => handleRestoreSnapshot(snap)}
                                 className="text-[10px] px-1.5 py-0.5 rounded border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
                               >
-                                <RotateCcw className="size-3 inline mr-0.5" />
+                                <RotateCcw className="size-3.5 inline mr-1" />
                                 Restore
                               </button>
                             </TooltipTrigger>
@@ -1390,9 +1627,9 @@ export function MPASectionCard({
             {/* Saved Examples Panel */}
             {showExamples && (
               <div className="rounded-lg border bg-card shadow-lg animate-in fade-in-0 duration-200">
-                <div className="p-3 border-b">
+                <div className="p-4 border-b">
                   <h4 className="font-medium text-sm flex items-center gap-2">
-                    <BookMarked className="size-4" />
+                    <BookMarked className="size-5" />
                     Saved Examples
                   </h4>
                   <p className="text-xs text-muted-foreground">
@@ -1408,7 +1645,7 @@ export function MPASectionCard({
                     savedExamples.map((example) => (
                       <div
                         key={example.id}
-                        className="p-3 border-b last:border-0"
+                        className="p-4 border-b last:border-0"
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1426,7 +1663,7 @@ export function MPASectionCard({
                                     onClick={() => handleUseStatement(example.statement_text)}
                                     className="text-[10px] px-1.5 py-0.5 rounded border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
                                   >
-                                    <Check className="size-3 inline mr-0.5" />
+                                    <Check className="size-3.5 inline mr-1" />
                                     Use
                                   </button>
                                 </TooltipTrigger>
@@ -1440,7 +1677,7 @@ export function MPASectionCard({
                                     onClick={() => onDeleteExample(example.id)}
                                     className="text-[10px] px-1.5 py-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
                                   >
-                                    <Trash2 className="size-3" />
+                                    <Trash2 className="size-3.5" />
                                   </button>
                                 </TooltipTrigger>
                                 <TooltipContent>Delete example</TooltipContent>
@@ -1466,15 +1703,22 @@ export function MPASectionCard({
               </div>
             )}
 
-            {/* Revise Panel - fades in smoothly below */}
-            {showRevisePanel && (
-              <div 
+            {/* Revise Panel - collapses smoothly after "Use This" */}
+            <EpbAnimatedCollapse
+              visible={showRevisePanel || isRevisePanelClosing}
+              closing={isRevisePanelClosing}
+              durationMs={EPB_PANEL_CLOSE_MS}
+            >
+              <div
                 ref={revisePanelRef}
-                className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300"
+                className={cn(
+                  "rounded-lg border bg-muted/30 p-4 sm:p-5 space-y-4 sm:space-y-5 animate-in fade-in-0 duration-300",
+                  isUseThisClosing && "pointer-events-none"
+                )}
               >
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium text-sm flex items-center gap-2">
-                    <Wand2 className="size-4" />
+                    <Wand2 className="size-5" />
                     Revise Current Statement
                   </h4>
                   <button
@@ -1572,24 +1816,31 @@ export function MPASectionCard({
                     className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     {isRevising ? (
-                      <Loader2 className="size-4 animate-spin mr-2" />
+                      <Loader2 className="size-5 animate-spin mr-2" />
                     ) : (
-                      <Wand2 className="size-4 mr-2" />
+                      <Wand2 className="size-5 mr-2" />
                     )}
                     Generate {reviseVersionCount} Revision{reviseVersionCount > 1 ? "s" : ""}
                   </button>
                 </div>
 
-                {/* Generated Revisions - fade in below */}
-                {generatedRevisions.length > 0 && (
-                  <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
+                {/* Generated Revisions - collapse smoothly after "Use This" */}
+                <EpbAnimatedCollapse
+                  visible={generatedRevisions.length > 0 || isRevisionsResultsClosing}
+                  closing={isRevisionsResultsClosing}
+                  durationMs={EPB_GENERATED_RESULTS_CLOSE_MS}
+                >
+                  <div
+                    ref={generatedRevisionsResultsRef}
+                    className="space-y-4 pt-4 border-t animate-in fade-in-0 duration-300"
+                  >
                     <div className="flex items-center justify-between">
                       <h5 className="text-xs font-medium text-muted-foreground">
                         Generated Revisions ({generatedRevisions.length})
                       </h5>
                       {isLockedByOther && lockedByInfo && (
                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <Users className="size-3" />
+                          <Users className="size-4" />
                           Collaborative editing
                         </span>
                       )}
@@ -1597,7 +1848,8 @@ export function MPASectionCard({
                     {generatedRevisions.map((revision, index) => (
                       <div
                         key={index}
-                        className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
+                        data-epb-revision-item
+                        className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -1620,7 +1872,7 @@ export function MPASectionCard({
                                   }}
                                   className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center"
                                 >
-                                  <Copy className="size-3 mr-1" />
+                                  <Copy className="size-4 mr-1.5" />
                                   Copy
                                 </button>
                               </TooltipTrigger>
@@ -1635,7 +1887,7 @@ export function MPASectionCard({
                                     disabled={isSavingExample}
                                     className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center disabled:opacity-50"
                                   >
-                                    <Bookmark className="size-3 mr-1" />
+                                    <Bookmark className="size-4 mr-1.5" />
                                     Save
                                   </button>
                                 </TooltipTrigger>
@@ -1648,9 +1900,10 @@ export function MPASectionCard({
                                 <TooltipTrigger asChild>
                                   <button
                                     onClick={() => handleUseRevision(revision, index)}
-                                    className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                    disabled={isUseThisClosing}
+                                    className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"
                                   >
-                                    <Check className="size-3 mr-1" />
+                                    <Check className="size-4 mr-1.5" />
                                     Use This
                                   </button>
                                 </TooltipTrigger>
@@ -1670,19 +1923,19 @@ export function MPASectionCard({
                       </div>
                     ))}
                   </div>
-                )}
+                </EpbAnimatedCollapse>
               </div>
-            )}
+            </EpbAnimatedCollapse>
 
             {/* AI Generate Panel - shows when AI mode is active and not in revise mode */}
             {state.mode === "ai-assist" && !showRevisePanel && (
               <div 
                 ref={aiGeneratePanelRef}
-                className="rounded-lg border bg-muted/30 p-4 space-y-4 animate-in fade-in-0 duration-300"
+                className="rounded-lg border bg-muted/30 p-4 sm:p-5 space-y-4 sm:space-y-5 animate-in fade-in-0 duration-300"
               >
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium text-sm flex items-center gap-2">
-                    <Sparkles className="size-4" />
+                    <Sparkles className="size-5" />
                     Generate New Statement from:
                   </h4>
                 </div>
@@ -1708,7 +1961,7 @@ export function MPASectionCard({
                   <div className="space-y-2 p-2 rounded-lg bg-background/50 border">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <Trophy className="size-3.5 text-amber-500" />
+                        <Trophy className="size-4 text-amber-500" />
                         <span className="text-xs font-medium">Include Awards/Coins</span>
                       </div>
                       {(state.selectedAwardIds?.length || 0) > 0 && (
@@ -1745,7 +1998,7 @@ export function MPASectionCard({
                             aria-pressed={isSelected}
                             aria-label={`${isSelected ? "Remove" : "Add"} ${award.name}`}
                           >
-                            <Trophy className={cn("size-3", isSelected ? "text-amber-500" : "text-muted-foreground/50")} />
+                            <Trophy className={cn("size-3.5", isSelected ? "text-amber-500" : "text-muted-foreground/50")} />
                             <span className="truncate max-w-[220px]">
                               {award.type === "coin" && award.presenter
                                 ? `${award.presenter} Coin${award.name && award.name !== "Coin" ? `: ${award.name}` : ""}`
@@ -1816,7 +2069,7 @@ export function MPASectionCard({
                           cycleYear={cycleYear}
                           trigger={
                             <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
-                              <Plus className="size-3 mr-1" />
+                              <Plus className="size-4 mr-1.5" />
                               {statement1Actions.length > 0 ? `${statement1Actions.length} Loaded` : "Load Actions"}
                             </button>
                           }
@@ -1850,7 +2103,7 @@ export function MPASectionCard({
                             cycleYear={cycleYear}
                             trigger={
                               <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
-                                <Plus className="size-3 mr-1" />
+                                <Plus className="size-4 mr-1.5" />
                                 {statement2Actions.length > 0 ? `${statement2Actions.length} Loaded` : "Load Actions"}
                               </button>
                             }
@@ -1907,7 +2160,7 @@ export function MPASectionCard({
                 {state.sourceType === "epb-summary" && isHLR && (
                   <div className="space-y-3 p-3 rounded-lg bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30">
                     <div className="flex items-start gap-2">
-                      <Crown className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                      <Crown className="size-5 text-amber-600 shrink-0 mt-0.5" />
                       <div className="space-y-1">
                         <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
                           Generate HLR from EPB Statements
@@ -1958,17 +2211,27 @@ export function MPASectionCard({
                     className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     {state.isGenerating ? (
-                      <Loader2 className="size-4 animate-spin mr-2" />
+                      <Loader2 className="size-5 animate-spin mr-2" />
                     ) : (
-                      <Sparkles className="size-4 mr-2" />
+                      <Sparkles className="size-5 mr-2" />
                     )}
                     Generate {generateVersionCount} Statement{generateVersionCount > 1 ? "s" : ""}
                   </button>
                 </div>
 
-                {/* Generated Statements - fade in below */}
-                {generatedStatements.length > 0 && (
-                  <div className="space-y-3 pt-3 border-t animate-in fade-in-0 duration-300">
+                {/* Generated Statements - collapse smoothly after "Use This" */}
+                <EpbAnimatedCollapse
+                  visible={generatedStatements.length > 0 || isStatementsResultsClosing}
+                  closing={isStatementsResultsClosing}
+                  durationMs={EPB_GENERATED_RESULTS_CLOSE_MS}
+                >
+                  <div
+                    ref={generatedStatementsResultsRef}
+                    className={cn(
+                      "space-y-4 pt-4 border-t animate-in fade-in-0 duration-300",
+                      isStatementsResultsClosing && "pointer-events-none"
+                    )}
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <h5 className="text-xs font-medium text-muted-foreground">
@@ -1984,7 +2247,7 @@ export function MPASectionCard({
                       </div>
                       {isLockedByOther && lockedByInfo && (
                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <Users className="size-3" />
+                          <Users className="size-4" />
                           Collaborative editing
                         </span>
                       )}
@@ -1992,7 +2255,8 @@ export function MPASectionCard({
                     {generatedStatements.map((statement, index) => (
                       <div
                         key={index}
-                        className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
+                        data-epb-statement-item
+                        className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -2009,7 +2273,7 @@ export function MPASectionCard({
                                   }}
                                   className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center"
                                 >
-                                  <Copy className="size-3 mr-1" />
+                                  <Copy className="size-4 mr-1.5" />
                                   Copy
                                 </button>
                               </TooltipTrigger>
@@ -2024,7 +2288,7 @@ export function MPASectionCard({
                                     disabled={isSavingExample}
                                     className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center disabled:opacity-50"
                                   >
-                                    <Bookmark className="size-3 mr-1" />
+                                    <Bookmark className="size-4 mr-1.5" />
                                     Save
                                   </button>
                                 </TooltipTrigger>
@@ -2037,9 +2301,10 @@ export function MPASectionCard({
                                 <TooltipTrigger asChild>
                                   <button
                                     onClick={() => handleUseStatement(statement)}
-                                    className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
+                                    disabled={isUseThisClosing}
+                                    className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"
                                   >
-                                    <Check className="size-3 mr-1" />
+                                    <Check className="size-4 mr-1.5" />
                                     Use This
                                   </button>
                                 </TooltipTrigger>
@@ -2059,9 +2324,10 @@ export function MPASectionCard({
                       </div>
                     ))}
                   </div>
-                )}
+                </EpbAnimatedCollapse>
               </div>
             )}
+          </div>
           </CardContent>
       )}
 
@@ -2092,7 +2358,9 @@ export function MPASectionCard({
                 selectedAwards: regenAwards,
               });
               console.log("[MPASectionCard] onGenerateStatement returned results:", results?.length);
-              setGeneratedStatements(results);
+              if (results?.length) {
+                resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
+              }
             } catch (err) {
               console.error("[MPASectionCard] Regenerate with context error:", err);
             } finally {

@@ -215,6 +215,12 @@
   animation: pulse-highlight 0.6s ease-out 1;
 }
 
+/* EPB statement editor resize — transitions.dev pattern */
+:root {
+  --epb-resize-dur: 300ms;
+  --epb-resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* Split view elevator animations */
 @keyframes elevator-open-up {
   0% {
@@ -302,14 +308,27 @@
 }
 
 .animate-elevator-close-up {
-  animation: elevator-close-up 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: elevator-close-up var(--epb-resize-dur) var(--epb-resize-ease) forwards;
 }
 
 .animate-elevator-close-down {
-  animation: elevator-close-down 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: elevator-close-down var(--epb-resize-dur) var(--epb-resize-ease) forwards;
 }
 
 .animate-elevator-divider-close {
-  animation: elevator-divider-collapse 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: elevator-divider-collapse 0.22s var(--epb-resize-ease) forwards;
+}
+
+.epb-t-resize {
+  transition:
+    height var(--epb-resize-dur) var(--epb-resize-ease),
+    max-height var(--epb-resize-dur) var(--epb-resize-ease);
+  will-change: height;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .epb-t-resize {
+    transition: none !important;
+  }
 }
 

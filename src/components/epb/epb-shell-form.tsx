@@ -75,6 +75,7 @@ import type { DraggedSentence } from "./sentence-pills";
 import { SentenceDropDialog } from "./sentence-drop-dialog";
 import { parseStatement, combineSentences, type ParsedSentence } from "@/lib/sentence-utils";
 import { RealtimeCursors } from "./realtime-cursors";
+import { getEpbZenChromeClassName } from "./epb-zen-mode";
 import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
 import { useShellFieldLocks } from "@/hooks/use-shell-field-locks";
@@ -184,6 +185,7 @@ export function EPBShellForm({
     setIsCreatingShell,
     loadVersion,
     reset,
+    zenModeMpaKey,
   } = useEPBShellStore();
 
   const [rateeAwards, setRateeAwards] = useState<AwardSelection[]>([]);
@@ -2153,10 +2155,13 @@ export function EPBShellForm({
     isPriorCycleShell(currentShell.cycle_year, selectedRatee.rank);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 sm:space-y-6">
       {isPriorCycle && (
-        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
-          <CardContent className="py-3 px-4 flex items-start gap-3">
+        <Card className={cn(
+          "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20",
+          getEpbZenChromeClassName(zenModeMpaKey)
+        )}>
+          <CardContent className="py-4 px-5 flex items-start gap-3">
             <AlertTriangle className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1 min-w-0">
               <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
@@ -2179,7 +2184,7 @@ export function EPBShellForm({
 
       {/* Collaboration Controls - Only shown when collaboration feature is enabled */}
       {isCollaborationEnabled && (
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        <div className={cn("flex items-center gap-2 sm:gap-3 flex-wrap py-1", getEpbZenChromeClassName(zenModeMpaKey))}>
           <Button
             variant={isMultiUserMode ? "default" : "secondary"}
             size="sm"
@@ -2258,7 +2263,7 @@ export function EPBShellForm({
       )}
 
       {/* Toggle All Sections Button + Assessment Button */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className={cn("flex items-center gap-2 sm:gap-3 flex-wrap pb-1 sm:pb-2", getEpbZenChromeClassName(zenModeMpaKey))}>
         <Button 
           variant="outline" 
           size="sm" 
@@ -2361,7 +2366,7 @@ export function EPBShellForm({
       {/* pb-[60vh] allows scrolling the last card (HLR) to the top of the viewport */}
       <div 
         ref={contentContainerRef}
-        className="space-y-4 relative pb-[60vh]"
+        className="space-y-5 sm:space-y-6 relative pb-[60vh]"
       >
         {/* Realtime cursors overlay - only visible in collaboration session when feature is enabled */}
         {isCollaborationEnabled && collaboration.isInSession && currentShell && (
@@ -2461,7 +2466,7 @@ export function EPBShellForm({
 
         {/* Bottom Assessment Button - Shows when EPB is ready */}
         {isEPBReadyForAssessment() && (
-          <div className="flex justify-center pt-6 pb-4">
+          <div className={cn("flex justify-center pt-6 pb-4", getEpbZenChromeClassName(zenModeMpaKey))}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

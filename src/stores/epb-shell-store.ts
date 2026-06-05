@@ -94,6 +94,9 @@ interface EPBShellState {
   focusedMpaKey: string | null;
   mpaDescriptionsCache: MPADescriptions | null;
   isLoadingMpaDescriptions: boolean;
+
+  /** Active MPA card in zen writing mode (dims surrounding content) */
+  zenModeMpaKey: string | null;
   
   // Actions
   setSelectedRatee: (ratee: SelectedRatee | null) => void;
@@ -139,6 +142,7 @@ interface EPBShellState {
   toggleMpaDescriptionDrawer: (mpaKey?: string) => void;
   closeMpaDescriptionDrawer: () => void;
   setFocusedMpaKey: (mpaKey: string | null) => void;
+  setZenModeMpaKey: (mpaKey: string | null) => void;
   fetchMpaDescriptions: (userId: string) => Promise<MPADescriptions>;
   
   // Duty description management
@@ -202,6 +206,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   focusedMpaKey: null,
   mpaDescriptionsCache: null,
   isLoadingMpaDescriptions: false,
+  zenModeMpaKey: null,
 
   setSelectedRatee: (ratee) => {
     // Clear autosave timers when switching members
@@ -225,6 +230,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       loadVersion: state.loadVersion + 1,
       mpaDescriptionDrawerOpen: false,
       focusedMpaKey: null,
+      zenModeMpaKey: null,
     }));
   },
   
@@ -472,6 +478,8 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
 
   setFocusedMpaKey: (mpaKey) => set({ focusedMpaKey: mpaKey }),
 
+  setZenModeMpaKey: (mpaKey) => set({ zenModeMpaKey: mpaKey }),
+
   fetchMpaDescriptions: async (userId) => {
     const cached = get().mpaDescriptionsCache;
     if (cached) return cached;
@@ -523,6 +531,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       focusedMpaKey: null,
       mpaDescriptionsCache: null,
       isLoadingMpaDescriptions: false,
+      zenModeMpaKey: null,
     }));
   },
 
@@ -552,6 +561,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       focusedMpaKey: null,
       mpaDescriptionsCache: null,
       isLoadingMpaDescriptions: false,
+      zenModeMpaKey: null,
     }));
   },
 }));
