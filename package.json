@@ -16,11 +16,16 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.15"
+    }
+  },
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.74",
-    "@ai-sdk/google": "^2.0.68",
-    "@ai-sdk/openai": "^2.0.102",
-    "@ai-sdk/xai": "^2.0.67",
+    "@ai-sdk/anthropic": "^3.0.81",
+    "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/openai": "^3.0.68",
+    "@ai-sdk/xai": "^3.0.93",
     "@hugeicons/core-free-icons": "^1.0.2",
     "@hugeicons/react": "^0.4.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -47,7 +52,7 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.12",
     "@vercel/analytics": "^1.6.1",
-    "ai": "^5.0.173",
+    "ai": "^6.0.197",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -76,9 +81,9 @@
     "@types/react-dom": "^19.0.2",
     "eslint": "^9.17.0",
     "eslint-config-next": "15.1.2",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.15",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.8"
   }
 }

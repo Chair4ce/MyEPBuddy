@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import type { 
   DecorationShell, 
   DecorationAwardType, 
@@ -235,7 +236,7 @@ const getDefaultState = () => ({
   isCreatingShell: false,
   isGenerating: false,
   isSaving: false,
-  selectedModel: "gemini-2.0-flash",
+  selectedModel: DEFAULT_APP_MODEL_ID,
   isDirty: false,
   showHistory: false,
   statementColors: {} as StatementColorMap,

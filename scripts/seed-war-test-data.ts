@@ -11,6 +11,10 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
+
+type AccomplishmentInsert =
+  Database["public"]["Tables"]["accomplishments"]["Insert"];
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -89,7 +93,7 @@ async function main() {
   // Create recent accomplishments for the past 4 weeks
   console.log("📋 Creating recent accomplishments for WAR testing...\n");
 
-  const recentAccomplishments = [
+  const recentAccomplishments: AccomplishmentInsert[] = [
     // ============ THIS WEEK (0-6 days ago) ============
     // SSgt Brown's team - help desk activities
     {
@@ -412,7 +416,7 @@ async function main() {
       ],
     },
     entry_count: 6,
-    model_used: "gemini-2.0-flash",
+    model_used: "gemini-2.5-flash-lite",
     status: "draft",
   };
 

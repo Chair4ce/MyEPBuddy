@@ -5,13 +5,13 @@ import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
 
-// Default to Gemini Flash as the app's fallback model
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = DEFAULT_APP_MODEL_ID;
 
 interface WARCategory {
   key: string;

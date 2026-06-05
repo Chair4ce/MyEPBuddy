@@ -1,4 +1,4 @@
-import { AI_MODELS } from "@/lib/constants";
+import { AI_MODELS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 
 export const EPB_MODEL_PREFERENCE_STORAGE_KEY = "epb-page-model-preference";
 export const AWARD_MODEL_PREFERENCE_STORAGE_KEY = "award-page-model-preference";
@@ -19,7 +19,7 @@ const PROVIDER_KEY_MAP: Record<string, keyof ApiKeyStatus> = {
 
 export function getAppDefaultModelId(): string {
   const appDefault = AI_MODELS.find((model) => "isAppDefault" in model && model.isAppDefault);
-  return appDefault?.id ?? "gemini-2.0-flash";
+  return appDefault?.id ?? DEFAULT_APP_MODEL_ID;
 }
 
 export function isModelAvailableForStatus(

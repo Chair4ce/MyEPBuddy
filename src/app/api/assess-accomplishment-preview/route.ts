@@ -10,6 +10,7 @@ import {
   getRubricTierForRank,
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
+  DEFAULT_APP_MODEL_ID,
   type ACARubric,
 } from "@/lib/constants";
 import type { Rank } from "@/types/database";
@@ -174,7 +175,7 @@ Respond with ONLY the JSON object, no additional text.`;
 }
 
 export async function POST(request: Request) {
-  let modelId = "gemini-2.0-flash";
+  let modelId = DEFAULT_APP_MODEL_ID;
   try {
     const supabase = await createClient();
 
@@ -187,7 +188,7 @@ export async function POST(request: Request) {
     }
 
     const body: AssessPreviewRequest = await request.json();
-    const { action_verb, details, impact, metrics, mpa, model = "gemini-2.0-flash" } = body;
+    const { action_verb, details, impact, metrics, mpa, model = DEFAULT_APP_MODEL_ID } = body;
     modelId = model;
 
     if (!action_verb || !details) {

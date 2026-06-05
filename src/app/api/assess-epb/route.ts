@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
-import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank } from "@/lib/constants";
+import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     }
 
     const body: AssessEPBRequest = await request.json();
-    const { shellId, rateeRank, rateeAfsc, model = "gemini-2.0-flash", dutyDescription } = body;
+    const { shellId, rateeRank, rateeAfsc, model = DEFAULT_APP_MODEL_ID, dutyDescription } = body;
 
     if (!shellId || !rateeRank) {
       return NextResponse.json(

@@ -10,6 +10,7 @@ import {
   getRubricTierForRank,
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
+  DEFAULT_APP_MODEL_ID,
   type ACARubric,
 } from "@/lib/constants";
 import type { Rank } from "@/types/database";
@@ -183,7 +184,7 @@ export async function POST(request: Request) {
     }
 
     const body: AssessAccomplishmentRequest = await request.json();
-    const { accomplishmentId, model = "gemini-2.0-flash" } = body;
+    const { accomplishmentId, model = DEFAULT_APP_MODEL_ID } = body;
 
     if (!accomplishmentId) {
       return NextResponse.json(

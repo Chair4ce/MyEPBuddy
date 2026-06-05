@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ENTRY_MGAS } from "@/lib/constants";
+import { ENTRY_MGAS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 
 interface WARCategory {
   key: string;
@@ -290,7 +290,7 @@ export function WARViewModal({
         prepared_by: generatedReport.header.prepared_by,
         content: { categories: generatedReport.categories },
         entry_count: entries.length,
-        model_used: "gemini-2.0-flash",
+        model_used: DEFAULT_APP_MODEL_ID,
         status: "draft",
       };
 
@@ -382,7 +382,7 @@ export function WARViewModal({
         prepared_by: report.header.prepared_by,
         content: { categories: report.categories },
         entry_count: entries.length,
-        model_used: "gemini-2.0-flash",
+        model_used: DEFAULT_APP_MODEL_ID,
         status: "draft",
       };
 

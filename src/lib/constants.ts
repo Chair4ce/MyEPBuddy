@@ -105,6 +105,9 @@ export function isMilitaryEnlisted(rank: Rank | null): boolean {
 
 export type ModelQuality = "excellent" | "good" | "basic";
 
+/** Free default when no user API key is saved (replaces retired gemini-2.0-flash). */
+export const DEFAULT_APP_MODEL_ID = "gemini-2.5-flash-lite";
+
 export const AI_MODELS = [
   {
     id: "gpt-4o",
@@ -143,8 +146,8 @@ export const AI_MODELS = [
       "Fast with solid results. Good for quick drafts, though complex statements may need refinement.",
   },
   {
-    id: "gemini-2.0-flash",
-    name: "Gemini 2.0 Flash",
+    id: DEFAULT_APP_MODEL_ID,
+    name: "Gemini 2.5 Flash Lite",
     provider: "google",
     description: "Free default model",
     quality: "basic" as ModelQuality,
@@ -153,8 +156,8 @@ export const AI_MODELS = [
     isAppDefault: true,
   },
   {
-    id: "gemini-1.5-pro-002",
-    name: "Gemini 1.5 Pro",
+    id: "gemini-2.5-pro",
+    name: "Gemini 2.5 Pro",
     provider: "google",
     description: "Google's advanced model",
     quality: "good" as ModelQuality,

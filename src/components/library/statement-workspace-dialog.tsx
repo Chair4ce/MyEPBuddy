@@ -46,7 +46,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
-import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AI_MODELS, getActiveCycleYear } from "@/lib/constants";
+import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AI_MODELS, DEFAULT_APP_MODEL_ID, getActiveCycleYear } from "@/lib/constants";
 import {
   Loader2,
   Sparkles,
@@ -136,7 +136,7 @@ export function StatementWorkspaceDialog({
 
   // AI generation state
   const [maxCharLimit, setMaxCharLimit] = useState(350);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.0-flash");
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_APP_MODEL_ID);
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<GeneratedSuggestion[]>([]);
 

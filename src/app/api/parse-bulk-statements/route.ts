@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
-import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
+import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
@@ -24,8 +24,7 @@ interface ParseBulkStatementsRequest {
   model?: string;
 }
 
-// Default to Gemini Flash as the app's fallback model (has env key configured)
-const DEFAULT_PARSE_MODEL = "gemini-2.0-flash";
+const DEFAULT_PARSE_MODEL = DEFAULT_APP_MODEL_ID;
 
 interface ParsedStatement {
   id: string;

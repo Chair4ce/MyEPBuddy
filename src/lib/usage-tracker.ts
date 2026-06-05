@@ -10,6 +10,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { isUsingDefaultKey, detectProvider } from "@/lib/llm-provider";
 import type { DecryptedApiKeys } from "@/app/actions/api-keys";
 
@@ -19,7 +20,7 @@ const WEEKLY_LIMIT = 20;
  * Cheapest model forced for users on the app's default API key.
  * Keeps per-request cost minimal (~$0.001 vs ~$0.01+ for premium models).
  */
-export const DEFAULT_KEY_MODEL = "gemini-2.0-flash";
+export const DEFAULT_KEY_MODEL = DEFAULT_APP_MODEL_ID;
 
 export type BillableAction =
   | "generate"
