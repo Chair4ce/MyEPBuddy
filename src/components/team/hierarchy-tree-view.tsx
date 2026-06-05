@@ -972,21 +972,6 @@ export function HierarchyTreeView({
   const hasCustomColor = useCallback((rank: Rank | null): boolean => {
     return Boolean(rankColors[rank || ""]);
   }, [rankColors]);
-  
-  if (!tree) {
-    return (
-      <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-        No supervision hierarchy to display.
-      </div>
-    );
-  }
-  
-  const { cardWidth, juniorStackHeight, cardHeight } = LAYOUT_CONFIG;
-  const isRankFilterActive = visibleRanks.size > 0;
-  const layoutTransition =
-    filterMode === "collapse" && isRankFilterActive
-      ? "left 200ms ease-out, top 200ms ease-out, opacity 150ms ease-in-out"
-      : "opacity 150ms ease-in-out";
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -1009,6 +994,21 @@ export function HierarchyTreeView({
       y: (containerHeight - totalHeight) / 2,
     });
   }, [tree, positioned, totalWidth, totalHeight]);
+  
+  if (!tree) {
+    return (
+      <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+        No supervision hierarchy to display.
+      </div>
+    );
+  }
+  
+  const { cardWidth, juniorStackHeight, cardHeight } = LAYOUT_CONFIG;
+  const isRankFilterActive = visibleRanks.size > 0;
+  const layoutTransition =
+    filterMode === "collapse" && isRankFilterActive
+      ? "left 200ms ease-out, top 200ms ease-out, opacity 150ms ease-in-out"
+      : "opacity 150ms ease-in-out";
 
   const getCursorClass = () => {
     if (isDragging) return "cursor-grabbing";
