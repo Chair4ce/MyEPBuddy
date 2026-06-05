@@ -250,6 +250,7 @@ It is purely factual and descriptive - it states WHAT the member's job encompass
 5. Describe SCOPE and RESPONSIBILITY - team size, mission area, organizations supported, programs owned
 6. Use descriptive framing like "As a [role]", "Serving as [position]", or direct present-tense descriptions
 7. Do NOT invent new facts or add scope that isn't in the original - only rephrase existing content
+8. NEVER pad length with impact statements, outcome clauses, personnel counts, or geographic scope not in the source
 
 **GOOD DUTY DESCRIPTION VERBS (present tense, descriptive):**
 drives, supports, coordinates, manages, oversees, advises, maintains, provides, enables, serves as, operates, sustains, ensures (only for describing an ongoing responsibility), administers, represents, liaises, synchronizes, integrates, conducts, facilitates, monitors, evaluates, governs, directs (present tense only)
@@ -274,7 +275,8 @@ CRITICAL RULES:
 3. NO accomplishment results beyond describing the role's scope
 4. KEEP factual content identical - only rephrase, do not invent new scope
 5. Prefer "&" over "and" when saving space
-6. AVOID the word "the" where possible - it wastes characters`;
+6. AVOID the word "the" where possible - it wastes characters
+7. If character target cannot be met without inventing facts, stay shorter — truth over length`;
 
 const DEFAULT_RANK_VERBS: RankVerbProgression = {
   // Enlisted Ranks

@@ -1873,9 +1873,7 @@ export function EPBShellForm({
     context?: string,
     versionCount: number = 3,
     aggressiveness: number = 50,
-    fillToMax: boolean = true
   ): Promise<string[]> => {
-    const maxChars = mpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
     try {
       const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
@@ -1890,8 +1888,6 @@ export function EPBShellForm({
           context: context || `Rewrite this ${STANDARD_MGAS.find((m) => m.key === mpa)?.label || mpa} statement with improved flow and action verbs.`,
           versionCount,
           aggressiveness,
-          fillToMax,
-          maxCharacters: maxChars,
           category: mpa,
           writingStyle,
           rateeRank: selectedRatee?.rank,
@@ -1921,7 +1917,6 @@ export function EPBShellForm({
     context?: string,
     versionCount: number = 3,
     aggressiveness: number = 50,
-    fillToMax: boolean = true
   ): Promise<string[]> => {
     try {
       const response = await fetchWithRetry("/api/revise-selection", {
@@ -1935,11 +1930,9 @@ export function EPBShellForm({
           model,
           mode: "general",
           isDutyDescription: true,
-          context: context || "Rewrite this duty description with improved word economy and flow. Keep present tense, describe scope and responsibility factually. Do NOT add performance language or accomplishment results.",
+          context: context || "Rephrase this duty description with improved word economy and flow. Keep present tense and every factual element from the source. Do NOT add performance language, impact outcomes, personnel counts, geographic scope, or any facts not already in the text.",
           versionCount,
           aggressiveness,
-          fillToMax,
-          maxCharacters: MAX_DUTY_DESCRIPTION_CHARACTERS,
           category: "duty_description",
           rateeRank: selectedRatee?.rank,
           rateeAfsc: selectedRatee?.afsc,
@@ -2341,7 +2334,7 @@ export function EPBShellForm({
                 onSave={(text) => handleSaveSection(mpa.key, text)}
                 onCreateSnapshot={(text) => handleCreateSnapshot(mpa.key, text)}
                 onGenerateStatement={(opts) => handleGenerateStatement(mpa.key, opts)}
-                onReviseStatement={(text, ctx, count, aggr, fill) => handleReviseStatement(mpa.key, text, ctx, count, aggr, fill)}
+                onReviseStatement={(text, ctx, count, aggr) => handleReviseStatement(mpa.key, text, ctx, count, aggr)}
                 snapshots={snapshots[section.id] || []}
                 // Lock props for single-user mode
                 isLockedByOther={isLockedByOther}

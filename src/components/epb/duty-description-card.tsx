@@ -30,7 +30,6 @@ import {
   Trash2,
   CheckCircle2,
   Circle,
-  Info,
 } from "lucide-react";
 import { useEPBShellStore } from "@/stores/epb-shell-store";
 import type { DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate } from "@/types/database";
@@ -44,7 +43,7 @@ interface DutyDescriptionCardProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onSave: (text: string) => Promise<void>;
-  onReviseStatement?: (text: string, context?: string, versionCount?: number, aggressiveness?: number, fillToMax?: boolean) => Promise<string[]>;
+  onReviseStatement?: (text: string, context?: string, versionCount?: number, aggressiveness?: number) => Promise<string[]>;
   // Completion status
   isComplete?: boolean;
   onToggleComplete?: () => void;
@@ -119,7 +118,6 @@ export function DutyDescriptionCard({
   const [reviseContext, setReviseContext] = useState("");
   const [reviseVersionCount, setReviseVersionCount] = useState(3);
   const [reviseAggressiveness, setReviseAggressiveness] = useState(50);
-  const [reviseFillToMax, setReviseFillToMax] = useState(true);
   const [isRevising, setIsRevising] = useState(false);
   const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
@@ -280,7 +278,7 @@ export function DutyDescriptionCard({
     setIsRevising(true);
     setGeneratedRevisions([]);
     try {
-      const results = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness, reviseFillToMax);
+      const results = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
       if (results.length > 0) {
         setGeneratedRevisions(results);
       } else {
@@ -311,7 +309,6 @@ export function DutyDescriptionCard({
       charCount: version.length,
       category: "duty_description",
       aggressiveness: reviseAggressiveness,
-      fillToMax: reviseFillToMax,
     });
   };
 
@@ -842,41 +839,6 @@ export function DutyDescriptionCard({
                   </p>
                 </div>
 
-                {/* Fill to max toggle */}
-                <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-medium">Attempt to Fill to Maximum</span>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="size-3 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[240px]">
-                          <p className="text-xs">AI models aren&apos;t precise at counting characters. It will aim for the target range but may fall short or exceed it slightly.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">Target {maxChars - 10}-{maxChars} chars</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const newValue = !reviseFillToMax;
-                      setReviseFillToMax(newValue);
-                      styleFeedback.trackToggleUsed(newValue);
-                    }}
-                    className={cn(
-                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-                      reviseFillToMax ? "bg-primary" : "bg-muted-foreground/30"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-background shadow-lg transition-transform",
-                        reviseFillToMax ? "translate-x-4" : "translate-x-0"
-                      )}
-                    />
-                  </button>
-                </div>
               </div>
 
               {/* Generate button */}

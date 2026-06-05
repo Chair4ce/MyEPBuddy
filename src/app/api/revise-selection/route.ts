@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { generateText, type LanguageModel } from "ai";
+import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
@@ -10,14 +10,6 @@ import {
   buildFewShotExamples,
   triggerStyleProcessing 
 } from "@/lib/style-learning";
-import {
-  buildCharacterEmphasisPrompt,
-} from "@/lib/character-verification";
-import {
-  performQualityControl,
-  shouldRunQualityControl,
-  type QualityControlConfig,
-} from "@/lib/quality-control";
 import type { StyleExampleCategory, WritingStyle } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -35,8 +27,6 @@ interface ReviseSelectionRequest {
   context?: string; // Additional context for revision
   usedVerbs?: string[]; // Verbs already used in this cycle - avoid repeating
   aggressiveness?: number; // 0-100: how aggressively to replace words (0 = minimal, 100 = replace almost all)
-  fillToMax?: boolean; // If true, prioritize filling to max character count
-  maxCharacters?: number; // Max character limit for the statement
   versionCount?: number; // Number of revisions to generate (default 3)
   category?: StyleExampleCategory; // MPA category for style learning
   isDutyDescription?: boolean; // If true, use duty-description-specific prompt (scope/responsibility, not performance)
@@ -55,6 +45,72 @@ const BANNED_VERBS = [
   "utilized",
   "facilitated",
 ];
+
+/**
+ * Extract numbers, metrics, and acronyms present in source text.
+ * Injected into prompts so the model knows which facts it may reference.
+ */
+function extractSourceFacts(text: string): string {
+  const numbers = [...new Set(text.match(/\d[\d,.$%KMBkb]*/g) ?? [])];
+  const acronyms = [...new Set(text.match(/\b[A-Z]{2,}(?:-[A-Z]+)?\b/g) ?? [])];
+  const properNouns = [...new Set(
+    (text.match(/\b[A-Z][a-z]+(?:'s)?\b/g) ?? []).filter(
+      (word) => !["As", "During", "The", "His", "Her", "He", "She"].includes(word)
+    )
+  )];
+
+  const lines: string[] = [];
+  if (numbers.length > 0) lines.push(`- Numbers/metrics in source: ${numbers.join(", ")}`);
+  if (acronyms.length > 0) lines.push(`- Acronyms in source: ${acronyms.join(", ")}`);
+  if (properNouns.length > 0) lines.push(`- Proper nouns in source: ${properNouns.join(", ")}`);
+
+  return lines.length > 0
+    ? lines.join("\n")
+    : "- No discrete numbers or acronyms detected — do not add any.";
+}
+
+function buildFactualIntegrityPrompt(isDutyDescription: boolean): string {
+  if (isDutyDescription) {
+    return `**⚠️ ZERO FABRICATION POLICY (HIGHEST PRIORITY) ⚠️**
+
+You are REPHRASING existing duty description text — NOT writing a performance statement.
+
+**NEVER ADD:**
+- Personnel counts not in source (e.g., "1000+ personnel", "58K users")
+- Geographic scope not in source (e.g., "across 10 nations", "multiple theaters", "global missions")
+- Impact/outcome clauses (e.g., "enabling joint operations", "ensuring mission readiness", "vital for command & control")
+- New adjectives that imply performance (e.g., "critical", "significant", "inaugural" unless replacing equivalent wording)
+- New responsibilities, programs, or organizations not in the source
+
+**ONLY ALLOWED CHANGES:**
+- Synonyms for existing words (e.g., "drives" → "leads" only if present tense scope verb)
+- Reordering clauses while preserving every factual element
+- Expanding abbreviations already in source (e.g., "AF" → "Air Force" if space allows)
+- Structural openers (e.g., "As a..." → "Serving as...")
+
+**BAD REVISION (invented facts):**
+"As crew operations SME, he directs a 3-member team during a critical AF transition, enabling enhanced joint operations & strategic readiness for 1000+ personnel across 10 nations."
+
+**GOOD REVISION (same facts, better phrasing):**
+"Serving as crew operations subject matter expert, he drives a 3-member cyber event coordination team during a numbered AF transition, supporting AFSOUTH's elevation to a Service Component Command and establishing AFSOUTH's first MAJCOM Cyber Coordination Center."
+
+Stay within ±20% of the original length. A shorter truthful revision beats a longer fabricated one.`;
+  }
+
+  return `**⚠️ ZERO FABRICATION POLICY (HIGHEST PRIORITY) ⚠️**
+
+You are revising EXISTING text. Every fact in your output must trace to the source selection or full statement context.
+
+**NEVER INVENT:**
+- Numbers, dollar amounts, percentages, or quantities not in the input
+- Personnel counts, unit sizes, or geographic scope not stated
+- Impact outcomes or mission results not described in source (e.g., "ensuring mission success", "bolstering global ops")
+- Unit names, project names, timelines, or programs not mentioned
+
+**IF INPUT IS VAGUE:** Improve structure and word choice only — do NOT add specificity the user did not provide.
+
+**LENGTH:** Stay within ±20% of the original selection length. Use longer synonyms only for concepts already in the text — never pad with new facts.`;
+}
 
 // Strong action verbs to encourage variety
 const RECOMMENDED_VERBS = [
@@ -80,7 +136,6 @@ function buildDutyDescriptionPrompt(
   mode: "expand" | "compress" | "general",
   modeInstructions: Record<string, string>,
   aggressivenessInstructions: string,
-  fillInstructions: string,
   styleGuidance: string,
   fewShotExamples: string,
   versionCount: number,
@@ -90,10 +145,10 @@ function buildDutyDescriptionPrompt(
   const dutyModeOverride: Record<string, string> = {
     expand: `**MODE: EXPAND (use longer words to fill more space)**
 Your goal is to make the selected text LONGER by:
-- Using longer, more descriptive words for the role and scope
-- Adding specific organizational details, team sizes, or mission scope
-- Expanding abbreviations to full words where space allows
-- Adding positional framing (e.g., "As a [role]" or "Serving as [position]")
+- Using longer synonyms for words already in the text
+- Expanding abbreviations to full words where space allows (e.g., "AF" → "Air Force")
+- Adding positional framing (e.g., "As a [role]" → "Serving as [position]")
+- NEVER add new team sizes, personnel counts, organizations, or impact clauses not in source
 - KEEP PRESENT TENSE - this describes a current role, not a past accomplishment`,
     compress: `**MODE: COMPRESS (use shorter words to save space)**
 Your goal is to make the selected text SHORTER by:
@@ -127,6 +182,7 @@ It is purely factual and descriptive - it states WHAT the member's job encompass
 5. Describe SCOPE and RESPONSIBILITY - team size, mission area, organizations supported, programs owned
 6. Use descriptive framing like "As a [role]", "Serving as [position]", or direct present-tense descriptions
 7. Do NOT invent new facts or add scope that isn't in the original - only rephrase existing content
+8. NEVER pad length with impact statements, outcome clauses, or metrics not in the source
 
 **GOOD DUTY DESCRIPTION VERBS (present tense, descriptive):**
 drives, supports, coordinates, manages, oversees, advises, maintains, provides, enables, serves as, operates, sustains, 
@@ -147,10 +203,11 @@ conducts, facilitates (for coordination, not accomplishments), monitors, evaluat
 
   return `${basePrompt}
 
+${buildFactualIntegrityPrompt(true)}
+
 ${dutyModeOverride[mode]}
 
 ${aggressivenessInstructions}
-${fillInstructions}
 
 ${styleGuidance}
 
@@ -178,7 +235,8 @@ CRITICAL RULES:
 7. NEVER use em-dashes (--) - use COMMAS instead
 8. KEEP factual content identical - only rephrase, do not invent new scope or responsibilities
 9. Prefer "&" over "and" when saving space
-10. AVOID the word "the" where possible - it wastes characters`;
+10. AVOID the word "the" where possible - it wastes characters
+11. Stay within ±20% of the original length — never pad with invented facts`;
 }
 
 /**
@@ -189,7 +247,6 @@ function buildStatementPrompt(
   mode: "expand" | "compress" | "general",
   modeInstructions: Record<string, string>,
   aggressivenessInstructions: string,
-  fillInstructions: string,
   styleGuidance: string,
   fewShotExamples: string,
   verbsToAvoid: string[],
@@ -200,10 +257,11 @@ function buildStatementPrompt(
 
 Your task is to revise the selected portion of text while maintaining coherence with the surrounding context.
 
+${buildFactualIntegrityPrompt(false)}
+
 ${modeInstructions[mode]}
 
 ${aggressivenessInstructions}
-${fillInstructions}
 
 ${styleGuidance}
 
@@ -283,8 +341,6 @@ export async function POST(request: Request) {
       context, 
       usedVerbs = [],
       aggressiveness = 50,
-      fillToMax = true,
-      maxCharacters,
       versionCount = 3,
       category,
       isDutyDescription = false,
@@ -343,57 +399,14 @@ export async function POST(request: Request) {
       } else {
         return `**WORD REPLACEMENT LEVEL: MAXIMUM (${level}%)**
 - COMPLETELY REWRITE the text with fresh perspective
-- Replace virtually all words except metrics and data
+- Replace virtually all words except facts present in the source
 - Use entirely new sentence structure and approach
-- Only preserve: numbers, percentages, dollar amounts, proper nouns
+- Only preserve facts from source: numbers, percentages, dollar amounts, proper nouns, organizations, scope elements
+- NEVER invent new metrics, personnel counts, or impact outcomes to fill space
 - Create a completely fresh take while maintaining factual accuracy`;
       }
     };
     
-    // Calculate fill-to-max instructions with enhanced emphasis
-    const getFillInstructions = (shouldFill: boolean, maxChars?: number, currentLength?: number): string => {
-      if (!shouldFill || !maxChars) {
-        return "";
-      }
-      const targetMin = maxChars - 10;
-      const charsToAdd = maxChars - (currentLength || 0);
-      
-      // Use the enhanced character emphasis prompt
-      const emphasisPrompt = buildCharacterEmphasisPrompt(targetMin, maxChars, charsToAdd > 0 ? "expand" : "compress");
-      
-      return `
-${emphasisPrompt}
-
-**CURRENT STATUS:**
-- Input: ${currentLength || "unknown"} characters
-- Target: ${targetMin}-${maxChars} characters
-- Action needed: ${charsToAdd > 0 ? `ADD ${charsToAdd} characters` : charsToAdd < 0 ? `REMOVE ${Math.abs(charsToAdd)} characters` : "Minor adjustment"}
-
-**⚠️ CRITICAL VERIFICATION PROCESS (MANDATORY FOR EACH REVISION) ⚠️**
-
-You MUST execute this EXACT sequence for each revision:
-
-STEP 1: Draft your revision
-
-STEP 2: COUNT characters using this mental model:
-- Count every letter, number, space, and punctuation mark
-- Example: "Led 4-mbr tm" = 12 characters (L-e-d-space-4---m-b-r-space-t-m)
-
-STEP 3: Calculate compliance:
-- Is your count between ${targetMin} and ${maxChars}? 
-- If YES: ✓ COMPLIANT - include this revision
-- If NO: ❌ NOT COMPLIANT - proceed to STEP 4
-
-STEP 4: If NOT COMPLIANT:
-- If UNDER ${targetMin}: Expand words, add scope, add adjectives
-- If OVER ${maxChars}: Use abbreviations, remove weak words, condense
-- REPEAT from STEP 2 until compliant
-
-STEP 5: Only output revisions that are ${targetMin}-${maxChars} characters
-
-**FAILURE TO COMPLY = REVISION REJECTED**`;
-    };
-
     if (!fullStatement || !selectedText) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -441,8 +454,8 @@ Your goal is to make the selected text SHORTER by:
       general: `**MODE: IMPROVE (completely rewrite with fresh perspective)**
 Your goal is to SIGNIFICANTLY transform the selected text:
 - Use a COMPLETELY DIFFERENT opening verb - do not keep the same structure
-- Reframe the accomplishment from a new angle
-- Improve quantification and impact
+- Reframe the accomplishment from a new angle using ONLY facts from the source
+- Preserve all quantification from the source — never add new metrics or impact
 - Each of your 3 alternatives should use DIFFERENT verbs from each other
 - Target length: ~${selectedText.length} characters (within 20% of original)`,
     };
@@ -451,7 +464,7 @@ Your goal is to SIGNIFICANTLY transform the selected text:
     const availableVerbs = RECOMMENDED_VERBS.filter(v => !verbsToAvoid.includes(v.toLowerCase()));
 
     const aggressivenessInstructions = getAggressivenessInstructions(aggressiveness);
-    const fillInstructions = getFillInstructions(fillToMax, maxCharacters, selectedText.length);
+    const sourceFacts = extractSourceFacts(selectedText);
 
     // Build style guidance from user's learned preferences
     const styleGuidance = buildStyleGuidance(styleContext);
@@ -501,8 +514,8 @@ Your goal is to SIGNIFICANTLY transform the selected text:
 
     // Build system prompt - duty descriptions have fundamentally different writing rules
     let systemPrompt = isDutyDescription 
-      ? buildDutyDescriptionPrompt(mode, modeInstructions, aggressivenessInstructions, fillInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt)
-      : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, fillInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount);
+      ? buildDutyDescriptionPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt)
+      : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount);
 
     // Append style signature to system prompt if available
     if (styleSignatureSection) {
@@ -521,17 +534,18 @@ SELECTED TEXT TO REVISE (${selectedText.length} chars):
 TEXT AFTER SELECTION:
 "${afterSelection}"
 
+**SOURCE FACTS (do NOT add any facts beyond these):**
+${sourceFacts}
+
 ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 
 MODE: ${mode.toUpperCase()}
-${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results." : ""}
-${mode === "expand" ? "Make it LONGER with more descriptive words." : mode === "compress" ? "Make it SHORTER with concise words and abbreviations." : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and factual scope." : "Improve quality while keeping similar length."}
+${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results. REPHRASE ONLY — do not invent impact, personnel counts, or geographic scope." : "⚠️ REPHRASE ONLY — do not invent metrics, personnel counts, or impact not in the source."}
+${mode === "expand" ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" ? "Make it SHORTER with concise words and abbreviations." : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping similar length and the same facts."}
 AGGRESSIVENESS: ${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})
-${fillToMax && maxCharacters ? `
-⚠️ CHARACTER TARGET: ${maxCharacters - 10}-${maxCharacters} chars (add ~${maxCharacters - selectedText.length > 0 ? maxCharacters - selectedText.length : 0} chars)
-` : ""}
+LENGTH: Stay within ±20% of the original ${selectedText.length} characters. Do NOT pad with invented facts.
 
-Generate ${versionCount} revisions of ONLY the selected portion.${fillToMax && maxCharacters ? ` Each MUST be ${maxCharacters - 10}-${maxCharacters} chars.` : ""}
+Generate ${versionCount} revisions of ONLY the selected portion.
 
 Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}]`;
 
@@ -539,7 +553,7 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       model: modelProvider,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: 0.8,
+      temperature: isDutyDescription ? 0.4 : 0.7,
       maxOutputTokens: 500,
     });
 
@@ -559,47 +573,6 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       revisions = [selectedText]; // Return original if nothing generated
     } else {
       revisions = revisions.slice(0, versionCount);
-    }
-
-    // POST-GENERATION QUALITY CONTROL
-    // Disabled for default-key users to halve LLM cost per request
-    if (!usageCheck.usingDefaultKey && fillToMax && maxCharacters) {
-      const targetMin = maxCharacters - 10;
-      
-      // Check if QC is worth running
-      const qcCheck = shouldRunQualityControl(revisions, fillToMax, maxCharacters, targetMin);
-      
-      if (qcCheck.shouldRun) {
-        try {
-          const qcConfig: QualityControlConfig = {
-            statements: revisions,
-            userPrompt: systemPrompt, // The prompt used for revision
-            targetMaxChars: maxCharacters,
-            targetMinChars: targetMin,
-            fillToMax,
-            context: category || "EPB statement revision",
-            model: modelProvider as LanguageModel,
-          };
-          
-          const qcResult = await performQualityControl(qcConfig);
-          
-          revisions = qcResult.statements;
-          
-          // Log QC results
-          console.log(
-            `[Revise] QC: adjusted=${qcResult.wasAdjusted}, ` +
-            `diversity=${qcResult.evaluation.diversityScore}, ` +
-            `compliance=${qcResult.evaluation.instructionCompliance}, ` +
-            `charLimits=${qcResult.evaluation.allMeetCharacterLimits}, ` +
-            `reason=${qcResult.stopReason}`
-          );
-        } catch (qcError) {
-          console.error("[Revise] QC failed:", qcError);
-          // Fall back to original revisions (already set)
-        }
-      } else {
-        console.log(`[Revise] Skipping QC: ${qcCheck.reason}`);
-      }
     }
 
     // Trigger async style processing (fire-and-forget) — skip for default-key users
