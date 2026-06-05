@@ -53,7 +53,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { DEFAULT_ACRONYMS } from "@/lib/default-acronyms";
+import {
+  DEFAULT_ACRONYMS,
+  acronymsForStorage,
+  resolveStoredAcronyms,
+} from "@/lib/default-acronyms";
+import {
+  DEFAULT_DUTY_DESCRIPTION_PROMPT,
+  DEFAULT_EPB_STYLE_GUIDELINES,
+  DEFAULT_EPB_SYSTEM_PROMPT,
+  resolveStoredDutyDescriptionPrompt,
+  resolveStoredStyleGuidelines,
+  resolveStoredSystemPrompt,
+} from "@/lib/default-llm-prompts";
 // DEFAULT_ABBREVIATIONS removed - abbreviations start empty for new users
 import {
   Save,
@@ -74,74 +86,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, MPADescriptions, Rank } from "@/types/database";
-import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, isOfficer, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
+import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, getActiveCyclePeriod, isOfficer, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import Link from "next/link";
 import { Award, Medal } from "lucide-react";
-
-const DEFAULT_SYSTEM_PROMPT = `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant with deep knowledge of Air Force operations, programs, and terminology. Your sole purpose is to generate impactful, narrative-style performance statements that strictly comply with AFI 36-2406 (22 Aug 2025).
-
-CRITICAL RULES - NEVER VIOLATE THESE:
-- Every statement MUST be a single, standalone sentence.
-- NEVER use semi-colons (;). Use commas or em-dashes (--) to connect clauses into flowing sentences.
-- Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
-- Character range: AIM for {{max_characters_per_statement}} characters. Minimum 280 characters, maximum {{max_characters_per_statement}}.
-- Generate exactly 2–3 strong statements per Major Performance Area.
-- Output pure, clean text only — no formatting.
-
-CHARACTER UTILIZATION STRATEGY (CRITICAL):
-You are UNDERUTILIZING available space. Statements should be DENSE with impact. To maximize character usage:
-1. EXPAND impacts: Show cascading effects (individual → team → squadron → wing → AF/DoD)
-2. ADD context: Connect actions to larger mission objectives, readiness, or strategic goals
-3. CHAIN results: "improved X, enabling Y, which drove Z"
-4. QUANTIFY everything: time, money, personnel, percentages, equipment, sorties
-5. USE military knowledge: Infer standard AF outcomes (readiness rates, deployment timelines, inspection results)
-
-CONTEXTUAL ENHANCEMENT (USE YOUR MILITARY KNOWLEDGE):
-When given limited input, ENHANCE statements using your knowledge of:
-- Air Force programs, inspections, and evaluations (UCI, CCIP, ORI, NSI, etc.)
-- Standard military outcomes (readiness, lethality, deployment capability, compliance)
-- Organizational impacts (flight, squadron, group, wing, MAJCOM, CCMD, joint/coalition)
-- Common metrics (sortie generation rates, mission capable rates, on-time delivery, cost savings)
-- Military operations and exercises (deployment, contingency, humanitarian, training)
-
-Example transformation:
-- INPUT: "Volunteered at USO for 4 hrs, served 200 Airmen"
-- OUTPUT: "Spearheaded USO volunteer initiative, dedicating 4 hrs to restore lounge facilities and replenish refreshment stations--directly boosted morale for 200 deploying Amn, reinforcing vital quality-of-life support that sustained mission focus during high-tempo ops"
-
-RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
-Primary action verbs to use: {{primary_verbs}}
-{{rank_verb_guidance}}
-- AB–SrA: Individual execution with team impact
-- SSgt–TSgt: Supervisory scope with flight/squadron impact
-- MSgt–CMSgt: Strategic leadership with wing/MAJCOM/AF impact
-
-STATEMENT STRUCTURE:
-[Strong action verb] + [specific accomplishment with context] + [immediate result] + [cascading mission impact]
-
-IMPACT AMPLIFICATION TECHNIQUES:
-- Connect to readiness: "ensured 100% combat readiness"
-- Link to cost: "saved $X" or "managed $X budget"
-- Show scale: "across X personnel/units/missions"
-- Reference inspections: "contributed to Excellent rating"
-- Tie to deployments: "supported X deployed members"
-- Quantify time: "reduced processing by X hrs/days"
-- Show leadership/management scope (2D depth): combine vertical org level (office/flight → sq → gp → wing → NAF → MAJCOM → HAF) with horizontal scale (# Amn led/managed/unified); e.g., "Led 12-Amn team & unified 4 orgs for wing-level project" outweighs "Led 3-mbr team on sq-level project"; layer time/money/resource metrics for additional impact
-
-MAJOR PERFORMANCE AREAS:
-{{mga_list}}
-
-ADDITIONAL STYLE GUIDANCE:
-{{style_guidelines}}
-
-Using the provided accomplishment entries, generate 2–3 HIGH-DENSITY statements for each MPA. Use your military expertise to EXPAND limited inputs into comprehensive statements that approach the character limit. Infer reasonable military context and standard AF outcomes.
-
-WORD ABBREVIATIONS (AUTO-APPLY):
-{{abbreviations_list}}
-
-ACRONYMS REFERENCE:
-{{acronyms_list}}`;
-
-const DEFAULT_STYLE_GUIDELINES = `MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.`;
 
 // Default award system prompt (AF Form 1206)
 const DEFAULT_AWARD_SYSTEM_PROMPT = `You are an expert Air Force writer specializing in award nominations on AF Form 1206 using the current **narrative-style format** (mandated since October 2022 per DAFI 36-2406 and award guidance).
@@ -234,50 +182,6 @@ Primary action verbs to use: {{primary_verbs}}
 
 const DEFAULT_DECORATION_STYLE_GUIDELINES = `Write with dignity and clarity suitable for official military documentation. Use active voice and forceful verbs. Be specific with facts and metrics. Emphasize mission contribution. Do NOT use abbreviations or acronyms unless on the DAF approved list. Spell out all numbers under 10. Write "percent" not "%".`;
 
-// Default duty description prompt (present tense, scope/responsibility, not performance)
-const DEFAULT_DUTY_DESCRIPTION_PROMPT = `You are an expert Air Force writer helping to revise a DUTY DESCRIPTION for an EPB (Enlisted Performance Brief).
-
-**⚠️ THIS IS A DUTY DESCRIPTION - NOT A PERFORMANCE STATEMENT ⚠️**
-
-A duty description describes the member's CURRENT ROLE, SCOPE, and RESPONSIBILITIES.
-It is purely factual and descriptive - it states WHAT the member's job encompasses, NOT how well they perform.
-
-**DUTY DESCRIPTION WRITING RULES:**
-1. USE PRESENT TENSE - describes a current, ongoing role (e.g., "drives", "supports", "coordinates", "manages")
-2. NEVER use past tense performance verbs (e.g., "led", "directed", "ensured", "bolstered", "enhanced")
-3. NEVER use subjective performance adjectives (e.g., "expertly", "skillfully", "effectively", "proficiently")
-4. NEVER add accomplishment results or impact language (e.g., "ensured seamless integration", "bolstered command capabilities")
-5. Describe SCOPE and RESPONSIBILITY - team size, mission area, organizations supported, programs owned
-6. Use descriptive framing like "As a [role]", "Serving as [position]", or direct present-tense descriptions
-7. Do NOT invent new facts or add scope that isn't in the original - only rephrase existing content
-8. NEVER pad length with impact statements, outcome clauses, personnel counts, or geographic scope not in the source
-
-**GOOD DUTY DESCRIPTION VERBS (present tense, descriptive):**
-drives, supports, coordinates, manages, oversees, advises, maintains, provides, enables, serves as, operates, sustains, ensures (only for describing an ongoing responsibility), administers, represents, liaises, synchronizes, integrates, conducts, facilitates, monitors, evaluates, governs, directs (present tense only)
-
-**BAD - NEVER USE THESE IN DUTY DESCRIPTIONS:**
-- Past-tense performance verbs: led, directed, managed, executed, ensured (past), bolstered, enhanced, strengthened, championed, pioneered
-- Subjective adjectives: expertly, skillfully, proficiently, adeptly, effectively, seamlessly
-- Accomplishment/result language: "resulting in", "enabling X% improvement", "saving $X", "bolstering capabilities"
-- Cliché openers: "Charged as", "Selected as", "Piloted" (these imply performance, not scope)
-
-**EXAMPLE - CORRECT DUTY DESCRIPTION STYLE:**
-"As a crew operations subject matter expert, he drives a 3-member cyber event coordination team during a numbered AF transition, supporting the elevation of AFSOUTH to a Service Component Command and establishing AFSOUTH's first ever MAJCOM Cyber Coordination Center."
-
-**PRESERVE THESE EXACTLY (never change):**
-- All numbers and metrics
-- Acronyms and organizational names
-- Team sizes and specific scope details
-
-CRITICAL RULES:
-1. PRESENT TENSE ONLY
-2. NO performance adjectives
-3. NO accomplishment results beyond describing the role's scope
-4. KEEP factual content identical - only rephrase, do not invent new scope
-5. Prefer "&" over "and" when saving space
-6. AVOID the word "the" where possible - it wastes characters
-7. If character target cannot be met without inventing facts, stay shorter — truth over length`;
-
 const DEFAULT_RANK_VERBS: RankVerbProgression = {
   // Enlisted Ranks
   AB: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Participated"] },
@@ -362,14 +266,21 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
   );
 }
 
-// Separate component for abbreviations
+type AbbreviationEditorProps = {
+  abbreviations: Abbreviation[];
+  onChange: (abbreviations: Abbreviation[]) => void;
+  title?: string;
+  description?: string;
+  infoNote?: string;
+};
+
 function AbbreviationEditor({
   abbreviations,
   onChange,
-}: {
-  abbreviations: Abbreviation[];
-  onChange: (abbreviations: Abbreviation[]) => void;
-}) {
+  title = "Abbreviations",
+  description,
+  infoNote,
+}: AbbreviationEditorProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -440,11 +351,17 @@ function AbbreviationEditor({
   return (
     <Card className="w-full">
       <CardHeader className="px-3 py-3 sm:px-6 sm:py-4 space-y-3">
+        {infoNote && (
+          <div className="p-3 rounded-lg border bg-muted/40 flex items-start gap-2">
+            <Info className="size-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden />
+            <p className="text-xs text-muted-foreground leading-relaxed">{infoNote}</p>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <CardTitle className="text-base sm:text-lg">Abbreviations</CardTitle>
+            <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
             <CardDescription className="text-xs sm:text-sm mt-0.5">
-              {abbreviations.length} defined
+              {description ?? `${abbreviations.length} defined`}
             </CardDescription>
           </div>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
@@ -834,14 +751,15 @@ export default function LLMSettingsPage() {
   const scodInfo = getStaticCloseoutDate(userRank);
   const computedScodDate = scodInfo?.label || null;
   const computedCycleYear = getActiveCycleYear(userRank);
+  const computedCyclePeriod = getActiveCyclePeriod(userRank);
   
   // Check if user is an officer (ACA rubrics don't apply to officers)
   const userIsOfficer = isOfficer(userRank);
   
   // Separate state for each section to prevent unnecessary re-renders
-  const [styleGuidelines, setStyleGuidelines] = useState(DEFAULT_STYLE_GUIDELINES);
+  const [styleGuidelines, setStyleGuidelines] = useState(DEFAULT_EPB_STYLE_GUIDELINES);
   // MPAs are standardized by AFI 36-2406 and not user-editable
-  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_EPB_SYSTEM_PROMPT);
   const [rankVerbs, setRankVerbs] = useState<RankVerbProgression>(DEFAULT_RANK_VERBS);
   const [acronyms, setAcronyms] = useState<Acronym[]>(DEFAULT_ACRONYMS);
   const [abbreviations, setAbbreviations] = useState<Abbreviation[]>([]);
@@ -976,10 +894,10 @@ export default function LLMSettingsPage() {
         setHasExistingSettings(true);
         const settings = data as unknown as UserLLMSettings;
         // SCOD date and cycle year are now computed from rank, not loaded from settings
-        const loadedStyleGuidelines = settings.style_guidelines;
-        const loadedSystemPrompt = settings.base_system_prompt;
+        const loadedStyleGuidelines = resolveStoredStyleGuidelines(settings.style_guidelines);
+        const loadedSystemPrompt = resolveStoredSystemPrompt(settings.base_system_prompt);
         const loadedRankVerbs = settings.rank_verb_progression;
-        const loadedAcronyms = settings.acronyms;
+        const loadedAcronyms = resolveStoredAcronyms(settings.acronyms);
         const loadedAbbreviations = settings.abbreviations || [];
 
         setStyleGuidelines(loadedStyleGuidelines);
@@ -1019,7 +937,9 @@ export default function LLMSettingsPage() {
         setDecorationAbbreviations(loadedDecorationAbbreviations);
 
         // Load Duty Description prompt
-        const loadedDutyDescriptionPrompt = settings.duty_description_prompt || DEFAULT_DUTY_DESCRIPTION_PROMPT;
+        const loadedDutyDescriptionPrompt = resolveStoredDutyDescriptionPrompt(
+          settings.duty_description_prompt
+        );
         setDutyDescriptionPrompt(loadedDutyDescriptionPrompt);
 
         // Store initial state for change detection (SCOD/cycle year now computed from rank)
@@ -1043,8 +963,8 @@ export default function LLMSettingsPage() {
       } else {
         // No existing settings - store defaults as initial state
         setInitialState({
-          styleGuidelines: DEFAULT_STYLE_GUIDELINES,
-          systemPrompt: DEFAULT_SYSTEM_PROMPT,
+          styleGuidelines: DEFAULT_EPB_STYLE_GUIDELINES,
+          systemPrompt: DEFAULT_EPB_SYSTEM_PROMPT,
           rankVerbs: JSON.parse(JSON.stringify(DEFAULT_RANK_VERBS)),
           acronyms: JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)),
           abbreviations: [],
@@ -1081,7 +1001,7 @@ export default function LLMSettingsPage() {
         rank_verb_progression: rankVerbs,
         style_guidelines: styleGuidelines,
         base_system_prompt: systemPrompt,
-        acronyms: acronyms,
+        acronyms: acronymsForStorage(acronyms),
         abbreviations: abbreviations,
         // MPA descriptions for relevancy scoring
         mpa_descriptions: mpaDescriptions,
@@ -1156,9 +1076,9 @@ export default function LLMSettingsPage() {
 
   function resetToDefaults() {
     // SCOD date and cycle year are now computed from rank, not reset
-    setStyleGuidelines(DEFAULT_STYLE_GUIDELINES);
+    setStyleGuidelines(DEFAULT_EPB_STYLE_GUIDELINES);
     // MPAs are not user-editable, always use STANDARD_MGAS
-    setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+    setSystemPrompt(DEFAULT_EPB_SYSTEM_PROMPT);
     setRankVerbs(DEFAULT_RANK_VERBS);
     setAcronyms(DEFAULT_ACRONYMS);
     setAbbreviations([]);
@@ -1171,7 +1091,7 @@ export default function LLMSettingsPage() {
     setDecorationStyleGuidelines(DEFAULT_DECORATION_STYLE_GUIDELINES);
     // Reset duty description prompt
     setDutyDescriptionPrompt(DEFAULT_DUTY_DESCRIPTION_PROMPT);
-    toast.success("Settings reset to defaults (save to apply)");
+    toast.success("All settings reset to defaults (save to apply)");
   }
 
   function updateRankVerbs(rank: string) {
@@ -1283,7 +1203,7 @@ export default function LLMSettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="abbreviations" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
             <ArrowRight className="size-4 sm:size-3.5 shrink-0" />
-            <span className="hidden sm:inline">Abbr</span>
+            <span className="hidden sm:inline">EPB Abbr</span>
           </TabsTrigger>
           <TabsTrigger value="acronyms" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2 data-[state=active]:text-foreground">
             <BookOpen className="size-4 sm:size-3.5 shrink-0" />
@@ -1303,23 +1223,36 @@ export default function LLMSettingsPage() {
             <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-4 sm:space-y-6">
               {/* SCOD Date and Cycle Year - Auto-computed from rank */}
               {userRank ? (
-                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs sm:text-sm">SCOD Date</Label>
-                    <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50">
-                      <span className="text-sm font-medium">{computedScodDate}</span>
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs sm:text-sm">SCOD Date</Label>
+                      <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50">
+                        <span className="text-sm font-medium">{computedScodDate}</span>
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">
+                        Static Close Out Date (rank: {userRank})
+                      </p>
                     </div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">
-                      Static Close Out Date (based on your rank: {userRank})
-                    </p>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs sm:text-sm">Cycle Year (database key)</Label>
+                      <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50">
+                        <span className="text-sm font-medium">{computedCycleYear}</span>
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">
+                        Year of close-out used to tag entries and statements
+                      </p>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs sm:text-sm">Cycle Year</Label>
-                    <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50">
-                      <span className="text-sm font-medium">{computedCycleYear}</span>
+                    <Label className="text-xs sm:text-sm">Evaluation Period</Label>
+                    <div className="flex items-center min-h-9 px-3 py-2 rounded-md border bg-muted/50">
+                      <CyclePeriodLabel rank={userRank} className="text-sm font-medium" />
                     </div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">
-                      Current evaluation cycle
+                      {computedCyclePeriod
+                        ? `Approximately 365 days ending ${computedCyclePeriod.closeoutLabel}`
+                        : "Set your rank to see your evaluation period"}
                     </p>
                   </div>
                 </div>
@@ -1420,7 +1353,7 @@ export default function LLMSettingsPage() {
                 EPB System Prompt
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Customize the AI prompt for Enlisted Performance Brief (EPB) statement generation.
+                Edit the AI prompt used for your EPB statements. Your saved version is always used for generation; use Reset to Default to restore the canonical prompt below.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-3 sm:space-y-4">
@@ -1431,7 +1364,23 @@ export default function LLMSettingsPage() {
                 rows={12}
                 className="font-mono text-xs sm:text-sm min-h-[200px] sm:min-h-[400px]"
                 placeholder="Enter your custom EPB system prompt..."
+                aria-label="EPB system prompt"
               />
+              <div className="flex items-center justify-between gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSystemPrompt(DEFAULT_EPB_SYSTEM_PROMPT)}
+                  className="h-8"
+                  aria-label="Reset EPB system prompt to default"
+                >
+                  <RotateCcw className="size-3 mr-1.5" />
+                  Reset to Default
+                </Button>
+                <p className="text-[10px] sm:text-xs text-muted-foreground text-right">
+                  Save settings to apply changes to generation.
+                </p>
+              </div>
             </CardContent>
           </Card>
 
@@ -1691,22 +1640,13 @@ export default function LLMSettingsPage() {
 
               <Separator />
 
-              {/* Award Abbreviations */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs sm:text-sm">Award Abbreviations</Label>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {awardAbbreviations.length} defined
-                  </Badge>
-                </div>
-                <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Separate abbreviation list for award statements. Uses the same Verbs as EPB.
-                </p>
-                <AbbreviationEditor 
-                  abbreviations={awardAbbreviations} 
-                  onChange={setAwardAbbreviations} 
-                />
-              </div>
+              <AbbreviationEditor
+                title="Award Abbreviations"
+                description={`${awardAbbreviations.length} defined for AF Form 1206 statements`}
+                infoNote="Separate from EPB abbreviations on the EPB Abbr tab. Rank verbs are still shared with EPB."
+                abbreviations={awardAbbreviations}
+                onChange={setAwardAbbreviations}
+              />
 
               <Separator />
 
@@ -1816,8 +1756,10 @@ export default function LLMSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Decoration Approved Abbreviations */}
           <AbbreviationEditor
+            title="Decoration Abbreviations"
+            description={`${decorationAbbreviations.length} DAF-approved shortenings for citations`}
+            infoNote="Separate from EPB and award lists. Only abbreviations you add here may be used in decoration citations."
             abbreviations={decorationAbbreviations}
             onChange={setDecorationAbbreviations}
           />
@@ -2185,9 +2127,15 @@ export default function LLMSettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Abbreviations */}
+        {/* EPB Abbreviations */}
         <TabsContent value="abbreviations" className="w-full min-h-[580px]">
-          <AbbreviationEditor abbreviations={abbreviations} onChange={setAbbreviations} />
+          <AbbreviationEditor
+            title="EPB Abbreviations"
+            description={`${abbreviations.length} word shortenings for enlisted EPB statements`}
+            infoNote="This list applies to EPB generation only. Award statements use the list on the Award tab; decoration citations use the list on the Decs tab."
+            abbreviations={abbreviations}
+            onChange={setAbbreviations}
+          />
         </TabsContent>
 
         {/* Acronyms */}

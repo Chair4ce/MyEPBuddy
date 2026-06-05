@@ -122,7 +122,6 @@ export function AddTeamAccomplishmentDialog({
   });
 
   const mgas = ENTRY_MGAS;
-  const cycleYear = getActiveCycleYear(profile?.rank as Rank | null);
 
   // Build available team members list
   const availableMembers = useMemo((): TeamMemberOption[] => {
@@ -247,6 +246,8 @@ export function AddTeamAccomplishmentDialog({
       try {
         const isManaged = member.type === "managed";
 
+        const memberCycleYear = getActiveCycleYear(member.rank as Rank | null);
+
         const result = await createAccomplishment({
           user_id: isManaged ? profile.id : member.id,
           created_by: profile.id,
@@ -258,7 +259,7 @@ export function AddTeamAccomplishmentDialog({
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
-          cycle_year: cycleYear,
+          cycle_year: memberCycleYear,
           assessment_scores: null,
           assessed_at: null,
           assessment_model: null,

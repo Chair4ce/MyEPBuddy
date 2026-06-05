@@ -6,12 +6,20 @@ import {
   saveModelPreferences,
   syncModelCatalog,
 } from "@/app/actions/ai-models";
+import {
+  deleteApiKey,
+  saveApiKey,
+  type KeyName,
+  type KeyStatus,
+} from "@/app/actions/api-keys";
 import type {
   AvailableModel,
   CatalogModelRow,
+  ModelProvider,
   UserModelPreferences,
 } from "@/lib/ai-models/types";
-import Link from "next/link";
+import { Analytics } from "@/lib/analytics";
+import { KEY_NAME_TO_PROVIDER } from "@/lib/model-preferences";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,18 +28,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { useAvailableModelsStore } from "@/stores/available-models-store";
 import { cn } from "@/lib/utils";
-import { Info, KeyRound, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { KeyRound, Loader2, RefreshCw, Shield, Sparkles } from "lucide-react";
+import {
+  PROVIDER_KEY_CONFIGS,
+  ProviderKeySection,
+} from "@/components/settings/provider-key-section";
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
@@ -40,12 +47,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   xai: "xAI",
 };
 
+const PROVIDER_ORDER: ModelProvider[] = ["openai", "anthropic", "google", "xai"];
+
 interface ModelSettingsFormProps {
   isAdmin: boolean;
   initialAllModels: CatalogModelRow[];
   initialPreferences: UserModelPreferences;
   initialAvailableModels: AvailableModel[];
   initialCatalogSyncedAt: string | null;
+  initialKeyStatus: KeyStatus;
 }
 
 export function ModelSettingsForm({
@@ -54,12 +64,14 @@ export function ModelSettingsForm({
   initialPreferences,
   initialAvailableModels,
   initialCatalogSyncedAt,
+  initialKeyStatus,
 }: ModelSettingsFormProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [allModels, setAllModels] = useState(initialAllModels);
   const [preferences, setPreferences] = useState(initialPreferences);
   const [catalogSyncedAt, setCatalogSyncedAt] = useState(initialCatalogSyncedAt);
+  const [keyStatus, setKeyStatus] = useState<KeyStatus>(initialKeyStatus);
   const [availableIds, setAvailableIds] = useState(
     new Set(initialAvailableModels.map((model) => model.id)),
   );
@@ -72,6 +84,7 @@ export function ModelSettingsForm({
     setAllModels(data.allModels);
     setPreferences(data.preferences);
     setCatalogSyncedAt(data.catalogSyncedAt);
+    setKeyStatus(data.keyStatus);
     setAvailableIds(new Set(data.availableModels.map((model) => model.id)));
   }, []);
 
@@ -79,31 +92,34 @@ export function ModelSettingsForm({
     preferences.visible_model_ids ?? allModels.map((model) => model.id),
   );
 
-  const persistPreferences = useCallback(async (nextPreferences: UserModelPreferences) => {
-    const seq = ++saveSeqRef.current;
-    setIsSaving(true);
+  const persistPreferences = useCallback(
+    async (nextPreferences: UserModelPreferences) => {
+      const seq = ++saveSeqRef.current;
+      setIsSaving(true);
 
-    try {
-      const result = await saveModelPreferences(nextPreferences);
-      if (seq !== saveSeqRef.current) return;
+      try {
+        const result = await saveModelPreferences(nextPreferences);
+        if (seq !== saveSeqRef.current) return;
 
-      if (!result.success) {
-        toast.error(result.error || "Failed to save model preference");
+        if (!result.success) {
+          toast.error(result.error || "Failed to save model preference");
+          await reloadSettings();
+          return;
+        }
+
+        useAvailableModelsStore.getState().invalidate();
+      } catch {
+        if (seq !== saveSeqRef.current) return;
+        toast.error("Failed to save model preference");
         await reloadSettings();
-        return;
+      } finally {
+        if (seq === saveSeqRef.current) {
+          setIsSaving(false);
+        }
       }
-
-      useAvailableModelsStore.getState().invalidate();
-    } catch {
-      if (seq !== saveSeqRef.current) return;
-      toast.error("Failed to save model preference");
-      await reloadSettings();
-    } finally {
-      if (seq === saveSeqRef.current) {
-        setIsSaving(false);
-      }
-    }
-  }, [reloadSettings]);
+    },
+    [reloadSettings],
+  );
 
   const scheduleSave = useCallback(
     (nextPreferences: UserModelPreferences) => {
@@ -151,6 +167,30 @@ export function ModelSettingsForm({
     }
   }
 
+  async function handleSaveKey(keyName: KeyName, keyValue: string) {
+    const result = await saveApiKey(keyName, keyValue);
+    if (result.success) {
+      setKeyStatus((prev) => ({ ...prev, [keyName]: true }));
+      Analytics.apiKeyAdded(keyName);
+      toast.success("API key saved successfully");
+      await reloadSettings();
+    } else {
+      toast.error(result.error || "Failed to save API key");
+    }
+  }
+
+  async function handleDeleteKey(keyName: KeyName) {
+    const result = await deleteApiKey(keyName);
+    if (result.success) {
+      setKeyStatus((prev) => ({ ...prev, [keyName]: false }));
+      Analytics.apiKeyRemoved(keyName);
+      toast.success("API key deleted");
+      await reloadSettings();
+    } else {
+      toast.error(result.error || "Failed to delete API key");
+    }
+  }
+
   async function handleSync() {
     setIsSyncing(true);
     try {
@@ -175,7 +215,9 @@ export function ModelSettingsForm({
     return acc;
   }, {});
 
-  const providerEntries = Object.entries(grouped);
+  const keyConfigByProvider = Object.fromEntries(
+    PROVIDER_KEY_CONFIGS.map((config) => [KEY_NAME_TO_PROVIDER[config.key], config]),
+  );
 
   return (
     <div className="w-full max-w-3xl space-y-6 pb-10 sm:pb-12">
@@ -183,7 +225,7 @@ export function ModelSettingsForm({
         <div className="space-y-1 min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">AI Models</h1>
           <p className="text-muted-foreground">
-            Sync the latest models from providers and choose which appear in your pickers.
+            Add your API keys, test them, and choose which models appear in your dropdowns.
           </p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
             {catalogSyncedAt && (
@@ -219,63 +261,26 @@ export function ModelSettingsForm({
 
       <Card className="border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20">
         <CardContent className="py-4">
-          <div className="flex gap-3">
-            <Info className="size-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-            <div className="space-y-2 min-w-0">
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                Toggle visibility — changes save automatically
-              </p>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
-                Your picker shows active models you can access. Add provider keys on the{" "}
-                <Link href="/settings/api-keys" className="underline hover:text-blue-500">
-                  API Keys
-                </Link>{" "}
-                page to unlock premium models.
-                {isAdmin
-                  ? " Admins can refresh the catalog manually (rate-limited to once per hour)."
-                  : " The catalog syncs automatically once per day."}
-              </p>
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="details" className="border-blue-200/80 dark:border-blue-900/40">
-                  <AccordionTrigger className="py-2 text-xs text-blue-800 dark:text-blue-200 hover:no-underline">
-                    More about catalog sync and model selection
-                  </AccordionTrigger>
-                  <AccordionContent className="text-xs text-blue-700 dark:text-blue-300 space-y-2">
-                    <p>
-                      The catalog is refreshed from the app&apos;s provider API keys. Deprecated
-                      models are marked inactive automatically.
-                    </p>
-                    <p>
-                      <strong className="text-blue-900 dark:text-blue-100">Your own API key:</strong>{" "}
-                      unlocks every active model for that provider.
-                    </p>
-                    <p>
-                      <strong className="text-blue-900 dark:text-blue-100">No API key:</strong> only
-                      models the shared app key supports, including the free default.
-                    </p>
-                    <p>
-                      On your next visit we keep your last selected model when it is still valid;
-                      otherwise we pick the best model for the providers you unlocked.
-                    </p>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </div>
+          <div className="flex gap-2.5 items-start">
+            <Shield className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-sm text-blue-800 dark:text-blue-200 leading-snug">
+              Keys are encrypted and used server-side only — never shown in your browser. Rotate them
+              regularly: delete the old key here, then save a new one from your provider.
+            </p>
           </div>
         </CardContent>
       </Card>
 
       <div className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold tracking-tight">Model catalog</h2>
-          <p className="text-sm text-muted-foreground">
-            {allModels.filter((model) => model.is_active).length} active models across{" "}
-            {providerEntries.length} providers. Hide models you don&apos;t want in dropdowns.
-          </p>
-        </div>
+        {PROVIDER_ORDER.map((provider) => {
+          const models = grouped[provider];
+          if (!models?.length) return null;
 
-        <div className="space-y-4">
-          {providerEntries.map(([provider, models]) => (
+          const keyConfig = keyConfigByProvider[provider];
+          const providerKeyName = keyConfig?.key;
+          const hasKey = providerKeyName ? keyStatus[providerKeyName] : false;
+
+          return (
             <Card key={provider}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -291,72 +296,109 @@ export function ModelSettingsForm({
                   </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                {models.map((model) => {
-                  const canUse = availableIds.has(model.id);
-                  const isVisible = visibleSet.has(model.id);
-                  const isUnavailable = !canUse && !model.is_app_default;
+              <CardContent className="space-y-4 pt-0">
+                {keyConfig && providerKeyName ? (
+                  <ProviderKeySection
+                    provider={keyConfig}
+                    hasKey={hasKey}
+                    onSave={(key) => handleSaveKey(providerKeyName, key)}
+                    onDelete={() => handleDeleteKey(providerKeyName)}
+                  />
+                ) : null}
 
-                  return (
-                    <div
-                      key={model.id}
-                      className={cn(
-                        "flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors",
-                        !model.is_active && "opacity-60",
-                        isUnavailable && "bg-muted/30",
-                      )}
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium">{model.display_name}</p>
-                          {model.is_app_default && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              Free default
-                            </Badge>
-                          )}
-                          {!model.is_active && (
-                            <Badge variant="outline" className="text-[10px]">
-                              Deprecated
-                            </Badge>
-                          )}
-                          {isUnavailable && model.is_active && (
-                            <Badge variant="outline" className="text-[10px] gap-1">
-                              <KeyRound className="size-2.5" aria-hidden="true" />
-                              Key required
-                            </Badge>
-                          )}
+                <Separator />
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Model visibility</p>
+                  <p className="text-xs text-muted-foreground">
+                    Toggle which models from this provider appear in your pickers.
+                  </p>
+                  {models.map((model) => {
+                    const canUse = availableIds.has(model.id);
+                    const isVisible = visibleSet.has(model.id);
+                    const isUnavailable = !canUse && !model.is_app_default;
+
+                    return (
+                      <div
+                        key={model.id}
+                        className={cn(
+                          "flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors",
+                          !model.is_active && "opacity-60",
+                          isUnavailable && "bg-muted/30",
+                        )}
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium">{model.display_name}</p>
+                            {model.is_app_default && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                Free default
+                              </Badge>
+                            )}
+                            {!model.is_active && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Deprecated
+                              </Badge>
+                            )}
+                            {isUnavailable && model.is_active && (
+                              <Badge variant="outline" className="text-[10px] gap-1">
+                                <KeyRound className="size-2.5" aria-hidden="true" />
+                                Key required
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {model.description}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground font-mono truncate">
+                            {model.id}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {model.description}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground font-mono truncate">
-                          {model.id}
-                        </p>
+                        <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                          <span className="text-xs text-muted-foreground hidden sm:inline">
+                            Show
+                          </span>
+                          <Switch
+                            checked={isVisible}
+                            onCheckedChange={(checked) =>
+                              toggleModelVisibility(model.id, checked)
+                            }
+                            aria-label={`Show ${model.display_name} in model pickers`}
+                            disabled={isUnavailable}
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                        <span className="text-xs text-muted-foreground hidden sm:inline">Show</span>
-                        <Switch
-                          checked={isVisible}
-                          onCheckedChange={(checked) => toggleModelVisibility(model.id, checked)}
-                          aria-label={`Show ${model.display_name} in model pickers`}
-                          disabled={isUnavailable}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      <p className="text-xs text-muted-foreground text-center pt-2">
-        Need to add or test provider keys?{" "}
-        <Link href="/settings/api-keys" className="text-primary hover:underline">
-          Go to API Keys
-        </Link>
-      </p>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">How it works</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            Add and test a provider key above, then toggle which models from that provider appear in
+            your dropdowns. Refresh the catalog when providers release new models.
+          </p>
+          <p>When you generate statements, the app checks if you have a key for the provider:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li>
+              <strong className="text-foreground">With your key:</strong> Your key is used for any
+              enabled model from that provider (Generate, Award, EPB, and Library workspace)
+            </li>
+            <li>
+              <strong className="text-foreground">Without your key:</strong> The app&apos;s shared
+              default model is used (limited free usage)
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
     </div>
   );
 }

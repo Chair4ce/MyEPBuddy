@@ -130,57 +130,42 @@ function getRankIndex(rank: Rank | null): number {
   return idx === -1 ? HIERARCHY_RANK_ORDER.length : idx;
 }
 
-// Flatten tree into a map of members with parent/child relationships
-// Respects collapsed state - doesn't include children of collapsed nodes
-// Also respects rank filter in collapse mode
+// Flatten tree for layout — always includes every member so positions stay fixed.
+// Rank filter collapse mode may omit filtered ranks; member collapse is visual-only.
 function flattenTree(
   node: TreeNode,
   parentId: string | null,
   currentUserId: string,
   result: Map<string, HierarchyMember>,
-  collapsedNodes: Set<string>,
   visibleRanks: Set<Rank>,
   filterMode: "fade" | "collapse",
   depth: number = 0,
   parentRank: Rank | null = null
 ): void {
-  const isCollapsed = collapsedNodes.has(node.data.id);
-  
-  // In collapse mode, check if this node's rank is visible
-  const isRankVisible = visibleRanks.size === 0 || 
+  const isRankVisible = visibleRanks.size === 0 ||
     (node.data.rank && visibleRanks.has(node.data.rank));
-  
-  // In fade mode, always include all nodes
-  // In collapse mode, only include nodes with visible ranks
+
   const shouldInclude = filterMode === "fade" || isRankVisible;
-  
-  // The parent ID for children - either this node's ID or pass through the parent
   const childParentId = shouldInclude ? node.data.id : parentId;
-  
-  // Check if this node has the same display tier as its parent (for horizontal positioning)
+
   const nodeTier = getDisplayTier(node.data.rank);
   const parentTier = getDisplayTier(parentRank);
   const isSameRankAsParent = parentId !== null && nodeTier === parentTier && nodeTier !== "JuniorEnlisted";
-  
+
   if (shouldInclude) {
-    // Collect visible children IDs (for collapse mode, only include children with visible ranks)
     const childIds: string[] = [];
-    if (!isCollapsed) {
-      for (const child of node.children) {
-        const childRankVisible = visibleRanks.size === 0 || 
-          (child.data.rank && visibleRanks.has(child.data.rank));
-        
-        if (filterMode === "fade" || childRankVisible) {
-          childIds.push(child.data.id);
-        } else {
-          // In collapse mode, look for visible descendants to connect
-          const visibleDescendants = findVisibleDescendantIds(child, visibleRanks);
-          childIds.push(...visibleDescendants);
-        }
+    for (const child of node.children) {
+      const childRankVisible = visibleRanks.size === 0 ||
+        (child.data.rank && visibleRanks.has(child.data.rank));
+
+      if (filterMode === "fade" || childRankVisible) {
+        childIds.push(child.data.id);
+      } else {
+        childIds.push(...findVisibleDescendantIds(child, visibleRanks));
       }
     }
-    
-    const member: HierarchyMember = {
+
+    result.set(node.data.id, {
       id: node.data.id,
       name: node.data.full_name || "Unknown",
       rank: node.data.rank,
@@ -191,16 +176,26 @@ function flattenTree(
       children: childIds,
       depth,
       isSameRankAsParent,
-    };
-    result.set(node.data.id, member);
+    });
   }
 
-  // Only recurse into children if not collapsed
-  if (!isCollapsed) {
-    for (const child of node.children) {
-      flattenTree(child, childParentId, currentUserId, result, collapsedNodes, visibleRanks, filterMode, depth + 1, node.data.rank);
-    }
+  for (const child of node.children) {
+    flattenTree(child, childParentId, currentUserId, result, visibleRanks, filterMode, depth + 1, node.data.rank);
   }
+}
+
+// Hide descendants when an ancestor is collapsed — layout slots stay reserved.
+function isHiddenByCollapse(
+  memberId: string,
+  members: Map<string, HierarchyMember>,
+  collapsedNodes: Set<string>
+): boolean {
+  let member = members.get(memberId);
+  while (member?.parentId) {
+    if (collapsedNodes.has(member.parentId)) return true;
+    member = members.get(member.parentId);
+  }
+  return false;
 }
 
 // Helper to find IDs of visible descendants (for connecting across filtered-out nodes)
@@ -582,17 +577,31 @@ export function HierarchyTreeView({
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 2;
   
+  // Canvas pan offset (Figma-style — not scroll-based)
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panRef = useRef(pan);
+  panRef.current = pan;
+
   // Spacebar held for drag mode (disables card clicks)
   const [isSpaceHeld, setIsSpaceHeld] = useState(false);
-  
+  const isSpaceHeldRef = useRef(false);
+
   // Drag-to-pan state
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   
   // Flatten tree and calculate positions
-  const { positioned, tierRows, totalWidth, totalHeight, childrenCountMap } = useMemo(() => {
+  const { members, positioned, tierRows, totalWidth, totalHeight, childrenCountMap } = useMemo(() => {
     if (!tree) {
-      return { positioned: new Map(), tierRows: [], totalWidth: 0, totalHeight: 0, childrenCountMap: new Map() };
+      return {
+        members: new Map<string, HierarchyMember>(),
+        positioned: new Map(),
+        tierRows: [],
+        totalWidth: 0,
+        totalHeight: 0,
+        childrenCountMap: new Map(),
+      };
     }
     
     const { baseRowHeight, juniorStackHeight, topPadding, leftPadding, rightPadding, bottomPadding, nodeWidth } = LAYOUT_CONFIG;
@@ -607,9 +616,9 @@ export function HierarchyTreeView({
     }
     countChildren(tree);
     
-    // Flatten tree (respects collapsed state and rank filter in collapse mode)
+    // Flatten full tree for stable layout (collapse is visual-only at render time)
     const members = new Map<string, HierarchyMember>();
-    flattenTree(tree, null, currentUserId, members, collapsedNodes, visibleRanks, filterMode);
+    flattenTree(tree, null, currentUserId, members, visibleRanks, filterMode);
     
     // Calculate stack indices for junior enlisted under each SSgt
     // Find all junior enlisted and group by their nearest SSgt+ ancestor
@@ -736,101 +745,117 @@ export function HierarchyTreeView({
     }
     
     return {
+      members,
       positioned: pos,
       tierRows: rows,
       totalWidth: Math.max(maxX + rightPadding, 400),
       totalHeight: currentY + bottomPadding,
       childrenCountMap: childrenCount,
     };
-  }, [tree, currentUserId, collapsedNodes, visibleRanks, filterMode]);
+  }, [tree, currentUserId, visibleRanks, filterMode]);
   
-  // Track if initial scroll has been done for current tree
-  const hasInitialScrolled = useRef(false);
+  // Track if initial pan has been set for current tree
+  const hasInitialPanned = useRef(false);
   const lastTreeRootId = useRef<string | null>(null);
   
-  // Reset initial scroll flag when tree root changes (different user/tree)
+  // Reset initial pan flag when tree root changes (different user/tree)
   useEffect(() => {
     if (tree && tree.data.id !== lastTreeRootId.current) {
-      hasInitialScrolled.current = false;
+      hasInitialPanned.current = false;
       lastTreeRootId.current = tree.data.id;
     }
   }, [tree]);
   
-  // Scroll to show the root (current user) only on initial tree load
-  // Does NOT scroll on collapse/expand to preserve user's view position
+  // Center the root on initial tree load only — preserve pan on collapse/expand
   useEffect(() => {
     if (!containerRef.current || !tree || positioned.size === 0) return;
-    
-    // Only scroll on initial load, not on collapse/expand
-    if (hasInitialScrolled.current) return;
-    hasInitialScrolled.current = true;
-    
+    if (hasInitialPanned.current) return;
+    hasInitialPanned.current = true;
+
     const containerWidth = containerRef.current.clientWidth;
-    
-    // If tree fits within container, flexbox will center it - no scroll needed
-    if (totalWidth <= containerWidth) {
-      containerRef.current.scrollLeft = 0;
-      containerRef.current.scrollTop = 0;
+    const containerHeight = containerRef.current.clientHeight;
+    const rootPos = positioned.get(tree.data.id);
+
+    if (rootPos) {
+      setPan({
+        x: containerWidth / 2 - rootPos.x,
+        y: Math.max(24, containerHeight * 0.15),
+      });
       return;
     }
-    
-    // Find the root node position to scroll to it for large trees
-    const rootPos = positioned.get(tree.data.id);
-    if (rootPos) {
-      // Center the root node horizontally in the view
-      const scrollLeft = Math.max(0, rootPos.x - containerWidth / 2);
-      containerRef.current.scrollLeft = scrollLeft;
-      containerRef.current.scrollTop = 0;
-    }
-  }, [tree, positioned, totalWidth]);
-  
-  // Drag-to-pan handlers
-  const handleMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
-    // Only start drag on left mouse button and if not clicking a button
-    if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
-    
-    // Allow drag if spacebar is held OR just normal click-drag
-    setIsDragging(true);
-    setDragStart({
-      x: e.clientX,
-      y: e.clientY,
-      scrollLeft: containerRef.current.scrollLeft,
-      scrollTop: containerRef.current.scrollTop,
+
+    setPan({
+      x: (containerWidth - totalWidth) / 2,
+      y: (containerHeight - totalHeight) / 2,
     });
+  }, [tree, positioned, totalWidth, totalHeight]);
+
+  const stopPanDrag = useCallback(() => {
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    document.removeEventListener("mousemove", onDocumentMouseMove);
+    document.removeEventListener("mouseup", onDocumentMouseUp);
+  }, []);
+
+  const onDocumentMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingRef.current) return;
+
+    const deltaX = e.clientX - dragStartRef.current.x;
+    const deltaY = e.clientY - dragStartRef.current.y;
+
+    setPan({
+      x: dragStartRef.current.panX + deltaX,
+      y: dragStartRef.current.panY + deltaY,
+    });
+  }, []);
+
+  const onDocumentMouseUp = useCallback(() => {
+    stopPanDrag();
+  }, [stopPanDrag]);
+
+  const startPanDrag = useCallback((clientX: number, clientY: number) => {
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: clientX,
+      y: clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y,
+    };
+    document.addEventListener("mousemove", onDocumentMouseMove);
+    document.addEventListener("mouseup", onDocumentMouseUp);
+  }, [onDocumentMouseMove, onDocumentMouseUp]);
+
+  // Drag-to-pan: Space+click, middle mouse, or click empty canvas area
+  const handleMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    const isMiddleButton = e.button === 1;
+    const isLeftWithSpace = e.button === 0 && isSpaceHeldRef.current;
+    const isLeftOnBackground =
+      e.button === 0 && !(e.target as HTMLElement).closest("button");
+
+    if (!isMiddleButton && !isLeftWithSpace && !isLeftOnBackground) return;
+
     e.preventDefault();
-  }, []);
-  
-  const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!isDragging || !containerRef.current) return;
-    
-    const deltaX = e.clientX - dragStart.x;
-    const deltaY = e.clientY - dragStart.y;
-    
-    containerRef.current.scrollLeft = dragStart.scrollLeft - deltaX;
-    containerRef.current.scrollTop = dragStart.scrollTop - deltaY;
-  }, [isDragging, dragStart]);
-  
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-  
-  const handleMouseLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-  
-  // Handle wheel event for zooming (Ctrl/Cmd + scroll)
+    startPanDrag(e.clientX, e.clientY);
+  }, [startPanDrag]);
+
+  // Wheel: Ctrl/Cmd+zoom, otherwise pan (trackpad / scroll)
   const handleWheel = useCallback((e: WheelEvent) => {
-    // Only zoom if Ctrl (Windows/Linux) or Meta (Mac) is held
+    e.preventDefault();
+
     if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(prev => {
+      setZoom((prev) => {
         const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + delta));
-        return Math.round(newZoom * 100) / 100; // Round to 2 decimal places
+        return Math.round(newZoom * 100) / 100;
       });
+      return;
     }
+
+    setPan((prev) => ({
+      x: prev.x - e.deltaX,
+      y: prev.y - e.deltaY,
+    }));
   }, []);
   
   // Track if mouse is over container for spacebar handling
@@ -848,6 +873,7 @@ export function HierarchyTreeView({
         e.stopPropagation();
         e.stopImmediatePropagation();
         if (!e.repeat) {
+          isSpaceHeldRef.current = true;
           setIsSpaceHeld(true);
         }
         return false;
@@ -856,8 +882,9 @@ export function HierarchyTreeView({
     
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
+        isSpaceHeldRef.current = false;
         setIsSpaceHeld(false);
-        setIsDragging(false);
+        stopPanDrag();
       }
     };
     
@@ -885,8 +912,9 @@ export function HierarchyTreeView({
       if (container) {
         container.removeEventListener("keydown", handleContainerKeyDown);
       }
+      stopPanDrag();
     };
-  }, []);
+  }, [stopPanDrag]);
   
   // Attach wheel event listener (needs to be non-passive for preventDefault)
   useEffect(() => {
@@ -954,8 +982,34 @@ export function HierarchyTreeView({
   }
   
   const { cardWidth, juniorStackHeight, cardHeight } = LAYOUT_CONFIG;
-  
-  // Determine cursor based on state
+  const isRankFilterActive = visibleRanks.size > 0;
+  const layoutTransition =
+    filterMode === "collapse" && isRankFilterActive
+      ? "left 200ms ease-out, top 200ms ease-out, opacity 150ms ease-in-out"
+      : "opacity 150ms ease-in-out";
+
+  const resetView = useCallback(() => {
+    setZoom(1);
+    if (!containerRef.current || !tree) return;
+
+    const containerWidth = containerRef.current.clientWidth;
+    const containerHeight = containerRef.current.clientHeight;
+    const rootPos = positioned.get(tree.data.id);
+
+    if (rootPos) {
+      setPan({
+        x: containerWidth / 2 - rootPos.x,
+        y: Math.max(24, containerHeight * 0.15),
+      });
+      return;
+    }
+
+    setPan({
+      x: (containerWidth - totalWidth) / 2,
+      y: (containerHeight - totalHeight) / 2,
+    });
+  }, [tree, positioned, totalWidth, totalHeight]);
+
   const getCursorClass = () => {
     if (isDragging) return "cursor-grabbing";
     if (isSpaceHeld) return "cursor-grab";
@@ -1039,82 +1093,65 @@ export function HierarchyTreeView({
       <div
         ref={containerRef}
         className={cn(
-          "relative w-full overflow-auto border border-border/50 rounded-md bg-muted/20 select-none",
-          // Custom scrollbar styling to hide the corner square
-          "[&::-webkit-scrollbar-corner]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2",
-          "[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full",
-          "[&::-webkit-scrollbar-track]:bg-transparent",
+          "relative w-full overflow-hidden border border-border/50 rounded-md bg-muted/20 select-none touch-none",
           getCursorClass()
         )}
-        style={{ 
-          // Dynamic height calculated to fit viewport without causing page scroll
+        style={{
           height: containerHeight ?? 400,
           minHeight: 300,
         }}
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
         onMouseEnter={() => { isMouseOverContainer.current = true; }}
-        onMouseLeave={() => { 
-          isMouseOverContainer.current = false; 
-          handleMouseLeave(); 
-        }}
-        tabIndex={0} // Allow focus for keyboard events
+        onMouseLeave={() => { isMouseOverContainer.current = false; }}
+        tabIndex={0}
+        aria-label="Supervision tree canvas. Hold Space and drag to pan, scroll to move, Ctrl or Cmd scroll to zoom."
       >
-         {/* Zoom controls */}
- <div className="flex absolute top-0 right-0 items-center gap-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1 text-sm text-muted-foreground border border-border/50">
+        {/* Zoom controls — fixed to viewport, not panned */}
+        <div className="pointer-events-auto absolute top-2 right-2 z-50 flex items-center gap-2 rounded-md border border-border/50 bg-background/80 px-2 py-1 text-sm text-muted-foreground backdrop-blur-sm">
           <span>{Math.round(zoom * 100)}%</span>
           <div className="flex gap-1">
             <button
-              onClick={() => setZoom(prev => Math.max(MIN_ZOOM, prev - 0.1))}
-              className="hover:text-foreground transition-colors px-1"
+              type="button"
+              onClick={() => setZoom((prev) => Math.max(MIN_ZOOM, prev - 0.1))}
+              className="px-1 transition-colors hover:text-foreground"
               aria-label="Zoom out"
             >
-              <LuCircleMinus className="w-4 h-4" />
+              <LuCircleMinus className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setZoom(1)}
-              className="hover:text-foreground transition-colors px-1"
-              aria-label="Reset zoom"
+              type="button"
+              onClick={resetView}
+              className="px-1 transition-colors hover:text-foreground"
+              aria-label="Reset zoom and center view"
             >
-            -
+              -
             </button>
             <button
-              onClick={() => setZoom(prev => Math.min(MAX_ZOOM, prev + 0.1))}
-              className="hover:text-foreground transition-colors px-1"
+              type="button"
+              onClick={() => setZoom((prev) => Math.min(MAX_ZOOM, prev + 0.1))}
+              className="px-1 transition-colors hover:text-foreground"
               aria-label="Zoom in"
             >
-              <LuCirclePlus className="w-4 h-4" />
+              <LuCirclePlus className="h-4 w-4" />
             </button>
           </div>
         </div>
-      {/* Inner div with explicit dimensions creates the scrollable area */}
-      {/* Use margin auto for centering when content is smaller than container */}
-      <div
-        className="relative"
-        style={{
-          // Wrapper sized to the zoomed dimensions for proper scrolling
-          width: totalWidth * zoom,
-          height: totalHeight * zoom,
-          marginLeft: "auto",
-          marginRight: "auto",
-          // Smooth size transition when filtering changes tree dimensions
-          transition: "width 200ms ease-out, height 200ms ease-out",
-        }}
-      >
 
+        <p className="pointer-events-none absolute bottom-2 left-2 z-50 text-[10px] text-muted-foreground/80 sm:text-xs">
+          Space + drag to pan · Scroll to move · ⌘/Ctrl + scroll to zoom
+        </p>
 
-      {/* Inner content with transform for smooth zoom */}
-      <div
-        className="absolute top-0 left-0"
-        style={{
-          width: totalWidth,
-          height: totalHeight,
-          transform: `scale(${zoom})`,
-          transformOrigin: "top left",
-          transition: "transform 150ms ease-out",
-        }}
-      >
+        {/* Canvas layer — pan + zoom transform */}
+        <div
+          className="absolute top-0 left-0"
+          style={{
+            width: totalWidth,
+            height: totalHeight,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "0 0",
+            transition: isDragging ? "none" : "transform 150ms ease-out",
+          }}
+        >
         {/* SVG for connecting lines - z-index 0 to stay behind cards */}
         <svg
           ref={svgRef}
@@ -1124,6 +1161,8 @@ export function HierarchyTreeView({
         >
           {/* Draw lines between parent and children */}
           {Array.from(positioned.values()).map((member) => {
+            if (isHiddenByCollapse(member.id, members, collapsedNodes)) return null;
+
             const parent = member.parentId ? positioned.get(member.parentId) : null;
             if (!parent) return null;
             
@@ -1179,10 +1218,10 @@ export function HierarchyTreeView({
                 strokeWidth={1.5}
                 className="text-muted-foreground opacity-40"
                 style={{
-                  // Smooth path transition for collapse mode, opacity for fade mode
-                  transition: filterMode === "collapse"
-                    ? "d 200ms ease-out, opacity 150ms ease-in-out"
-                    : "opacity 200ms ease-in-out",
+                  transition:
+                    filterMode === "collapse" && isRankFilterActive
+                      ? "d 200ms ease-out, opacity 150ms ease-in-out"
+                      : "opacity 150ms ease-in-out",
                 }}
               />
             );
@@ -1194,11 +1233,13 @@ export function HierarchyTreeView({
           <div
             key={row.tier}
             className="absolute left-0 right-0 z-10"
-            style={{ 
-              top: row.y - cardHeight / 2, 
+            style={{
+              top: row.y - cardHeight / 2,
               height: row.height,
-              // Smooth position transition for collapse mode
-              transition: filterMode === "collapse" ? "top 200ms ease-out, height 200ms ease-out" : "none",
+              transition:
+                filterMode === "collapse" && isRankFilterActive
+                  ? "top 200ms ease-out, height 200ms ease-out"
+                  : "none",
             }}
           >
             {/* Members in this row */}
@@ -1216,9 +1257,9 @@ export function HierarchyTreeView({
               const hasChildren = originalChildCount > 0;
               const isCollapsed = collapsedNodes.has(member.id);
               
-              // Check if this member's rank is visible
               const isVisible = isRankVisible(member.rank);
-              
+              const hiddenByCollapse = isHiddenByCollapse(member.id, members, collapsedNodes);
+
               return (
                 <div
                   key={member.id}
@@ -1226,14 +1267,10 @@ export function HierarchyTreeView({
                   style={{
                     left: pos.x - cardWidth / 2,
                     top: stackOffset,
-                    // Inline opacity for smooth CSS transition
-                    opacity: isVisible ? 1 : 0.1,
-                    // Smooth transitions for both position (collapse mode) and opacity (fade mode)
-                    transition: filterMode === "collapse" 
-                      ? "left 200ms ease-out, top 200ms ease-out, opacity 150ms ease-in-out"
-                      : "opacity 200ms ease-in-out",
-                    // Disable pointer events when spacebar is held for drag mode or not visible
-                    pointerEvents: isSpaceHeld || !isVisible ? "none" : "auto",
+                    opacity: hiddenByCollapse ? 0 : isVisible ? 1 : 0.1,
+                    visibility: hiddenByCollapse ? "hidden" : "visible",
+                    transition: layoutTransition,
+                    pointerEvents: isSpaceHeld || hiddenByCollapse || !isVisible ? "none" : "auto",
                   }}
                 >
                   <button
@@ -1300,8 +1337,7 @@ export function HierarchyTreeView({
             })}
           </div>
         ))}
-      </div>
-      </div>
+        </div>
       </div>
     </div>
   );

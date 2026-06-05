@@ -21,7 +21,8 @@ import {
   Plus,
   TrendingUp,
 } from "lucide-react";
-import { SUPERVISOR_RANKS, getStaticCloseoutDate, getActiveCycleYear, isOfficer } from "@/lib/constants";
+import { SUPERVISOR_RANKS, getActiveCycleYear, isOfficer } from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
 import { TeamAccomplishmentsFeed } from "@/components/dashboard/team-accomplishments-feed";
@@ -38,7 +39,6 @@ export default function DashboardPage() {
   
   // Cycle year and SCOD are computed from the user's rank
   const userRank = profile?.rank as Rank | null;
-  const scodInfo = getStaticCloseoutDate(userRank);
   const cycleYear = getActiveCycleYear(userRank);
 
   // Check if user is a supervisor rank
@@ -83,11 +83,18 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold tracking-tight">
           Welcome back, {profile?.rank} {profile?.last_name || profile?.full_name?.split(" ").pop() || (userIsOfficer ? "Sir/Ma'am" : "Airman")}
         </h1>
-        <p className="text-muted-foreground">
-          {userIsOfficer 
-            ? `${cycleYear} Cycle${scodInfo ? ` • OPR SCOD: ${scodInfo.label}` : " • Team Management Mode"}`
-            : `${cycleYear} EPB Cycle${scodInfo ? ` • SCOD: ${scodInfo.label}` : ""}`
-          }
+        <p className="text-muted-foreground text-sm">
+          {userIsOfficer ? (
+            userRank ? (
+              <>OPR period: <CyclePeriodLabel rank={userRank} /></>
+            ) : (
+              "Team Management Mode"
+            )
+          ) : (
+            <>
+              EPB period: <CyclePeriodLabel rank={userRank} />
+            </>
+          )}
         </p>
       </div>
 

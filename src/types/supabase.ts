@@ -3098,6 +3098,7 @@ export type Database = {
           base_system_prompt: string
           created_at: string
           current_cycle_year: number
+          epb_system_prompt_revision_acknowledged: number
           id: string
           major_graded_areas: Json
           max_characters_per_statement: number
@@ -3123,6 +3124,7 @@ export type Database = {
           base_system_prompt?: string
           created_at?: string
           current_cycle_year?: number
+          epb_system_prompt_revision_acknowledged?: number
           id?: string
           major_graded_areas?: Json
           max_characters_per_statement?: number
@@ -3148,6 +3150,7 @@ export type Database = {
           base_system_prompt?: string
           created_at?: string
           current_cycle_year?: number
+          epb_system_prompt_revision_acknowledged?: number
           id?: string
           major_graded_areas?: Json
           max_characters_per_statement?: number

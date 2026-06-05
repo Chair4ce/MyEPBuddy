@@ -26,7 +26,7 @@ import {
   MAX_DUTY_DESCRIPTION_CHARACTERS,
   OPB_MPA_DESCRIPTIONS,
 } from "@/lib/constants";
-import type { UserLLMSettings } from "@/types/database";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import {
   FileText,
   Loader2,
@@ -42,7 +42,7 @@ import { useUserStore } from "@/stores/user-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { useOPBShellStore } from "@/stores/opb-shell-store";
 import { OPBSectionCard } from "./opb-section-card";
-import type { OPBShell, OPBShellSection, OPBShellSnapshot, Rank, Accomplishment } from "@/types/database";
+import type { OPBShell, OPBShellSection, OPBShellSnapshot, Rank, Accomplishment, UserLLMSettings } from "@/types/database";
 
 interface OPBShellFormProps {
   cycleYear: number;
@@ -453,7 +453,9 @@ ${contextForGeneration}`;
             </div>
             <div className="flex items-center gap-2 text-sm">
               <Calendar className="size-4 text-muted-foreground" />
-              <span>Cycle Year: {cycleYear}</span>
+              <span>
+                Period: <CyclePeriodLabel rank={profile?.rank as Rank | null} fallback={`${cycleYear}`} />
+              </span>
             </div>
           </div>
 

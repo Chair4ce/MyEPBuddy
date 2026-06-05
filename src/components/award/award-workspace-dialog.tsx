@@ -139,9 +139,8 @@ export function AwardWorkspaceDialog({
   onSaved,
 }: AwardWorkspaceDialogProps) {
   const supabase = createClient();
-  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
-  // Awards use calendar year cycles, not SCOD-based cycles
-  const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
+  const { profile, subordinates, managedMembers } = useUserStore();
+  const cycleYear = shell.cycle_year;
 
   // Award shell store
   const {

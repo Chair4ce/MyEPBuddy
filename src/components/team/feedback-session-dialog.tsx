@@ -53,7 +53,7 @@ import {
   unshareFeedback,
   deleteFeedback 
 } from "@/app/actions/supervisor-feedbacks";
-import { getActiveCycleYear, getFeedbackTypeLabel, getFeedbackTypeDescription } from "@/lib/constants";
+import { getActiveCycleYear, getActiveCycleRangeLabel, getFeedbackTypeLabel, getFeedbackTypeDescription } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 interface FeedbackSessionDialogProps {
@@ -95,6 +95,7 @@ export function FeedbackSessionDialog({
 
   // Get current cycle year based on subordinate's rank
   const cycleYear = getActiveCycleYear(memberRank as Rank);
+  const cyclePeriodLabel = getActiveCycleRangeLabel(memberRank as Rank);
 
   // Load existing feedback when dialog opens
   useEffect(() => {
@@ -266,7 +267,7 @@ export function FeedbackSessionDialog({
         <body>
           <h1>${getFeedbackTypeLabel(feedbackType)}</h1>
           <h2>${memberRank ? `${memberRank} ` : ""}${memberName}</h2>
-          <div class="meta">Cycle Year: ${cycleYear} | Date: ${new Date().toLocaleDateString()}</div>
+          <div class="meta">Evaluation Period: ${cyclePeriodLabel} | Date: ${new Date().toLocaleDateString()}</div>
           <div class="content">${content.replace(/\n/g, "<br>")}</div>
         </body>
         </html>
@@ -279,7 +280,7 @@ export function FeedbackSessionDialog({
   function formatFeedbackForExport(): string {
     return `${getFeedbackTypeLabel(feedbackType)}
 ${memberRank ? `${memberRank} ` : ""}${memberName}
-Cycle Year: ${cycleYear}
+Evaluation Period: ${cyclePeriodLabel}
 Date: ${new Date().toLocaleDateString()}
 
 ${content}`;

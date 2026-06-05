@@ -260,10 +260,10 @@ export const RANK_TO_TIER: Record<Rank, RankTier | null> = {
   Civilian: null, // No EPB/OPB for civilians
 };
 
-// Static close-out dates (month and day) for each rank tier
+// AFI 36-2406 Table 4.4 — RegAF enlisted static close-out dates (SCOD)
+// Period starts the day after the prior SCOD (e.g. SrA: 01-Apr → 31-Mar, SMSgt: 01-Aug → 31-Jul, CMSgt: 01-Jun → 31-May)
 export const STATIC_CLOSEOUT_DATES: Record<RankTier, { month: number; day: number; label: string }> = {
-  // Enlisted EPB SCODs
-  airman: { month: 3, day: 31, label: "March 31" },     // SrA (AB-SrA)
+  airman: { month: 3, day: 31, label: "March 31" },     // SrA and below
   ssgt: { month: 1, day: 31, label: "January 31" },     // SSgt
   tsgt: { month: 11, day: 30, label: "November 30" },   // TSgt
   msgt: { month: 9, day: 30, label: "September 30" },   // MSgt
@@ -339,33 +339,125 @@ export function getEPBMilestones(rank: Rank | null): { label: string; date: Date
   });
 }
 
-// Get cycle progress percentage (based on 12 month cycle ending at closeout)
+/** Day after the prior SCOD close-out (e.g. MSgt: 01-Oct through 30-Sep). */
+function getCycleStartFromCloseoutEnd(closeoutEnd: Date): Date {
+  const start = new Date(closeoutEnd);
+  start.setFullYear(start.getFullYear() - 1);
+  start.setDate(start.getDate() + 1);
+  return start;
+}
+
+function buildCyclePeriod(
+  cycleYear: number,
+  closeout: { month: number; day: number; label: string },
+): ActiveCyclePeriod {
+  const end = new Date(cycleYear, closeout.month - 1, closeout.day);
+  const start = getCycleStartFromCloseoutEnd(end);
+
+  return {
+    start,
+    end,
+    year: cycleYear,
+    rangeLabel: `${formatCycleDate(start)} to ${formatCycleDate(end)}`,
+    closeoutLabel: closeout.label,
+  };
+}
+
+// Get cycle progress percentage (based on ~365-day cycle ending at closeout)
 export function getCycleProgress(rank: Rank | null): number | null {
   const closeout = getStaticCloseoutDate(rank);
   if (!closeout) return null;
-  
-  // Cycle starts 12 months before close-out
-  const cycleStart = new Date(closeout.date);
-  cycleStart.setFullYear(cycleStart.getFullYear() - 1);
-  
+
+  const cycleStart = getCycleStartFromCloseoutEnd(closeout.date);
+
   const now = new Date();
   const totalDays = (closeout.date.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24);
   const elapsedDays = (now.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24);
-  
+
   return Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
 }
 
-// Get the active cycle year based on rank's SCOD
-// This is the year of the user's upcoming SCOD (the evaluation cycle they're currently in)
-// For example: TSgt with Nov 30 SCOD in Jan 2026 → cycle year is 2026 (next SCOD is Nov 30, 2026)
-// But TSgt with Nov 30 SCOD in Oct 2025 → cycle year is 2025 (SCOD is Nov 30, 2025)
-export function getActiveCycleYear(rank: Rank | null): number {
+const CYCLE_MONTH_ABBR = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+/** Format a date as DD-MMM-YYYY (e.g. 31-Mar-2026). */
+export function formatCycleDate(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = CYCLE_MONTH_ABBR[date.getMonth()];
+  return `${day}-${month}-${date.getFullYear()}`;
+}
+
+export interface ActiveCyclePeriod {
+  start: Date;
+  end: Date;
+  /** Calendar year of the SCOD close-out (stored as cycle_year in the database). */
+  year: number;
+  /** DD-MMM-YYYY to DD-MMM-YYYY */
+  rangeLabel: string;
+  closeoutLabel: string;
+}
+
+/** Full evaluation period ending at the member's upcoming SCOD close-out. */
+export function getActiveCyclePeriod(rank: Rank | null): ActiveCyclePeriod | null {
+  if (!rank) return null;
+
   const closeout = getStaticCloseoutDate(rank);
-  if (!closeout) {
-    // Fallback to current year if rank has no EPB (AB/Amn) or unknown
+  if (!closeout) return null;
+
+  const tier = RANK_TO_TIER[rank];
+  if (!tier) return null;
+
+  return buildCyclePeriod(closeout.date.getFullYear(), STATIC_CLOSEOUT_DATES[tier]);
+}
+
+export function getActiveCycleRangeLabel(rank: Rank | null): string {
+  return getActiveCyclePeriod(rank)?.rangeLabel ?? String(getActiveCycleYear(rank));
+}
+
+/** Evaluation period for a specific SCOD year (matches epb_shells.cycle_year). */
+export function getCyclePeriodForYear(
+  rank: Rank | null,
+  cycleYear: number,
+): ActiveCyclePeriod | null {
+  if (!rank) return null;
+
+  const tier = RANK_TO_TIER[rank];
+  if (!tier) return null;
+
+  return buildCyclePeriod(cycleYear, STATIC_CLOSEOUT_DATES[tier]);
+}
+
+export function getCycleRangeLabelForYear(rank: Rank | null, cycleYear: number): string {
+  return getCyclePeriodForYear(rank, cycleYear)?.rangeLabel ?? String(cycleYear);
+}
+
+/** True when the open shell is for a SCOD year before the ratee's current active cycle. */
+export function isPriorCycleShell(shellCycleYear: number, rateeRank: Rank | null): boolean {
+  return shellCycleYear < getActiveCycleYear(rateeRank);
+}
+
+/** Next cycle_year to use when creating a shell after archive (sequential, never skips). */
+export function getNextEpbShellCycleYear(
+  rateeRank: Rank | null,
+  existingShellCycleYears: number[],
+): number {
+  if (existingShellCycleYears.length === 0) {
+    return getActiveCycleYear(rateeRank);
+  }
+  return Math.max(...existingShellCycleYears) + 1;
+}
+
+// Active EPB cycle year from a member's rank SCOD tier (not the writer's rank).
+// Use the ratee's rank when a supervisor writes for a subordinate.
+// Example: TSgt with Nov 30 SCOD in Jan 2026 → 2026; in Oct 2025 → 2025.
+export function getActiveCycleYear(rank: Rank | null): number {
+  const period = getActiveCyclePeriod(rank);
+  if (!period) {
     return new Date().getFullYear();
   }
-  return closeout.date.getFullYear();
+  return period.year;
 }
 
 // Get urgency level based on days until closeout

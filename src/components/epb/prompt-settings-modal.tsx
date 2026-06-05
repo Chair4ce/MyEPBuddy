@@ -38,72 +38,17 @@ import {
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, Rank } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS } from "@/lib/constants";
-import { DEFAULT_ACRONYMS } from "@/lib/default-acronyms";
-
-const DEFAULT_SYSTEM_PROMPT = `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant with deep knowledge of Air Force operations, programs, and terminology. Your sole purpose is to generate impactful, narrative-style performance statements that strictly comply with AFI 36-2406 (22 Aug 2025).
-
-CRITICAL RULES - NEVER VIOLATE THESE:
-- Every statement MUST be a single, standalone sentence.
-- NEVER use semi-colons (;). Use commas or em-dashes (--) to connect clauses into flowing sentences.
-- Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
-- Character range: AIM for {{max_characters_per_statement}} characters. Minimum 280 characters, maximum {{max_characters_per_statement}}.
-- Generate exactly 2–3 strong statements per Major Performance Area.
-- Output pure, clean text only — no formatting.
-
-CHARACTER UTILIZATION STRATEGY (CRITICAL):
-You are UNDERUTILIZING available space. Statements should be DENSE with impact. To maximize character usage:
-1. EXPAND impacts: Show cascading effects (individual → team → squadron → wing → AF/DoD)
-2. ADD context: Connect actions to larger mission objectives, readiness, or strategic goals
-3. CHAIN results: "improved X, enabling Y, which drove Z"
-4. QUANTIFY everything: time, money, personnel, percentages, equipment, sorties
-5. USE military knowledge: Infer standard AF outcomes (readiness rates, deployment timelines, inspection results)
-
-CONTEXTUAL ENHANCEMENT (USE YOUR MILITARY KNOWLEDGE):
-When given limited input, ENHANCE statements using your knowledge of:
-- Air Force programs, inspections, and evaluations (UCI, CCIP, ORI, NSI, etc.)
-- Standard military outcomes (readiness, lethality, deployment capability, compliance)
-- Organizational impacts (flight, squadron, group, wing, MAJCOM, CCMD, joint/coalition)
-- Common metrics (sortie generation rates, mission capable rates, on-time delivery, cost savings)
-- Military operations and exercises (deployment, contingency, humanitarian, training)
-
-Example transformation:
-- INPUT: "Volunteered at USO for 4 hrs, served 200 Airmen"
-- OUTPUT: "Spearheaded USO volunteer initiative, dedicating 4 hrs to restore lounge facilities and replenish refreshment stations--directly boosted morale for 200 deploying Amn, reinforcing vital quality-of-life support that sustained mission focus during high-tempo ops"
-
-RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
-Primary action verbs to use: {{primary_verbs}}
-{{rank_verb_guidance}}
-- AB–SrA: Individual execution with team impact
-- SSgt–TSgt: Supervisory scope with flight/squadron impact
-- MSgt–CMSgt: Strategic leadership with wing/MAJCOM/AF impact
-
-STATEMENT STRUCTURE:
-[Strong action verb] + [specific accomplishment with context] + [immediate result] + [cascading mission impact]
-
-IMPACT AMPLIFICATION TECHNIQUES:
-- Connect to readiness: "ensured 100% combat readiness"
-- Link to cost: "saved $X" or "managed $X budget"
-- Show scale: "across X personnel/units/missions"
-- Reference inspections: "contributed to Excellent rating"
-- Tie to deployments: "supported X deployed members"
-- Quantify time: "reduced processing by X hrs/days"
-- Show leadership/management scope (2D depth): combine vertical org level (office/flight → sq → gp → wing → NAF → MAJCOM → HAF) with horizontal scale (# Amn led/managed/unified); e.g., "Led 12-Amn team & unified 4 orgs for wing-level project" outweighs "Led 3-mbr team on sq-level project"; layer time/money/resource metrics for additional impact
-
-MAJOR PERFORMANCE AREAS:
-{{mga_list}}
-
-ADDITIONAL STYLE GUIDANCE:
-{{style_guidelines}}
-
-Using the provided accomplishment entries, generate 2–3 HIGH-DENSITY statements for each MPA. Use your military expertise to EXPAND limited inputs into comprehensive statements that approach the character limit. Infer reasonable military context and standard AF outcomes.
-
-WORD ABBREVIATIONS (AUTO-APPLY):
-{{abbreviations_list}}
-
-ACRONYMS REFERENCE:
-{{acronyms_list}}`;
-
-const DEFAULT_STYLE_GUIDELINES = `MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.`;
+import {
+  DEFAULT_ACRONYMS,
+  acronymsForStorage,
+  resolveStoredAcronyms,
+} from "@/lib/default-acronyms";
+import {
+  DEFAULT_EPB_STYLE_GUIDELINES,
+  DEFAULT_EPB_SYSTEM_PROMPT,
+  resolveStoredStyleGuidelines,
+  resolveStoredSystemPrompt,
+} from "@/lib/default-llm-prompts";
 
 const DEFAULT_RANK_VERBS: RankVerbProgression = {
   AB: { primary: ["Assisted", "Supported", "Performed"], secondary: ["Helped", "Contributed", "Participated"] },
@@ -151,14 +96,14 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
   const [isSaving, setIsSaving] = useState(false);
   const [hasExistingSettings, setHasExistingSettings] = useState(false);
 
-  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
-  const [styleGuidelines, setStyleGuidelines] = useState(DEFAULT_STYLE_GUIDELINES);
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_EPB_SYSTEM_PROMPT);
+  const [styleGuidelines, setStyleGuidelines] = useState(DEFAULT_EPB_STYLE_GUIDELINES);
   const [rankVerbs, setRankVerbs] = useState<RankVerbProgression>(DEFAULT_RANK_VERBS);
   const [acronyms, setAcronyms] = useState<Acronym[]>(DEFAULT_ACRONYMS);
   const [abbreviations, setAbbreviations] = useState<Abbreviation[]>([]);
 
-  const [initialSystemPrompt, setInitialSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
-  const [initialStyleGuidelines, setInitialStyleGuidelines] = useState(DEFAULT_STYLE_GUIDELINES);
+  const [initialSystemPrompt, setInitialSystemPrompt] = useState(DEFAULT_EPB_SYSTEM_PROMPT);
+  const [initialStyleGuidelines, setInitialStyleGuidelines] = useState(DEFAULT_EPB_STYLE_GUIDELINES);
   const [initialRankVerbs, setInitialRankVerbs] = useState<RankVerbProgression>(DEFAULT_RANK_VERBS);
   const [initialAcronyms, setInitialAcronyms] = useState<Acronym[]>(DEFAULT_ACRONYMS);
   const [initialAbbreviations, setInitialAbbreviations] = useState<Abbreviation[]>([]);
@@ -204,19 +149,20 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
       if (data) {
         setHasExistingSettings(true);
         const s = data as unknown as Pick<UserLLMSettings, "base_system_prompt" | "style_guidelines" | "rank_verb_progression" | "acronyms" | "abbreviations">;
-        setSystemPrompt(s.base_system_prompt);
-        setStyleGuidelines(s.style_guidelines);
+        setSystemPrompt(resolveStoredSystemPrompt(s.base_system_prompt));
+        setStyleGuidelines(resolveStoredStyleGuidelines(s.style_guidelines));
         setRankVerbs(s.rank_verb_progression);
-        setAcronyms(s.acronyms);
+        const loadedAcronyms = resolveStoredAcronyms(s.acronyms);
+        setAcronyms(loadedAcronyms);
         setAbbreviations(s.abbreviations || []);
-        setInitialSystemPrompt(s.base_system_prompt);
-        setInitialStyleGuidelines(s.style_guidelines);
+        setInitialSystemPrompt(resolveStoredSystemPrompt(s.base_system_prompt));
+        setInitialStyleGuidelines(resolveStoredStyleGuidelines(s.style_guidelines));
         setInitialRankVerbs(JSON.parse(JSON.stringify(s.rank_verb_progression)));
-        setInitialAcronyms(JSON.parse(JSON.stringify(s.acronyms)));
+        setInitialAcronyms(JSON.parse(JSON.stringify(loadedAcronyms)));
         setInitialAbbreviations(JSON.parse(JSON.stringify(s.abbreviations || [])));
       } else {
-        setInitialSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-        setInitialStyleGuidelines(DEFAULT_STYLE_GUIDELINES);
+        setInitialSystemPrompt(DEFAULT_EPB_SYSTEM_PROMPT);
+        setInitialStyleGuidelines(DEFAULT_EPB_STYLE_GUIDELINES);
         setInitialRankVerbs(JSON.parse(JSON.stringify(DEFAULT_RANK_VERBS)));
         setInitialAcronyms(JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)));
         setInitialAbbreviations([]);
@@ -243,7 +189,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
         base_system_prompt: systemPrompt,
         style_guidelines: styleGuidelines,
         rank_verb_progression: rankVerbs,
-        acronyms,
+        acronyms: acronymsForStorage(acronyms),
         abbreviations,
       };
 
@@ -279,7 +225,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleResetToDefaults = () => {
-    setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+    setSystemPrompt(DEFAULT_EPB_SYSTEM_PROMPT);
     setShowResetConfirm(false);
     toast.success("System prompt reset to default (save to apply)");
   };

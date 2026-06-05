@@ -19,6 +19,7 @@ interface ProjectSelectorProps {
   onChange: (projectId: string | null) => void;
   disabled?: boolean;
   className?: string;
+  cycleYear?: number;
 }
 
 export function ProjectSelector({
@@ -26,12 +27,14 @@ export function ProjectSelector({
   onChange,
   disabled = false,
   className,
+  cycleYear: cycleYearProp,
 }: ProjectSelectorProps) {
   const { profile } = useUserStore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const cycleYear = getActiveCycleYear(profile?.rank as Rank | null);
+  const cycleYear =
+    cycleYearProp ?? getActiveCycleYear(profile?.rank as Rank | null);
 
   useEffect(() => {
     async function loadProjects() {

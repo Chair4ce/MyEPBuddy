@@ -158,6 +158,18 @@ export function formatAcronymsList(acronyms: Acronym[]): string {
   return acronyms.map((a) => `${a.acronym} = ${a.definition}`).join("\n");
 }
 
+/** Empty DB arrays should use the built-in DAF acronym list, not zero entries. */
+export function resolveStoredAcronyms(
+  acronyms: Acronym[] | null | undefined,
+): Acronym[] {
+  return acronyms?.length ? acronyms : DEFAULT_ACRONYMS;
+}
+
+/** Never persist an empty acronym list — it wipes the approved defaults. */
+export function acronymsForStorage(acronyms: Acronym[]): Acronym[] {
+  return acronyms.length > 0 ? acronyms : DEFAULT_ACRONYMS;
+}
+
 
 
 

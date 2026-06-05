@@ -82,7 +82,7 @@ export function AddAwardDialog({
   approverId,
   onSuccess,
 }: AddAwardDialogProps) {
-  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
+  const { profile, subordinates, managedMembers } = useUserStore();
   const { awardCatalog, addAward, addMyRequest } = useAwardsStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -251,7 +251,7 @@ export function AddAwardDialog({
     setIsSubmitting(true);
 
     try {
-      const cycleYear = epbConfig?.current_cycle_year || currentYear;
+      const cycleYear = awardType === "coin" ? currentYear : awardYear;
       const finalAwardName = selectedCatalogAward || awardName || null;
 
       // Calculate period dates for quarterly awards

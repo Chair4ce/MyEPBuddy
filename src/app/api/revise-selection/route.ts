@@ -14,6 +14,7 @@ import type { StyleExampleCategory, WritingStyle } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { resolveStoredDutyDescriptionPrompt } from "@/lib/default-llm-prompts";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -167,40 +168,7 @@ Your goal is to improve the duty description by:
 - Target length: ~similar to original (within 20%)`,
   };
 
-  // Use user's custom prompt if available, otherwise use default
-  const basePrompt = userCustomPrompt || `You are an expert Air Force writer helping to revise a DUTY DESCRIPTION for an EPB (Enlisted Performance Brief).
-
-**⚠️ THIS IS A DUTY DESCRIPTION - NOT A PERFORMANCE STATEMENT ⚠️**
-
-A duty description describes the member's CURRENT ROLE, SCOPE, and RESPONSIBILITIES.
-It is purely factual and descriptive - it states WHAT the member's job encompasses, NOT how well they perform.
-
-**DUTY DESCRIPTION WRITING RULES:**
-1. USE PRESENT TENSE - describes a current, ongoing role (e.g., "drives", "supports", "coordinates", "manages")
-2. NEVER use past tense performance verbs (e.g., "led", "directed", "ensured", "bolstered", "enhanced")
-3. NEVER use subjective performance adjectives (e.g., "expertly", "skillfully", "effectively", "proficiently")
-4. NEVER add accomplishment results or impact language (e.g., "ensured seamless integration", "bolstered command capabilities")
-5. Describe SCOPE and RESPONSIBILITY - team size, mission area, organizations supported, programs owned
-6. Use descriptive framing like "As a [role]", "Serving as [position]", or direct present-tense descriptions
-7. Do NOT invent new facts or add scope that isn't in the original - only rephrase existing content
-8. NEVER pad length with impact statements, outcome clauses, or metrics not in the source
-
-**GOOD DUTY DESCRIPTION VERBS (present tense, descriptive):**
-drives, supports, coordinates, manages, oversees, advises, maintains, provides, enables, serves as, operates, sustains, 
-ensures (only for describing an ongoing responsibility), administers, represents, liaises, synchronizes, integrates, 
-conducts, facilitates (for coordination, not accomplishments), monitors, evaluates, governs, directs (present tense only)
-
-**BAD - NEVER USE THESE IN DUTY DESCRIPTIONS:**
-- Past-tense performance verbs: led, directed, managed, executed, ensured (past), bolstered, enhanced, strengthened, championed, pioneered
-- Subjective adjectives: expertly, skillfully, proficiently, adeptly, effectively, seamlessly
-- Accomplishment/result language: "resulting in", "enabling X% improvement", "saving $X", "bolstering capabilities"
-- Cliché openers: "Charged as", "Selected as", "Piloted" (these imply performance, not scope)
-
-**EXAMPLE - CORRECT DUTY DESCRIPTION STYLE:**
-"As a crew operations subject matter expert, he drives a 3-member cyber event coordination team during a numbered AF transition, supporting the elevation of AFSOUTH to a Service Component Command and establishing AFSOUTH's first ever MAJCOM Cyber Coordination Center."
-
-**EXAMPLE - WRONG (performance language, past tense):**
-"Charged as crew ops SME, he expertly led a 3-mbr cyber event coordination team during a Numbered AF transition, enabling AFSOUTH's elevation to a Service Component Command & standing up AFSOUTH's initial MAJCOM Cyber Coordination Center. His guidance ensured seamless integration & enhanced cyber readiness."`;
+  const basePrompt = resolveStoredDutyDescriptionPrompt(userCustomPrompt);
 
   return `${basePrompt}
 

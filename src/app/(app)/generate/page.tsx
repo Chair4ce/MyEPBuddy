@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore } from "@/stores/epb-shell-store";
@@ -32,7 +32,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AI_MODELS, STANDARD_MGAS, ENTRY_MGAS, getActiveCycleYear, isOfficer, isEnlisted } from "@/lib/constants";
+import { AI_MODELS, STANDARD_MGAS, ENTRY_MGAS, getActiveCycleYear, getCyclePeriodForYear, isOfficer, isEnlisted, isPriorCycleShell } from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import { ModelSelector } from "@/components/model-selector";
 import {
   EPB_MODEL_PREFERENCE_STORAGE_KEY,
@@ -101,9 +102,7 @@ export default function GeneratePage() {
   const [selectedAccomplishmentIds, setSelectedAccomplishmentIds] = useState<string[]>([]);
 
   const supabase = createClient();
-  // Cycle year is computed from the user's rank and SCOD, not from user settings
-  const cycleYear = getActiveCycleYear(profile?.rank as import("@/types/database").Rank | null);
-  
+
   // Check if current user is an officer (officers can't generate EPBs for themselves)
   const userIsOfficer = isOfficer(profile?.rank ?? null);
   
@@ -114,6 +113,32 @@ export default function GeneratePage() {
   
   // Officers can only generate EPBs for enlisted members, not themselves
   const canGenerateForSelf = !userIsOfficer;
+
+  const rateeRankForCycle = useMemo((): Rank | null => {
+    if (userIsOfficer && officerWorkspaceMode === "opb") {
+      return profile?.rank ?? null;
+    }
+    return (selectedRatee?.rank ?? profile?.rank ?? null) as Rank | null;
+  }, [userIsOfficer, officerWorkspaceMode, selectedRatee?.rank, profile?.rank]);
+
+  const cycleYear = useMemo(
+    () => getActiveCycleYear(rateeRankForCycle),
+    [rateeRankForCycle],
+  );
+
+  const workspaceCycleYear = currentShell?.cycle_year ?? cycleYear;
+
+  const workspaceCyclePeriod = useMemo(
+    () => getCyclePeriodForYear(rateeRankForCycle, workspaceCycleYear),
+    [rateeRankForCycle, workspaceCycleYear],
+  );
+
+  const showPriorCycleBadge =
+    currentShell &&
+    rateeRankForCycle &&
+    isPriorCycleShell(currentShell.cycle_year, rateeRankForCycle);
+
+  const selectedRateeStorageKey = profile ? `epb-selected-ratee-${profile.id}` : null;
 
   // Build ratee selector options - filter based on whether user is officer
   const rateeOptions = [
@@ -167,10 +192,11 @@ export default function GeneratePage() {
       // Also update the EPB shell store so form components have access to it
       useEPBShellStore.getState().setSelectedRatee(option.ratee as Parameters<typeof setSelectedRatee>[0]);
 
-      // Persist to localStorage
-      if (profile) {
-        const key = `epb-selected-ratee-${profile.id}-${cycleYear}`;
-        localStorage.setItem(key, JSON.stringify({ value, ratee: option.ratee }));
+      if (selectedRateeStorageKey) {
+        localStorage.setItem(
+          selectedRateeStorageKey,
+          JSON.stringify({ value, ratee: option.ratee }),
+        );
       }
     }
   };
@@ -246,12 +272,10 @@ export default function GeneratePage() {
 
   // Restore selectedRatee from localStorage on mount (fallback for hard refresh / first visit)
   useEffect(() => {
-    if (!profile || !cycleYear) return;
-    // If the store already has a ratee (preserved across navigation), skip localStorage restore
+    if (!selectedRateeStorageKey) return;
     if (useEPBShellStore.getState().selectedRatee) return;
 
-    const key = `epb-selected-ratee-${profile.id}-${cycleYear}`;
-    const stored = localStorage.getItem(key);
+    const stored = localStorage.getItem(selectedRateeStorageKey);
 
     if (stored) {
       try {
@@ -261,10 +285,10 @@ export default function GeneratePage() {
         }
       } catch (error) {
         console.warn("Failed to parse stored ratee data:", error);
-        localStorage.removeItem(key);
+        localStorage.removeItem(selectedRateeStorageKey);
       }
     }
-  }, [profile, cycleYear, setSelectedRatee]);
+  }, [selectedRateeStorageKey, setSelectedRatee]);
 
   // Load available AFSCs from community statements
   useEffect(() => {
@@ -287,9 +311,12 @@ export default function GeneratePage() {
     async function loadAccomplishments() {
       if (!selectedRatee || !profile) return;
 
+      const entryCycleYear = currentShell?.cycle_year ?? cycleYear;
+
       let query = supabase
         .from("accomplishments")
         .select("*")
+        .eq("cycle_year", entryCycleYear)
         .order("date", { ascending: false });
 
       if (selectedRatee.isManagedMember) {
@@ -303,7 +330,7 @@ export default function GeneratePage() {
     }
 
     loadAccomplishments();
-  }, [selectedRatee, profile, supabase]);
+  }, [selectedRatee, profile, currentShell?.cycle_year, cycleYear, supabase]);
 
   async function updateWritingStyle(style: WritingStyle) {
     if (!profile) return;
@@ -762,9 +789,22 @@ export default function GeneratePage() {
                     </Link>
                   </SelectContent>
                 </Select>
-                <Badge variant="outline" className="shrink-0 text-[10px] sm:text-xs">
-                  {cycleYear}
+                <Badge
+                  variant="outline"
+                  className="shrink-0 max-w-[min(100%,16rem)] truncate text-[10px] sm:text-xs"
+                  title={workspaceCyclePeriod?.rangeLabel}
+                >
+                  <CyclePeriodLabel
+                    rank={rateeRankForCycle}
+                    cycleYear={currentShell ? currentShell.cycle_year : undefined}
+                    className="truncate"
+                  />
                 </Badge>
+                {showPriorCycleBadge && (
+                  <Badge variant="secondary" className="shrink-0 text-[10px] sm:text-xs bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
+                    Prior cycle
+                  </Badge>
+                )}
                 {currentShell?.status === 'archived' && (
                   <Badge variant="secondary" className="shrink-0 text-[10px] sm:text-xs bg-primary/10 text-primary">
                     Archived
@@ -847,11 +887,22 @@ export default function GeneratePage() {
                   </Select>
                 </div>
 
-                {/* Cycle Year Display */}
-                <div className="space-y-2">
-                  <Label>Cycle Year</Label>
-                  <div className="h-9 px-3 py-2 rounded-md border bg-muted/50 text-sm">
-                    {cycleYear}
+                {/* Evaluation period (ratee SCOD window) */}
+                <div className="space-y-2 sm:col-span-1">
+                  <Label>
+                    {currentShell ? "EPB Evaluation Period" : "Current SCOD Window"}
+                  </Label>
+                  <div className="min-h-9 px-3 py-2 rounded-md border bg-muted/50 text-xs sm:text-sm leading-snug">
+                    <CyclePeriodLabel
+                      rank={rateeRankForCycle}
+                      cycleYear={currentShell ? currentShell.cycle_year : undefined}
+                    />
+                    {workspaceCyclePeriod && (
+                      <p className="text-muted-foreground text-[10px] sm:text-xs mt-0.5">
+                        SCOD: {workspaceCyclePeriod.closeoutLabel}
+                        {showPriorCycleBadge && " · archive when finished to start the next period"}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -947,7 +998,7 @@ export default function GeneratePage() {
         (userIsOfficer && officerWorkspaceMode === "epb" && hasEnlistedTeamMembers)
       ) && (
         <EPBShellForm
-          cycleYear={cycleYear}
+          cycleYear={currentShell?.cycle_year ?? cycleYear}
           model={selectedModel}
           writingStyle={writingStyle}
           onOpenAccomplishments={handleOpenAccomplishments}

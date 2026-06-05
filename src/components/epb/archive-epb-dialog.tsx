@@ -17,6 +17,7 @@ import { toast } from "@/components/ui/sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Analytics } from "@/lib/analytics";
 import { STANDARD_MGAS, ENTRY_MGAS } from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import {
   Archive,
   Loader2,
@@ -167,7 +168,8 @@ export function ArchiveEPBDialog({
                 Archive EPB
               </DialogTitle>
               <DialogDescription className="text-left">
-                Are you sure you want to archive this EPB?
+                Archive saves statements to your library and closes this cycle&apos;s workspace.
+                You choose when to archive — start the next cycle only after you&apos;re ready.
               </DialogDescription>
             </DialogHeader>
 
@@ -177,7 +179,11 @@ export function ArchiveEPBDialog({
                 <div>
                   <p className="font-medium text-sm">{rateeName || "My EPB"}</p>
                   <p className="text-xs text-muted-foreground">
-                    {cycleYear} Performance Cycle
+                    <CyclePeriodLabel
+                      rank={ratee?.rank}
+                      cycleYear={cycleYear}
+                      fallback={`${cycleYear} cycle`}
+                    />
                   </p>
                 </div>
                 <Badge variant="secondary">
@@ -215,7 +221,8 @@ export function ArchiveEPBDialog({
                         Current EPB will be cleared
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        The current EPB workspace will be erased. You&apos;ll start fresh with a blank EPB for your next cycle.
+                        This workspace closes. When you&apos;re ready, create a new EPB shell for the
+                        next evaluation period — nothing starts automatically.
                       </p>
                     </div>
                   </div>

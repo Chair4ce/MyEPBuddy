@@ -42,7 +42,8 @@ import type { Rank, Profile, ManagedMember, SupervisorExpectation, SupervisorFee
 import { getExpectation, setExpectation, deleteExpectation } from "@/app/actions/supervisor-expectations";
 import { getFeedbacksForMember } from "@/app/actions/supervisor-feedbacks";
 import { FeedbackSessionDialog } from "@/components/team/feedback-session-dialog";
-import { getActiveCycleYear, getFeedbackTypeLabel, getFeedbackTypeDescription } from "@/lib/constants";
+import { getActiveCycleYear, getActiveCycleRangeLabel, getFeedbackTypeLabel, getFeedbackTypeDescription } from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import { cn } from "@/lib/utils";
 
 const FEEDBACK_TYPES: { type: FeedbackType; icon: string }[] = [
@@ -236,11 +237,10 @@ export function SetExpectationsDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Cycle Year */}
           <div className="flex items-center gap-2 pb-2">
-            <Badge variant="outline" className="gap-1.5">
-              <Calendar className="size-3" />
-              Cycle Year {cycleYear}
+            <Badge variant="outline" className="gap-1.5 max-w-full truncate">
+              <Calendar className="size-3 shrink-0" />
+              <CyclePeriodLabel rank={memberRank as import("@/types/database").Rank | null} />
             </Badge>
           </div>
 
@@ -454,7 +454,8 @@ export function SetExpectationsDialog({
             <AlertDialogTitle>Remove Expectations?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently remove the expectations you&apos;ve set for{" "}
-              {memberRank ? `${memberRank} ` : ""}{memberName} for cycle year {cycleYear}.
+              {memberRank ? `${memberRank} ` : ""}{memberName} for{" "}
+              {getActiveCycleRangeLabel(memberRank as import("@/types/database").Rank | null)}.
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

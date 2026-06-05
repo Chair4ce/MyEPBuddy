@@ -459,6 +459,8 @@ export interface UserLLMSettings {
   decoration_abbreviations: Abbreviation[];
   // Duty description prompt (present tense, scope/responsibility - separate from performance statements)
   duty_description_prompt: string | null;
+  /** Last EPB_SYSTEM_PROMPT_REVISION acknowledged; 0 = never. */
+  epb_system_prompt_revision_acknowledged: number;
   model_preferences: {
     visible_model_ids: string[] | null;
     defaults: Partial<Record<string, string>>;

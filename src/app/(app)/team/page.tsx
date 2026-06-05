@@ -122,6 +122,8 @@ import {
   STANDARD_MGAS, 
   getDaysUntilCloseout, 
   getStaticCloseoutDate,
+  getActiveCycleYear,
+  getActiveCycleRangeLabel,
   ENTRY_MGAS,
   SUPERVISOR_RANKS,
   ENLISTED_RANKS,
@@ -644,51 +646,64 @@ export default function TeamPage() {
   async function loadMemberMetrics() {
     if (!profile) return;
 
-    const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
     const metrics: Record<string, MemberMetrics> = {};
+    const memberCycleYears = new Map<string, number>();
 
-    // Collect all member IDs (profiles + managed members)
-    const allMemberIds = [
-      profile.id,
-      ...subordinates.map((s) => s.id),
-      ...managedMembers.map((m) => m.id),
-    ];
-
-    // Initialize metrics for all members (including HLR)
-    for (const id of allMemberIds) {
+    const registerMember = (id: string, rank: string | null) => {
+      memberCycleYears.set(id, getActiveCycleYear(rank as import("@/types/database").Rank | null));
       metrics[id] = {
         entries: { executing_mission: 0, leading_people: 0, managing_resources: 0, improving_unit: 0, hlr_assessment: 0 },
         statements: { executing_mission: 0, leading_people: 0, managing_resources: 0, improving_unit: 0, hlr_assessment: 0 },
       };
-    }
+    };
+
+    registerMember(profile.id, profile.rank);
+    subordinates.forEach((s) => registerMember(s.id, s.rank));
+    managedMembers.forEach((m) => registerMember(m.id, m.rank));
+
+    const allMemberIds = Array.from(memberCycleYears.keys());
+    const uniqueCycleYears = [...new Set(memberCycleYears.values())];
 
     try {
-      // Fetch accomplishments for all members in current cycle
       const { data: accomplishments } = await supabase
         .from("accomplishments")
-        .select("user_id, mpa")
-        .in("user_id", allMemberIds)
-        .eq("cycle_year", cycleYear) as { data: { user_id: string; mpa: string }[] | null };
+        .select("user_id, team_member_id, mpa, cycle_year")
+        .in("cycle_year", uniqueCycleYears) as {
+        data: { user_id: string; team_member_id: string | null; mpa: string; cycle_year: number }[] | null;
+      };
 
       if (accomplishments) {
         for (const acc of accomplishments) {
-          if (metrics[acc.user_id] && metrics[acc.user_id].entries[acc.mpa] !== undefined) {
-            metrics[acc.user_id].entries[acc.mpa]++;
+          const memberId = acc.team_member_id ?? acc.user_id;
+          const expectedYear = memberCycleYears.get(memberId);
+          if (
+            expectedYear !== undefined &&
+            acc.cycle_year === expectedYear &&
+            metrics[memberId]?.entries[acc.mpa] !== undefined
+          ) {
+            metrics[memberId].entries[acc.mpa]++;
           }
         }
       }
 
-      // Fetch refined statements for all members in current cycle
       const { data: statements } = await supabase
         .from("refined_statements")
-        .select("user_id, mpa")
-        .in("user_id", allMemberIds)
-        .eq("cycle_year", cycleYear) as { data: { user_id: string; mpa: string }[] | null };
+        .select("user_id, team_member_id, mpa, cycle_year")
+        .in("cycle_year", uniqueCycleYears)
+        .eq("statement_type", "epb") as {
+        data: { user_id: string; team_member_id: string | null; mpa: string; cycle_year: number }[] | null;
+      };
 
       if (statements) {
         for (const stmt of statements) {
-          if (metrics[stmt.user_id] && metrics[stmt.user_id].statements[stmt.mpa] !== undefined) {
-            metrics[stmt.user_id].statements[stmt.mpa]++;
+          const memberId = stmt.team_member_id ?? stmt.user_id;
+          const expectedYear = memberCycleYears.get(memberId);
+          if (
+            expectedYear !== undefined &&
+            stmt.cycle_year === expectedYear &&
+            metrics[memberId]?.statements[stmt.mpa] !== undefined
+          ) {
+            metrics[memberId].statements[stmt.mpa]++;
           }
         }
       }
@@ -704,7 +719,7 @@ export default function TeamPage() {
     if (profile && !isLoading) {
       loadMemberMetrics();
     }
-  }, [profile, subordinates, managedMembers, epbConfig, isLoading]);
+  }, [profile, subordinates, managedMembers, isLoading]);
 
   // Collect unique creator IDs from managed members for profile lookup
   const creatorIds = useMemo(() => {
@@ -1199,7 +1214,7 @@ export default function TeamPage() {
   }
 
   async function openSubordinateDetails(node: TreeNodeData) {
-    const cycleYear = epbConfig?.current_cycle_year || new Date().getFullYear();
+    const cycleYear = getActiveCycleYear(node.rank as import("@/types/database").Rank | null);
     
     // Set initial values from local data
     setSelectedSubordinate({
@@ -1723,7 +1738,7 @@ export default function TeamPage() {
                         memberName={node.data.full_name || "Unknown"}
                         memberRank={node.data.rank}
                         isManagedMember={isManagedMember}
-                        cycleYear={epbConfig?.current_cycle_year || new Date().getFullYear()}
+                        cycleYear={getActiveCycleYear(node.data.rank as import("@/types/database").Rank | null)}
                         currentUserId={profile?.id || ""}
                         trigger={
                           <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
@@ -2254,7 +2269,11 @@ export default function TeamPage() {
               <div className="space-y-3">
                 <h4 className="text-sm font-medium flex items-center gap-2">
                   <FileText className="size-4" />
-                  Statement Status ({epbConfig?.current_cycle_year || new Date().getFullYear()})
+                  Statement Status (
+                  {getActiveCycleRangeLabel(
+                    (selectedSubordinate?.rank ?? null) as import("@/types/database").Rank | null,
+                  )}
+                  )
                 </h4>
                 
                 {loadingStatements ? (

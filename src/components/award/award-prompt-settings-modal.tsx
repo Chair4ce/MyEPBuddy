@@ -38,7 +38,11 @@ import {
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, Rank } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS } from "@/lib/constants";
-import { DEFAULT_ACRONYMS } from "@/lib/default-acronyms";
+import {
+  DEFAULT_ACRONYMS,
+  acronymsForStorage,
+  resolveStoredAcronyms,
+} from "@/lib/default-acronyms";
 
 // Award-specific defaults — independent from EPB
 const DEFAULT_AWARD_SYSTEM_PROMPT = `You are an expert Air Force writer specializing in award nominations on AF Form 1206 using the current **narrative-style format** (mandated since October 2022 per DAFI 36-2406 and award guidance).
@@ -225,13 +229,14 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
         setStyleGuidelines(s.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES);
         setRankVerbs(s.award_rank_verb_progression || DEFAULT_AWARD_RANK_VERBS);
         setAbbreviations(s.award_abbreviations || []);
-        setAcronyms(s.acronyms || DEFAULT_ACRONYMS);
+        const loadedAcronyms = resolveStoredAcronyms(s.acronyms);
+        setAcronyms(loadedAcronyms);
 
         setInitialSystemPrompt(s.award_system_prompt || DEFAULT_AWARD_SYSTEM_PROMPT);
         setInitialStyleGuidelines(s.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES);
         setInitialRankVerbs(JSON.parse(JSON.stringify(s.award_rank_verb_progression || DEFAULT_AWARD_RANK_VERBS)));
         setInitialAbbreviations(JSON.parse(JSON.stringify(s.award_abbreviations || [])));
-        setInitialAcronyms(JSON.parse(JSON.stringify(s.acronyms || DEFAULT_ACRONYMS)));
+        setInitialAcronyms(JSON.parse(JSON.stringify(loadedAcronyms)));
       } else {
         setInitialSystemPrompt(DEFAULT_AWARD_SYSTEM_PROMPT);
         setInitialStyleGuidelines(DEFAULT_AWARD_STYLE_GUIDELINES);
@@ -262,7 +267,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
         award_style_guidelines: styleGuidelines,
         award_rank_verb_progression: rankVerbs,
         award_abbreviations: abbreviations,
-        acronyms,
+        acronyms: acronymsForStorage(acronyms),
       };
 
       if (hasExistingSettings) {

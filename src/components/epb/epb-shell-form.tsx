@@ -36,7 +36,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { STANDARD_MGAS, ENTRY_MGAS, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS, MAX_DUTY_DESCRIPTION_CHARACTERS, getActiveCycleYear } from "@/lib/constants";
+import {
+  STANDARD_MGAS,
+  ENTRY_MGAS,
+  MAX_STATEMENT_CHARACTERS,
+  MAX_HLR_CHARACTERS,
+  MAX_DUTY_DESCRIPTION_CHARACTERS,
+  getActiveCycleYear,
+  getNextEpbShellCycleYear,
+  isPriorCycleShell,
+  getCycleRangeLabelForYear,
+} from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import { EPBAssessmentDialog } from "./epb-assessment-dialog";
 import { ArchiveEPBDialog } from "./archive-epb-dialog";
@@ -51,6 +62,7 @@ import {
   Sparkles,
   ClipboardCheck,
   Archive,
+  AlertTriangle,
   Rows2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -190,11 +202,18 @@ export function EPBShellForm({
   // EPB Archive state
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   
-  // Archived shell conflict state - when user tries to create a shell but one is archived for current cycle
+  const [rateeShellCycleYears, setRateeShellCycleYears] = useState<number[]>([]);
+
   const [archivedShellConflict, setArchivedShellConflict] = useState<{
     shellId: string;
     cycleYear: number;
   } | null>(null);
+
+  const nextShellCycleYear = selectedRatee
+    ? getNextEpbShellCycleYear(selectedRatee.rank, rateeShellCycleYears)
+    : getActiveCycleYear(null);
+
+  const workspaceCycleYear = currentShell?.cycle_year ?? nextShellCycleYear;
   
   // Sentence drag-drop state
   const [draggedSentence, setDraggedSentence] = useState<DraggedSentence | null>(null);
@@ -690,8 +709,10 @@ export function EPBShellForm({
   // Build shared EPB options - these are EPBs shared with the current user
   const sharedEPBOptions: { value: string; label: string; ratee: SelectedRatee }[] = sharedEPBs
     .filter((shared) => {
-      // Only include shared EPBs for the current cycle year
-      if (shared.shell.cycle_year !== cycleYear) return false;
+      const sharedRateeRank =
+        (shared.teamMember?.rank ?? shared.ownerProfile?.rank ?? null) as SelectedRatee["rank"];
+      const sharedCycleYear = getActiveCycleYear(sharedRateeRank);
+      if (shared.shell.cycle_year !== sharedCycleYear) return false;
       
       // Exclude EPBs we already have access to (self, subordinates, managed members)
       if (shared.ownerProfile) {
@@ -738,7 +759,7 @@ export function EPBShellForm({
     .filter((opt): opt is NonNullable<typeof opt> => opt !== null);
 
   // LocalStorage key for persisting selected EPB (includes profile ID to prevent cross-user issues)
-  const SELECTED_RATEE_KEY = profile ? `epb-selected-ratee-${profile.id}-${cycleYear}` : null;
+  const SELECTED_RATEE_KEY = profile ? `epb-selected-ratee-${profile.id}` : null;
 
   // Handle ratee selection change
   const handleRateeChange = (value: string) => {
@@ -892,29 +913,25 @@ export function EPBShellForm({
     loadSharedEPBs();
   }, [profile, supabase]);
 
-  // Track which profile+cycle we've initialized for
+  // Track which profile we've initialized ratee selection for
   const [initializedFor, setInitializedFor] = useState<string | null>(null);
   
-  // Initialize ratee selection when profile or cycle changes
+  // Initialize ratee selection when profile loads
   useEffect(() => {
     if (!profile) return;
     
-    const initKey = `${profile.id}-${cycleYear}`;
+    const initKey = profile.id;
     
-    // Only initialize if this is a new profile/cycle combination
     if (initializedFor === initKey) return;
     
-    // If store already has a ratee (preserved across navigation), just mark as initialized
     if (useEPBShellStore.getState().selectedRatee) {
       setInitializedFor(initKey);
       return;
     }
     
-    // Try to restore from localStorage (key includes profile ID to prevent cross-user issues)
     let rateeToUse: SelectedRatee | null = null;
     try {
-      const savedKey = `epb-selected-ratee-${profile.id}-${cycleYear}`;
-      const saved = localStorage.getItem(savedKey);
+      const saved = localStorage.getItem(SELECTED_RATEE_KEY ?? "");
       if (saved) {
         const parsed = JSON.parse(saved) as { value: string; ratee: SelectedRatee };
         if (parsed.ratee && parsed.ratee.id) {
@@ -938,28 +955,44 @@ export function EPBShellForm({
     
     setSelectedRatee(rateeToUse);
     setInitializedFor(initKey);
-  }, [profile, cycleYear, initializedFor, setSelectedRatee]);
+  }, [profile, initializedFor, setSelectedRatee, SELECTED_RATEE_KEY]);
 
   // Load shell when ratee changes - only after initialization is complete
   useEffect(() => {
     if (!selectedRatee || !profile) return;
     
-    // Only load if we've completed initialization for this profile/cycle
-    const initKey = `${profile.id}-${cycleYear}`;
-    if (initializedFor !== initKey) return;
+    if (initializedFor !== profile.id) return;
     
     // Abort flag to cancel this load if selectedRatee changes
     let aborted = false;
     
+    async function loadRateeShellHistory() {
+      if (!selectedRatee) return;
+
+      let historyQuery = supabase.from("epb_shells").select("cycle_year");
+
+      if (selectedRatee.isManagedMember) {
+        historyQuery = historyQuery.eq("team_member_id", selectedRatee.id);
+      } else {
+        historyQuery = historyQuery.eq("user_id", selectedRatee.id).is("team_member_id", null);
+      }
+
+      const { data: historyData } = await historyQuery;
+      if (!aborted && historyData) {
+        setRateeShellCycleYears(
+          (historyData as { cycle_year: number }[]).map((row) => row.cycle_year),
+        );
+      }
+    }
+
     async function loadShell() {
       if (!selectedRatee) return;
       
       setIsLoadingShell(true);
       try {
-        // Build query based on ratee type
-        // Load the most recent ACTIVE (non-archived) shell for the user
-        // EPB cycles span ~12 months based on SCOD, not calendar years,
-        // so we don't filter by cycle_year - just find their active shell
+        await loadRateeShellHistory();
+
+        // Most recent active shell — may be a prior SCOD year until the user archives manually
         let query = supabase
           .from("epb_shells")
           .select(`
@@ -1282,15 +1315,31 @@ export function EPBShellForm({
     loadRateeAwards();
   }, [selectedRatee, profile, supabase]);
 
-  // Create a new shell (or handle conflicts with archived shells)
-  const handleCreateShell = async (forceNextCycle = false) => {
+  const handleCreateShell = async (explicitCycleYear?: number) => {
     if (!selectedRatee || !profile) return;
 
     setIsCreatingShell(true);
     try {
-      // Calculate the correct cycle year based on the ratee's rank and SCOD
-      const activeCycleYear = getActiveCycleYear(selectedRatee.rank);
-      const targetCycleYear = forceNextCycle ? activeCycleYear + 1 : activeCycleYear;
+      const targetCycleYear =
+        explicitCycleYear ?? getNextEpbShellCycleYear(selectedRatee.rank, rateeShellCycleYears);
+
+      const { data: activeShell } = await (() => {
+        let q = supabase
+          .from("epb_shells")
+          .select("id")
+          .neq("status", "archived");
+        if (selectedRatee.isManagedMember) {
+          q = q.eq("team_member_id", selectedRatee.id);
+        } else {
+          q = q.eq("user_id", selectedRatee.id).is("team_member_id", null);
+        }
+        return q.maybeSingle();
+      })();
+
+      if (activeShell) {
+        toast.error("Archive the current EPB before starting a new evaluation cycle.");
+        return;
+      }
       
       // Check if there's an existing shell (including archived) for the target cycle
       let existingQuery = supabase
@@ -1414,10 +1463,11 @@ export function EPBShellForm({
     }
   };
   
-  // Create shell for next cycle (keeping current archived)
   const handleCreateNextCycleShell = async () => {
+    if (!archivedShellConflict) return;
+    const nextYear = archivedShellConflict.cycleYear + 1;
     setArchivedShellConflict(null);
-    await handleCreateShell(true);
+    await handleCreateShell(nextYear);
   };
 
   // Save a section's statement
@@ -1772,7 +1822,7 @@ export function EPBShellForm({
             rateeId: selectedRatee.id,
             rateeRank: selectedRatee.rank,
             rateeAfsc: selectedRatee.afsc,
-            cycleYear,
+            cycleYear: currentShell?.cycle_year ?? workspaceCycleYear,
             model,
             writingStyle,
             selectedMPAs: [mpa],
@@ -2045,9 +2095,12 @@ export function EPBShellForm({
     );
   }
 
-  // No shell exists - show creation prompt
-  // (Member selector is already rendered in the page header "Viewing EPB for:")
   if (!currentShell) {
+    const nextPeriodLabel = getCycleRangeLabelForYear(
+      selectedRatee?.rank ?? null,
+      nextShellCycleYear,
+    );
+
     return (
       <div className="space-y-6">
         <Card className="border-dashed border-2">
@@ -2055,11 +2108,18 @@ export function EPBShellForm({
             <div className="size-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
               <FileText className="size-8 text-muted-foreground" />
             </div>
-            <h3 className="font-medium text-lg mb-2">No EPB Shell Found</h3>
-            <p className="text-muted-foreground text-sm max-w-md mb-6">
-              {selectedRatee?.id === profile?.id
-                ? "Create an EPB Shell to start building your performance narrative statements for this cycle."
-                : `Create an EPB Shell for ${selectedRatee?.rank} ${selectedRatee?.fullName} to manage their performance narrative statements.`}
+            <h3 className="font-medium text-lg mb-2">No Active EPB</h3>
+            <p className="text-muted-foreground text-sm max-w-md mb-2">
+              {rateeShellCycleYears.length > 0
+                ? selectedRatee?.id === profile?.id
+                  ? "Your prior EPB is archived. Start the next evaluation period when you're ready."
+                  : `Prior EPB archived for ${selectedRatee?.rank} ${selectedRatee?.fullName}. Start their next cycle when ready.`
+                : selectedRatee?.id === profile?.id
+                  ? "Create an EPB shell to begin this evaluation period."
+                  : `Create an EPB shell for ${selectedRatee?.rank} ${selectedRatee?.fullName}.`}
+            </p>
+            <p className="text-sm font-medium text-foreground mb-6 tabular-nums">
+              Next period: {nextPeriodLabel}
             </p>
             <Button onClick={() => handleCreateShell()} disabled={isCreatingShell} size="lg">
               {isCreatingShell ? (
@@ -2067,7 +2127,7 @@ export function EPBShellForm({
               ) : (
                 <Plus className="size-4 mr-2" />
               )}
-              Create EPB Shell
+              Create EPB for Next Cycle
             </Button>
           </CardContent>
         </Card>
@@ -2088,9 +2148,35 @@ export function EPBShellForm({
     }
   };
 
-  // Shell exists - show full form
+  const isPriorCycle =
+    selectedRatee &&
+    isPriorCycleShell(currentShell.cycle_year, selectedRatee.rank);
+
   return (
     <div className="space-y-4">
+      {isPriorCycle && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardContent className="py-3 px-4 flex items-start gap-3">
+            <AlertTriangle className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1 min-w-0">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                Prior evaluation period — keep editing until you&apos;re done
+              </p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
+                This EPB is for{" "}
+                <CyclePeriodLabel
+                  rank={selectedRatee.rank}
+                  cycleYear={currentShell.cycle_year}
+                  className="font-medium"
+                />
+                . The current SCOD window has started, but nothing changes until you{" "}
+                <span className="font-medium">Archive</span> and manually create the next cycle.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Collaboration Controls - Only shown when collaboration feature is enabled */}
       {isCollaborationEnabled && (
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
@@ -2259,7 +2345,7 @@ export function EPBShellForm({
             <TooltipContent side="bottom" className="max-w-[280px]">
               <p className="font-medium text-xs">Archive EPB</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Save all statements to your library and optionally start fresh for the next cycle.
+                Save statements to your library and close this cycle. Create the next EPB when you&apos;re ready.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -2343,7 +2429,7 @@ export function EPBShellForm({
                 onReleaseLock={() => sectionLocks.releaseLock(section.id)}
                 accomplishments={accomplishments}
                 onOpenAccomplishments={() => onOpenAccomplishments(mpa.key)}
-                cycleYear={cycleYear}
+                cycleYear={workspaceCycleYear}
                 // Enable real-time text sync when collaborating
                 isCollaborating={collaboration.isInSession}
                 // Completion toggle
@@ -2422,10 +2508,13 @@ export function EPBShellForm({
           shell={currentShell}
           sections={sections}
           ratee={selectedRatee}
-          cycleYear={cycleYear}
+          cycleYear={currentShell.cycle_year}
           onArchiveComplete={() => {
-            // Reset the shell to null so user sees "create new EPB" state
+            const archivedYear = currentShell.cycle_year;
             setCurrentShell(null);
+            setRateeShellCycleYears((prev) =>
+              prev.includes(archivedYear) ? prev : [...prev, archivedYear],
+            );
           }}
         />
       )}
@@ -2439,8 +2528,14 @@ export function EPBShellForm({
               Archived EPB Found
             </DialogTitle>
             <DialogDescription>
-              You have an archived EPB for the {archivedShellConflict?.cycleYear} cycle. 
-              What would you like to do?
+              An archived EPB already exists for{" "}
+              {archivedShellConflict
+                ? getCycleRangeLabelForYear(
+                    selectedRatee?.rank ?? null,
+                    archivedShellConflict.cycleYear,
+                  )
+                : "this period"}
+              . What would you like to do?
             </DialogDescription>
           </DialogHeader>
           
@@ -2454,7 +2549,7 @@ export function EPBShellForm({
               <div className="flex flex-col items-start text-left">
                 <span className="font-medium">Restore Archived EPB</span>
                 <span className="text-xs text-muted-foreground">
-                  Unarchive and continue working on your {archivedShellConflict?.cycleYear} EPB
+                  Re-open the archived EPB for this evaluation period
                 </span>
               </div>
             </Button>
@@ -2466,9 +2561,18 @@ export function EPBShellForm({
               disabled={isCreatingShell}
             >
               <div className="flex flex-col items-start text-left">
-                <span className="font-medium">Create {(archivedShellConflict?.cycleYear || 0) + 1} EPB</span>
+                <span className="font-medium">
+                  Create next period (
+                  {archivedShellConflict
+                    ? getCycleRangeLabelForYear(
+                        selectedRatee?.rank ?? null,
+                        archivedShellConflict.cycleYear + 1,
+                      )
+                    : "next cycle"}
+                  )
+                </span>
                 <span className="text-xs text-muted-foreground">
-                  Keep the archived EPB and start fresh for the next cycle
+                  Leave the archive in place and start a new shell for the following cycle
                 </span>
               </div>
             </Button>

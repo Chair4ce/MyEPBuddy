@@ -54,7 +54,7 @@ export function EntryFormDialog({
   targetUserId,
   targetManagedMemberId,
 }: EntryFormDialogProps) {
-  const { profile, epbConfig } = useUserStore();
+  const { profile, subordinates, managedMembers } = useUserStore();
   const { addAccomplishment, updateAccomplishment: updateStore } =
     useAccomplishmentsStore();
 
@@ -76,10 +76,19 @@ export function EntryFormDialog({
     tags: "",
   });
 
-  // Use entry MPAs (excludes HLR which is Commander's assessment)
   const mgas = ENTRY_MGAS;
-  // Cycle year is computed from the user's rank and SCOD
-  const cycleYear = getActiveCycleYear(profile?.rank as Rank | null);
+
+  const targetRateeRank = (() => {
+    if (targetManagedMemberId) {
+      return (managedMembers.find((m) => m.id === targetManagedMemberId)?.rank ?? null) as Rank | null;
+    }
+    if (targetUserId && targetUserId !== profile?.id) {
+      return (subordinates.find((s) => s.id === targetUserId)?.rank ?? null) as Rank | null;
+    }
+    return (profile?.rank ?? null) as Rank | null;
+  })();
+
+  const cycleYear = getActiveCycleYear(targetRateeRank);
 
   // Trigger background PII/CUI scan for an accomplishment (defense-in-depth)
   // Runs asynchronously after save — if sensitive data slips past client/server
@@ -479,6 +488,7 @@ export function EntryFormDialog({
             <ProjectSelector
               value={selectedProjectId}
               onChange={setSelectedProjectId}
+              cycleYear={cycleYear}
               disabled={isSubmitting}
               className="h-9 sm:h-10"
             />

@@ -1,8 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { generateText, type LanguageModel } from "ai";
 import { NextResponse } from "next/server";
-import { DEFAULT_ACRONYMS, formatAcronymsList } from "@/lib/default-acronyms";
+import {
+  DEFAULT_ACRONYMS,
+  formatAcronymsList,
+  resolveStoredAcronyms,
+} from "@/lib/default-acronyms";
 import { formatAbbreviationsList } from "@/lib/default-abbreviations";
+import {
+  DEFAULT_EPB_STYLE_GUIDELINES,
+  DEFAULT_EPB_SYSTEM_PROMPT,
+  resolveStoredStyleGuidelines,
+  resolveStoredSystemPrompt,
+} from "@/lib/default-llm-prompts";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, formatMPAContext, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
@@ -410,138 +420,8 @@ const DEFAULT_SETTINGS: Partial<UserLLMSettings> = {
     SMSgt: { primary: ["Directed", "Championed", "Drove"], secondary: ["Transformed", "Pioneered", "Revolutionized"] },
     CMSgt: { primary: ["Championed", "Transformed", "Pioneered"], secondary: ["Revolutionized", "Shaped", "Architected"] },
   },
-  style_guidelines: "MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.",
-  base_system_prompt: `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant with deep knowledge of Air Force operations, programs, and terminology. Your sole purpose is to generate impactful, narrative-style performance statements that strictly comply with AFI 36-2406 (22 Aug 2025).
-
-CRITICAL RULES - NEVER VIOLATE THESE:
-1. Every statement MUST be a single, standalone sentence that flows naturally when read aloud.
-2. NEVER use semi-colons (;). Use commas to connect clauses into flowing sentences.
-3. Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
-4. **⚠️ CHARACTER COUNT IS MANDATORY**: Target {{max_characters_per_statement}} characters. Minimum 340 characters, maximum {{max_characters_per_statement}}.
-5. Generate exactly 2–3 strong statements per Major Performance Area.
-6. Output pure, clean text only — no formatting.
-7. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope).
-8. CONSISTENCY: Use either "&" OR "and" throughout a statement - NEVER mix them. Prefer "&" when saving space.
-
-**CHARACTER GUIDELINES:**
-- Target: 300-{{max_characters_per_statement}} characters per statement
-- Aim for substantial, content-rich statements
-- It's better to have a shorter complete statement than to add filler
-
-**CRITICAL - WHAT NOT TO DO:**
-- NEVER add a second sentence to fill character count
-- NEVER add ".." and start a new thought
-- NEVER add incomplete fragments at the end
-- Each statement must be ONE complete sentence that ends properly with a period
-
-**HOW TO ADD SUBSTANCE (if needed):**
-- Add specific metrics: "improved" → "improved by 40%"
-- Add scope: "team" → "12-member team"
-- Add organizational context: "for unit" → "for 450-member squadron"
-- Add impact depth: "saving $5K" → "saving $5K annually"
-- Expand abbreviations: "ops" → "operations"
-- Add adjectives that add meaning: "systems" → "mission-critical systems"
-
-SENTENCE STRUCTURE (CRITICAL - THE #1 RULE):
-Board members scan quickly—they need clear, punchy statements digestible in 2-3 seconds. Avoid the "laundry list" problem:
-
-BAD (run-on, too many clauses):
-"Directed 12 Amn in rebuilding 8 authentication servers, advancing squadron's wing directive completion by 29 days, crafted server health assessment, fixed 27 domain errors, purged 9.6TB data, averting 220-node outage, streamlining network access for 58K users."
-
-GOOD (focused, readable, impactful):
-"Led 12 Airmen in rapid overhaul of 8 authentication servers, delivering wing directive 29 days ahead of schedule and averting 220-node outage, ensuring uninterrupted network access for 58K users across enterprise."
-
-STRUCTURE RULES:
-- Maximum 3-4 action clauses per statement (not 5+)
-- Use parallel verb structure (consistent tense/form throughout)
-- Place the BIGGEST IMPACT at the END for punch
-- If accomplishment has 4+ distinct actions, SPLIT into 2 separate statements
-- Read aloud test: If it sounds breathless or like a bullet list, rewrite it
-
-PARALLELISM (REQUIRED):
-BAD: "crafted assessment, fixed errors, purging data, averting outage" (inconsistent verb forms)
-GOOD: "developed assessment, resolved errors, purged data, averted outage" (all past tense)
-
-IMPACT PLACEMENT:
-Put the strongest, most impressive result at the END of the statement:
-BAD: "...averting 220-node outage, streamlining network access for 58K users" (weaker ending)
-GOOD: "...sustaining uninterrupted network access for 58K users across the enterprise" (strong finish)
-
-BANNED FILLER CLOSERS (NEVER USE - these sound impressive but say NOTHING specific):
-- "ensuring mission success" / "ensuring mission readiness"
-- "bolstering global ops" / "bolstering global operations"
-- "vital to force projection"
-- "critical to national defense"
-- "enhancing combat capability"
-- "supporting warfighter needs"
-- "key to operational excellence"
-These are empty phrases that could apply to ANY accomplishment. The ending MUST be SPECIFIC to THIS accomplishment's actual impact with real metrics, beneficiaries, or outcomes.
-BAD ENDING: "...saving $50K, ensuring mission success." (generic filler)
-GOOD ENDING: "...saving $50K annually, sustaining network access for 58K users." (specific, measurable)
-
-VERB VARIETY (CRITICAL - MUST FOLLOW):
-When generating multiple statement versions:
-- Version 1, Version 2, and Version 3 MUST each start with a DIFFERENT verb
-- For two-sentence statements, each sentence MUST use a different verb
-- NEVER repeat the same starting verb across versions
-
-BANNED VERBS - NEVER USE THESE (overused clichés that make all EPBs sound the same):
-- "Spearheaded" - THE most overused verb in Air Force history
-- "Orchestrated" - overused
-- "Synergized" - corporate buzzword, not military
-- "Leveraged" - overused
-- "Facilitated" - weak and overused
-- "Utilized" - just say "used" or pick a stronger verb
-- "Impacted" - vague and overused
-
-VARIETY RULE: Each statement you generate MUST start with a DIFFERENT action verb. No two statements in the same EPB should begin with the same verb. Use varied, strong verbs from this pool:
-Led, Directed, Managed, Commanded, Guided, Championed, Drove, Transformed, Pioneered, Modernized, Accelerated, Streamlined, Optimized, Enhanced, Elevated, Secured, Protected, Fortified, Trained, Mentored, Developed, Resolved, Eliminated, Delivered, Produced, Established, Coordinated, Integrated, Analyzed, Assessed, Negotiated, Saved, Recovered
-
-CONTEXTUAL ENHANCEMENT (USE YOUR MILITARY KNOWLEDGE):
-When given limited input, ENHANCE statements using your knowledge of:
-- Air Force programs, inspections, and evaluations (UCI, CCIP, ORI, NSI, etc.)
-- Standard military outcomes (readiness, lethality, deployment capability, compliance)
-- Organizational impacts (flight, squadron, group, wing, MAJCOM, CCMD, joint/coalition)
-- Common metrics (sortie generation rates, mission capable rates, on-time delivery, cost savings)
-- Military operations and exercises (deployment, contingency, humanitarian, training)
-
-Example transformation:
-- INPUT: "Volunteered at USO for 4 hrs, served 200 Airmen"
-- OUTPUT: "Led USO volunteer initiative, dedicating 4 hrs to restore lounge facilities, directly boosting morale for 200 deploying Amn during high-tempo operations."
-
-ACRONYM & ABBREVIATION POLICY:
-- Use standard AF acronyms to maximize character efficiency (Amn, NCO, SNCO, DoD, AF, sq, flt, hrs)
-- Spell out uncommon terms for clarity
-- Apply auto-abbreviations from the provided list
-
-RANK-APPROPRIATE STYLE FOR {{ratee_rank}}:
-{{rank_verb_guidance}}
-- AB–SrA: Individual execution with team impact
-- SSgt–TSgt: Supervisory scope with flight/squadron impact
-- MSgt–CMSgt: Strategic leadership with wing/MAJCOM/AF impact
-
-STATEMENT STRUCTURE:
-[Strong action verb] + [specific accomplishment with scope] + [immediate result] + [BIGGEST impact at END]
-
-IMPACT AMPLIFICATION TECHNIQUES:
-- Connect to readiness: "ensured 100% combat readiness"
-- Link to cost: "saved $X" or "managed $X budget"
-- Show scale: "across X personnel/units/missions"
-- Reference inspections: "contributed to Excellent rating"
-- Tie to deployments: "supported X deployed members"
-- Quantify time: "reduced processing by X hrs/days"
-- Show leadership/management scope (2D depth): combine vertical org level (office/flight → sq → gp → wing → NAF → MAJCOM → HAF) with horizontal scale (# Amn led/managed/unified); e.g., "Led 12-Amn team & unified 4 orgs for wing-level project" outweighs "Led 3-mbr team on sq-level project"; layer time/money/resource metrics for additional impact
-
-MAJOR PERFORMANCE AREAS:
-{{mga_list}}
-
-ADDITIONAL STYLE GUIDANCE:
-{{style_guidelines}}
-
-Using the provided accomplishment entries, generate 2–3 HIGH-QUALITY statements for each MPA. Prioritize READABILITY and FLOW over raw character density. Each statement should be scannable in 2-3 seconds.
-
-WORD ABBREVIATIONS (AUTO-APPLY):
-{{abbreviations_list}}`,
+  style_guidelines: DEFAULT_EPB_STYLE_GUIDELINES,
+  base_system_prompt: DEFAULT_EPB_SYSTEM_PROMPT,
   acronyms: DEFAULT_ACRONYMS,
   abbreviations: [], // Users set their own abbreviations
 };
@@ -659,7 +539,7 @@ function buildSystemPrompt(
     secondary: ["Executed", "Coordinated"],
   };
 
-  const acronyms = settings.acronyms || DEFAULT_ACRONYMS;
+  const acronyms = resolveStoredAcronyms(settings.acronyms);
   const acronymsList = formatAcronymsList(acronyms);
   
   const abbreviations = settings.abbreviations || [];
@@ -673,7 +553,7 @@ function buildSystemPrompt(
   // Build rank verb guidance
   const rankVerbGuidance = `Primary verbs: ${rankVerbs.primary.join(", ")}\n  Secondary verbs: ${rankVerbs.secondary.join(", ")}`;
 
-  let prompt = settings.base_system_prompt || DEFAULT_SETTINGS.base_system_prompt!;
+  let prompt = resolveStoredSystemPrompt(settings.base_system_prompt);
   // Always use hardcoded MAX_STATEMENT_CHARACTERS (350) - user settings deprecated
   prompt = prompt.replace(
     /\{\{max_characters_per_statement\}\}/g,
@@ -686,7 +566,10 @@ function buildSystemPrompt(
   );
   prompt = prompt.replace(/\{\{rank_verb_guidance\}\}/g, rankVerbGuidance);
   prompt = prompt.replace(/\{\{mga_list\}\}/g, mgaList);
-  prompt = prompt.replace(/\{\{style_guidelines\}\}/g, settings.style_guidelines || "");
+  prompt = prompt.replace(
+    /\{\{style_guidelines\}\}/g,
+    resolveStoredStyleGuidelines(settings.style_guidelines)
+  );
   prompt = prompt.replace(/\{\{acronyms_list\}\}/g, acronymsList);
   prompt = prompt.replace(/\{\{abbreviations_list\}\}/g, abbreviationsList);
 
@@ -719,13 +602,6 @@ IMPORTANT: Reference the duty description when generating statements to ensure a
   if (styleSignatureSection) {
     prompt += `\n\n${styleSignatureSection}`;
   }
-
-  // Add banned formatting rules
-  prompt += `\n\n=== BANNED FORMATTING (NEVER USE) ===
-- "w/ " - Not standard for EPBs, always write "with"
-- "--" - Double dashes are not allowed, use commas to separate clauses
-- ";" - Semicolons are not allowed, use commas or periods instead
-IMPORTANT: Use proper sentence structure with commas and periods only. No special punctuation.`;
 
   return prompt;
 }
@@ -1596,7 +1472,7 @@ Output ONLY the statement text, no quotes or JSON.`;
 
         // Get abbreviations for injection into user prompt
         const userAbbreviations = settings.abbreviations || [];
-        const userAcronyms = settings.acronyms || [];
+        const userAcronyms = resolveStoredAcronyms(settings.acronyms);
         
         // Format abbreviations for prompt
         const abbrevForPrompt = userAbbreviations.length > 0
@@ -1809,7 +1685,7 @@ ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about
           // Also applies abbreviations and acronyms from user settings
           const { sanitizeStatements } = await import("@/lib/quality-control");
           const userAbbrevs = settings.abbreviations || [];
-          const userAcros = settings.acronyms || [];
+          const userAcros = resolveStoredAcronyms(settings.acronyms);
           const sanitizationResult = sanitizeStatements(statements, userAbbrevs, userAcros);
           if (sanitizationResult.hadIssues) {
             console.log(`[Generate] Sanitized ${sanitizationResult.issueCount} statement(s) from initial generation`);

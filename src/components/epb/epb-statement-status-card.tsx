@@ -23,6 +23,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { STANDARD_MGAS, MPA_ABBREVIATIONS } from "@/lib/constants";
+import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
+import type { Rank } from "@/types/database";
 import { cn } from "@/lib/utils";
 import {
   FileText,
@@ -41,6 +43,7 @@ interface EPBStatementStatusCardProps {
   isManagedMember: boolean;
   managedMemberId: string | null;
   cycleYear: number;
+  rateeRank?: Rank | null;
   className?: string;
   title?: string;
 }
@@ -51,6 +54,7 @@ export function EPBStatementStatusCard({
   isManagedMember,
   managedMemberId,
   cycleYear,
+  rateeRank,
   className,
   title = "EPB Progress",
 }: EPBStatementStatusCardProps) {
@@ -174,7 +178,12 @@ export function EPBStatementStatusCard({
               {title}
             </CardTitle>
             <CardDescription className="text-xs">
-              {cycleYear} Cycle •{" "}
+              {rateeRank ? (
+                <CyclePeriodLabel rank={rateeRank} />
+              ) : (
+                `${cycleYear} cycle`
+              )}
+              {" • "}
               {Object.values(mpaStatements).filter((s) => s.length > 0).length}/
               {STANDARD_MGAS.length} MPAs complete
             </CardDescription>
