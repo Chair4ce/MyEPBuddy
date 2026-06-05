@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useRef, useState } from "react";
+import { reconcileModelSelection } from "@/lib/ai-models/catalog";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,18 +9,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { type KeyStatus, getKeyStatus } from "@/app/actions/api-keys";
-import { AI_MODELS } from "@/lib/constants";
+import { useAvailableModels } from "@/hooks/use-available-models";
 import { cn } from "@/lib/utils";
 import { Sparkles, ArrowRight, ChevronDown, Check } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-
-const PROVIDER_KEY_MAP: Record<string, keyof KeyStatus> = {
-  openai: "openai_key",
-  anthropic: "anthropic_key",
-  google: "google_key",
-  xai: "grok_key",
-};
 
 interface GenerateCitationButtonProps {
   onGenerate: () => void;
@@ -30,30 +23,35 @@ export function GenerateCitationButton({
   onGenerate,
   disabled = false,
 }: GenerateCitationButtonProps) {
-  const {
-    isGenerating,
-    selectedModel,
-    setSelectedModel,
-  } = useDecorationShellStore();
-
+  const { isGenerating, selectedModel, setSelectedModel } = useDecorationShellStore();
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
+  const { models, defaultModelId, isLoading, load, keyStatus } = useAvailableModels(
+    "decoration",
+    { eager: true },
+  );
+  const reconcileRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchKeys() {
-      const status = await getKeyStatus();
-      if (!cancelled) setKeyStatus(status);
+  const resolvedModel =
+    models.length === 0
+      ? selectedModel
+      : reconcileModelSelection(
+          selectedModel,
+          models,
+          defaultModelId,
+          keyStatus ?? undefined,
+        );
+
+  if (models.length > 0) {
+    const reconciled = reconcileModelSelection(
+      selectedModel,
+      models,
+      defaultModelId,
+      keyStatus ?? undefined,
+    );
+    if (reconciled !== selectedModel && reconcileRef.current !== reconciled) {
+      reconcileRef.current = reconciled;
+      queueMicrotask(() => setSelectedModel(reconciled));
     }
-    fetchKeys();
-    return () => { cancelled = true; };
-  }, []);
-
-  function isModelAvailable(model: (typeof AI_MODELS)[number]): boolean {
-    if ("isAppDefault" in model && model.isAppDefault) return true;
-    if (!keyStatus) return false;
-    const keyName = PROVIDER_KEY_MAP[model.provider];
-    return keyName ? keyStatus[keyName] : false;
   }
 
   return (
@@ -78,7 +76,13 @@ export function GenerateCitationButton({
           </>
         )}
       </Button>
-      <Popover open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
+      <Popover
+        open={modelDropdownOpen}
+        onOpenChange={(nextOpen) => {
+          setModelDropdownOpen(nextOpen);
+          if (nextOpen) void load();
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             variant="default"
@@ -90,42 +94,39 @@ export function GenerateCitationButton({
             <ChevronDown className="size-3" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-[220px] p-1" sideOffset={4}>
+        <PopoverContent align="end" className="w-[240px] p-1" sideOffset={4}>
           <p className="px-2 py-1.5 text-[11px] font-medium text-muted-foreground">
             AI Model
           </p>
-          {AI_MODELS.map((model) => {
-            const available = isModelAvailable(model);
-            const isSelected = selectedModel === model.id;
-            return (
-              <button
-                key={model.id}
-                type="button"
-                onClick={() => {
-                  if (available) {
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+              <Spinner size="sm" />
+              Loading...
+            </div>
+          ) : (
+            models.map((model) => {
+              const isSelected = resolvedModel === model.id;
+              return (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => {
                     setSelectedModel(model.id);
                     setModelDropdownOpen(false);
-                  }
-                }}
-                disabled={!available}
-                className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs transition-colors",
-                  available
-                    ? "hover:bg-accent cursor-pointer"
-                    : "opacity-40 cursor-not-allowed",
-                  isSelected && "bg-accent"
-                )}
-              >
-                <span className="size-3.5 shrink-0 flex items-center justify-center">
-                  {isSelected && <Check className="size-3.5 text-primary" />}
-                </span>
-                <span className="flex-1 text-left truncate">{model.name}</span>
-                {!available && (
-                  <span className="text-[10px] text-muted-foreground">Key needed</span>
-                )}
-              </button>
-            );
-          })}
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs transition-colors hover:bg-accent cursor-pointer",
+                    isSelected && "bg-accent",
+                  )}
+                >
+                  <span className="size-3.5 shrink-0 flex items-center justify-center">
+                    {isSelected && <Check className="size-3.5 text-primary" />}
+                  </span>
+                  <span className="flex-1 text-left truncate">{model.name}</span>
+                </button>
+              );
+            })
+          )}
         </PopoverContent>
       </Popover>
     </div>

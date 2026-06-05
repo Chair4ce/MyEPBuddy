@@ -130,6 +130,13 @@ const settingsItems = [
     tourId: "nav-settings-api-keys",
   },
   {
+    title: "AI Models",
+    href: "/settings/models",
+    icon: Sparkles,
+    roles: ["member", "admin"],
+    tourId: "nav-settings-models",
+  },
+  {
     title: "Admin Config",
     href: "/admin/config",
     icon: Shield,

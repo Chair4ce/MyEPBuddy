@@ -1041,6 +1041,7 @@ export function AwardWorkspaceDialog({
                         <ModelSelector
                           value={selectedModel}
                           onValueChange={setSelectedModel}
+                          context="award"
                           compact
                         />
                       </div>

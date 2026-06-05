@@ -4,6 +4,7 @@ import { generateText } from "ai";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 export const maxDuration = 60;
@@ -39,7 +40,10 @@ export async function POST(req: NextRequest) {
     .single<{ preferred_model: string | null }>();
   
   const userKeys = await getDecryptedApiKeys();
-  const model = userSettings?.preferred_model || "gpt-4o-mini";
+  const model = await resolveRequestedModel(
+    userSettings?.preferred_model || "gpt-4o-mini",
+    "global",
+  );
 
   // Usage tracking — enforce weekly limit for default-key users
   const usageCheck = await checkAndTrackUsage(user.id, "adapt_sentence", model, userKeys);

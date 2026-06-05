@@ -1,5 +1,8 @@
 import { create } from "zustand";
-import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
+import {
+  DECORATION_MODEL_PREFERENCE_STORAGE_KEY,
+  getStoredModelPreference,
+} from "@/lib/model-preferences";
 import type { 
   DecorationShell, 
   DecorationAwardType, 
@@ -236,7 +239,7 @@ const getDefaultState = () => ({
   isCreatingShell: false,
   isGenerating: false,
   isSaving: false,
-  selectedModel: DEFAULT_APP_MODEL_ID,
+  selectedModel: getStoredModelPreference(DECORATION_MODEL_PREFERENCE_STORAGE_KEY),
   isDirty: false,
   showHistory: false,
   statementColors: {} as StatementColorMap,
@@ -323,7 +326,16 @@ export const useDecorationShellStore = create<DecorationShellState>((set, get) =
   setIsGenerating: (generating) => set({ isGenerating: generating }),
   setIsSaving: (saving) => set({ isSaving: saving }),
   
-  setSelectedModel: (model) => set({ selectedModel: model }),
+  setSelectedModel: (model) => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(DECORATION_MODEL_PREFERENCE_STORAGE_KEY, model);
+      } catch {
+        // Ignore storage errors
+      }
+    }
+    set({ selectedModel: model });
+  },
   
   setIsDirty: (dirty) => set({ isDirty: dirty }),
   

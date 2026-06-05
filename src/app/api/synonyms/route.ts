@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -31,8 +32,6 @@ export async function POST(request: Request) {
 
     const body: SynonymRequest = await request.json();
     const { word, fullStatement, model, context = "epb" } = body;
-    modelId = model;
-
     if (!word || !fullStatement) {
       return NextResponse.json(
         { error: "Word and full statement are required" },
@@ -40,11 +39,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
+    modelId = await resolveRequestedModel(model, "global");
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "synonyms", model, userKeys);
+    const usageCheck = await checkAndTrackUsage(user.id, "synonyms", modelId, userKeys);
     if (!usageCheck.allowed) {
       return usageCheck.rateLimited
         ? handleBurstRateLimited()

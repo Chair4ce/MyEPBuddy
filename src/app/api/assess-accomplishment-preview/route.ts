@@ -16,6 +16,7 @@ import {
 import type { Rank } from "@/types/database";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -189,7 +190,7 @@ export async function POST(request: Request) {
 
     const body: AssessPreviewRequest = await request.json();
     const { action_verb, details, impact, metrics, mpa, model = DEFAULT_APP_MODEL_ID } = body;
-    modelId = model;
+    modelId = await resolveRequestedModel(model, "generate");
 
     if (!action_verb || !details) {
       return NextResponse.json(
@@ -219,7 +220,12 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "assess_accomplishment_preview", model, userKeys);
+    const usageCheck = await checkAndTrackUsage(
+      user.id,
+      "assess_accomplishment_preview",
+      modelId,
+      userKeys,
+    );
     if (!usageCheck.allowed) {
       return usageCheck.rateLimited
         ? handleBurstRateLimited()

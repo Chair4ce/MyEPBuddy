@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -20,17 +21,16 @@ export async function POST(request: Request) {
     }
 
     const { statement, targetSentences, nomineeRank, nomineeName, model } = await request.json();
-    modelId = model;
 
     if (!statement || !targetSentences || !model) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
+    modelId = await resolveRequestedModel(model, "award");
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "convert_sentences", model, userKeys);
+    const usageCheck = await checkAndTrackUsage(user.id, "convert_sentences", modelId, userKeys);
     if (!usageCheck.allowed) {
       return usageCheck.rateLimited
         ? handleBurstRateLimited()

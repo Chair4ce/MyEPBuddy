@@ -46,7 +46,9 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
-import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AI_MODELS, DEFAULT_APP_MODEL_ID, getActiveCycleYear } from "@/lib/constants";
+import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AI_MODELS, getActiveCycleYear } from "@/lib/constants";
+import { getAppDefaultModelId } from "@/lib/model-preferences";
+import { ModelSelector } from "@/components/model-selector";
 import {
   Loader2,
   Sparkles,
@@ -136,7 +138,7 @@ export function StatementWorkspaceDialog({
 
   // AI generation state
   const [maxCharLimit, setMaxCharLimit] = useState(350);
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_APP_MODEL_ID);
+  const [selectedModel, setSelectedModel] = useState(getAppDefaultModelId);
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<GeneratedSuggestion[]>([]);
 
@@ -1280,18 +1282,13 @@ export function StatementWorkspaceDialog({
 
                     <div className="space-y-1.5">
                       <Label className="text-xs">AI Model</Label>
-                      <Select value={selectedModel} onValueChange={setSelectedModel}>
-                        <SelectTrigger className="h-9 text-xs w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {AI_MODELS.map((model) => (
-                            <SelectItem key={model.id} value={model.id} className="text-xs">
-                              {model.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <ModelSelector
+                        value={selectedModel}
+                        onValueChange={setSelectedModel}
+                        context="library"
+                        compact
+                        className="h-9 text-xs"
+                      />
                     </div>
 
                     <div className="space-y-1.5">

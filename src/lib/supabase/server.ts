@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase";
 import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
@@ -58,5 +59,22 @@ export async function createServiceClient() {
         },
       },
     }
+  );
+}
+
+/**
+ * Cookie-free service-role client for cached/server-only reads.
+ * Safe inside unstable_cache — never call cookies() or other dynamic APIs.
+ */
+export function createAdminClient() {
+  return createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    },
   );
 }

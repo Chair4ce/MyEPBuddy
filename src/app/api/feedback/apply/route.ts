@@ -5,6 +5,7 @@ import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -212,7 +213,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // Text has changed or multiple occurrences - use LLM to intelligently apply the change
     const userKeys = await getDecryptedApiKeys();
-    const feedbackModelId = DEFAULT_APP_MODEL_ID;
+    const feedbackModelId = await resolveRequestedModel(DEFAULT_APP_MODEL_ID, "global");
 
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "feedback_apply", feedbackModelId, userKeys);

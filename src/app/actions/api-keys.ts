@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
+import { EMPTY_KEY_STATUS, keyStatusFromRow } from "@/lib/api-key-status";
 
 export type KeyStatus = {
   openai_key: boolean;
@@ -23,44 +24,26 @@ interface UserApiKeysRow {
  * Get which API keys are set for the current user.
  * Only returns boolean flags - never the actual keys.
  */
-export async function getKeyStatus(): Promise<KeyStatus> {
+export async function getKeyStatusForUserId(userId: string): Promise<KeyStatus> {
   const supabase = await createClient();
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      openai_key: false,
-      anthropic_key: false,
-      google_key: false,
-      grok_key: false,
-    };
-  }
-
-  // Only select whether keys exist, not the actual values
   const { data } = await supabase
     .from("user_api_keys")
     .select("openai_key, anthropic_key, google_key, grok_key")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .maybeSingle();
 
-  if (!data) {
-    return {
-      openai_key: false,
-      anthropic_key: false,
-      google_key: false,
-      grok_key: false,
-    };
-  }
+  return keyStatusFromRow((data as UserApiKeysRow | null) ?? null);
+}
 
-  const typedData = data as unknown as UserApiKeysRow;
+export async function getKeyStatus(): Promise<KeyStatus> {
+  const supabase = await createClient();
 
-  // Convert to boolean flags - we check if the key exists, not what it is
-  return {
-    openai_key: !!typedData.openai_key,
-    anthropic_key: !!typedData.anthropic_key,
-    google_key: !!typedData.google_key,
-    grok_key: !!typedData.grok_key,
-  };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return EMPTY_KEY_STATUS;
+
+  return getKeyStatusForUserId(user.id);
 }
 
 /**

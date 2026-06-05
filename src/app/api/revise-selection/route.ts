@@ -12,6 +12,7 @@ import {
 } from "@/lib/style-learning";
 import type { StyleExampleCategory, WritingStyle } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
@@ -418,7 +419,8 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "revise_selection", model, userKeys);
+    const resolvedModel = await resolveRequestedModel(model, "generate");
+    const usageCheck = await checkAndTrackUsage(user.id, "revise_selection", resolvedModel, userKeys);
     if (!usageCheck.allowed) {
       return usageCheck.rateLimited
         ? handleBurstRateLimited()

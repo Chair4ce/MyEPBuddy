@@ -32,11 +32,16 @@ import {
   type KeyStatus,
   type KeyName,
 } from "@/app/actions/api-keys";
+import {
+  getModelsForProviderKey,
+  getProviderModelSummary,
+  getUnlockedModels,
+  type ProviderKeyName,
+} from "@/lib/model-preferences";
 
 interface Provider {
-  key: KeyName;
+  key: ProviderKeyName;
   name: string;
-  description: string;
   url: string;
 }
 
@@ -44,25 +49,21 @@ const providers: Provider[] = [
   {
     key: "openai_key",
     name: "OpenAI",
-    description: "GPT-4o and GPT-4o Mini",
     url: "https://platform.openai.com/api-keys",
   },
   {
     key: "anthropic_key",
     name: "Anthropic",
-    description: "Claude Sonnet and Claude Haiku",
     url: "https://console.anthropic.com/settings/keys",
   },
   {
     key: "google_key",
     name: "Google AI",
-    description: "Gemini 1.5 Pro and Flash",
     url: "https://aistudio.google.com/app/apikey",
   },
   {
     key: "grok_key",
     name: "xAI",
-    description: "Grok 2",
     url: "https://x.ai/api",
   },
 ];
@@ -81,6 +82,8 @@ function ProviderKeyCard({
   onSave: (key: string) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  const providerModels = getModelsForProviderKey(provider.key);
+  const modelSummary = getProviderModelSummary(provider.key);
   const [newKey, setNewKey] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -176,7 +179,9 @@ function ProviderKeyCard({
       <div className="flex items-center justify-between">
         <div>
           <Label className="text-base font-medium">{provider.name}</Label>
-          <p className="text-xs text-muted-foreground">{provider.description}</p>
+          <p className="text-xs text-muted-foreground">
+            Unlocks: {modelSummary}
+          </p>
         </div>
         <a
           href={provider.url}
@@ -188,6 +193,15 @@ function ProviderKeyCard({
           <ExternalLink className="size-3" />
         </a>
       </div>
+
+      <ul className="text-xs text-muted-foreground space-y-1 pl-1">
+        {providerModels.map((model) => (
+          <li key={model.id} className="flex items-center gap-1.5">
+            <Check className="size-3 shrink-0 text-muted-foreground/70" />
+            <span>{model.name}</span>
+          </li>
+        ))}
+      </ul>
 
       {hasKey ? (
         <div className="space-y-2">
@@ -377,6 +391,9 @@ export default function APIKeysPage() {
     }
   }
 
+  const unlockedModels = getUnlockedModels(keyStatus);
+  const hasAnyKey = Object.values(keyStatus).some(Boolean);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -441,9 +458,49 @@ export default function APIKeysPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Available models</CardTitle>
+          <CardDescription>
+            {hasAnyKey
+              ? "Models you can select right now based on your saved keys. Customize picker visibility in Model Settings."
+              : "Add a provider key below to unlock premium models. The free default is always available."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2">
+            {unlockedModels.map((model) => (
+              <li
+                key={model.id}
+                className="flex items-start justify-between gap-3 rounded-md border px-3 py-2"
+              >
+                <div>
+                  <p className="text-sm font-medium">{model.name}</p>
+                  <p className="text-xs text-muted-foreground">{model.description}</p>
+                </div>
+                {"isAppDefault" in model && model.isAppDefault ? (
+                  <span className="text-[11px] text-muted-foreground shrink-0">Free default</span>
+                ) : (
+                  <span className="text-[11px] text-green-600 dark:text-green-400 shrink-0">
+                    Your key
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">How it works</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            Manage which models appear in dropdowns on the{" "}
+            <a href="/settings/models" className="text-primary hover:underline">
+              AI Models
+            </a>{" "}
+            settings page. Refresh the catalog there when providers release new models.
+          </p>
           <p>
             When you generate EPB statements, the app will check if you have an
             API key for the selected model&apos;s provider:
@@ -451,17 +508,17 @@ export default function APIKeysPage() {
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>
               <strong className="text-foreground">With your key:</strong> Your
-              key is used directly, giving you full control over usage and
-              billing
+              key is used for any model from that provider in the model picker
+              (Generate, Award, EPB, and Library workspace)
             </li>
             <li>
               <strong className="text-foreground">Without your key:</strong> The
-              app&apos;s default API key is used (shared resource)
+              app&apos;s shared default model is used (limited free usage)
             </li>
           </ul>
           <p>
-            Adding your own keys ensures faster, more reliable access and helps
-            keep the service running for everyone.
+            Each provider key unlocks every model listed under that provider above.
+            Pick your preferred model from the model selector on any generation screen.
           </p>
         </CardContent>
       </Card>

@@ -156,6 +156,15 @@ export const AI_MODELS = [
     isAppDefault: true,
   },
   {
+    id: "gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
+    provider: "google",
+    description: "Google's balanced fast model",
+    quality: "good" as ModelQuality,
+    statementTip:
+      "Strong balance of speed and quality. Good upgrade over Flash Lite for polished statements.",
+  },
+  {
     id: "gemini-2.5-pro",
     name: "Gemini 2.5 Pro",
     provider: "google",

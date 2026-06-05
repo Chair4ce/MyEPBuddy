@@ -10,6 +10,7 @@ import { DECORATION_TYPES } from "@/lib/decoration-constants";
 import type { UserLLMSettings } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 
 /** Format "2025-02-26" → "26 February 2025" for citation display */
 function formatCitationDate(dateStr: string | undefined): string {
@@ -116,9 +117,10 @@ export async function POST(request: Request) {
       );
     }
     
+    modelId = await resolveRequestedModel(body.model, "decoration");
+
     // Get API keys and select model provider
     const apiKeys = await getDecryptedApiKeys();
-    modelId = body.model;
 
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_decoration", modelId, apiKeys);

@@ -459,6 +459,10 @@ export interface UserLLMSettings {
   decoration_abbreviations: Abbreviation[];
   // Duty description prompt (present tense, scope/responsibility - separate from performance statements)
   duty_description_prompt: string | null;
+  model_preferences: {
+    visible_model_ids: string[] | null;
+    defaults: Partial<Record<string, string>>;
+  };
   created_at: string;
   updated_at: string;
 }

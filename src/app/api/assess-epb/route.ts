@@ -7,6 +7,7 @@ import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from
 import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
 
     // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
-    modelId = model;
+    modelId = await resolveRequestedModel(model, "generate");
 
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "assess_epb", modelId, userKeys);

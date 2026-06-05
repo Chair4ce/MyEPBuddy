@@ -8,6 +8,7 @@ import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, DEFAULT_APP_MODEL_ID } from "@
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -132,7 +133,7 @@ export async function POST(request: Request) {
       defaultRank,
       model = DEFAULT_PARSE_MODEL,
     } = body;
-    modelId = model;
+    modelId = await resolveRequestedModel(model, "decoration");
 
     if (!rawText || rawText.trim().length < 10) {
       return NextResponse.json(
@@ -162,7 +163,12 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "parse_bulk_statements", model, userKeys);
+    const usageCheck = await checkAndTrackUsage(
+      user.id,
+      "parse_bulk_statements",
+      modelId,
+      userKeys,
+    );
     if (!usageCheck.allowed) {
       return usageCheck.rateLimited
         ? handleBurstRateLimited()

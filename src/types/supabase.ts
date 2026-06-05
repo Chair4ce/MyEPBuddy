@@ -1635,6 +1635,92 @@ export type Database = {
           },
         ]
       }
+      llm_catalog_sync_state: {
+        Row: {
+          id: number
+          last_sync_by_user_id: string | null
+          last_sync_completed_at: string | null
+          last_sync_started_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          last_sync_by_user_id?: string | null
+          last_sync_completed_at?: string | null
+          last_sync_started_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          last_sync_by_user_id?: string | null
+          last_sync_completed_at?: string | null
+          last_sync_started_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "llm_catalog_sync_state_last_sync_by_user_id_fkey"
+            columns: ["last_sync_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      llm_model_catalog: {
+        Row: {
+          created_at: string
+          deprecated_at: string | null
+          description: string
+          display_name: string
+          first_seen_at: string
+          id: string
+          is_active: boolean
+          is_app_default: boolean
+          last_seen_at: string
+          provider: string
+          quality: string
+          sort_order: number
+          statement_tip: string
+          supports_default_key: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deprecated_at?: string | null
+          description?: string
+          display_name: string
+          first_seen_at?: string
+          id: string
+          is_active?: boolean
+          is_app_default?: boolean
+          last_seen_at?: string
+          provider: string
+          quality?: string
+          sort_order?: number
+          statement_tip?: string
+          supports_default_key?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deprecated_at?: string | null
+          description?: string
+          display_name?: string
+          first_seen_at?: string
+          id?: string
+          is_active?: boolean
+          is_app_default?: boolean
+          last_seen_at?: string
+          provider?: string
+          quality?: string
+          sort_order?: number
+          statement_tip?: string
+          supports_default_key?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       managed_member_history: {
         Row: {
           created_at: string | null
@@ -3016,6 +3102,7 @@ export type Database = {
           major_graded_areas: Json
           max_characters_per_statement: number
           max_example_statements: number
+          model_preferences: Json
           mpa_descriptions: Json
           opb_style_guidelines: string | null
           opb_system_prompt: string | null
@@ -3040,6 +3127,7 @@ export type Database = {
           major_graded_areas?: Json
           max_characters_per_statement?: number
           max_example_statements?: number
+          model_preferences?: Json
           mpa_descriptions?: Json
           opb_style_guidelines?: string | null
           opb_system_prompt?: string | null
@@ -3064,6 +3152,7 @@ export type Database = {
           major_graded_areas?: Json
           max_characters_per_statement?: number
           max_example_statements?: number
+          model_preferences?: Json
           mpa_descriptions?: Json
           opb_style_guidelines?: string | null
           opb_system_prompt?: string | null

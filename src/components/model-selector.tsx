@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useRef, useState } from "react";
+import { reconcileModelSelection } from "@/lib/ai-models/catalog";
+import { type KeyStatus } from "@/app/actions/api-keys";
+import { useAvailableModels } from "@/hooks/use-available-models";
+import type { ModelContext } from "@/lib/ai-models/types";
 import { AI_MODELS, type ModelQuality } from "@/lib/constants";
-import { type KeyStatus, getKeyStatus } from "@/app/actions/api-keys";
-import {
-  getAppDefaultModelId,
-  isModelAvailableForStatus,
-} from "@/lib/model-preferences";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   Check,
@@ -25,14 +25,6 @@ import {
   Zap,
   CircleAlert,
 } from "lucide-react";
-
-// Map provider to key name in KeyStatus
-const PROVIDER_KEY_MAP: Record<string, keyof KeyStatus> = {
-  openai: "openai_key",
-  anthropic: "anthropic_key",
-  google: "google_key",
-  xai: "grok_key",
-};
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
@@ -68,76 +60,82 @@ const QUALITY_CONFIG: Record<
 interface ModelSelectorProps {
   value: string;
   onValueChange: (value: string) => void;
-  /** Optional pre-fetched key status to avoid duplicate calls */
+  context?: ModelContext;
   keyStatus?: KeyStatus | null;
-  /** Optional className override for the trigger button */
   className?: string;
-  /** Compact mode for tighter UIs like dialogs */
   compact?: boolean;
 }
 
 export function ModelSelector({
   value,
   onValueChange,
+  context,
   keyStatus: externalKeyStatus,
   className,
   compact = false,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
-  const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(
-    externalKeyStatus ?? null
-  );
-  const defaultModelId = getAppDefaultModelId();
+  const {
+    models,
+    defaultModelId,
+    keyStatus: fetchedKeyStatus,
+    isLoading,
+    error,
+    load,
+  } = useAvailableModels(context, { eager: true });
 
-  // Fetch key status if not provided externally
-  useEffect(() => {
-    if (externalKeyStatus !== undefined) {
-      setKeyStatus(externalKeyStatus);
-      return;
+  const keyStatus = externalKeyStatus ?? fetchedKeyStatus;
+  const availableModels = models;
+  const unavailableModels: typeof models = [];
+  const reconcileRef = useRef<string | null>(null);
+
+  const resolvedValue =
+    models.length === 0
+      ? value
+      : reconcileModelSelection(
+          value,
+          models,
+          defaultModelId,
+          keyStatus ?? undefined,
+        );
+
+  if (models.length > 0) {
+    const reconciled = reconcileModelSelection(
+      value,
+      models,
+      defaultModelId,
+      keyStatus ?? undefined,
+    );
+    if (reconciled !== value && reconcileRef.current !== reconciled) {
+      reconcileRef.current = reconciled;
+      queueMicrotask(() => onValueChange(reconciled));
     }
-
-    let cancelled = false;
-    async function fetchKeys() {
-      const status = await getKeyStatus();
-      if (!cancelled) setKeyStatus(status);
-    }
-    fetchKeys();
-    return () => {
-      cancelled = true;
-    };
-  }, [externalKeyStatus]);
-
-  const selectedModel = AI_MODELS.find((m) => m.id === value);
-
-  function isModelAvailable(model: (typeof AI_MODELS)[number]): boolean {
-    return isModelAvailableForStatus(model.id, keyStatus);
   }
 
+  const selectedModel = models.find((model) => model.id === resolvedValue);
+  const fallbackModelName =
+    AI_MODELS.find((model) => model.id === value)?.name ??
+    AI_MODELS.find((model) => model.id === resolvedValue)?.name ??
+    resolvedValue;
+
   function handleSelect(modelId: string) {
-    const model = AI_MODELS.find((entry) => entry.id === modelId);
-    if (!model || !isModelAvailable(model)) return;
+    if (!models.some((model) => model.id === modelId)) return;
     onValueChange(modelId);
     setOpen(false);
   }
 
-  useEffect(() => {
-    if (!keyStatus) return;
-    if (value === defaultModelId) return;
-
-    if (!isModelAvailableForStatus(value, keyStatus)) {
-      onValueChange(defaultModelId);
-    }
-  }, [defaultModelId, keyStatus, onValueChange, value]);
-
   const selectedQuality = selectedModel
     ? QUALITY_CONFIG[selectedModel.quality]
     : null;
-  const selectedAvailable = selectedModel
-    ? isModelAvailable(selectedModel)
-    : false;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) void load();
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -147,32 +145,34 @@ export function ModelSelector({
           className={cn(
             "w-full justify-between font-normal",
             compact ? "h-9" : "h-auto min-h-10 py-2",
-            className
+            className,
           )}
         >
-          {selectedModel ? (
+          {isLoading ? (
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner size="sm" />
+              Loading models...
+            </span>
+          ) : selectedModel || resolvedValue ? (
             <div className="flex items-center gap-2 min-w-0 overflow-hidden">
               <span className="truncate text-sm">
-                {selectedModel.name}
+                {selectedModel?.name ?? fallbackModelName}
               </span>
               {selectedQuality && (
                 <Badge
                   variant="outline"
                   className={cn(
                     "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                    selectedQuality.className
+                    selectedQuality.className,
                   )}
                 >
                   {selectedQuality.label}
                 </Badge>
               )}
-              {!selectedAvailable && keyStatus && (
-                <Lock className="size-3 text-muted-foreground shrink-0" />
-              )}
             </div>
           ) : (
             <span className="text-muted-foreground text-sm">
-              Select model...
+              {error ? "Models unavailable" : "Select model..."}
             </span>
           )}
           <ChevronDown className="size-4 shrink-0 opacity-50" />
@@ -186,169 +186,131 @@ export function ModelSelector({
         <div className="px-3 py-2.5 border-b shrink-0">
           <p className="text-sm font-medium">Select AI Model</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Models with a{" "}
-            <Key className="inline-block size-3 align-text-bottom" /> require
-            your own API key in{" "}
-            <a
-              href="/settings/api-keys"
-              className="text-primary hover:underline"
-            >
-              Settings
+            Models are synced from provider APIs. Customize visibility in{" "}
+            <a href="/settings/models" className="text-primary hover:underline">
+              Model Settings
             </a>
+            .
           </p>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-1.5">
-            {(() => {
-              // Sort: available models first, unavailable second
-              const availableModels = AI_MODELS.filter((m) => isModelAvailable(m));
-              const unavailableModels = AI_MODELS.filter((m) => !isModelAvailable(m));
-              const sorted = [...availableModels, ...unavailableModels];
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                <Spinner size="sm" />
+                Loading models...
+              </div>
+            ) : models.length === 0 ? (
+              <p className="px-2 py-6 text-sm text-muted-foreground text-center">
+                No models available. Add an API key or refresh the model catalog.
+              </p>
+            ) : (
+              [...availableModels, ...unavailableModels].map((model, index) => {
+                const quality = QUALITY_CONFIG[model.quality];
+                const QualityIcon = quality.icon;
+                const isSelected = resolvedValue === model.id;
+                const isFirstUnavailable =
+                  unavailableModels.length > 0 && index === availableModels.length;
 
-              return sorted.map((model, index) => {
-              const available = isModelAvailable(model);
-              const quality = QUALITY_CONFIG[model.quality];
-              const QualityIcon = quality.icon;
-              const isSelected = value === model.id;
-              const isDefault =
-                "isAppDefault" in model && model.isAppDefault;
-
-              // Show separator between available and unavailable groups
-              const isFirstUnavailable =
-                !available &&
-                index > 0 &&
-                isModelAvailable(sorted[index - 1]);
-
-              return (
-                <div key={model.id}>
-                  {isFirstUnavailable && (
-                    <div className="my-1.5">
-                      <Separator />
-                      <p className="text-[11px] text-muted-foreground px-2.5 py-1.5 font-medium">
-                        Requires API key
-                      </p>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleSelect(model.id)}
-                    className={cn(
-                      "w-full text-left rounded-md px-2.5 py-2.5 transition-colors",
-                      "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
-                      isSelected && "bg-accent",
-                      !available && "opacity-60"
-                    )}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      {/* Check / Lock icon */}
-                      <div className="mt-0.5 shrink-0 w-4">
-                        {isSelected ? (
-                          <Check className="size-4 text-primary" />
-                        ) : !available ? (
-                          <Lock className="size-3.5 text-muted-foreground" />
-                        ) : null}
+                return (
+                  <div key={model.id}>
+                    {isFirstUnavailable && (
+                      <div className="my-1.5">
+                        <Separator />
+                        <p className="text-[11px] text-muted-foreground px-2.5 py-1.5 font-medium">
+                          Requires API key
+                        </p>
                       </div>
-
-                      {/* Model info */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className={cn(
-                              "text-sm font-medium",
-                              !available && "text-muted-foreground"
-                            )}
-                          >
-                            {model.name}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] px-1.5 py-0 h-5",
-                              quality.className
-                            )}
-                          >
-                            <QualityIcon className="size-2.5 mr-0.5" />
-                            {quality.label}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5 py-0 h-5"
-                          >
-                            {PROVIDER_LABELS[model.provider]}
-                          </Badge>
-                          {isDefault && (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] px-1.5 py-0 h-5"
-                            >
-                              Free Default
-                            </Badge>
-                          )}
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(model.id)}
+                      className={cn(
+                        "w-full text-left rounded-md px-2.5 py-2.5 transition-colors",
+                        "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+                        isSelected && "bg-accent",
+                      )}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 shrink-0 w-4">
+                          {isSelected ? (
+                            <Check className="size-4 text-primary" />
+                          ) : model.requiresUserKey && !model.usingUserKey ? (
+                            <Lock className="size-3.5 text-muted-foreground" />
+                          ) : null}
                         </div>
 
-                        <p
-                          className={cn(
-                            "text-xs leading-relaxed",
-                            available
-                              ? "text-muted-foreground"
-                              : "text-muted-foreground/70"
-                          )}
-                        >
-                          {model.statementTip}
-                        </p>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">{model.name}</span>
+                            <Badge
+                              variant="outline"
+                              className={cn("text-[10px] px-1.5 py-0 h-5", quality.className)}
+                            >
+                              <QualityIcon className="size-2.5 mr-0.5" />
+                              {quality.label}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
+                              {PROVIDER_LABELS[model.provider]}
+                            </Badge>
+                            {model.isAppDefault && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                                Free Default
+                              </Badge>
+                            )}
+                            {model.isDeprecated && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
+                                Deprecated
+                              </Badge>
+                            )}
+                          </div>
 
-                        {/* Availability status */}
-                        {!available && keyStatus && (
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                            <Key className="size-3 shrink-0" />
-                            <span>
-                              Requires{" "}
-                              {PROVIDER_LABELS[model.provider]} API key —{" "}
-                              <a
-                                href="/settings/api-keys"
-                                className="underline hover:text-amber-700 dark:hover:text-amber-300"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                add in Settings
-                              </a>
-                            </span>
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            {model.statementTip}
                           </p>
-                        )}
-                        {available &&
-                          !isDefault &&
-                          keyStatus?.[
-                            PROVIDER_KEY_MAP[model.provider]
-                          ] && (
+
+                          {model.requiresUserKey && !model.usingUserKey && keyStatus && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                              <Key className="size-3 shrink-0" />
+                              <span>
+                                Requires {PROVIDER_LABELS[model.provider]} API key —{" "}
+                                <a
+                                  href="/settings/api-keys"
+                                  className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  add in Settings
+                                </a>
+                              </span>
+                            </p>
+                          )}
+                          {model.usingUserKey && (
                             <p className="text-[11px] text-green-600 dark:text-green-400 flex items-center gap-1">
                               <Key className="size-3 shrink-0" />
                               Using your API key
                             </p>
                           )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                </div>
-              );
-            });
-            })()}
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
-        {/* Footer warning about default model */}
         <div className="border-t px-3 py-2.5 bg-muted/30 shrink-0">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             <CircleAlert className="inline-block size-3 align-text-bottom mr-1 text-amber-500" />
-            Without your own API key, the app defaults to{" "}
-            <strong>Gemini 2.0 Flash</strong> which produces basic-quality
-            statements.{" "}
-            <a
-              href="/settings/api-keys"
-              className="text-primary hover:underline"
-            >
+            Without your own API key, the app uses the free default (
+            {models.find((model) => model.isAppDefault)?.name ?? "Gemini 2.5 Flash Lite"}).
+            {" "}
+            <a href="/settings/api-keys" className="text-primary hover:underline">
               Add a key
             </a>{" "}
-            for better results with premium models.
+            for premium models.
           </p>
         </div>
       </PopoverContent>

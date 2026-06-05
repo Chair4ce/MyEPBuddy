@@ -6,6 +6,7 @@ import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -191,7 +192,7 @@ export async function POST(request: Request) {
     }
 
     const userKeys = await getDecryptedApiKeys();
-    modelId = model || DEFAULT_MODEL;
+    modelId = await resolveRequestedModel(model || DEFAULT_MODEL, "generate");
 
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_war", modelId, userKeys);

@@ -7,6 +7,7 @@ import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import type { Rank, UserLLMSettings, AwardLevel, AwardCategory, AwardSentencesPerCategory, WinLevel } from "@/types/database";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 
 // Allow up to 60s for LLM calls
@@ -458,7 +459,7 @@ export async function POST(request: Request) {
 
     // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
-    modelId = model;
+    modelId = await resolveRequestedModel(model, "award");
 
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_award", modelId, userKeys);

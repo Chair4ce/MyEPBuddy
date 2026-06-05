@@ -6,6 +6,7 @@ import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, formatMPAContext, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
 import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
@@ -811,7 +812,8 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "generate", model, userKeys);
+    const resolvedModel = await resolveRequestedModel(model, "generate");
+    const usageCheck = await checkAndTrackUsage(user.id, "generate", resolvedModel, userKeys);
     if (!usageCheck.allowed) {
       return usageCheck.rateLimited
         ? handleBurstRateLimited()

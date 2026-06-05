@@ -811,6 +811,7 @@ export default function GeneratePage() {
                   <ModelSelector
                     value={selectedModel}
                     onValueChange={handleModelSelectionChange}
+                    context="generate"
                   />
                 </div>
 
