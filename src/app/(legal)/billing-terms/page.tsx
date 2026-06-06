@@ -44,7 +44,7 @@ export default function BillingTermsPage() {
           </li>
           <li>
             <strong>Purchased credits</strong> — available in packages starting
-            at $1 for 150 calls. Purchased credits never expire.
+            at $1 for 100 calls. Purchased credits never expire.
           </li>
         </ul>
         <p>
@@ -58,7 +58,7 @@ export default function BillingTermsPage() {
         <h2>3. Fee Disclosure</h2>
         <div className="bg-muted/50 border rounded-lg p-4 not-prose text-sm space-y-2">
           <p>
-            <strong>Current starter package:</strong> $1.00 USD for 150 AI calls
+            <strong>Current starter package:</strong> $1.00 USD for 100 AI calls
             (one-time payment).
           </p>
           <p>

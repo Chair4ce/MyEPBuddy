@@ -11,12 +11,13 @@ export function getStripeKeyMode(secretKey: string): StripeKeyMode {
 
 export function getConfiguredCreditsPriceId(): string {
   const priceId =
+    process.env.STRIPE_PRICE_100_CREDITS ||
     process.env.STRIPE_PRICE_150_CREDITS ||
     process.env.STRIPE_STARTER_PRICE_ID;
 
   if (!priceId?.startsWith("price_")) {
     throw new Error(
-      "STRIPE_PRICE_150_CREDITS (or STRIPE_STARTER_PRICE_ID) must be set to a valid Stripe price ID",
+      "STRIPE_PRICE_100_CREDITS (or STRIPE_PRICE_150_CREDITS / STRIPE_STARTER_PRICE_ID) must be set to a valid Stripe price ID",
     );
   }
 

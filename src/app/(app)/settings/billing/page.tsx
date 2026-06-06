@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCreditsStore } from "@/stores/credits-store";
+import { CreditLedgerTable } from "@/components/settings/credit-ledger-table";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,14 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { toast } from "@/components/ui/sonner";
 import { Loader2, Sparkles, ExternalLink, Receipt } from "lucide-react";
 import {
@@ -30,23 +23,6 @@ import {
   TRIAL_CREDITS,
 } from "@/lib/billing/constants";
 
-function formatTransactionType(type: string): string {
-  switch (type) {
-    case "trial":
-      return "Trial grant";
-    case "purchase":
-      return "Purchase";
-    case "consume":
-      return "Used";
-    case "refund":
-      return "Refund";
-    case "adjustment":
-      return "Adjustment";
-    default:
-      return type;
-  }
-}
-
 export default function BillingSettingsPage() {
   const searchParams = useSearchParams();
   const {
@@ -55,7 +31,6 @@ export default function BillingSettingsPage() {
     lifetimePurchased,
     hasOwnKey,
     billingTermsAccepted,
-    recentTransactions,
     isLoading,
     isCheckoutLoading,
     setIsCheckoutLoading,
@@ -64,12 +39,14 @@ export default function BillingSettingsPage() {
   } = useCreditsStore();
 
   const [termsChecked, setTermsChecked] = useState(false);
+  const [ledgerRefreshKey, setLedgerRefreshKey] = useState(0);
 
   useEffect(() => {
     const checkout = searchParams.get("checkout");
     if (checkout === "success") {
       toast.success("Payment successful! Your credits have been added.");
       void fetchCredits();
+      setLedgerRefreshKey((key) => key + 1);
     } else if (checkout === "cancelled") {
       toast.message("Checkout cancelled.");
     }
@@ -264,44 +241,7 @@ export default function BillingSettingsPage() {
           <CardDescription>Your credit ledger (most recent first)</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentTransactions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No activity yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Change</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentTransactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {new Date(tx.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {tx.description || formatTransactionType(tx.type)}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right tabular-nums ${
-                          tx.amount > 0 ? "text-emerald-600" : "text-muted-foreground"
-                        }`}
-                      >
-                        {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {tx.balance_after}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <CreditLedgerTable refreshKey={ledgerRefreshKey} />
         </CardContent>
       </Card>
 

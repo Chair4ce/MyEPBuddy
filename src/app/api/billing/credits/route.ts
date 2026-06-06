@@ -14,8 +14,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [stats, keyStatus, profileResult, transactionsResult] =
-    await Promise.all([
+  const [stats, keyStatus, profileResult] = await Promise.all([
       getUsageStats(user.id),
       getKeyStatus(),
       (supabase as unknown as {
@@ -37,22 +36,6 @@ export async function GET() {
         .select("billing_terms_accepted_at, trial_intro_seen_at")
         .eq("id", user.id)
         .single(),
-      (supabase as unknown as {
-        from: (table: string) => {
-          select: (cols: string) => {
-            eq: (col: string, val: string) => {
-              order: (col: string, opts: { ascending: boolean }) => {
-                limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
-              };
-            };
-          };
-        };
-      })
-        .from("credit_transactions")
-        .select("id, type, amount, balance_after, action_type, description, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(20),
     ]);
 
   const hasOwnKey =
@@ -72,6 +55,5 @@ export async function GET() {
       credits: PURCHASE_CREDITS,
       priceUsd: PURCHASE_PRICE_USD,
     },
-    recentTransactions: transactionsResult.data ?? [],
   });
 }
