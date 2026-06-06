@@ -3,7 +3,8 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { 
   getUserStyleContext, 
   buildStyleGuidance, 
@@ -14,7 +15,17 @@ import type { StyleExampleCategory, WritingStyle } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
-import { resolveStoredDutyDescriptionPrompt } from "@/lib/default-llm-prompts";
+import { resolveStoredDutyDescriptionPrompt, DEFAULT_DUTY_DESCRIPTION_PROMPT } from "@/lib/default-llm-prompts";
+import {
+  appendUserRulesToPrompt,
+  resolvePromptWithRulesMode,
+} from "@/lib/prompt-rules/server";
+import { getAppFeatureFlags } from "@/lib/feature-flags/server";
+import type { AppFeatureFlags } from "@/lib/feature-flags";
+import {
+  buildEpbVerbVarietyPromptSection,
+  fetchOtherMpaStatements,
+} from "@/lib/epb-verb-variety";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -28,6 +39,9 @@ interface ReviseSelectionRequest {
   mode?: "expand" | "compress" | "general"; // expand = longer words, compress = shorter words
   context?: string; // Additional context for revision
   usedVerbs?: string[]; // Verbs already used in this cycle - avoid repeating
+  rateeId?: string;
+  cycleYear?: number;
+  excludeMpa?: string;
   aggressiveness?: number; // 0-100: how aggressively to replace words (0 = minimal, 100 = replace almost all)
   versionCount?: number; // Number of revisions to generate (default 3)
   category?: StyleExampleCategory; // MPA category for style learning
@@ -135,6 +149,7 @@ const RECOMMENDED_VERBS = [
  * no accomplishment results, no "how well" language.
  */
 function buildDutyDescriptionPrompt(
+  featureFlags: AppFeatureFlags,
   mode: "expand" | "compress" | "general",
   modeInstructions: Record<string, string>,
   aggressivenessInstructions: string,
@@ -168,7 +183,12 @@ Your goal is to improve the duty description by:
 - Target length: ~similar to original (within 20%)`,
   };
 
-  const basePrompt = resolveStoredDutyDescriptionPrompt(userCustomPrompt);
+  const basePrompt = resolvePromptWithRulesMode(
+    userCustomPrompt,
+    DEFAULT_DUTY_DESCRIPTION_PROMPT,
+    featureFlags,
+    resolveStoredDutyDescriptionPrompt,
+  );
 
   return `${basePrompt}
 
@@ -221,6 +241,7 @@ function buildStatementPrompt(
   verbsToAvoid: string[],
   availableVerbs: string[],
   versionCount: number,
+  verbVarietySection?: string,
 ): string {
   return `You are an expert Air Force writer helping to revise a portion of an award statement (AF Form 1206).
 
@@ -236,6 +257,7 @@ ${styleGuidance}
 
 ${fewShotExamples}
 
+${verbVarietySection ? `${verbVarietySection}\n` : ""}
 **BANNED VERBS - NEVER USE THESE (overused clichés):**
 ${verbsToAvoid.map(v => `- "${v}"`).join("\n")}
 
@@ -309,6 +331,9 @@ export async function POST(request: Request) {
       mode = "general", 
       context, 
       usedVerbs = [],
+      rateeId,
+      cycleYear,
+      excludeMpa,
       aggressiveness = 50,
       versionCount = 3,
       category,
@@ -333,6 +358,17 @@ export async function POST(request: Request) {
     const styleContext = await getUserStyleContext(user.id, category);
     
     // Combine banned verbs with already-used verbs for this session
+    let verbVarietySection = "";
+    if (!isDutyDescription && rateeId && cycleYear) {
+      const otherMpaStatements = await fetchOtherMpaStatements(
+        supabase,
+        rateeId,
+        cycleYear,
+        excludeMpa || category
+      );
+      verbVarietySection = buildEpbVerbVarietyPromptSection(otherMpaStatements, usedVerbs);
+    }
+
     const verbsToAvoid = [...new Set([...BANNED_VERBS, ...usedVerbs.map(v => v.toLowerCase())])];
     
     // Calculate aggressiveness instructions
@@ -390,9 +426,7 @@ export async function POST(request: Request) {
     const resolvedModel = await resolveRequestedModel(model, "generate");
     const usageCheck = await checkAndTrackUsage(user.id, "revise_selection", resolvedModel, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     // Cost reduction: force cheapest model for default-key users
@@ -483,14 +517,21 @@ Your goal is to SIGNIFICANTLY transform the selected text:
     }
 
     // Build system prompt - duty descriptions have fundamentally different writing rules
+    const featureFlags = await getAppFeatureFlags();
     let systemPrompt = isDutyDescription 
-      ? buildDutyDescriptionPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt)
-      : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount);
+      ? buildDutyDescriptionPrompt(featureFlags, mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt)
+      : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount, verbVarietySection || undefined);
 
     // Append style signature to system prompt if available
     if (styleSignatureSection) {
       systemPrompt += `\n\n${styleSignatureSection}`;
     }
+
+    systemPrompt = await appendUserRulesToPrompt(
+      systemPrompt,
+      user.id,
+      isDutyDescription ? "duty_description" : "epb",
+    );
 
     const userPrompt = `FULL STATEMENT FOR CONTEXT:
 "${fullStatement}"

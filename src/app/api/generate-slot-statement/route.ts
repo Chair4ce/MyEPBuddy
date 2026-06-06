@@ -3,10 +3,16 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
+import {
+  buildEpbVerbVarietyPromptSection,
+  fetchOtherMpaStatements,
+} from "@/lib/epb-verb-variety";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -25,6 +31,8 @@ interface GenerateSlotRequest {
   mpa: string;
   rateeRank: string;
   rateeAfsc: string;
+  rateeId?: string;
+  cycleYear?: number;
 }
 
 // Banned overused verbs
@@ -49,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     const body: GenerateSlotRequest = await request.json();
-    const { accomplishments, targetChars, model, mpa, rateeRank, rateeAfsc } = body;
+    const { accomplishments, targetChars, model, mpa, rateeRank, rateeAfsc, rateeId, cycleYear } = body;
 
     if (!accomplishments || accomplishments.length === 0) {
       return NextResponse.json({ error: "No accomplishments provided" }, { status: 400 });
@@ -71,34 +79,20 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_slot_statement", modelId, apiKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
     const modelProvider = getModelProvider(effectiveModel, apiKeys);
 
-    const systemPrompt = `You are an expert Air Force EPB statement writer. Generate ONE high-quality EPB narrative statement from the provided accomplishments.
-
-CRITICAL RULES:
-1. The statement MUST be ${targetChars} characters or LESS - this is a hard limit
-2. READABILITY IS #1 PRIORITY: Statement must be scannable in 2-3 seconds
-3. SENTENCE STRUCTURE (CRITICAL):
-   - Maximum 3-4 action clauses - NO laundry lists of 5+ actions
-   - Use PARALLEL verb structure (consistent verb tense throughout)
-   - Place the STRONGEST IMPACT at the END of the statement
-   - If it sounds like a run-on when read aloud, rewrite it more concisely
-4. If multiple accomplishments are provided, synthesize into ONE cohesive statement
-5. Preserve the most important metrics and impacts
-6. NEVER use banned verbs: ${BANNED_VERBS.map(v => `"${v}"`).join(", ")}
-7. Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated
-8. Structure: [Action] + [Scope/Details] + [BIGGEST IMPACT LAST]
-9. Do NOT use bullet points or numbered lists
-10. Do NOT end with a period (system adds one when combining)
-11. Output ONLY the statement text, no quotes or explanation
-
-CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})`;
+    let verbVarietyBlock = "";
+    if (rateeId && cycleYear) {
+      const otherMpaStatements = await fetchOtherMpaStatements(supabase, rateeId, cycleYear, mpa);
+      const verbVarietySection = buildEpbVerbVarietyPromptSection(otherMpaStatements);
+      if (verbVarietySection) {
+        verbVarietyBlock = `\n\n${verbVarietySection}\n`;
+      }
+    }
 
     const accomplishmentText = accomplishments.map((a, i) => 
       `[${i + 1}] Action: ${a.action_verb}
@@ -131,8 +125,33 @@ BAD EXAMPLE (run-on, laundry list):
 "Directed 12 Amn rebuilding 8 servers, advancing completion by 29 days, crafted assessment, fixed errors, purged data, averting outage, streamlining access"
 
 TARGET LENGTH: ${targetChars} characters maximum (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})
-
+${verbVarietyBlock}
 Output ONLY the statement (no period at the end).`;
+
+    const systemPrompt = await appendUserRulesToPrompt(
+      `You are an expert Air Force EPB statement writer. Generate ONE high-quality EPB narrative statement from the provided accomplishments.
+
+CRITICAL RULES:
+1. The statement MUST be ${targetChars} characters or LESS - this is a hard limit
+2. READABILITY IS #1 PRIORITY: Statement must be scannable in 2-3 seconds
+3. SENTENCE STRUCTURE (CRITICAL):
+   - Maximum 3-4 action clauses - NO laundry lists of 5+ actions
+   - Use PARALLEL verb structure (consistent verb tense throughout)
+   - Place the STRONGEST IMPACT at the END of the statement
+   - If it sounds like a run-on when read aloud, rewrite it more concisely
+4. If multiple accomplishments are provided, synthesize into ONE cohesive statement
+5. Preserve the most important metrics and impacts
+6. NEVER use banned verbs: ${BANNED_VERBS.map(v => `"${v}"`).join(", ")}
+7. Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered, Accelerated
+8. Structure: [Action] + [Scope/Details] + [BIGGEST IMPACT LAST]
+9. Do NOT use bullet points or numbered lists
+10. Do NOT end with a period (system adds one when combining)
+11. Output ONLY the statement text, no quotes or explanation
+
+CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})`,
+      user.id,
+      "epb",
+    );
 
     const { text } = await generateText({
       model: modelProvider,

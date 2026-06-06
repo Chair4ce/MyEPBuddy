@@ -18,7 +18,8 @@ import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
 import {
   performQualityControl,
@@ -29,6 +30,19 @@ import type { MPADescriptions, Project, ProjectStakeholder, AwardSelection } fro
 import type { Rank, WritingStyle, UserLLMSettings, MajorGradedArea, Acronym, Abbreviation } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
+import {
+  appendUserRulesToPrompt,
+  resolvePromptWithRulesMode,
+} from "@/lib/prompt-rules/server";
+import { getAppFeatureFlags } from "@/lib/feature-flags/server";
+import type { AppFeatureFlags } from "@/lib/feature-flags";
+import type { PromptRuleContext } from "@/types/database";
+import {
+  buildEpbVerbVarietyPromptSection,
+  fetchAllMpaStatements,
+  filterOtherMpaStatements,
+  type OtherMpaStatement,
+} from "@/lib/epb-verb-variety";
 
 // Allow up to 60s for LLM calls (initial generation + quality control)
 export const maxDuration = 60;
@@ -104,6 +118,8 @@ interface GenerateRequest {
       details: string;
     }[];
   }[];
+  /** When "opb", OPB user rules are applied instead of EPB rules. */
+  statementType?: "epb" | "opb";
 }
 
 // Type for clarifying questions returned by LLM
@@ -332,76 +348,6 @@ function buildProjectContextPrompt(projectContexts: ProjectContext[]): string {
   return sections.join("\n");
 }
 
-// Function to extract action verbs from existing EPB sections to avoid reuse
-async function extractUsedVerbsFromEPB(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  rateeId: string,
-  cycleYear: number,
-  currentMPA?: string // Exclude current MPA if specified
-): Promise<string[]> {
-  try {
-    // Get the current EPB shell for this ratee and cycle
-    const { data: epbShell } = await supabase
-      .from("epb_shells")
-      .select("*, sections:epb_shell_sections(mpa, statement_text)")
-      .eq("cycle_year", cycleYear)
-      .or(`user_id.eq.${rateeId},team_member_id.eq.${rateeId}`)
-      .maybeSingle();
-
-    if (!epbShell) return [];
-
-    const typedShell = epbShell as { sections: { mpa: string; statement_text: string | null }[] };
-    if (!typedShell.sections || !Array.isArray(typedShell.sections)) return [];
-
-    const usedVerbs = new Set<string>();
-
-    // Common action verbs to look for (case insensitive)
-    const actionVerbPatterns = [
-      /\b(led|directed|managed|drove|championed|pioneered|transformed|accelerated|streamlined|optimized|enhanced|elevated|strengthened|bolstered|trained|mentored|developed|coached|cultivated|empowered|resolved|eliminated|eradicated|mitigated|prevented|reduced|corrected|delivered|produced|generated|created|built|established|launched|coordinated|synchronized|integrated|unified|consolidated|aligned|analyzed|assessed|evaluated|identified|diagnosed|investigated|audited|negotiated|acquired|procured|saved|recovered|reclaimed|secured|safeguarded|protected|defended|fortified|hardened|shielded|guided|commanded|supervise|executed|performed|supported|assisted|helped|contributed|participated|maintained|operated|administered|oversaw|controlled|monitored|tracked|reported|documented|recorded|compiled|organized|prepared|planned|scheduled|arranged|facilitated|coordinated|collaborated|partnered|engaged|interacted|communicated|liaised|consulted|advised|counseled|instructed|educated|taught|demonstrated|showed|illustrated|presented|displayed|exhibited|featured|highlighted|emphasized|promoted|advocated|championed|endorsed|supported|backed|defended|upheld|sustained|maintained|preserved|protected|guarded|shielded|defended|fortified)\b/gi
-    ];
-
-    // Process each section
-    for (const section of typedShell.sections) {
-      // Skip current MPA if specified (when revising existing statement)
-      if (currentMPA && section.mpa === currentMPA) continue;
-
-      // Skip if no statement text
-      if (!section.statement_text || section.statement_text.trim().length < 10) continue;
-
-      const statementText = section.statement_text.toLowerCase();
-
-      // Extract verbs using patterns
-      for (const pattern of actionVerbPatterns) {
-        const matches = statementText.match(pattern);
-        if (matches) {
-          matches.forEach((match: string) => {
-            // Normalize verb (remove 'ed' endings for base form, but keep simple for now)
-            const verb = match.toLowerCase();
-            usedVerbs.add(verb);
-          });
-        }
-      }
-
-      // Also extract verbs that start sentences or major clauses
-      const sentenceStarters = statementText.match(/^([a-z]+)\s+/gm) || [];
-      sentenceStarters.forEach((match: string) => {
-        const verb = match.trim().toLowerCase();
-        if (verb.length > 2 && !['the', 'and', 'but', 'for', 'nor', 'yet', 'so', 'although', 'because', 'since', 'while'].includes(verb)) {
-          usedVerbs.add(verb);
-        }
-      });
-    }
-
-    // Convert to array and limit to most relevant verbs (avoid overwhelming the prompt)
-    const verbArray = Array.from(usedVerbs);
-    return verbArray.slice(0, 15); // Limit to top 15 most used verbs
-
-  } catch (error) {
-    console.warn("Error extracting used verbs from EPB:", error);
-    return [];
-  }
-}
-
 // Default settings if user hasn't configured their own
 const DEFAULT_SETTINGS: Partial<UserLLMSettings> = {
   max_characters_per_statement: 350,
@@ -528,6 +474,7 @@ async function fetchExampleStatements(
 }
 
 function buildSystemPrompt(
+  featureFlags: AppFeatureFlags,
   settings: Partial<UserLLMSettings>,
   rateeRank: Rank,
   examples: ExampleStatement[],
@@ -553,7 +500,12 @@ function buildSystemPrompt(
   // Build rank verb guidance
   const rankVerbGuidance = `Primary verbs: ${rankVerbs.primary.join(", ")}\n  Secondary verbs: ${rankVerbs.secondary.join(", ")}`;
 
-  let prompt = resolveStoredSystemPrompt(settings.base_system_prompt);
+  let prompt = resolvePromptWithRulesMode(
+    settings.base_system_prompt,
+    DEFAULT_EPB_SYSTEM_PROMPT,
+    featureFlags,
+    resolveStoredSystemPrompt,
+  );
   // Always use hardcoded MAX_STATEMENT_CHARACTERS (350) - user settings deprecated
   prompt = prompt.replace(
     /\{\{max_characters_per_statement\}\}/g,
@@ -568,7 +520,12 @@ function buildSystemPrompt(
   prompt = prompt.replace(/\{\{mga_list\}\}/g, mgaList);
   prompt = prompt.replace(
     /\{\{style_guidelines\}\}/g,
-    resolveStoredStyleGuidelines(settings.style_guidelines)
+    resolvePromptWithRulesMode(
+      settings.style_guidelines,
+      DEFAULT_EPB_STYLE_GUIDELINES,
+      featureFlags,
+      resolveStoredStyleGuidelines,
+    ),
   );
   prompt = prompt.replace(/\{\{acronyms_list\}\}/g, acronymsList);
   prompt = prompt.replace(/\{\{abbreviations_list\}\}/g, abbreviationsList);
@@ -629,7 +586,8 @@ export async function POST(request: Request) {
       customContext, customContextOptions, generatePerAccomplishment, dutyDescription, 
       epbStatements, fillToMax = true, enforceCharacterLimits: shouldEnforceCharLimits = true,
       clarifyingContext, requestClarifyingQuestions = true,
-      projectContext
+      projectContext, usedVerbs: sessionUsedVerbs = [],
+      statementType = "epb",
     } = body;
 
     // Either accomplishments, customContext, or epbStatements must be provided
@@ -691,9 +649,7 @@ export async function POST(request: Request) {
     const resolvedModel = await resolveRequestedModel(model, "generate");
     const usageCheck = await checkAndTrackUsage(user.id, "generate", resolvedModel, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     // Cost reduction: force cheapest model for default-key users
@@ -807,7 +763,22 @@ export async function POST(request: Request) {
     }
     // For "community" style: no signature injection, rely on community examples
 
-    const systemPrompt = buildSystemPrompt(settings, rateeRank, examples, dutyDescription, styleSignatureSection);
+    const featureFlags = await getAppFeatureFlags();
+
+    const rulesContext: PromptRuleContext =
+      statementType === "opb" ? "opb" : "epb";
+    const systemPrompt = await appendUserRulesToPrompt(
+      buildSystemPrompt(
+        featureFlags,
+        settings,
+        rateeRank,
+        examples,
+        dutyDescription,
+        styleSignatureSection,
+      ),
+      user.id,
+      rulesContext,
+    );
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     // Group accomplishments by MPA (only if not using custom context)
@@ -831,6 +802,11 @@ export async function POST(request: Request) {
     const mpasToGenerate = selectedMPAs && selectedMPAs.length > 0 
       ? STANDARD_MGAS.filter(mpa => selectedMPAs.includes(mpa.key))
       : STANDARD_MGAS;
+
+    // Fetch the ratee's existing MPA statements ONCE for cross-MPA verb variety.
+    // Filtered per-MPA in memory below to avoid one query per MPA in the loop.
+    const allMpaStatements =
+      rateeId && cycleYear ? await fetchAllMpaStatements(supabase, rateeId, cycleYear) : [];
 
     // Generate statements for each selected MPA
     for (const mpa of mpasToGenerate) {
@@ -914,11 +890,21 @@ Examples: "contributed to Gp annual team award" or "efforts drove team to secure
           awardContextBlock = `\n=== AWARDS & RECOGNITION ===\nThe member received the following awards/recognition. If relevant to this accomplishment, naturally mention them as evidence of performance or impact:\n${awardLines}\n${instructionsBlock}\nOnly reference awards that relate to the accomplishment. Integrate naturally (e.g., "...earning a Gp qtr award" or "...efforts recognized with a 83 NOS/CC coin"). Do NOT force-fit unrelated awards.\n`;
         }
       }
+
+      let otherMpaStatements: OtherMpaStatement[] = [];
+      const hlrUsesEpbStatements = isHLR && hasEPBStatements;
+      if (hlrUsesEpbStatements) {
+        otherMpaStatements = epbStatements!;
+      } else {
+        otherMpaStatements = filterOtherMpaStatements(allMpaStatements, mpa.key);
+      }
+      const verbVarietySection = buildEpbVerbVarietyPromptSection(otherMpaStatements, sessionUsedVerbs, {
+        statementsAlreadyInPrompt: hlrUsesEpbStatements,
+      });
+      const verbVarietyBlock = verbVarietySection ? `\n\n${verbVarietySection}\n` : "";
       
       if (hasCustomContext) {
         // Custom context mode - use the raw text as source material
-        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
-        const usedVerbsCustom = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
 
         // Get options with defaults
         const stmtCount = customContextOptions?.statementCount || 1;
@@ -1095,7 +1081,7 @@ VERB VARIETY (CRITICAL - MUST FOLLOW):
 - If generating 3 versions, use 3 DIFFERENT starting verbs (e.g., Led, Drove, Championed)
 - For two-sentence statements, EACH SENTENCE must also use a different verb
 - NO verb repetition within or across statements!
-- Good variety pool: Led, Drove, Championed, Transformed, Pioneered, Modernized, Accelerated, Streamlined, Optimized, Secured, Fortified, Trained, Mentored, Delivered, Produced, Coordinated, Resolved, Eliminated${usedVerbsCustom.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsCustom.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
+- Good variety pool: Led, Drove, Championed, Transformed, Pioneered, Modernized, Accelerated, Streamlined, Optimized, Secured, Fortified, Trained, Mentored, Delivered, Produced, Coordinated, Resolved, Eliminated
 
 RELEVANCY: Rate how well this accomplishment fits "${mpa.label}" on a scale of 0-100.
 
@@ -1144,7 +1130,7 @@ STRUCTURE:
 [Stratification/ranking] + [Unique value from input] + [PROMOTION PUSH to next rank]
 
 BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
-BANNED WORDS: "my", "I", "me"${usedVerbsCustom.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsCustom.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
+BANNED WORDS: "my", "I", "me"
 
 Format as JSON array:
 ["Rewritten HLR statement"]`;
@@ -1187,7 +1173,7 @@ Use alternatives: Led, Drove, Championed, Transformed, Pioneered, Accelerated, S
 
 BANNED FORMATTING: "w/ " (use "with"), "--" (use commas), ";" (use commas/periods)
 
-VERB VARIETY (CRITICAL): Each statement MUST start with a DIFFERENT action verb. NO repeating verbs!${usedVerbsCustom.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsCustom.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
+VERB VARIETY (CRITICAL): Each statement MUST start with a DIFFERENT action verb. NO repeating verbs!
 
 RELEVANCY: Rate how well this accomplishment fits "${mpa.label}" on a scale of 0-100.
 
@@ -1274,8 +1260,6 @@ Format as JSON array only:
 ["Statement 1", "Statement 2", "Statement 3"]`;
       } else if (isHLR) {
         // HLR-specific prompt - holistic assessment (from accomplishments)
-        // Extract verbs from existing EPB sections to avoid reuse (exclude HLR itself)
-        const usedVerbsHLR = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
 
         // Build rank-appropriate promotion push language
         const promotionLanguage = {
@@ -1344,7 +1328,7 @@ BAD EXAMPLES:
 "Top performer, promote now." (too generic, no rank-specific push)
 
 BANNED: "Spearheaded", "Orchestrated", "Synergized", "Leveraged", "Facilitated"
-BANNED WORDS: "my", "I", "me" (first-person pronouns)${usedVerbsHLR.length > 0 ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsHLR.join(", ")}\nUse different action verbs to maintain variety across the EPB.` : ""}
+BANNED WORDS: "my", "I", "me" (first-person pronouns)
 
 Generate EXACTLY 2-3 statements. Each must END with a specific promotion push to the next higher rank.
 
@@ -1357,15 +1341,8 @@ Format as JSON array only:
         const allHistoryIds: string[] = [];
         const accomplishmentSources: { index: number; actionVerb: string; details: string }[] = [];
 
-        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
-        const usedVerbsPerAcc = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
-
         for (let accIdx = 0; accIdx < mpaAccomplishments.length; accIdx++) {
           const acc = mpaAccomplishments[accIdx];
-
-        const verbAvoidanceInstruction = usedVerbsPerAcc.length > 0
-          ? `\n\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsPerAcc.join(", ")}\nUse different action verbs to maintain variety across the EPB.`
-          : "";
 
           const perAccPrompt = `Generate ONE HIGH-QUALITY EPB narrative statement for the "${mpa.label}" Major Performance Area.
 
@@ -1407,7 +1384,7 @@ Use alternatives: Led, Drove, Championed, Transformed, Pioneered, Accelerated, S
 
 BANNED FORMATTING: "w/ " (use "with"), "--" (use commas), ";" (use commas/periods)
 
-VERB VARIETY: Use a unique, strong action verb. Avoid common/overused verbs like "Directed", "Managed", "Established".${verbAvoidanceInstruction}
+VERB VARIETY: Use a unique, strong action verb. Avoid common/overused verbs like "Directed", "Managed", "Established".${verbVarietyBlock}
 
 Output ONLY the statement text, no quotes or JSON.`;
 
@@ -1467,8 +1444,6 @@ Output ONLY the statement text, no quotes or JSON.`;
         continue; // Skip the normal generation flow below
       } else {
         // Regular MPA prompt - combine accomplishments into 2-3 statement VERSIONS
-        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
-        const usedVerbsRegular = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
 
         // Get abbreviations for injection into user prompt
         const userAbbreviations = settings.abbreviations || [];
@@ -1494,12 +1469,6 @@ Output ONLY the statement text, no quotes or JSON.`;
         // Set the per-statement target for QC
         perStatementCharTarget = perStatementTarget;
         isMultiStatementGeneration = isMultiAccomplishment;
-
-        // Extract verbs from existing EPB sections to avoid reuse (exclude current MPA)
-        const usedVerbs = await extractUsedVerbsFromEPB(supabase, rateeId, cycleYear, mpa.key);
-        const verbAvoidanceInstruction = usedVerbsRegular.length > 0
-          ? `\n**AVOID THESE VERBS (already used in other MPAs):** ${usedVerbsRegular.join(", ")}\nUse different action verbs to maintain variety across the EPB.`
-          : "";
 
         userPrompt = `Generate EPB narrative statements for "${mpa.label}".
 
@@ -1552,7 +1521,7 @@ ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 3. ONE sentence per accomplishment
 4. Abbreviations: hrs, mos, wks, sq, &
 5. BANNED: Spearheaded, Orchestrated, Synergized, Leveraged, "w/", "--", ";"
-6. Different starting verb for each statement${verbAvoidanceInstruction}
+6. Different starting verb for each statement
 
 **ALLOWED ABBREVIATIONS (only these are permitted):**
 - TIME: "hours" → "hrs", "months" → "mos", "weeks" → "wks", "days" → "days"
@@ -1571,6 +1540,9 @@ ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 
       // Inject clarifying context from previous generation (if user provided answers)
       let finalPrompt = userPrompt;
+      if (verbVarietyBlock) {
+        finalPrompt = `${finalPrompt}${verbVarietyBlock}`;
+      }
       if (clarifyingContext && clarifyingContext.trim().length > 0) {
         finalPrompt = `${userPrompt}
 

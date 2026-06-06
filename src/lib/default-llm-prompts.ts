@@ -108,6 +108,7 @@ When generating multiple statement versions:
 - Version 1, Version 2, and Version 3 MUST each start with a DIFFERENT verb
 - For two-sentence statements, each sentence MUST use a different verb
 - NEVER repeat the same starting verb across versions
+- When other MPA statements are provided in the user prompt, you MUST use verbs NOT already used in those statements — cross-MPA verb repetition makes the entire EPB sound templated
 
 BANNED VERBS - NEVER USE THESE (overused clichés that make all EPBs sound the same):
 - "Spearheaded" - THE most overused verb in Air Force history

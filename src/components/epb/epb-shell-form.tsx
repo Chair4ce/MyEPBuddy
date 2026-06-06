@@ -1944,6 +1944,9 @@ export function EPBShellForm({
           writingStyle,
           rateeRank: selectedRatee?.rank,
           rateeAfsc: selectedRatee?.afsc,
+          rateeId: selectedRatee?.id,
+          cycleYear: currentShell?.cycle_year ?? workspaceCycleYear,
+          excludeMpa: mpa,
         }),
       });
 

@@ -244,9 +244,11 @@ export function StatementSelectionWorkspace({
             })),
             targetChars: charPerSlot,
             model,
-            mpa: "executing_mission", // Generic MPA for prompt
+            mpa: workspaceState?.selectedMPA || "executing_mission",
             rateeRank: rateeInfo?.rank || "SSgt",
             rateeAfsc: rateeInfo?.afsc || "UNKNOWN",
+            rateeId: rateeInfo?.id,
+            cycleYear,
           }),
         });
         
@@ -272,9 +274,11 @@ export function StatementSelectionWorkspace({
             })),
             targetChars: charPerSlot,
             model,
-            mpa: "executing_mission",
+            mpa: workspaceState?.selectedMPA || "executing_mission",
             rateeRank: rateeInfo?.rank || "SSgt",
             rateeAfsc: rateeInfo?.afsc || "UNKNOWN",
+            rateeId: rateeInfo?.id,
+            cycleYear,
           }),
         });
         
@@ -330,6 +334,12 @@ export function StatementSelectionWorkspace({
           model,
           mode: "general",
           context: "Rewrite this EPB statement with fresh verbs and improved flow.",
+          rateeId: rateeInfo?.id,
+          cycleYear,
+          excludeMpa: workspaceState.selectedMPA || undefined,
+          category: workspaceState.selectedMPA || undefined,
+          rateeRank: rateeInfo?.rank || undefined,
+          rateeAfsc: rateeInfo?.afsc || undefined,
         }),
       });
       
