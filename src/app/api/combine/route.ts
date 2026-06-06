@@ -4,10 +4,12 @@ import { NextResponse } from "next/server";
 import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import type { Rank, UserLLMSettings } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -73,9 +75,7 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "combine", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
@@ -206,6 +206,8 @@ Generate EXACTLY 3 different combined versions, each within ${maxCharacters} cha
 Format as JSON array only:
 ["Combined version 1", "Combined version 2", "Combined version 3"]`;
     }
+
+    systemPrompt = await appendUserRulesToPrompt(systemPrompt, user.id, "epb");
 
     const { text } = await generateText({
       model: modelProvider,

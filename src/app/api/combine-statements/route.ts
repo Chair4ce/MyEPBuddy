@@ -3,10 +3,12 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -54,15 +56,14 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "combine_statements", modelId, apiKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
     const modelProvider = getModelProvider(effectiveModel, apiKeys);
 
-    const systemPrompt = `You are an expert Air Force EPB statement writer. Your task is to combine multiple performance statements into ONE cohesive, high-quality statement.
+    const systemPrompt = await appendUserRulesToPrompt(
+      `You are an expert Air Force EPB statement writer. Your task is to combine multiple performance statements into ONE cohesive, high-quality statement.
 
 RULES:
 1. The combined statement MUST be ${targetChars} characters or less
@@ -78,7 +79,10 @@ RULES:
 7. Use alternatives: Led, Directed, Drove, Championed, Transformed, Pioneered
 8. Format: [Action] + [Scope/Details] + [BIGGEST IMPACT LAST]
 9. Do NOT use bullet points or numbered lists
-10. Output ONLY the combined statement text, no quotes or explanation`;
+10. Output ONLY the combined statement text, no quotes or explanation`,
+      user.id,
+      "epb",
+    );
 
     const userPrompt = `Combine these ${statements.length} EPB statements into ONE statement of ${targetChars} characters or less:
 

@@ -3,12 +3,14 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -126,9 +128,7 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "assess_epb", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
@@ -148,9 +148,15 @@ export async function POST(request: Request) {
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     // Generate the assessment
+    const systemPrompt = await appendUserRulesToPrompt(
+      `You are an expert Air Force performance evaluator. You assess EPB statements using the official ACA (Airman Comprehensive Assessment) rubric from AF Form 931 (for AB through TSgt) or AF Form 932 (for MSgt through SMSgt). Respond only with valid JSON.`,
+      user.id,
+      "assessment",
+    );
+
     const { text } = await generateText({
       model: modelProvider,
-      system: `You are an expert Air Force performance evaluator. You assess EPB statements using the official ACA (Airman Comprehensive Assessment) rubric from AF Form 931 (for AB through TSgt) or AF Form 932 (for MSgt through SMSgt). Respond only with valid JSON.`,
+      system: systemPrompt,
       prompt: assessmentPrompt,
       temperature: 0.3, // Lower temperature for more consistent evaluations
       maxOutputTokens: 4000,

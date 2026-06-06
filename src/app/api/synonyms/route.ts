@@ -3,9 +3,12 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
+import type { PromptRuleContext } from "@/types/database";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -45,9 +48,7 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "synonyms", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
@@ -71,7 +72,14 @@ export async function POST(request: Request) {
 
     const docType = documentTypes[context] || documentTypes.epb;
 
-    const systemPrompt = `You are an expert military writing assistant specializing in Air Force performance and recognition documents. Your task is to suggest context-appropriate synonyms for a specific word within a ${docType.name}.
+    const rulesContext: PromptRuleContext =
+      context === "award"
+        ? "award"
+        : context === "decoration"
+          ? "decoration"
+          : "epb";
+    const systemPrompt = await appendUserRulesToPrompt(
+      `You are an expert military writing assistant specializing in Air Force performance and recognition documents. Your task is to suggest context-appropriate synonyms for a specific word within a ${docType.name}.
 
 GUIDELINES:
 1. **ANALYZE THE FULL CONTEXT** - Read the entire statement to understand how the word is used
@@ -88,7 +96,10 @@ GUIDELINES:
 6. Keep suggestions concise (preferably single words, short phrases only if needed)
 7. Order suggestions from MOST relevant/impactful to least
 
-IMPORTANT: Return ONLY a JSON array of 10-15 synonyms/alternatives.`;
+IMPORTANT: Return ONLY a JSON array of 10-15 synonyms/alternatives.`,
+      user.id,
+      rulesContext,
+    );
 
     const userPrompt = `Find synonyms for the word "${word}" in this ${docType.name}:
 

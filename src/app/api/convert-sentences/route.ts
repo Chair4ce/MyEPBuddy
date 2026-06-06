@@ -3,9 +3,11 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -32,15 +34,14 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "convert_sentences", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 
-    const systemPrompt = `You are an expert Air Force writer specializing in award nominations on AF Form 1206.
+    const systemPrompt = await appendUserRulesToPrompt(
+      `You are an expert Air Force writer specializing in award nominations on AF Form 1206.
 
 **CRITICAL FORMAT REQUIREMENTS:**
 1. EVERY statement MUST begin with "- " (dash space) followed by the statement text
@@ -75,7 +76,10 @@ When EXPANDING (2→3 sentences):
 - Add more specific context
 - Elaborate on cascading impacts
 - Include additional metrics or scope
-- Add mission/strategic connection`;
+- Add mission/strategic connection`,
+      user.id,
+      "award",
+    );
 
     const userPrompt = `Convert the following AF Form 1206 statement to EXACTLY ${targetSentences} sentences.
 

@@ -3,9 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 export const maxDuration = 60;
 
@@ -48,9 +50,7 @@ export async function POST(req: NextRequest) {
   // Usage tracking — enforce weekly limit for default-key users
   const usageCheck = await checkAndTrackUsage(user.id, "adapt_sentence", model, userKeys);
   if (!usageCheck.allowed) {
-    return usageCheck.rateLimited
-      ? handleBurstRateLimited()
-      : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+    return enforceUsageGate(usageCheck);
   }
 
   const effectiveModel = usageCheck.effectiveModel;
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   const charsToTrim = needsTrimming ? currentLength - targetMax : 0;
   const availableSpace = !needsTrimming ? targetMax - currentLength : 0;
 
-  const systemPrompt = `You are an expert military performance report writer specializing in Air Force EPBs (Enlisted Performance Briefs). Your task is to adapt two sentences to fit within a specific character limit while preserving the meaning and impact.
+  const baseSystemPrompt = `You are an expert military performance report writer specializing in Air Force EPBs (Enlisted Performance Briefs). Your task is to adapt two sentences to fit within a specific character limit while preserving the meaning and impact.
 
 CRITICAL RULES:
 1. The combined result MUST be ${targetMax} characters or less (currently ${currentLength} chars)
@@ -77,6 +77,12 @@ ABBREVIATION GUIDANCE:
 - Use standard abbreviations: Amn, NCO, msn, ops, trng, mgmt, maint, sys, etc.
 - Remove unnecessary words like "the", "a", "an" where appropriate
 - Combine similar concepts when possible`;
+
+  const systemPrompt = await appendUserRulesToPrompt(
+    baseSystemPrompt,
+    user.id,
+    "epb",
+  );
 
   const userPrompt = `Adapt these two sentences to fit within ${targetMax} characters for the "${mpaContext}" MPA section:
 

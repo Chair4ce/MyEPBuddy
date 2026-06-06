@@ -3,7 +3,8 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { buildDecorationSystemPrompt, expandAbbreviations } from "@/lib/decoration-prompts";
 import type { DecorationAwardType, DecorationReason } from "@/lib/decoration-constants";
 import { DECORATION_TYPES } from "@/lib/decoration-constants";
@@ -11,6 +12,9 @@ import type { UserLLMSettings } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
+import { isPromptRulesMode } from "@/lib/feature-flags";
+import { getAppFeatureFlags } from "@/lib/feature-flags/server";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 /** Format "2025-02-26" → "26 February 2025" for citation display */
 function formatCitationDate(dateStr: string | undefined): string {
@@ -125,9 +129,7 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_decoration", modelId, apiKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
@@ -148,10 +150,14 @@ export async function POST(request: Request) {
       ? decorationAbbrevs.map(a => `"${a.word}" → "${a.abbreviation}"`).join(", ")
       : "";
     
-    // Build system prompt - use user's custom decoration prompt if available
+    // Build system prompt - use canonical default in rules mode
     let systemPrompt: string;
-    
-    if (userSettings?.decoration_system_prompt) {
+    const featureFlags = await getAppFeatureFlags();
+    const useCustomDecorationPrompt =
+      !isPromptRulesMode(featureFlags) &&
+      Boolean(userSettings?.decoration_system_prompt);
+
+    if (useCustomDecorationPrompt && userSettings?.decoration_system_prompt) {
       // User has a custom decoration prompt - apply placeholder replacements
       const rankVerbs = userSettings.rank_verb_progression?.[body.rateeRank as keyof typeof userSettings.rank_verb_progression] || {
         primary: ["Led", "Managed"],
@@ -193,10 +199,12 @@ export async function POST(request: Request) {
         approvedAbbreviations: abbreviationsText,
       });
     }
+
+    systemPrompt = await appendUserRulesToPrompt(systemPrompt, user.id, "decoration");
     
     // Build user prompt with ratee details and accomplishments
     const assignmentLine = buildAssignmentLine(body);
-    const userPrompt = userSettings?.decoration_system_prompt
+    const userPrompt = useCustomDecorationPrompt
       ? `Generate a ${decorationConfig.name} (${decorationConfig.abbreviation}) citation.
 
 ## RATEE INFORMATION

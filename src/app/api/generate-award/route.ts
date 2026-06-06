@@ -4,11 +4,15 @@ import { NextResponse } from "next/server";
 import { AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import type { Rank, UserLLMSettings, AwardLevel, AwardCategory, AwardSentencesPerCategory, WinLevel } from "@/types/database";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { resolvePromptWithRulesMode, appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
+import { getAppFeatureFlags } from "@/lib/feature-flags/server";
+import type { AppFeatureFlags } from "@/lib/feature-flags";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -195,6 +199,7 @@ const DEFAULT_AWARD_SETTINGS = {
 };
 
 function buildAwardSystemPrompt(
+  featureFlags: AppFeatureFlags,
   settings: Partial<UserLLMSettings>,
   nomineeRank: Rank
 ): string {
@@ -212,14 +217,24 @@ function buildAwardSystemPrompt(
 
   const rankVerbGuidance = `Primary verbs: ${rankVerbs.primary.join(", ")}\nSecondary verbs: ${rankVerbs.secondary.join(", ")}`;
 
-  const styleGuidelines = settings.award_style_guidelines || DEFAULT_AWARD_SETTINGS.award_style_guidelines;
+  const styleGuidelines = resolvePromptWithRulesMode(
+    settings.award_style_guidelines,
+    DEFAULT_AWARD_SETTINGS.award_style_guidelines,
+    featureFlags,
+    (stored) => (stored?.trim() ? stored! : DEFAULT_AWARD_SETTINGS.award_style_guidelines),
+  );
 
   const acronyms = settings.acronyms || [];
   const acronymsList = acronyms.length > 0
     ? acronyms.map(a => `${a.acronym} = ${a.definition}`).join(", ")
     : "Use standard AF acronyms as appropriate.";
 
-  let prompt = settings.award_system_prompt || DEFAULT_AWARD_PROMPT;
+  let prompt = resolvePromptWithRulesMode(
+    settings.award_system_prompt,
+    DEFAULT_AWARD_PROMPT,
+    featureFlags,
+    (stored) => (stored?.trim() ? stored! : DEFAULT_AWARD_PROMPT),
+  );
   prompt = prompt.replace(/\{\{ratee_rank\}\}/g, nomineeRank);
   prompt = prompt.replace(/\{\{primary_verbs\}\}/g, rankVerbs.primary.join(", "));
   prompt = prompt.replace(/\{\{rank_verb_guidance\}\}/g, rankVerbGuidance);
@@ -464,13 +479,16 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_award", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const systemPrompt = buildAwardSystemPrompt(settings, nomineeRank);
+    const featureFlags = await getAppFeatureFlags();
+    const systemPrompt = await appendUserRulesToPrompt(
+      buildAwardSystemPrompt(featureFlags, settings, nomineeRank),
+      user.id,
+      "award",
+    );
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 
     // Fetch user-curated award examples

@@ -4,10 +4,14 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { isPromptRulesMode } from "@/lib/feature-flags";
+import { getAppFeatureFlags } from "@/lib/feature-flags/server";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -197,16 +201,22 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "generate_war", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
     const modelProvider = getModelProvider(effectiveModel, userKeys);
 
-    // Build the prompt
-    const prompt = buildWARPrompt(entries, categories, synthesisInstructions);
+    // Build the prompt — legacy synthesis instructions are replaced by WAR rules in rules mode
+    const featureFlags = await getAppFeatureFlags();
+    const effectiveSynthesisInstructions = isPromptRulesMode(featureFlags)
+      ? null
+      : synthesisInstructions;
+    const prompt = await appendUserRulesToPrompt(
+      buildWARPrompt(entries, categories, effectiveSynthesisInstructions),
+      user.id,
+      "war",
+    );
 
     // Generate the WAR
     const { text } = await generateText({

@@ -3,7 +3,8 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { 
   DEFAULT_MPA_DESCRIPTIONS, 
   ENTRY_MGAS,
@@ -18,6 +19,7 @@ import type { AccomplishmentAssessmentScores } from "@/types/database";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -259,23 +261,25 @@ export async function POST(request: Request) {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "assess_accomplishment", modelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
 
     // Build the assessment prompt with rank-appropriate ACA rubric
-    const assessmentPrompt = buildAccomplishmentAssessmentPrompt(
-      {
-        action_verb: accomplishment.action_verb,
-        details: accomplishment.details,
-        impact: accomplishment.impact,
-        metrics: accomplishment.metrics,
-        mpa: accomplishment.mpa,
-      },
-      profile?.rank || null
+    const assessmentPrompt = await appendUserRulesToPrompt(
+      buildAccomplishmentAssessmentPrompt(
+        {
+          action_verb: accomplishment.action_verb,
+          details: accomplishment.details,
+          impact: accomplishment.impact,
+          metrics: accomplishment.metrics,
+          mpa: accomplishment.mpa,
+        },
+        profile?.rank || null
+      ),
+      user.id,
+      "assessment",
     );
 
     // Get model provider

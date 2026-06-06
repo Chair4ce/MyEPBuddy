@@ -3,10 +3,12 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -218,14 +220,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Usage tracking — enforce weekly limit for default-key users
     const usageCheck = await checkAndTrackUsage(user.id, "feedback_apply", feedbackModelId, userKeys);
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const feedbackModel = getModelProvider(usageCheck.effectiveModel, userKeys);
 
-    const systemPrompt = `You are a SURGICAL text editor. Apply ONE specific change to a document.
+    const systemPrompt = await appendUserRulesToPrompt(
+      `You are a SURGICAL text editor. Apply ONE specific change to a document.
 
 RULES:
 1. Find the EXACT text to modify
@@ -241,7 +242,10 @@ CRITICAL:
 
 OUTPUT FORMAT (valid JSON only):
 If found: {"success": true, "newText": "<entire document with change applied>"}
-If NOT found: {"success": false, "aborted": true, "reason": "<why you cannot find the text>"}`;
+If NOT found: {"success": false, "aborted": true, "reason": "<why you cannot find the text>"}`,
+      user.id,
+      "epb",
+    );
 
     const actionDescription = suggestionType === "delete"
       ? `DELETE: "${highlightedText}"`

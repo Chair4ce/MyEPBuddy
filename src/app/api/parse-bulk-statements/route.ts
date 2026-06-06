@@ -3,13 +3,15 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError, handleUsageLimitExceeded, handleBurstRateLimited } from "@/lib/llm-error-handler";
+import { handleLLMError } from "@/lib/llm-error-handler";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -170,9 +172,7 @@ export async function POST(request: Request) {
       userKeys,
     );
     if (!usageCheck.allowed) {
-      return usageCheck.rateLimited
-        ? handleBurstRateLimited()
-        : handleUsageLimitExceeded(usageCheck.weeklyUsed, usageCheck.weeklyLimit);
+      return enforceUsageGate(usageCheck);
     }
 
     const effectiveModel = usageCheck.effectiveModel;
@@ -181,7 +181,11 @@ export async function POST(request: Request) {
     const llmModel = getModelProvider(effectiveModel, userKeys);
 
     // Build the parsing prompt
-    const systemPrompt = buildParsingPrompt(mpaDetectionMode, manualMpa);
+    const systemPrompt = await appendUserRulesToPrompt(
+      buildParsingPrompt(mpaDetectionMode, manualMpa),
+      user.id,
+      "epb",
+    );
 
     // Call the LLM to parse statements
     const { text: llmResponse } = await generateText({
