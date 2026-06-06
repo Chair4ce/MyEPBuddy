@@ -55,6 +55,7 @@ export async function updateSession(request: NextRequest) {
     "/auth/callback",
     "/privacy",
     "/terms",
+    "/billing-terms",
   ];
   const isPublicPath = publicPaths.some(
     (path) =>
@@ -62,6 +63,11 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith("/auth/") ||
       request.nextUrl.pathname.startsWith("/review/")
   );
+
+  // API routes enforce their own auth (webhooks, cron, etc.)
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
 
   if (!user && !isPublicPath) {
     // No user, redirect to login page

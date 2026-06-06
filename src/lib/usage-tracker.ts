@@ -1,25 +1,18 @@
 /**
  * API Usage Tracker
  *
- * Enforces per-user weekly limits when the app's default API key is used.
- * Users with their own API key for the relevant provider are unlimited.
+ * Default-key users consume prepaid AI call credits (100 trial, then purchasable).
+ * BYOK users (own API key) are unlimited and never consume credits.
  *
- * One "billable action" = one user-initiated click (generate, revise, assess, etc.).
- * Internal sub-calls (QC passes, per-accomplishment loops, style signatures)
- * are NOT counted separately.
+ * One billable action = one user-initiated click.
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
+import { TRIAL_CREDITS } from "@/lib/billing/constants";
 import { isUsingDefaultKey, detectProvider } from "@/lib/llm-provider";
 import type { DecryptedApiKeys } from "@/app/actions/api-keys";
 
-const WEEKLY_LIMIT = 20;
-
-/**
- * Cheapest model forced for users on the app's default API key.
- * Keeps per-request cost minimal (~$0.001 vs ~$0.01+ for premium models).
- */
 export const DEFAULT_KEY_MODEL = DEFAULT_APP_MODEL_ID;
 
 export type BillableAction =
@@ -44,22 +37,14 @@ export interface UsageCheckResult {
   allowed: boolean;
   usingDefaultKey: boolean;
   effectiveModel: string;
-  weeklyUsed: number;
-  weeklyLimit: number;
-  remainingThisWeek: number;
+  creditsRemaining?: number;
+  creditsBalance?: number;
+  lifetimeConsumed?: number;
+  trialCredits?: number;
   rateLimited?: boolean;
+  insufficientCredits?: boolean;
 }
 
-/**
- * Checks whether the user is within their weekly limit (if on the default key)
- * and records the action atomically. Returns usage stats the client can display.
- *
- * Uses a Postgres RPC that serializes concurrent requests via row-level locks
- * to prevent race-condition bypasses of the weekly limit.
- *
- * Call this ONCE at the top of each API route, before the LLM call.
- * If `allowed` is false, return a 429 immediately.
- */
 export async function checkAndTrackUsage(
   userId: string,
   action: BillableAction,
@@ -71,64 +56,83 @@ export async function checkAndTrackUsage(
   const provider = detectProvider(effectiveModel);
   const supabase = await createClient();
 
-  const { data: countAfter, error } = await (supabase.rpc as Function)(
-    "check_and_record_usage",
-    {
-      p_user_id: userId,
-      p_action_type: action,
-      p_used_default_key: usingDefault,
-      p_model_id: effectiveModel,
-      p_provider: provider,
-      p_weekly_limit: WEEKLY_LIMIT,
-    },
-  ) as { data: number | null; error: { message: string } | null };
-
-  if (error) {
-    console.error("[usage-tracker] RPC error:", error.message);
-    return {
-      allowed: !usingDefault,
-      usingDefaultKey: usingDefault,
-      effectiveModel,
-      weeklyUsed: usingDefault ? WEEKLY_LIMIT : 0,
-      weeklyLimit: WEEKLY_LIMIT,
-      remainingThisWeek: 0,
-    };
-  }
-
-  const countResult = countAfter ?? 0;
-
-  // -1 = burst rate limit hit (too many actions in 60 seconds)
-  if (countResult === -1) {
-    return {
-      allowed: false,
-      usingDefaultKey: usingDefault,
-      effectiveModel,
-      weeklyUsed: 0,
-      weeklyLimit: WEEKLY_LIMIT,
-      remainingThisWeek: 0,
-      rateLimited: true,
-    };
-  }
-
   if (!usingDefault) {
+    const { data: countAfter, error } = await (supabase.rpc as Function)(
+      "check_and_record_usage",
+      {
+        p_user_id: userId,
+        p_action_type: action,
+        p_used_default_key: false,
+        p_model_id: effectiveModel,
+        p_provider: provider,
+        p_weekly_limit: TRIAL_CREDITS,
+      },
+    ) as { data: number | null; error: { message: string } | null };
+
+    if (error) {
+      console.error("[usage-tracker] BYOK RPC error:", error.message);
+      return {
+        allowed: true,
+        usingDefaultKey: false,
+        effectiveModel,
+      };
+    }
+
+    if (countAfter === -1) {
+      return {
+        allowed: false,
+        usingDefaultKey: false,
+        effectiveModel,
+        rateLimited: true,
+      };
+    }
+
     return {
       allowed: true,
       usingDefaultKey: false,
       effectiveModel,
-      weeklyUsed: 0,
-      weeklyLimit: Infinity,
-      remainingThisWeek: Infinity,
     };
   }
 
-  if (countResult > WEEKLY_LIMIT) {
+  const { data: balanceAfter, error } = await (supabase.rpc as Function)(
+    "consume_credit",
+    {
+      p_user_id: userId,
+      p_action_type: action,
+      p_model_id: effectiveModel,
+      p_provider: provider,
+    },
+  ) as { data: number | null; error: { message: string } | null };
+
+  if (error) {
+    console.error("[usage-tracker] consume_credit error:", error.message);
     return {
       allowed: false,
       usingDefaultKey: true,
       effectiveModel,
-      weeklyUsed: countResult,
-      weeklyLimit: WEEKLY_LIMIT,
-      remainingThisWeek: 0,
+      insufficientCredits: true,
+      creditsRemaining: 0,
+    };
+  }
+
+  const result = balanceAfter ?? -2;
+
+  if (result === -1) {
+    return {
+      allowed: false,
+      usingDefaultKey: true,
+      effectiveModel,
+      rateLimited: true,
+    };
+  }
+
+  if (result === -2) {
+    return {
+      allowed: false,
+      usingDefaultKey: true,
+      effectiveModel,
+      insufficientCredits: true,
+      creditsRemaining: 0,
     };
   }
 
@@ -136,66 +140,60 @@ export async function checkAndTrackUsage(
     allowed: true,
     usingDefaultKey: true,
     effectiveModel,
-    weeklyUsed: countResult,
-    weeklyLimit: WEEKLY_LIMIT,
-    remainingThisWeek: WEEKLY_LIMIT - countResult,
+    creditsRemaining: result,
+    creditsBalance: result,
   };
 }
 
-/**
- * Returns current usage stats without recording anything.
- * Used by the GET /api/usage endpoint.
- */
 export async function getUsageStats(userId: string): Promise<{
-  weeklyUsed: number;
-  weeklyLimit: number;
-  remainingThisWeek: number;
-  resetDate: string;
+  creditsRemaining: number;
+  creditsBalance: number;
+  lifetimeConsumed: number;
+  lifetimePurchased: number;
+  trialCredits: number;
+  trialGranted: boolean;
 }> {
-  const weeklyUsed = await getWeeklyDefaultKeyUsage(userId);
-  const resetDate = getNextWeekResetDate();
-
-  return {
-    weeklyUsed,
-    weeklyLimit: WEEKLY_LIMIT,
-    remainingThisWeek: Math.max(0, WEEKLY_LIMIT - weeklyUsed),
-    resetDate: resetDate.toISOString(),
-  };
-}
-
-async function getWeeklyDefaultKeyUsage(userId: string): Promise<number> {
   const supabase = await createClient();
-  const weekStart = getWeekStartDate();
 
-  const { count, error } = await supabase
-    .from("api_usage")
-    .select("id", { count: "exact", head: true })
+  const { data, error } = await (supabase as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: string) => {
+          maybeSingle: () => Promise<{
+            data: {
+              balance: number;
+              lifetime_consumed: number;
+              lifetime_purchased: number;
+              trial_granted: boolean;
+            } | null;
+            error: { message: string } | null;
+          }>;
+        };
+      };
+    };
+  })
+    .from("user_credits")
+    .select("balance, lifetime_consumed, lifetime_purchased, trial_granted")
     .eq("user_id", userId)
-    .eq("used_default_key", true)
-    .gte("created_at", weekStart.toISOString());
+    .maybeSingle();
 
-  if (error) {
-    console.error("[usage-tracker] Failed to query usage:", error);
-    return 0;
+  if (error || !data) {
+    return {
+      creditsRemaining: 0,
+      creditsBalance: 0,
+      lifetimeConsumed: 0,
+      lifetimePurchased: 0,
+      trialCredits: TRIAL_CREDITS,
+      trialGranted: false,
+    };
   }
 
-  return count ?? 0;
-}
-
-/** Monday 00:00 UTC of the current week */
-function getWeekStartDate(): Date {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const diff = day === 0 ? 6 : day - 1;
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() - diff);
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday;
-}
-
-/** Next Monday 00:00 UTC */
-function getNextWeekResetDate(): Date {
-  const weekStart = getWeekStartDate();
-  weekStart.setUTCDate(weekStart.getUTCDate() + 7);
-  return weekStart;
+  return {
+    creditsRemaining: data.balance,
+    creditsBalance: data.balance,
+    lifetimeConsumed: data.lifetime_consumed,
+    lifetimePurchased: data.lifetime_purchased,
+    trialCredits: TRIAL_CREDITS,
+    trialGranted: data.trial_granted,
+  };
 }

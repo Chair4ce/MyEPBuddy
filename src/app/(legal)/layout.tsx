@@ -56,6 +56,9 @@ export default function LegalLayout({
               <Link href="/terms" className="hover:text-foreground transition-colors">
                 Terms of Service
               </Link>
+              <Link href="/billing-terms" className="hover:text-foreground transition-colors">
+                AI Billing Terms
+              </Link>
             </div>
             <p className="text-sm text-muted-foreground text-center">
               Not affiliated with the U.S. Air Force or DoD

@@ -24,5 +24,12 @@ export async function GET() {
     keyStatus.google_key ||
     keyStatus.grok_key;
 
-  return NextResponse.json({ ...stats, hasOwnKey });
+  return NextResponse.json({
+    ...stats,
+    hasOwnKey,
+    // Legacy fields for any remaining callers
+    weeklyUsed: stats.lifetimeConsumed,
+    weeklyLimit: stats.trialCredits + stats.lifetimePurchased,
+    remainingThisWeek: stats.creditsRemaining,
+  });
 }

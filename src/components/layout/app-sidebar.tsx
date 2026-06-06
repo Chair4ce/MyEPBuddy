@@ -25,6 +25,7 @@ import {
   LayoutDashboard,
   FileText,
   Users,
+  CreditCard,
   Sparkles,
   Settings,
   Shield,
@@ -120,6 +121,13 @@ const settingsItems = [
     icon: Wand2,
     roles: ["member", "admin"],
     tourId: "nav-settings-llm",
+  },
+  {
+    title: "AI Billing",
+    href: "/settings/billing",
+    icon: CreditCard,
+    roles: ["member", "admin"],
+    tourId: "nav-settings-billing",
   },
   {
     title: "AI Models",

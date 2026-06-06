@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUserStore } from "@/stores/user-store";
+import { useCreditsStore } from "@/stores/credits-store";
 import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
 import { UpdatePrompt } from "@/components/layout/update-prompt";
 import { RankCompletionModal } from "@/components/modals/rank-completion-modal";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
-import { UsageLimitDialog } from "@/components/modals/usage-limit-dialog";
-// TODO: Re-enable tutorial feature when ready
-// import { TourProvider } from "@/components/onboarding";
+import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
+import { TrialIntroDialog } from "@/components/modals/trial-intro-dialog";
+import { usePromptRulesMode } from "@/lib/feature-flags";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
 interface AppInitializerProps {
@@ -26,21 +27,29 @@ export function AppInitializer({
   epbConfig,
   children,
 }: AppInitializerProps) {
-  const { 
-    setProfile, 
-    setSubordinates, 
+  const {
+    setProfile,
+    setSubordinates,
     setManagedMembers,
-    setEpbConfig, 
+    setEpbConfig,
     setIsLoading,
-    profile: storeProfile 
+    profile: storeProfile,
   } = useUserStore();
-  
-  // Track if we've done initial hydration
+
+  const {
+    fetchCredits,
+    initRealtime,
+    trialIntroSeen,
+    hasOwnKey,
+    setTrialIntroSeen,
+    isLoading: creditsLoading,
+  } = useCreditsStore();
+
   const hasHydrated = useRef(false);
+  const creditsInitialized = useRef(false);
+  const [showTrialIntro, setShowTrialIntro] = useState(false);
 
   useEffect(() => {
-    // Only set server data on initial hydration
-    // After that, prefer client-side updates in the store
     if (!hasHydrated.current) {
       setProfile(profile);
       setSubordinates(subordinates);
@@ -49,40 +58,70 @@ export function AppInitializer({
       setIsLoading(false);
       hasHydrated.current = true;
     } else {
-      // On subsequent navigations, only update subordinates/managed members
-      // since those might have changed on the server (new requests, etc.)
-      // but keep the profile from the store (client-side updates)
       setSubordinates(subordinates);
       setManagedMembers(managedMembers);
       setEpbConfig(epbConfig);
     }
-  }, [profile, subordinates, managedMembers, epbConfig, setProfile, setSubordinates, setManagedMembers, setEpbConfig, setIsLoading]);
+  }, [
+    profile,
+    subordinates,
+    managedMembers,
+    epbConfig,
+    setProfile,
+    setSubordinates,
+    setManagedMembers,
+    setEpbConfig,
+    setIsLoading,
+  ]);
 
-  // Use store profile for reactivity (updates when terms are accepted)
+  useEffect(() => {
+    if (!profile?.id || creditsInitialized.current) return;
+    creditsInitialized.current = true;
+    void fetchCredits().then(() => {
+      initRealtime(profile.id);
+    });
+  }, [profile?.id, fetchCredits, initRealtime]);
+
+  useEffect(() => {
+    if (creditsLoading || hasOwnKey || trialIntroSeen) {
+      setShowTrialIntro(false);
+      return;
+    }
+    setShowTrialIntro(true);
+  }, [trialIntroSeen, hasOwnKey, creditsLoading]);
+
   const currentProfile = storeProfile ?? profile;
   const { termsAcceptedThisSession } = useUserStore();
-  
-  // Show terms dialog on EVERY session until accepted this session
-  // This ensures the user sees the OPSEC/data handling notice each time they log in
   const showTermsDialog = currentProfile && !termsAcceptedThisSession;
+
+  async function dismissTrialIntro() {
+    setShowTrialIntro(false);
+    setTrialIntroSeen(true);
+    await fetch("/api/billing/accept-terms", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trialIntroSeen: true }),
+    }).catch(() => undefined);
+  }
+
+  const usePromptRulesModeEnabled = usePromptRulesMode();
 
   return (
     <>
       <UpdatePrompt />
       {showTermsDialog && currentProfile && (
-        <TermsAgreementDialog
-          open={true}
-          userId={currentProfile.id}
+        <TermsAgreementDialog open={true} userId={currentProfile.id} />
+      )}
+      {!showTermsDialog && <RankCompletionModal />}
+      {!showTermsDialog && !usePromptRulesModeEnabled && <EpbPromptUpdateModal />}
+      {!showTermsDialog && !hasOwnKey && (
+        <TrialIntroDialog
+          open={showTrialIntro && !trialIntroSeen}
+          onDismiss={dismissTrialIntro}
         />
       )}
-      {/* Show rank completion modal after terms are accepted */}
-      {!showTermsDialog && <RankCompletionModal />}
-      {!showTermsDialog && <EpbPromptUpdateModal />}
-      {/* TODO: Re-enable tutorial feature when ready */}
-      {/* {!showTermsDialog && <TourProvider />} */}
-      <UsageLimitDialog />
+      <InsufficientCreditsDialog />
       {children}
     </>
   );
 }
-

@@ -34,7 +34,7 @@ const securityHeaders = [
       "worker-src 'self' blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      "form-action 'self'",
+      "form-action 'self' https://checkout.stripe.com",
       isDev ? "" : "upgrade-insecure-requests",
     ].filter(Boolean).join("; "),
   },

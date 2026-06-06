@@ -7,6 +7,8 @@
  * - Safe error classification (retryable vs non-retryable)
  */
 
+import { syncCreditsFromResponse } from "@/stores/credits-store";
+
 interface FetchWithRetryOptions {
   /** Maximum number of retry attempts (default: 2, so 3 total attempts) */
   maxRetries?: number;
@@ -76,11 +78,15 @@ export async function fetchWithRetry(
       // For 429s, peek at the body to skip retry on app-level usage limits
       // (as opposed to provider-level rate limits which are transient).
       if (!response.ok && isRetryableStatus(response.status) && attempt < maxRetries) {
-        if (response.status === 429) {
+        if (response.status === 429 || response.status === 402) {
           const cloned = response.clone();
           try {
             const body = await cloned.json();
-            if (body?.errorCode === "usage_limit_exceeded" || body?.errorCode === "burst_rate_limited") {
+            if (
+              body?.errorCode === "usage_limit_exceeded" ||
+              body?.errorCode === "burst_rate_limited" ||
+              body?.errorCode === "insufficient_credits"
+            ) {
               return response;
             }
           } catch {
@@ -92,6 +98,7 @@ export async function fetchWithRetry(
         continue;
       }
 
+      syncCreditsFromResponse(response);
       return response;
     } catch (error) {
       clearTimeout(timeoutId);

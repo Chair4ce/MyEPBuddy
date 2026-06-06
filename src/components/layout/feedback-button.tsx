@@ -13,7 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Send, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
-export function FeedbackButton() {
+interface FeedbackButtonProps {
+  inline?: boolean;
+}
+
+export function FeedbackButton({ inline = false }: FeedbackButtonProps) {
   const { profile } = useUserStore();
   const pathname = usePathname();
 
@@ -72,6 +76,86 @@ export function FeedbackButton() {
     }
   }
 
+  const popoverContent = (
+    <PopoverContent
+      side="top"
+      align="end"
+      className="w-80 sm:w-96"
+      sideOffset={8}
+    >
+      {isSubmitted ? (
+        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 py-3">
+          <CheckCircle2 className="size-4 shrink-0" />
+          <span>
+            Thanks for sharing! Your feedback helps us build a better tool.
+          </span>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Share Your Feedback</p>
+            <p className="text-xs text-muted-foreground">
+              Tell us what&apos;s working, what&apos;s not, or what
+              you&apos;d like to see next.
+            </p>
+          </div>
+          <Textarea
+            id="global-feedback"
+            aria-label="Your feedback"
+            placeholder="e.g., I wish this page showed..., It would be great if..."
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            rows={3}
+            className="resize-none"
+            maxLength={2000}
+            disabled={isSubmitting}
+          />
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {feedback.length > 0 && `${feedback.length}/2,000`}
+            </p>
+            <Button
+              size="sm"
+              onClick={handleSubmit}
+              disabled={isSubmitting || !feedback.trim()}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="size-4 mr-2" />
+                  Submit
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+    </PopoverContent>
+  );
+
+  if (inline) {
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full shadow-lg gap-2 bg-background hover:bg-accent"
+            aria-label="Share feedback"
+          >
+            <MessageSquare className="size-4" />
+            <span className="hidden sm:inline">Feedback</span>
+          </Button>
+        </PopoverTrigger>
+        {popoverContent}
+      </Popover>
+    );
+  }
+
   return (
     <div className="fixed bottom-6 right-6 z-50">
       <Popover open={open} onOpenChange={setOpen}>
@@ -86,64 +170,7 @@ export function FeedbackButton() {
             <span className="hidden sm:inline">Feedback</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="end"
-          className="w-80 sm:w-96"
-          sideOffset={8}
-        >
-          {isSubmitted ? (
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 py-3">
-              <CheckCircle2 className="size-4 shrink-0" />
-              <span>
-                Thanks for sharing! Your feedback helps us build a better tool.
-              </span>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Share Your Feedback</p>
-                <p className="text-xs text-muted-foreground">
-                  Tell us what&apos;s working, what&apos;s not, or what
-                  you&apos;d like to see next.
-                </p>
-              </div>
-              <Textarea
-                id="global-feedback"
-                aria-label="Your feedback"
-                placeholder="e.g., I wish this page showed..., It would be great if..."
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                rows={3}
-                className="resize-none"
-                maxLength={2000}
-                disabled={isSubmitting}
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  {feedback.length > 0 && `${feedback.length}/2,000`}
-                </p>
-                <Button
-                  size="sm"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !feedback.trim()}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin mr-2" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="size-4 mr-2" />
-                      Submit
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </PopoverContent>
+        {popoverContent}
       </Popover>
     </div>
   );

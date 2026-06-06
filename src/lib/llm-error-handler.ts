@@ -45,6 +45,7 @@ export type LLMErrorCode =
   | "permission_denied"
   | "generation_failed"
   | "usage_limit_exceeded"
+  | "insufficient_credits"
   | "burst_rate_limited";
 
 /**
@@ -482,5 +483,15 @@ export function handleBurstRateLimited(): NextResponse<LLMErrorResponse> {
       errorCode: "burst_rate_limited" as LLMErrorCode,
     },
     { status: 429 },
+  );
+}
+
+export function handleInsufficientCredits(): NextResponse<LLMErrorResponse> {
+  return NextResponse.json(
+    {
+      error: "You've used all your AI calls. Purchase more to continue generating.",
+      errorCode: "insufficient_credits" as LLMErrorCode,
+    },
+    { status: 402 },
   );
 }

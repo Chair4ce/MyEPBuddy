@@ -350,6 +350,7 @@ ${contextForGeneration}`;
               statementCount: isHLR ? 1 : 2,
             },
             selectedMPAs: [mpa],
+            statementType: "opb",
             dutyDescription: dutyDescriptionDraft || undefined,
           }),
         });
