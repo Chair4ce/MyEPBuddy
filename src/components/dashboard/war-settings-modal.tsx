@@ -17,6 +17,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { usePromptRulesMode } from "@/lib/feature-flags";
+import { PromptRulesManager } from "@/components/settings/prompt-rules-manager";
+import { PROMPT_RULE_CONTEXT_DESCRIPTIONS } from "@/lib/prompt-rules/constants";
 import {
   GripVertical,
   Plus,
@@ -73,6 +76,7 @@ interface WARSettingsModalProps {
 export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) {
   const supabase = createClient();
   const { profile } = useUserStore();
+  const usePromptRulesModeEnabled = usePromptRulesMode();
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -380,7 +384,15 @@ export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) 
                 </div>
               </div>
 
-              {/* Synthesis Instructions */}
+              {/* Synthesis Instructions / WAR Rules */}
+              {usePromptRulesModeEnabled ? (
+                <PromptRulesManager
+                  context="war"
+                  compact
+                  title="WAR Synthesis Rules"
+                  description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.war}
+                />
+              ) : (
               <div className="space-y-2">
                 <Label htmlFor="synthesis_instructions">Custom Synthesis Instructions (Optional)</Label>
                 <Textarea
@@ -397,6 +409,7 @@ export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) 
                   Customize how entries are combined and formatted. Leave blank to use defaults.
                 </p>
               </div>
+              )}
             </div>
           </div>
 

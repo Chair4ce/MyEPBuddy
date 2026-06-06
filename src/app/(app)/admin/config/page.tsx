@@ -15,7 +15,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, Shield, AlertTriangle, Users, ToggleRight } from "lucide-react";
+import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2 } from "lucide-react";
 import type { EPBConfig } from "@/types/database";
 
 export default function AdminConfigPage() {
@@ -63,6 +63,8 @@ export default function AdminConfigPage() {
         .from("epb_config")
         .update({
           enable_collaboration: config.enable_collaboration,
+          show_prompt_editors: config.show_prompt_editors,
+          enable_prompt_rules: config.enable_prompt_rules,
         })
         .eq("id", 1)
         .select()
@@ -171,6 +173,52 @@ export default function AdminConfigPage() {
                 setConfig({ ...config, enable_collaboration: checked })
               }
               aria-label="Enable multi-user collaboration"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-3">
+              <Wand2 className="size-5 text-muted-foreground" />
+              <div>
+                <Label htmlFor="enable_prompt_rules" className="text-base font-medium">
+                  Per-Context Prompt Rules
+                </Label>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Let users define short rules per context (EPB, Award, WAR, etc.) that are
+                  appended to canonical prompts at generation time
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="enable_prompt_rules"
+              checked={config.enable_prompt_rules}
+              onCheckedChange={(checked) =>
+                setConfig({ ...config, enable_prompt_rules: checked })
+              }
+              aria-label="Enable per-context prompt rules"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-3">
+              <Wand2 className="size-5 text-muted-foreground" />
+              <div>
+                <Label htmlFor="show_prompt_editors" className="text-base font-medium">
+                  Legacy Prompt Editors
+                </Label>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Show raw system/style prompt textareas in LLM settings and modals. When off,
+                  prompt editors are replaced by the Rules manager (if rules are enabled)
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="show_prompt_editors"
+              checked={config.show_prompt_editors}
+              onCheckedChange={(checked) =>
+                setConfig({ ...config, show_prompt_editors: checked })
+              }
+              aria-label="Show legacy prompt editors"
             />
           </div>
         </CardContent>

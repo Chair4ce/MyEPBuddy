@@ -35,9 +35,13 @@ import {
   Search,
   Wand2,
   Settings2,
+  ListChecks,
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, Rank } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS } from "@/lib/constants";
+import { usePromptRulesMode } from "@/lib/feature-flags";
+import { PromptRulesManager } from "@/components/settings/prompt-rules-manager";
+import { PROMPT_RULE_CONTEXT_DESCRIPTIONS } from "@/lib/prompt-rules/constants";
 import {
   DEFAULT_ACRONYMS,
   acronymsForStorage,
@@ -164,6 +168,7 @@ interface AwardPromptSettingsModalProps {
 
 export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomineeRankProp }: AwardPromptSettingsModalProps) {
   const { profile } = useUserStore();
+  const usePromptRulesModeEnabled = usePromptRulesMode();
   const nomineeRank = nomineeRankProp ?? null;
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -448,8 +453,18 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-hidden px-4 py-3 sm:px-6 sm:py-4">
-            <Tabs defaultValue="prompt" className="flex flex-col h-full">
-              <TabsList className="w-full h-auto p-1 grid grid-cols-5 gap-0.5 shrink-0 mb-3">
+            <Tabs defaultValue={usePromptRulesModeEnabled ? "rules" : "prompt"} className="flex flex-col h-full">
+              <TabsList className={cn(
+                "w-full h-auto p-1 grid gap-0.5 shrink-0 mb-3",
+                usePromptRulesModeEnabled ? "grid-cols-4" : "grid-cols-5",
+              )}>
+                {usePromptRulesModeEnabled ? (
+                  <TabsTrigger value="rules" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2">
+                    <ListChecks className="size-3.5 shrink-0" />
+                    <span>Rules</span>
+                  </TabsTrigger>
+                ) : (
+                  <>
                 <TabsTrigger value="prompt" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2">
                   <Wand2 className="size-3.5 shrink-0" />
                   <span>Prompt</span>
@@ -458,6 +473,8 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                   <FileText className="size-3.5 shrink-0" />
                   <span>Style</span>
                 </TabsTrigger>
+                  </>
+                )}
                 <TabsTrigger value="verbs" className="flex-col sm:flex-row gap-0.5 sm:gap-1.5 text-[10px] sm:text-xs px-1 sm:px-2.5 py-1.5 sm:py-2">
                   <FileText className="size-3.5 shrink-0" />
                   <span>Verbs</span>
@@ -472,6 +489,19 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                 </TabsTrigger>
               </TabsList>
 
+              {usePromptRulesModeEnabled && (
+                <TabsContent value="rules" className="flex-1 overflow-y-auto mt-0 data-[state=inactive]:hidden">
+                  <PromptRulesManager
+                    context="award"
+                    compact
+                    title="Award Rules"
+                    description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.award}
+                  />
+                </TabsContent>
+              )}
+
+              {!usePromptRulesModeEnabled && (
+              <>
               {/* System Prompt Tab */}
               <TabsContent value="prompt" className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden">
                 <div className="flex flex-col h-full gap-3 overflow-hidden">
@@ -537,6 +567,8 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                   />
                 </div>
               </TabsContent>
+              </>
+              )}
 
               {/* Verbs Tab */}
               <TabsContent value="verbs" className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden">

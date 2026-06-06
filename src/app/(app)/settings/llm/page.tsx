@@ -90,6 +90,9 @@ import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import Link from "next/link";
 import { Award, Medal } from "lucide-react";
+import { usePromptRulesMode } from "@/lib/feature-flags";
+import { PromptRulesManager } from "@/components/settings/prompt-rules-manager";
+import { PROMPT_RULE_CONTEXT_DESCRIPTIONS } from "@/lib/prompt-rules/constants";
 
 // Default award system prompt (AF Form 1206)
 const DEFAULT_AWARD_SYSTEM_PROMPT = `You are an expert Air Force writer specializing in award nominations on AF Form 1206 using the current **narrative-style format** (mandated since October 2022 per DAFI 36-2406 and award guidance).
@@ -739,6 +742,7 @@ interface SettingsState {
 
 export default function LLMSettingsPage() {
   const { profile } = useUserStore();
+  const usePromptRulesModeEnabled = usePromptRulesMode();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -1284,6 +1288,7 @@ export default function LLMSettingsPage() {
 
               <Separator />
 
+              {!usePromptRulesModeEnabled && (
               <div className="space-y-1.5">
                 <Label htmlFor="style" className="text-xs sm:text-sm">Style Guidelines</Label>
                 <Textarea
@@ -1298,8 +1303,9 @@ export default function LLMSettingsPage() {
                   Injected via {"{{style_guidelines}}"}
                 </p>
               </div>
+              )}
 
-              <Separator />
+              {!usePromptRulesModeEnabled && <Separator />}
 
               {/* Style Signature Refresh */}
               <div className="space-y-2">
@@ -1344,8 +1350,28 @@ export default function LLMSettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* EPB System Prompt */}
+        {/* EPB System Prompt / Rules */}
         <TabsContent value="epb-prompt" className="w-full space-y-4">
+          {usePromptRulesModeEnabled ? (
+            <div className="space-y-4">
+              <PromptRulesManager
+                context="epb"
+                title="EPB Statement Rules"
+                description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.epb}
+              />
+              <PromptRulesManager
+                context="duty_description"
+                title="Duty Description Rules"
+                description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.duty_description}
+              />
+              <PromptRulesManager
+                context="assessment"
+                title="Assessment Rules"
+                description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.assessment}
+              />
+            </div>
+          ) : (
+          <>
           <Card>
             <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -1431,6 +1457,8 @@ export default function LLMSettingsPage() {
               </div>
             </CardContent>
           </Card>
+          </>
+          )}
 
           {/* MPA Descriptions */}
           <Card>
@@ -1526,6 +1554,14 @@ export default function LLMSettingsPage() {
         {/* OPB System Prompt - Officers Only */}
         {userIsOfficer && (
           <TabsContent value="opb-prompt" className="w-full space-y-4">
+            {usePromptRulesModeEnabled ? (
+              <PromptRulesManager
+                context="opb"
+                title="OPB Statement Rules"
+                description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.opb}
+              />
+            ) : (
+            <>
             <Card className="border-blue-200 dark:border-blue-800/50">
               <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
                 <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -1607,11 +1643,20 @@ export default function LLMSettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </>
+            )}
           </TabsContent>
         )}
 
         {/* Award System Prompt */}
         <TabsContent value="award-prompt" className="w-full min-h-[580px]">
+          {usePromptRulesModeEnabled ? (
+            <PromptRulesManager
+              context="award"
+              title="Award Statement Rules"
+              description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.award}
+            />
+          ) : (
           <Card>
             <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -1666,10 +1711,28 @@ export default function LLMSettingsPage() {
               </div>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         {/* Decoration System Prompt */}
         <TabsContent value="decoration-prompt" className="w-full space-y-4">
+          {usePromptRulesModeEnabled ? (
+            <>
+              <PromptRulesManager
+                context="decoration"
+                title="Decoration Citation Rules"
+                description={PROMPT_RULE_CONTEXT_DESCRIPTIONS.decoration}
+              />
+              <AbbreviationEditor
+                title="Decoration Abbreviations"
+                description={`${decorationAbbreviations.length} approved for decoration citations`}
+                infoNote="Decorations spell out abbreviations by default. Add only abbreviations you want the AI to use."
+                abbreviations={decorationAbbreviations}
+                onChange={setDecorationAbbreviations}
+              />
+            </>
+          ) : (
+          <>
           <Card>
             <CardHeader className="px-3 py-3 sm:px-6 sm:py-4">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -1763,6 +1826,8 @@ export default function LLMSettingsPage() {
             abbreviations={decorationAbbreviations}
             onChange={setDecorationAbbreviations}
           />
+          </>
+          )}
         </TabsContent>
 
         {/* Rank Verbs */}
