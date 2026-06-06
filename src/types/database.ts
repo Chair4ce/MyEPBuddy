@@ -43,6 +43,8 @@ export interface Profile {
   avatar_url: string | null;
   writing_style: WritingStyle;
   terms_accepted_at: string | null;
+  billing_terms_accepted_at: string | null;
+  trial_intro_seen_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -170,6 +172,10 @@ export interface EPBConfig {
   rank_verb_progression: RankVerbProgression;
   base_system_prompt: string;
   enable_collaboration: boolean;
+  /** When true, raw LLM prompt editors are shown. When false, they are hidden. */
+  show_prompt_editors: boolean;
+  /** When true, per-context prompt rules CRUD is enabled and rules are injected at generation. */
+  enable_prompt_rules: boolean;
   updated_at: string;
 }
 
@@ -427,6 +433,26 @@ export interface MPADescription {
 }
 
 export type MPADescriptions = Record<string, MPADescription>;
+
+export type PromptRuleContext =
+  | "epb"
+  | "award"
+  | "decoration"
+  | "assessment"
+  | "opb"
+  | "war"
+  | "duty_description";
+
+export interface PromptRule {
+  id: string;
+  user_id: string;
+  context: PromptRuleContext;
+  rule_text: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface UserLLMSettings {
   id: string;

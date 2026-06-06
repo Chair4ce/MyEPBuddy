@@ -1019,11 +1019,13 @@ export type Database = {
           base_system_prompt: string
           current_cycle_year: number
           enable_collaboration: boolean
+          enable_prompt_rules: boolean
           id: number
           major_graded_areas: Json
           max_characters_per_statement: number
           rank_verb_progression: Json
           scod_date: string
+          show_prompt_editors: boolean
           style_guidelines: string
           updated_at: string
         }
@@ -1031,11 +1033,13 @@ export type Database = {
           base_system_prompt?: string
           current_cycle_year?: number
           enable_collaboration?: boolean
+          enable_prompt_rules?: boolean
           id?: number
           major_graded_areas?: Json
           max_characters_per_statement?: number
           rank_verb_progression?: Json
           scod_date?: string
+          show_prompt_editors?: boolean
           style_guidelines?: string
           updated_at?: string
         }
@@ -1043,11 +1047,13 @@ export type Database = {
           base_system_prompt?: string
           current_cycle_year?: number
           enable_collaboration?: boolean
+          enable_prompt_rules?: boolean
           id?: number
           major_graded_areas?: Json
           max_characters_per_statement?: number
           rank_verb_progression?: Json
           scod_date?: string
+          show_prompt_editors?: boolean
           style_guidelines?: string
           updated_at?: string
         }
