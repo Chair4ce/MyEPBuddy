@@ -44,6 +44,14 @@ function generateVersion() {
   }
   
   fs.writeFileSync(versionFilePath, JSON.stringify(versionInfo, null, 2));
+
+  // Embed build ID in the client bundle so returning users with cached JS can
+  // be compared against the live server version on first load.
+  const buildIdFilePath = path.join(process.cwd(), "src", "lib", "app-build-id.ts");
+  fs.writeFileSync(
+    buildIdFilePath,
+    `/** Generated at build time — do not edit. */\nexport const APP_BUILD_ID = "${buildId}";\n`,
+  );
   
   console.log("✓ Generated version.json:");
   console.log(`  Version: ${versionInfo.version}`);

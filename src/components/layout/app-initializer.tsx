@@ -109,7 +109,6 @@ export function AppInitializer({
 
   return (
     <>
-      <UpdatePrompt />
       {showTermsDialog && currentProfile && (
         <TermsAgreementDialog open={true} userId={currentProfile.id} />
       )}
@@ -123,6 +122,8 @@ export function AppInitializer({
       )}
       <InsufficientCreditsDialog />
       <EmbeddedCheckoutDialog />
+      {/* Render last so the blocking update gate sits above all other modals */}
+      <UpdatePrompt />
       {children}
     </>
   );

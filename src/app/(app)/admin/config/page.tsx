@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -18,16 +17,20 @@ import { toast } from "@/components/ui/sonner";
 import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2 } from "lucide-react";
 import type { EPBConfig } from "@/types/database";
 
+type FeatureFlagKey =
+  | "enable_collaboration"
+  | "enable_prompt_rules"
+  | "show_prompt_editors";
+
 export default function AdminConfigPage() {
-  const { profile, epbConfig, setEpbConfig } = useUserStore();
+  const { profile, setEpbConfig } = useUserStore();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [savingField, setSavingField] = useState<FeatureFlagKey | null>(null);
   const [config, setConfig] = useState<EPBConfig | null>(null);
 
   const supabase = createClient();
 
-  // Check admin access
   useEffect(() => {
     if (profile && profile.role !== "admin") {
       toast.error("Access denied. Admin only.");
@@ -35,7 +38,6 @@ export default function AdminConfigPage() {
     }
   }, [profile, router]);
 
-  // Load config
   useEffect(() => {
     async function loadConfig() {
       const { data, error } = await supabase
@@ -53,24 +55,24 @@ export default function AdminConfigPage() {
     loadConfig();
   }, [supabase]);
 
-  async function handleSave() {
+  async function updateFlag(key: FeatureFlagKey, checked: boolean) {
     if (!config) return;
-    setIsSaving(true);
+
+    const previous = config[key];
+    setConfig({ ...config, [key]: checked });
+    setSavingField(key);
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("epb_config")
-        .update({
-          enable_collaboration: config.enable_collaboration,
-          show_prompt_editors: config.show_prompt_editors,
-          enable_prompt_rules: config.enable_prompt_rules,
-        })
+        .update({ [key]: checked })
         .eq("id", 1)
         .select()
         .single();
 
       if (error) {
+        setConfig({ ...config, [key]: previous });
         toast.error(error.message);
         return;
       }
@@ -78,12 +80,12 @@ export default function AdminConfigPage() {
       if (data) {
         setConfig(data);
         setEpbConfig(data);
-        toast.success("Configuration saved successfully");
       }
     } catch {
-      toast.error("Failed to save configuration");
+      setConfig({ ...config, [key]: previous });
+      toast.error("Failed to update setting");
     } finally {
-      setIsSaving(false);
+      setSavingField(null);
     }
   }
 
@@ -109,27 +111,15 @@ export default function AdminConfigPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Shield className="size-6" />
-            Admin
-          </h1>
-          <p className="text-muted-foreground">
-            App-wide settings for all users. AI prompts, character limits, and model pickers are
-            configured individually under Settings → LLM and Settings → AI Models.
-          </p>
-        </div>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="size-4 animate-spin mr-2" />
-              Saving...
-            </>
-          ) : (
-            "Save Changes"
-          )}
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <Shield className="size-6" />
+          Admin
+        </h1>
+        <p className="text-muted-foreground">
+          App-wide settings for all users. AI prompts, character limits, and model pickers are
+          configured individually under Settings → LLM and Settings → AI Models.
+        </p>
       </div>
 
       <Card>
@@ -142,7 +132,6 @@ export default function AdminConfigPage() {
         </CardHeader>
       </Card>
 
-      {/* Feature Flags */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -150,7 +139,7 @@ export default function AdminConfigPage() {
             Feature Flags
           </CardTitle>
           <CardDescription>
-            Enable or disable application features
+            Enable or disable application features. Changes save automatically.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -169,8 +158,9 @@ export default function AdminConfigPage() {
             <Switch
               id="enable_collaboration"
               checked={config.enable_collaboration}
+              disabled={savingField === "enable_collaboration"}
               onCheckedChange={(checked) =>
-                setConfig({ ...config, enable_collaboration: checked })
+                void updateFlag("enable_collaboration", checked)
               }
               aria-label="Enable multi-user collaboration"
             />
@@ -192,8 +182,9 @@ export default function AdminConfigPage() {
             <Switch
               id="enable_prompt_rules"
               checked={config.enable_prompt_rules}
+              disabled={savingField === "enable_prompt_rules"}
               onCheckedChange={(checked) =>
-                setConfig({ ...config, enable_prompt_rules: checked })
+                void updateFlag("enable_prompt_rules", checked)
               }
               aria-label="Enable per-context prompt rules"
             />
@@ -215,28 +206,15 @@ export default function AdminConfigPage() {
             <Switch
               id="show_prompt_editors"
               checked={config.show_prompt_editors}
+              disabled={savingField === "show_prompt_editors"}
               onCheckedChange={(checked) =>
-                setConfig({ ...config, show_prompt_editors: checked })
+                void updateFlag("show_prompt_editors", checked)
               }
               aria-label="Show legacy prompt editors"
             />
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isSaving} size="lg">
-          {isSaving ? (
-            <>
-              <Loader2 className="size-4 animate-spin mr-2" />
-              Saving...
-            </>
-          ) : (
-            "Save changes"
-          )}
-        </Button>
-      </div>
     </div>
   );
 }
-

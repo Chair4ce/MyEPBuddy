@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Accomplishment, Profile, ManagedMember, Rank } from "@/types/database";
+import type { Accomplishment, Rank } from "@/types/database";
 
 // Extended accomplishment with author info for feed display
 export interface FeedAccomplishment extends Accomplishment {

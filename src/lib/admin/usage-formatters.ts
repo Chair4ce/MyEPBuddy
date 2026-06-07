@@ -22,45 +22,6 @@ export function formatCost(value: number): string {
   }).format(amount);
 }
 
-export function formatPct(value: number): string {
-  return `${Number(value ?? 0).toFixed(1)}%`;
-}
-
-export function actionLabel(action: string): string {
-  return action
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-export function categoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    generate: "Generation",
-    assess: "Assessments",
-    award: "Awards",
-    decoration: "Decorations",
-    other: "Other",
-  };
-  return labels[category] ?? category;
-}
-
-export function segmentLabel(segment: string): string {
-  const labels: Record<string, string> = {
-    trial_active: "Trial active",
-    purchased: "Purchased credits",
-    byok: "BYOK",
-    exhausted: "Exhausted (no convert)",
-    dormant: "Dormant",
-  };
-  return labels[segment] ?? segment;
-}
-
-export function bucketLabel(bucket: string): string {
-  if (bucket === "unused") return "Unused (0)";
-  if (bucket === "exhausted (100)") return "Exhausted (100)";
-  return `${bucket} trial calls`;
-}
-
 export function projectedMonthlyCost(
   costInWindow: number,
   days: number,

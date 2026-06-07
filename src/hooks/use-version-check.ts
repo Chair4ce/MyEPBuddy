@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { APP_BUILD_ID } from "@/lib/app-build-id";
 
 interface VersionInfo {
   version: string;
@@ -27,14 +28,11 @@ interface UseVersionCheckReturn {
   latestVersion: VersionInfo | null;
   /** Manually trigger a version check */
   checkForUpdate: () => Promise<void>;
-  /** Dismiss the update notification (will recheck on next interval) */
-  dismissUpdate: () => void;
   /** Refresh the page to get the latest version */
   refreshApp: () => void;
 }
 
 const VERSION_STORAGE_KEY = "app-build-id";
-const DISMISS_STORAGE_KEY = "app-update-dismissed";
 const LAST_CHECK_KEY = "app-version-last-check";
 const LEADER_KEY = "app-version-leader";
 const LEADER_HEARTBEAT = 10000; // 10 seconds
@@ -109,7 +107,6 @@ export function useVersionCheck(
   const [currentVersion, setCurrentVersion] = useState<VersionInfo | null>(null);
   const [latestVersion, setLatestVersion] = useState<VersionInfo | null>(null);
   const [hasUpdate, setHasUpdate] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
   
   const isInitialized = useRef(false);
   const currentEtag = useRef<string | null>(null);
@@ -188,28 +185,27 @@ export function useVersionCheck(
       // Ignore
     }
     
-    // Initialize current version on first successful fetch
+    // Initialize on first successful fetch: compare the build ID baked into
+    // this JS bundle against what the server is running now. Returning users
+    // with cached bundles fail this check immediately instead of only catching
+    // deploys that happen mid-session.
     if (!isInitialized.current) {
       isInitialized.current = true;
-      
-      // On first load, always set the current version from the server
-      // Don't check localStorage - we always start fresh with whatever the server has
-      setCurrentVersion(serverVersion);
-      sessionBuildId.current = serverVersion.buildId;
-      localStorage.setItem(VERSION_STORAGE_KEY, serverVersion.buildId);
-      localStorage.removeItem(DISMISS_STORAGE_KEY);
-      
+      sessionBuildId.current = APP_BUILD_ID;
+      setCurrentVersion({
+        ...serverVersion,
+        buildId: APP_BUILD_ID,
+      });
+      localStorage.setItem(VERSION_STORAGE_KEY, APP_BUILD_ID);
       currentEtag.current = `"${serverVersion.buildId}"`;
-    } else if (sessionBuildId.current && sessionBuildId.current !== serverVersion.buildId) {
-      // Only show update if the buildId changes DURING this session
-      // This prevents showing updates on fresh page loads/logins
-      const dismissedBuildId = localStorage.getItem(DISMISS_STORAGE_KEY);
-      if (dismissedBuildId !== serverVersion.buildId) {
+
+      if (APP_BUILD_ID !== serverVersion.buildId) {
         setHasUpdate(true);
-        setIsDismissed(false);
       }
+    } else if (sessionBuildId.current && sessionBuildId.current !== serverVersion.buildId) {
+      setHasUpdate(true);
     }
-  }, [disabled, fetchVersion, currentVersion]);
+  }, [disabled, fetchVersion]);
 
   // Listen for version updates from other tabs
   useEffect(() => {
@@ -221,13 +217,10 @@ export function useVersionCheck(
           const { version } = JSON.parse(e.newValue);
           setLatestVersion(version);
           
-          // Only show update if we have a session buildId and it differs
-          if (sessionBuildId.current && sessionBuildId.current !== version.buildId) {
-            const dismissedBuildId = localStorage.getItem(DISMISS_STORAGE_KEY);
-            if (dismissedBuildId !== version.buildId) {
-              setHasUpdate(true);
-              setIsDismissed(false);
-            }
+          // Compare baked-in bundle ID (or mid-session baseline) to the server.
+          const clientBuildId = sessionBuildId.current ?? APP_BUILD_ID;
+          if (clientBuildId !== version.buildId) {
+            setHasUpdate(true);
           }
         } catch {
           // Ignore parse errors
@@ -239,35 +232,33 @@ export function useVersionCheck(
     return () => window.removeEventListener("storage", handleStorageChange);
   }, [disabled]);
 
-  // Dismiss update notification
-  const dismissUpdate = useCallback(() => {
-    setIsDismissed(true);
-    setHasUpdate(false);
-    if (latestVersion) {
-      localStorage.setItem(DISMISS_STORAGE_KEY, latestVersion.buildId);
-    }
-  }, [latestVersion]);
-
-  // Refresh the app - clear all version state for a clean start
-  const refreshApp = useCallback(() => {
-    // Clear all version-related localStorage to prevent stale comparisons
-    // After reload, the app will initialize fresh with whatever the server returns
+  // Hard refresh: clear client caches and navigate with a cache-busting param
+  const refreshApp = useCallback(async () => {
     localStorage.removeItem(VERSION_STORAGE_KEY);
-    localStorage.removeItem(DISMISS_STORAGE_KEY);
     localStorage.removeItem(LAST_CHECK_KEY);
     localStorage.removeItem(LEADER_KEY);
     localStorage.removeItem("app-version-update");
-    
-    // Force a hard refresh to bypass any browser cache
-    window.location.reload();
+    // Legacy key from when updates could be dismissed
+    localStorage.removeItem("app-update-dismissed");
+
+    if ("caches" in window) {
+      try {
+        const names = await caches.keys();
+        await Promise.all(names.map((name) => caches.delete(name)));
+      } catch {
+        // Ignore Cache API errors
+      }
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("_v", Date.now().toString());
+    window.location.replace(url.toString());
   }, []);
 
-  // Initial check on mount
+  // Initial check on mount — run immediately so stale cached bundles prompt fast
   useEffect(() => {
     if (!disabled) {
-      // Small delay to let the app settle
-      const timeout = setTimeout(checkForUpdate, 1000);
-      return () => clearTimeout(timeout);
+      void checkForUpdate();
     }
   }, [disabled, checkForUpdate]);
 
@@ -289,23 +280,32 @@ export function useVersionCheck(
     return () => clearTimeout(timeoutId);
   }, [disabled, pollInterval, checkForUpdate]);
 
-  // Check on window focus (with debounce)
+  // Check when the tab regains focus or becomes visible (mobile/PWA return).
   useEffect(() => {
     if (disabled || !checkOnFocus) return;
 
     let lastFocusCheck = 0;
     const FOCUS_DEBOUNCE = 30000; // 30 seconds
 
-    const handleFocus = () => {
+    const maybeCheck = () => {
       const now = Date.now();
       if (now - lastFocusCheck > FOCUS_DEBOUNCE) {
         lastFocusCheck = now;
-        checkForUpdate();
+        void checkForUpdate();
       }
     };
 
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") maybeCheck();
+    };
+
+    window.addEventListener("focus", maybeCheck);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("focus", maybeCheck);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [disabled, checkOnFocus, checkForUpdate]);
 
   // Leader heartbeat
@@ -322,11 +322,10 @@ export function useVersionCheck(
   }, [disabled]);
 
   return {
-    hasUpdate: hasUpdate && !isDismissed,
+    hasUpdate,
     currentVersion,
     latestVersion,
     checkForUpdate,
-    dismissUpdate,
     refreshApp,
   };
 }

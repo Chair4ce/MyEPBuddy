@@ -1,75 +1,90 @@
 "use client";
 
 import { useVersionCheck } from "@/hooks/use-version-check";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, X, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { useState } from "react";
 
 interface UpdatePromptProps {
   /** Polling interval in milliseconds (default: 900000 = 15 minutes) */
   pollInterval?: number;
 }
 
+/**
+ * Blocking update gate — when the user's cached bundle is stale, they must
+ * refresh before continuing. No dismiss; only action is "Refresh now".
+ */
 export function UpdatePrompt({ pollInterval = 900000 }: UpdatePromptProps) {
-  const { hasUpdate, latestVersion, refreshApp, dismissUpdate } = useVersionCheck({
+  const { hasUpdate, latestVersion, refreshApp } = useVersionCheck({
     pollInterval,
     checkOnFocus: true,
-    // Disable in development mode
     disabled: process.env.NODE_ENV === "development",
   });
 
-  if (!hasUpdate) return null;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await refreshApp();
+  }
 
   return (
-    <div
-      role="alert"
-      aria-live="polite"
-      className="fixed top-0 left-0 right-0 z-50 animate-slide-down"
-    >
-      <div className="bg-primary text-primary-foreground">
-        <div className="max-w-7xl mx-auto px-4 py-2.5 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex-shrink-0 hidden sm:block">
-                <Sparkles className="size-4" aria-hidden="true" />
-              </div>
-              <p className="text-sm font-medium truncate">
-                <span className="hidden sm:inline">A new version is available!</span>
-                <span className="sm:hidden">Update available!</span>
-                {latestVersion?.version && (
-                  <span className="ml-1 opacity-80 hidden md:inline">
-                    (v{latestVersion.version})
-                  </span>
-                )}
+    <AlertDialog open={hasUpdate}>
+      <AlertDialogContent
+        className="z-[100] sm:max-w-md"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+      >
+        <AlertDialogHeader>
+          <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10">
+            <Sparkles className="size-6 text-primary" aria-hidden="true" />
+          </div>
+          <AlertDialogTitle className="text-center">
+            Update required
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3 text-center text-sm text-muted-foreground">
+              <p>
+                You&apos;re on an older version of EPBuddy
+                {latestVersion?.version ? ` (v${latestVersion.version} is available)` : ""}.
+                Refresh to get the latest fixes and keep working safely.
+              </p>
+              <p className="text-xs">
+                Save any in-progress work in another tab if needed — this refresh
+                reloads the app with the newest version.
               </p>
             </div>
-            
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={refreshApp}
-                className="h-7 px-3 text-xs font-medium bg-primary-foreground text-primary hover:bg-primary-foreground/90"
-                aria-label="Refresh to update the application"
-              >
-                <RefreshCw className="size-3 mr-1.5" aria-hidden="true" />
-                <span className="hidden xs:inline">Refresh</span>
-                <span className="xs:hidden">Update</span>
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={dismissUpdate}
-                className="h-7 w-7 p-0 hover:bg-primary-foreground/20"
-                aria-label="Dismiss update notification"
-              >
-                <X className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <AlertDialogFooter className="sm:justify-center">
+          <Button
+            className="w-full sm:w-auto min-w-[160px]"
+            onClick={() => void handleRefresh()}
+            disabled={isRefreshing}
+            aria-label="Refresh to update the application"
+          >
+            {isRefreshing ? (
+              <>
+                <Loader2 className="size-4 animate-spin mr-2" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="size-4 mr-2" />
+                Refresh now
+              </>
+            )}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
-
