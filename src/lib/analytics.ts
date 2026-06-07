@@ -84,7 +84,7 @@ export const Analytics = {
   signUp: (method: "email" | "google" | "phone") => 
     trackEvent("user_signed_up", { method }),
   
-  login: (method: "email" | "google" | "phone") =>
+  login: (method: "email" | "google" | "phone" | "magic_link") =>
     trackEvent("user_logged_in", { method }),
 
   profileCompleted: (rank: string, afsc: string) => 

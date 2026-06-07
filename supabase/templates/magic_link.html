@@ -28,33 +28,23 @@
                 Click the button below to sign in to your MyEPBuddy account. This magic link will expire in 1 hour.
               </p>
               
-              <!-- CTA Button -->
+              <!-- CTA Button (token_hash link works across browsers/devices) -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center" style="padding: 8px 0 24px;">
-                    <a href="{{ .ConfirmationURL }}" target="_blank" style="display: inline-block; padding: 14px 32px; background-color: #818cf8; color: #1f1f1f; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+                    <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink" target="_blank" style="display: inline-block; padding: 14px 32px; background-color: #818cf8; color: #1f1f1f; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
                       Sign In to MyEPBuddy
                     </a>
                   </td>
                 </tr>
               </table>
               
-              <!-- OTP Code -->
-              <div style="background-color: #141414; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 24px;">
-                <p style="margin: 0 0 8px; font-size: 13px; color: #a3a3a3;">
-                  Or enter this code manually:
-                </p>
-                <p style="margin: 0; font-size: 32px; font-weight: 700; color: #fafafa; letter-spacing: 8px; font-family: 'JetBrains Mono', monospace;">
-                  {{ .Token }}
-                </p>
-              </div>
-              
               <!-- Alternative Link -->
               <p style="margin: 0 0 8px; font-size: 13px; color: #a3a3a3; text-align: center;">
                 Or copy and paste this link:
               </p>
               <p style="margin: 0; font-size: 12px; color: #818cf8; text-align: center; word-break: break-all;">
-                {{ .ConfirmationURL }}
+                {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink
               </p>
             </td>
           </tr>

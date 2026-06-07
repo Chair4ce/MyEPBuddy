@@ -1,0 +1,30 @@
+---
+description: Verify the correct local Supabase stack before db push --local or migration work
+globs: supabase/**
+alwaysApply: true
+---
+
+# Supabase local instance verification
+
+Before running `supabase db push --local`, `supabase db reset`, or other local DB commands, confirm the **MyEPBuddy** stack is the one running — not another project's Supabase on the same machine.
+
+## Required checks (from repo root)
+
+1. Read `project_id` from `supabase/config.toml` (this repo: `myepbuddy`).
+2. Run `supabase status` — it must succeed (not "No such container").
+3. Confirm Docker shows containers named `supabase_db_{project_id}` (e.g. `supabase_db_myepbuddy`) and that they are running.
+4. Confirm expected ports match this project (`54321` API, `54322` DB per `config.toml`).
+
+## If the wrong stack is running or nothing is running
+
+- Do **not** run `supabase db push --local` against an unknown instance.
+- From this workspace root, run `supabase start` to start the correct project stack.
+- If another Supabase project is bound to the same ports, stop that stack first, then start this project's stack.
+
+## Migration push order
+
+1. Verify instance (above)
+2. `supabase db push --local`
+3. After local success only: `supabase db push` (remote)
+
+Never use other CLIs to apply migrations.

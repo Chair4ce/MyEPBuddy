@@ -45,7 +45,7 @@ function ForgotPasswordContent() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
       if (error) {
@@ -86,11 +86,11 @@ function ForgotPasswordContent() {
 
       <Card>
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl">Reset your password</CardTitle>
+          <CardTitle className="text-2xl">Change your password</CardTitle>
           <CardDescription>
             {emailSent
-              ? "Check your email for the reset link"
-              : "Enter your email address and we'll send you a reset link"}
+              ? "Check your email for the password reset link"
+              : "Need to sign in instead? Use a magic link on the sign-in page. Enter your email below only if you want to set a new password."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -105,8 +105,14 @@ function ForgotPasswordContent() {
                 </p>
                 <p className="font-medium">{email}</p>
                 <p className="text-sm text-muted-foreground mt-4">
-                  Click the link in the email to reset your password. The link
-                  will expire in 1 hour.
+                  Click the link in the email to set a new password. The link
+                  expires in 1 hour.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Just trying to sign in?{" "}
+                  <Link href="/login" className="text-primary hover:underline">
+                    Use a magic link instead
+                  </Link>
                 </p>
               </div>
               <Button

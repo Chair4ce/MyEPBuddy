@@ -15,19 +15,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, ExternalLink, Copy, Check, Smartphone, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  ExternalLink,
+  Copy,
+  Check,
+  Smartphone,
+  Mail,
+  KeyRound,
+} from "lucide-react";
 import { parseAuthError } from "@/lib/auth-errors";
 import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
 
-// Detect if running in a restricted browser context (in-app browsers, PWAs)
 function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
   if (typeof window === "undefined") return { restricted: false, browserName: "" };
 
   const ua = navigator.userAgent || "";
 
-  // Check for standalone PWA
   const isStandalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,7 +42,6 @@ function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
 
   if (isStandalone) return { restricted: true, browserName: "this app" };
 
-  // Detect specific in-app browsers
   if (/LinkedIn/i.test(ua)) return { restricted: true, browserName: "LinkedIn" };
   if (/FBAN|FBAV/i.test(ua)) return { restricted: true, browserName: "Facebook" };
   if (/Instagram/i.test(ua)) return { restricted: true, browserName: "Instagram" };
@@ -49,11 +55,26 @@ function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
   return { restricted: false, browserName: "" };
 }
 
+function getLastMagicLinkRequest(email: string): number | null {
+  if (typeof window === "undefined") return null;
+  const key = `magic_link_last_${email.toLowerCase().trim()}`;
+  const stored = localStorage.getItem(key);
+  return stored ? parseInt(stored, 10) : null;
+}
+
+function setLastMagicLinkRequest(email: string): void {
+  if (typeof window === "undefined") return;
+  const key = `magic_link_last_${email.toLowerCase().trim()}`;
+  localStorage.setItem(key, Date.now().toString());
+}
+
 function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isMagicLinkLoading, setIsMagicLinkLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [restrictedBrowser, setRestrictedBrowser] = useState<{
     restricted: boolean;
     browserName: string;
@@ -66,7 +87,6 @@ function LoginPageContent() {
   useEffect(() => {
     setRestrictedBrowser(isRestrictedBrowser());
 
-    // Check for successful email verification
     const emailVerified = searchParams.get("email_verified");
     if (emailVerified === "true") {
       toast.success("Email verified! Please sign in to continue.", {
@@ -75,7 +95,6 @@ function LoginPageContent() {
       return;
     }
 
-    // Check for auth errors from callback
     const error = searchParams.get("error");
     if (error) {
       if (error === "auth_callback_error") {
@@ -85,6 +104,57 @@ function LoginPageContent() {
       }
     }
   }, [searchParams]);
+
+  async function handleMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    setIsMagicLinkLoading(true);
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      toast.error("Please enter your email address");
+      setIsMagicLinkLoading(false);
+      return;
+    }
+
+    const lastRequest = getLastMagicLinkRequest(trimmedEmail);
+    if (lastRequest && Date.now() - lastRequest < 60000) {
+      const secondsRemaining = Math.ceil((60000 - (Date.now() - lastRequest)) / 1000);
+      toast.error(`Please wait ${secondsRemaining} seconds before requesting another link`);
+      setIsMagicLinkLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: trimmedEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/confirm?type=magiclink`,
+          shouldCreateUser: false,
+        },
+      });
+
+      if (error) {
+        const errorInfo = parseAuthError(error.message);
+        if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
+          toast.error(errorInfo.title, {
+            description: errorInfo.action || errorInfo.message,
+            duration: 8000,
+          });
+        } else {
+          toast.error("Unable to send sign-in link. Check your email or try another sign-in method.");
+        }
+        return;
+      }
+
+      setLastMagicLinkRequest(trimmedEmail);
+      setMagicLinkSent(true);
+      toast.success("Sign-in link sent! Check your inbox.");
+    } catch {
+      toast.error("An unexpected error occurred");
+    } finally {
+      setIsMagicLinkLoading(false);
+    }
+  }
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -113,7 +183,6 @@ function LoginPageContent() {
   }
 
   async function handleGoogleLogin() {
-    // Don't allow Google login from restricted browsers - they need to open in real browser
     if (restrictedBrowser.restricted) {
       toast.error(
         `Google sign-in doesn't work in ${restrictedBrowser.browserName}. Please open in Safari or Chrome.`
@@ -154,6 +223,8 @@ function LoginPageContent() {
     }
   }
 
+  const anyLoading = isLoading || isMagicLinkLoading || isGoogleLoading;
+
   return (
     <div className="animate-fade-in">
       <div className="text-center mb-8">
@@ -165,7 +236,6 @@ function LoginPageContent() {
         </p>
       </div>
 
-      {/* Warning banner for in-app browsers */}
       {restrictedBrowser.restricted && (
         <Card className="mb-4 border-yellow-400 dark:border-yellow-600/50 bg-yellow-50 dark:bg-yellow-900/20">
           <CardContent className="py-3 px-4">
@@ -196,7 +266,7 @@ function LoginPageContent() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl">Sign in</CardTitle>
           <CardDescription>
-            Enter your credentials to access your account
+            Use a magic link, Google, phone, or your password
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -205,12 +275,13 @@ function LoginPageContent() {
               variant="outline"
               className="w-full"
               onClick={handleGoogleLogin}
-              disabled={isGoogleLoading || isLoading || restrictedBrowser.restricted}
+              disabled={anyLoading || restrictedBrowser.restricted}
+              aria-label="Sign in with Google"
             >
               {isGoogleLoading ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <svg className="size-4" viewBox="0 0 24 24">
+                <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -236,7 +307,8 @@ function LoginPageContent() {
               variant="outline"
               className="w-full"
               onClick={() => router.push("/phone-login")}
-              disabled={isLoading || isGoogleLoading}
+              disabled={anyLoading}
+              aria-label="Sign in with phone"
             >
               <Smartphone className="size-4" />
               <span className="ml-2">Phone</span>
@@ -249,60 +321,135 @@ function LoginPageContent() {
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-card px-2 text-muted-foreground">
-                Or continue with
+                Or continue with email
               </span>
             </div>
           </div>
 
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="your.email@mail.mil"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={isLoading}
-                aria-label="Email address"
-                autoComplete="email"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs text-primary hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={isLoading}
-                aria-label="Password"
-                autoComplete="current-password"
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading || isGoogleLoading}
-            >
-              {isLoading ? (
-                <Loader2 className="size-4 animate-spin" />
+          <Tabs defaultValue="magic-link" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="magic-link" className="gap-1.5">
+                <Mail className="size-3.5" />
+                Email link
+              </TabsTrigger>
+              <TabsTrigger value="password" className="gap-1.5">
+                <KeyRound className="size-3.5" />
+                Password
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="magic-link" className="mt-4 space-y-4">
+              {magicLinkSent ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center p-6 rounded-lg bg-primary/10 border border-primary/20">
+                    <Mail className="size-12 text-primary" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      We sent a sign-in link to:
+                    </p>
+                    <p className="font-medium">{email}</p>
+                    <p className="text-sm text-muted-foreground mt-4">
+                      Click the link in your email to sign in. The link expires in 1 hour.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setMagicLinkSent(false);
+                      setEmail("");
+                    }}
+                  >
+                    Use a different email
+                  </Button>
+                </div>
               ) : (
-                "Sign in"
+                <form onSubmit={handleMagicLink} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="magic-email">Email</Label>
+                    <Input
+                      id="magic-email"
+                      type="email"
+                      placeholder="your.email@mail.mil"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isMagicLinkLoading}
+                      aria-label="Email address for magic link"
+                      autoComplete="email"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No password needed — we&apos;ll email you a one-time sign-in link.
+                    </p>
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={anyLoading}
+                  >
+                    {isMagicLinkLoading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      "Send sign-in link"
+                    )}
+                  </Button>
+                </form>
               )}
-            </Button>
-          </form>
+            </TabsContent>
+
+            <TabsContent value="password" className="mt-4">
+              <form onSubmit={handleEmailLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="your.email@mail.mil"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={isLoading}
+                    aria-label="Email address"
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                    aria-label="Password"
+                    autoComplete="current-password"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={anyLoading}
+                >
+                  {isLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Sign in with password"
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
         </CardContent>
         <CardFooter>
           <p className="text-sm text-muted-foreground w-full text-center">
