@@ -33,7 +33,7 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
       ? "[&>[data-slot=progress-indicator]]:bg-amber-500"
       : "[&>[data-slot=progress-indicator]]:bg-emerald-500";
 
-  const label = `${balance} AI call${balance !== 1 ? "s" : ""} left`;
+  const label = `${balance} token${balance !== 1 ? "s" : ""} left`;
 
   if (isCollapsed) {
     return (
@@ -55,7 +55,7 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
         <TooltipContent side="right" sideOffset={8}>
           <p className="font-medium">{label}</p>
           <p className="text-xs text-muted-foreground">
-            Monitor usage or get more calls
+            Monitor usage or get more tokens
           </p>
         </TooltipContent>
       </Tooltip>
@@ -70,7 +70,7 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
     >
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-          AI Calls
+          Tokens
         </span>
         <span
           className={cn(

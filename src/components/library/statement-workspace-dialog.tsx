@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Dialog,
   DialogContent,
@@ -1155,6 +1156,7 @@ export function StatementWorkspaceDialog({
                     <>
                       <Sparkles className="size-4" />
                       Generate AI Suggestions
+                      <TokenCostBadge compact className="ml-1.5" />
                     </>
                   )}
                 </Button>

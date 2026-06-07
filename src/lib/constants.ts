@@ -84,6 +84,11 @@ const ENLISTED_RANK_VALUES: Rank[] = [
   "AB", "Amn", "A1C", "SrA", "SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt"
 ];
 
+// DoD civilian — wildcard supervisor; no self-assigned EPB/OPB
+export function isCivilian(rank: Rank | string | null): boolean {
+  return rank === "Civilian";
+}
+
 // Helper to check if a rank is an officer rank (has OPB, not EPB)
 export function isOfficer(rank: Rank | string | null): boolean {
   if (!rank) return false;
@@ -977,9 +982,12 @@ export function getProficiencyLevelsForTier(tier: ACARubricTier) {
   return tier === "junior" ? ACA_JUNIOR_PROFICIENCY_LEVELS : ACA_SENIOR_PROFICIENCY_LEVELS;
 }
 
-// Determine rubric tier based on rank
-export function getRubricTierForRank(rank: Rank | string | null): ACARubricTier {
+// Determine rubric tier based on rank (null when rank has no ACA eval document, e.g. Civilian)
+export function getRubricTierForRank(
+  rank: Rank | string | null
+): ACARubricTier | null {
   if (!rank) return "junior";
+  if (isCivilian(rank)) return null;
   const seniorRanks = ["MSgt", "SMSgt", "CMSgt"];
   return seniorRanks.includes(rank) ? "senior" : "junior";
 }
@@ -1318,6 +1326,9 @@ export function buildACAAssessmentPrompt(
 ): string {
   // Determine which rubric to use based on rank
   const rubricTier = getRubricTierForRank(rateeRank as Rank);
+  if (!rubricTier) {
+    throw new Error("No ACA rubric applies to this rank");
+  }
   const rubric: ACARubric = rubricTier === "senior" ? ACA_RUBRIC_SENIOR : ACA_RUBRIC_JUNIOR;
   const formUsed = rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
   const rankRange = rubricTier === "senior" ? "MSgt through SMSgt" : "AB through TSgt";

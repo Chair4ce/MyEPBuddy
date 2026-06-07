@@ -55,24 +55,7 @@ export async function GET(request: Request) {
   if (type === "recovery") {
     redirectTo = "/reset-password";
   } else if (type === "magiclink" || type === "signup" || type === "email") {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      const { data: profile } = (await supabase
-        .from("profiles")
-        .select("email, rank, afsc")
-        .eq("id", user.id)
-        .maybeSingle()) as { data: { email: string; rank: string | null; afsc: string | null } | null };
-
-      const profileComplete =
-        !!profile?.email && !!profile?.rank && !!profile?.afsc;
-
-      redirectTo = profileComplete ? "/dashboard" : "/complete-profile";
-    } else {
-      redirectTo = next;
-    }
+    redirectTo = "/dashboard";
   } else {
     redirectTo = next;
   }

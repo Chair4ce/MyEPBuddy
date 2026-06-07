@@ -77,12 +77,12 @@ export function InsufficientCreditsDialog() {
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary shrink-0" />
-            You&apos;re out of AI calls
+            You&apos;re out of tokens
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-4 pt-1">
               <p>
-                You&apos;ve used all your available AI calls. Purchase more to
+                You&apos;ve used all your tokens. Purchase more to
                 keep generating statements and assessments.
               </p>
 
@@ -91,7 +91,7 @@ export function InsufficientCreditsDialog() {
                   {PURCHASE_PACKAGE_LABEL}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {PURCHASE_CREDITS} AI calls · ${PURCHASE_PRICE_USD} one-time ·
+                  {PURCHASE_CREDITS} tokens · ${PURCHASE_PRICE_USD} one-time ·
                   never expire
                 </p>
               </div>
@@ -127,7 +127,7 @@ export function InsufficientCreditsDialog() {
                 <Key className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                 <p className="text-xs text-muted-foreground">
                   Prefer unlimited usage? Add your own API key in Settings — no
-                  credits needed.
+                  tokens needed.
                 </p>
               </div>
             </div>
@@ -157,7 +157,7 @@ export function InsufficientCreditsDialog() {
                 Opening checkout...
               </>
             ) : (
-              `Buy ${PURCHASE_CREDITS} calls — $${PURCHASE_PRICE_USD}`
+              `Buy ${PURCHASE_CREDITS} tokens — $${PURCHASE_PRICE_USD}`
             )}
           </Button>
         </AlertDialogFooter>

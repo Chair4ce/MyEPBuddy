@@ -3,12 +3,21 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  refundAndError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { 
   DEFAULT_MPA_DESCRIPTIONS, 
   ENTRY_MGAS, 
   getRubricTierForRank,
+  isCivilian,
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
   DEFAULT_APP_MODEL_ID,
@@ -46,6 +55,9 @@ function buildAccomplishmentAssessmentPrompt(
 ): string {
   // Determine which ACA rubric to use based on rank
   const rubricTier = getRubricTierForRank(rateeRank as Rank);
+  if (!rubricTier) {
+    throw new Error("No ACA rubric applies to this rank");
+  }
   const rubric: ACARubric = rubricTier === "senior" ? ACA_RUBRIC_SENIOR : ACA_RUBRIC_JUNIOR;
   const formUsed = rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
   const rankRange = rubricTier === "senior" ? "MSgt through SMSgt" : "AB through TSgt";
@@ -179,6 +191,7 @@ Respond with ONLY the JSON object, no additional text.`;
 
 export async function POST(request: Request) {
   let modelId = DEFAULT_APP_MODEL_ID;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -218,16 +231,33 @@ export async function POST(request: Request) {
       .eq("id", user.id)
       .single();
 
+    if (isCivilian(profile?.rank ?? null)) {
+      return NextResponse.json(
+        { error: "Civilian users do not have accomplishment assessments" },
+        { status: 400 }
+      );
+    }
+
     // Get user API keys (decrypted)
     const userKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
     const usageCheck = await checkAndTrackUsage(
       user.id,
       "assess_accomplishment_preview",
       modelId,
       userKeys,
+      billableCtx.idempotencyKey,
     );
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -266,10 +296,7 @@ export async function POST(request: Request) {
       }
     } catch (parseError) {
       console.error("Failed to parse assessment response:", parseError);
-      return NextResponse.json(
-        { error: "Failed to parse assessment results" },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Failed to parse assessment results" }, { status: 500 });
     }
 
     // Validate the assessment structure
@@ -278,17 +305,14 @@ export async function POST(request: Request) {
       typeof assessment.overall_score !== "number" ||
       !assessment.quality_indicators
     ) {
-      return NextResponse.json(
-        { error: "Invalid assessment structure returned" },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Invalid assessment structure returned" }, { status: 500 });
     }
 
     // Determine the rubric tier for the response
     const rubricTier = getRubricTierForRank(profile?.rank as Rank);
     const formUsed = rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
 
-    return jsonWithCredits({
+    return cacheBillableJson(billableCtx, {
       assessment,
       model,
       rubricTier,
@@ -296,6 +320,9 @@ export async function POST(request: Request) {
       rateeRank: profile?.rank || null,
     }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/assess-accomplishment-preview", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/assess-accomplishment-preview", modelId);
   }
 }

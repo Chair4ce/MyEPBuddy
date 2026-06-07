@@ -36,16 +36,15 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { Loader2, UserCog, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
-import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer } from "@/lib/constants";
+import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer, isCivilian } from "@/lib/constants";
 
-// Get available subordinate ranks based on supervisor's rank
-// Officers can supervise anyone, Enlisted can only supervise enlisted
 function getAvailableSubordinateRanks(supervisorRank: Rank | null | undefined) {
-  const supervisorIsOfficer = isOfficer(supervisorRank ?? null);
-  
+  const canAssignOfficerRanks =
+    isOfficer(supervisorRank ?? null) || isCivilian(supervisorRank ?? null);
+
   return {
     enlisted: ENLISTED_RANKS,
-    officers: supervisorIsOfficer ? OFFICER_RANKS : [], // Only show officers if supervisor is an officer
+    officers: canAssignOfficerRanks ? OFFICER_RANKS : [],
     civilian: CIVILIAN_RANK,
   };
 }

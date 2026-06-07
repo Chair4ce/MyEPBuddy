@@ -3,8 +3,15 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { buildDecorationSystemPrompt, expandAbbreviations } from "@/lib/decoration-prompts";
 import type { DecorationAwardType, DecorationReason } from "@/lib/decoration-constants";
 import { DECORATION_TYPES } from "@/lib/decoration-constants";
@@ -81,6 +88,7 @@ function buildAssignmentLine(body: GenerateDecorationRequest): string {
 
 export async function POST(request: Request) {
   let modelId: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
     
@@ -127,7 +135,16 @@ export async function POST(request: Request) {
     const apiKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "generate_decoration", modelId, apiKeys);
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
+    const usageCheck = await checkAndTrackUsage(user.id, "generate_decoration", modelId, apiKeys, billableCtx.idempotencyKey);
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -247,7 +264,7 @@ HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} ch
     // Also calculate legacy line estimate for reference
     const estimatedLines = Math.ceil(characterCount / 80);
     
-    return jsonWithCredits({
+    return cacheBillableJson(billableCtx, {
       citation,
       metadata: {
         awardType: body.awardType,
@@ -261,6 +278,9 @@ HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} ch
     }, usageCheck);
     
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/generate-decoration", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/generate-decoration", modelId);
   }
 }

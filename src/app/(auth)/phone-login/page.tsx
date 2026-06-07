@@ -156,16 +156,13 @@ export default function PhoneLoginPage() {
           .maybeSingle()) as { data: { email: string } | null };
 
         if (!profile?.email) {
-          // New phone user, needs to complete profile
           Analytics.signUp("phone");
-          toast.success("Phone verified! Please complete your profile.");
-          router.push("/complete-profile");
+          toast.success("Phone verified! Welcome to MyEPBuddy.");
         } else {
-          // Existing user
           Analytics.login("phone");
           toast.success("Signed in successfully!");
-          router.push("/dashboard");
         }
+        router.push("/dashboard");
         router.refresh();
       }
     } catch {

@@ -35,17 +35,17 @@ export function CreditsFirstBanner({
       />
       <div className="space-y-1">
         <p className="leading-relaxed">
-          Using your free credits ({FREE_MODEL_NAME}) —{" "}
+          Using your free tokens ({FREE_MODEL_NAME}) —{" "}
           <span className="font-semibold tabular-nums">{balance}</span>{" "}
-          {balance === 1 ? "call" : "calls"} left. Your own model takes over
+          {balance === 1 ? "token" : "tokens"} left. Your own model takes over
           automatically when they run out.
         </p>
         {!compact ? (
           <p className="leading-relaxed text-amber-800/90 dark:text-amber-300/80">
             Results come from the free {FREE_MODEL_NAME} model right now — not
             the model on the API key you added — so quality may be lower until
-            your credits run out. Turn off{" "}
-            <span className="font-medium">&ldquo;Use free credits first&rdquo;</span>{" "}
+            your tokens run out. Turn off{" "}
+            <span className="font-medium">&ldquo;Use free tokens first&rdquo;</span>{" "}
             in{" "}
             <a
               href="/settings/billing"

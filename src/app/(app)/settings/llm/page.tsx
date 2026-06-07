@@ -86,7 +86,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, MPADescriptions, Rank } from "@/types/database";
-import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, getActiveCyclePeriod, isOfficer, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
+import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, getActiveCyclePeriod, isOfficer, isCivilian, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import Link from "next/link";
 import { Award, Medal } from "lucide-react";
@@ -759,6 +759,7 @@ export default function LLMSettingsPage() {
   
   // Check if user is an officer (ACA rubrics don't apply to officers)
   const userIsOfficer = isOfficer(userRank);
+  const userIsCivilian = isCivilian(userRank);
   
   // Separate state for each section to prevent unnecessary re-renders
   const [styleGuidelines, setStyleGuidelines] = useState(DEFAULT_EPB_STYLE_GUIDELINES);
@@ -1226,7 +1227,16 @@ export default function LLMSettingsPage() {
             </CardHeader>
             <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6 space-y-4 sm:space-y-6">
               {/* SCOD Date and Cycle Year - Auto-computed from rank */}
-              {userRank ? (
+              {userIsCivilian ? (
+                <div className="rounded-lg border bg-muted/50 p-4 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground mb-1">Civilian supervisor mode</p>
+                  <p>
+                    SCOD and evaluation cycle settings apply to the military members
+                    you generate reports for, not to a personal performance document.
+                    Your dedicated civilian performance workspace is coming soon.
+                  </p>
+                </div>
+              ) : userRank ? (
                 <div className="space-y-3 sm:space-y-4">
                   <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
                     <div className="space-y-1.5">
@@ -1311,7 +1321,7 @@ export default function LLMSettingsPage() {
               <div className="space-y-2">
                 <Label className="text-xs sm:text-sm">Writing Style Signatures</Label>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Style signatures capture your unique writing patterns (sentence structure, verb choices, formality) for each rank, AFSC, and MPA combination. They refresh automatically when you finalize EPBs or update library examples and do not count against your AI call credits. If you add an OpenAI API key, signature analysis uses your key; otherwise the app refreshes a limited number per day in the background.
+                  Style signatures capture your unique writing patterns (sentence structure, verb choices, formality) for each rank, AFSC, and MPA combination. They refresh automatically when you finalize EPBs or update library examples and do not count against your tokens. If you add an OpenAI API key, signature analysis uses your key; otherwise the app refreshes a limited number per day in the background.
                 </p>
                 <Button
                   variant="outline"

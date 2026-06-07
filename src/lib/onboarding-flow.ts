@@ -22,15 +22,15 @@ export function resolveOnboardingStep({
     return "terms";
   }
 
+  if (!profile.rank && !rankDismissed) {
+    return "rank";
+  }
+
   const trialIntroDismissed =
     trialIntroSeen || Boolean(profile.trial_intro_seen_at);
 
   if (!creditsLoading && !hasOwnKey && !trialIntroDismissed) {
     return "trial-intro";
-  }
-
-  if (!profile.rank && !rankDismissed) {
-    return "rank";
   }
 
   return null;

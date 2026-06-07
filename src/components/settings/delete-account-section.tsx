@@ -117,6 +117,7 @@ export function DeleteAccountSection({ userEmail }: DeleteAccountSectionProps) {
         throw new Error(message);
       }
 
+      useUserStore.getState().setIsSigningOut(true);
       await supabase.auth.signOut().catch(() => undefined);
       clearAllTermsSessionFlags();
       useUserStore.getState().reset();
@@ -158,7 +159,7 @@ export function DeleteAccountSection({ userEmail }: DeleteAccountSectionProps) {
           <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
             <li>EPBs, OPBs, awards, decorations, and accomplishments</li>
             <li>Team relationships and managed members you created</li>
-            <li>API keys, settings, credits, and billing history</li>
+            <li>API keys, settings, tokens, and billing history</li>
             <li>Profile, avatar, and sign-in credentials</li>
           </ul>
           <Button
@@ -256,7 +257,7 @@ export function DeleteAccountSection({ userEmail }: DeleteAccountSectionProps) {
                   <ul className="space-y-1 list-disc pl-5">
                     <li>All performance documents and entries</li>
                     <li>Team links and supervision history</li>
-                    <li>Remaining credits and purchase history</li>
+                    <li>Remaining tokens and purchase history</li>
                     <li>Your profile and sign-in access</li>
                   </ul>
                 </div>

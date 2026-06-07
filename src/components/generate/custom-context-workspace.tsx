@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchWithRetry, billableFetch } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
@@ -588,6 +589,7 @@ function MPAWorkspaceCard({
             <Button onClick={onGenerate} disabled={isGenerating || !canGenerate} size="sm" className="w-full">
               {isGenerating ? <Loader2 className="size-4 animate-spin mr-2" /> : <Sparkles className="size-4 mr-2" />}
               Generate
+              <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
             </Button>
           </>
         )}

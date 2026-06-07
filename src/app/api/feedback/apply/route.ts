@@ -4,7 +4,14 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
+import { refundBillableCreditIfNeeded } from "@/lib/billing/refund-credit";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -130,6 +137,8 @@ function validateChange(
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  let billableCtx: BillableRequestContext | null = null;
+  let feedbackModelId: string | undefined;
   try {
     const supabase = await createClient();
 
@@ -140,6 +149,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+
+    // Build the billable context from a pristine request (before the body is
+    // read) so the idempotency key is reliably bound to the request body.
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
 
     const body: ApplyFeedbackRequest = await request.json();
     const { 
@@ -215,13 +231,38 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // Text has changed or multiple occurrences - use LLM to intelligently apply the change
     const userKeys = await getDecryptedApiKeys();
-    const feedbackModelId = await resolveRequestedModel(DEFAULT_APP_MODEL_ID, "global");
+    feedbackModelId = await resolveRequestedModel(DEFAULT_APP_MODEL_ID, "global");
+
+    // Idempotent replay: a genuine retry returns the cached result without
+    // re-running the model or charging again.
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "feedback_apply", feedbackModelId, userKeys);
+    const usageCheck = await checkAndTrackUsage(
+      user.id,
+      "feedback_apply",
+      feedbackModelId,
+      userKeys,
+      billableCtx.idempotencyKey,
+    );
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
+
+    // From here the token is consumed. Any non-success outcome must refund it so
+    // failed/aborted requests never cost the user a token.
+    const abortWithRefund = async (
+      payload: ApplyFeedbackResponse,
+    ): Promise<NextResponse> => {
+      await refundBillableCreditIfNeeded(
+        user.id,
+        billableCtx!.idempotencyKey,
+        billableCtx!.usageCheck,
+      );
+      return NextResponse.json(payload);
+    };
 
     const feedbackModel = getModelProvider(usageCheck.effectiveModel, userKeys, usageCheck.tracking);
 
@@ -278,15 +319,15 @@ Return valid JSON:`;
       });
       text = result.text;
     } catch (llmError) {
-      // Use handleLLMError to parse the error, then reformat for this route's response type
+      // LLM failed after the token was consumed — refund it.
       const llmResponse = handleLLMError(llmError, "POST /api/feedback/apply", feedbackModelId);
       const llmBody = await llmResponse.json();
-      return NextResponse.json({
+      return abortWithRefund({
         success: false,
         error: llmBody.error || "Failed to apply feedback",
         aborted: true,
         reason: llmBody.error || "AI service error",
-      } satisfies ApplyFeedbackResponse);
+      });
     }
 
     // Parse the LLM response
@@ -304,7 +345,7 @@ Return valid JSON:`;
           const normalizedNew = newText.replace(/\s+/g, ' ');
           
           if (normalizedCurrent === normalizedNew) {
-            return NextResponse.json({
+            return abortWithRefund({
               success: false,
               aborted: true,
               reason: `Could not find "${highlightedText.substring(0, 50)}${highlightedText.length > 50 ? '...' : ''}" in the current text. It may have already been edited or removed.`
@@ -318,7 +359,7 @@ Return valid JSON:`;
           if (!validation.valid) {
             console.warn("LLM validation warning:", validation.reason);
             // Return the proposed text but flag it for user review
-            return jsonWithCredits({
+            return cacheBillableJson(billableCtx, {
               success: true,
               newText,
               needsReview: true,
@@ -326,36 +367,43 @@ Return valid JSON:`;
             }, usageCheck);
           }
           
-          return jsonWithCredits({
+          return cacheBillableJson(billableCtx, {
             success: true,
             newText,
           }, usageCheck);
         } else if (result.aborted) {
-          return NextResponse.json({ 
-            success: false, 
-            aborted: true, 
-            reason: result.reason || "Could not apply the suggested change" 
+          return abortWithRefund({
+            success: false,
+            aborted: true,
+            reason: result.reason || "Could not apply the suggested change"
           });
         }
       }
       
       // Fallback if response doesn't match expected format
-      return NextResponse.json({ 
-        success: false, 
-        aborted: true, 
-        reason: "Could not process the change request" 
+      return abortWithRefund({
+        success: false,
+        aborted: true,
+        reason: "Could not process the change request"
       });
     } catch (parseError) {
       console.error("Failed to parse LLM response:", parseError, text);
-      return NextResponse.json({ 
-        success: false, 
-        aborted: true, 
-        reason: "Failed to process response from AI" 
+      return abortWithRefund({
+        success: false,
+        aborted: true,
+        reason: "Failed to process response from AI"
       });
     }
   } catch (error) {
     console.error("Feedback apply error:", error);
-    // Use handleLLMError to parse the error, then reformat for this route's response type
+    // If a token was already consumed before this failure, refund it.
+    if (billableCtx?.usageCheck) {
+      await refundBillableCreditIfNeeded(
+        billableCtx.userId,
+        billableCtx.idempotencyKey,
+        billableCtx.usageCheck,
+      );
+    }
     const llmResponse = handleLLMError(error, "POST /api/feedback/apply");
     const llmBody = await llmResponse.json();
     return NextResponse.json({

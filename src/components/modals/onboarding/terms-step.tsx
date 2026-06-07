@@ -123,22 +123,7 @@ export function TermsStep({ userId }: TermsStepProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 p-4 md:p-6 md:pt-4">
-          <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3 md:p-4 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <FlaskConical
-                className="size-4 text-amber-600 shrink-0"
-                aria-hidden="true"
-              />
-              <p className="font-semibold text-amber-800 dark:text-amber-400 text-sm">
-                Prototype Application
-              </p>
-            </div>
-            <p className="text-sm text-amber-700 dark:text-amber-300/80">
-              This application is a prototype intended to validate features only.
-              It is not an official DoD or DAF system. Data entered may be used
-              for feature development and testing purposes.
-            </p>
-          </div>
+     
 
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 md:p-4 space-y-2">
             <p className="font-semibold text-destructive text-sm">

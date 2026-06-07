@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Analytics } from "@/lib/analytics";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -2324,6 +2325,7 @@ export function EPBShellForm({
                   <ClipboardCheck className="size-3.5" />
                 )}
                 <span className="hidden sm:inline">AI Review</span>
+                <TokenCostBadge compact className="ml-1" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-[280px]">
@@ -2485,6 +2487,7 @@ export function EPBShellForm({
                     <Sparkles className="size-4" />
                   )}
                   AI Performance Review
+                  <TokenCostBadge className="ml-1.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-[300px]">

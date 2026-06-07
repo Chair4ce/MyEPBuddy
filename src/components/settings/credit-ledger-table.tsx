@@ -149,7 +149,7 @@ export function CreditLedgerTable({ refreshKey = 0 }: CreditLedgerTableProps) {
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto min-h-[120px]">
-        <Table aria-label="Credit ledger">
+        <Table aria-label="Token ledger">
           <TableHeader>
             <TableRow>
               <TableHead>Date</TableHead>
@@ -203,7 +203,7 @@ export function CreditLedgerTable({ refreshKey = 0 }: CreditLedgerTableProps) {
           </p>
           <nav
             className="flex items-center gap-2"
-            aria-label="Credit ledger pagination"
+            aria-label="Token ledger pagination"
           >
             <Button
               type="button"

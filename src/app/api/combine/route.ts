@@ -4,8 +4,16 @@ import { NextResponse } from "next/server";
 import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  refundAndError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import type { Rank, UserLLMSettings } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -42,6 +50,7 @@ type RequestBody = CombineRequest | ReviseRequest;
 
 export async function POST(request: Request) {
   let modelId: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -73,7 +82,16 @@ export async function POST(request: Request) {
     modelId = await resolveRequestedModel(model, "global");
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "combine", modelId, userKeys);
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
+    const usageCheck = await checkAndTrackUsage(user.id, "combine", modelId, userKeys, billableCtx.idempotencyKey);
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -89,10 +107,7 @@ export async function POST(request: Request) {
       const { draftStatement, sourceStatements } = body;
 
       if (!draftStatement) {
-        return NextResponse.json(
-          { error: "Draft statement is required" },
-          { status: 400 }
-        );
+        return refundAndError(billableCtx, { error: "Draft statement is required" }, { status: 400 });
       }
 
       systemPrompt = `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant. Your task is to help refine and improve a draft EPB statement while maintaining the user's intent and voice.
@@ -149,17 +164,11 @@ Format as JSON array only:
       const { statement1, statement2 } = body as CombineRequest;
 
       if (!statement1 || !statement2) {
-        return NextResponse.json(
-          { error: "Both statements are required" },
-          { status: 400 }
-        );
+        return refundAndError(billableCtx, { error: "Both statements are required" }, { status: 400 });
       }
 
       if (!mpa) {
-        return NextResponse.json(
-          { error: "MPA is required" },
-          { status: 400 }
-        );
+        return refundAndError(billableCtx, { error: "MPA is required" }, { status: 400 });
       }
 
       systemPrompt = `You are an expert Air Force Enlisted Performance Brief (EPB) writing assistant. Your task is to combine two existing EPB statements into a single, powerful statement that captures the essence of both while fitting within a strict character limit.
@@ -239,17 +248,17 @@ Format as JSON array only:
 
     // Ensure we have at least one statement
     if (statements.length === 0) {
-      return NextResponse.json(
-        { error: "Failed to generate statements" },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Failed to generate statements" }, { status: 500 });
     }
 
     // Trim to exactly 3 statements
     statements = statements.slice(0, 3);
 
-    return jsonWithCredits({ statements }, usageCheck);
+    return cacheBillableJson(billableCtx, { statements }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/combine", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/combine", modelId);
   }
 }

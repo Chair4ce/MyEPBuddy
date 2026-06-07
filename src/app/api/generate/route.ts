@@ -18,8 +18,15 @@ import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
 import {
   performQualityControl,
@@ -567,6 +574,7 @@ IMPORTANT: Reference the duty description when generating statements to ensure a
 
 export async function POST(request: Request) {
   let requestModel: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -647,7 +655,16 @@ export async function POST(request: Request) {
 
     // Usage tracking — enforce weekly limit for default-key users
     const resolvedModel = await resolveRequestedModel(model, "generate");
-    const usageCheck = await checkAndTrackUsage(user.id, "generate", resolvedModel, userKeys);
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
+    const usageCheck = await checkAndTrackUsage(user.id, "generate", resolvedModel, userKeys, billableCtx.idempotencyKey);
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -1770,8 +1787,11 @@ ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about
       }
     }
 
-    return jsonWithCredits({ statements: results }, usageCheck);
+    return cacheBillableJson(billableCtx, { statements: results }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/generate", requestModel, billableCtx);
+    }
     return handleLLMError(error, "POST /api/generate", requestModel);
   }
 }

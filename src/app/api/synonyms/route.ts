@@ -3,8 +3,15 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
@@ -22,6 +29,7 @@ interface SynonymRequest {
 
 export async function POST(request: Request) {
   let modelId: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -45,8 +53,23 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
     modelId = await resolveRequestedModel(model, "global");
 
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "synonyms", modelId, userKeys);
+    const usageCheck = await checkAndTrackUsage(
+      user.id,
+      "synonyms",
+      modelId,
+      userKeys,
+      billableCtx.idempotencyKey,
+    );
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -142,8 +165,16 @@ Return ONLY a JSON array of strings:
       .filter((s) => s.length > 0 && s !== word.toLowerCase())
       .slice(0, 15);
 
-    return jsonWithCredits({ synonyms }, usageCheck);
+    return cacheBillableJson(billableCtx, { synonyms }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(
+        error,
+        "POST /api/synonyms",
+        modelId,
+        billableCtx,
+      );
+    }
     return handleLLMError(error, "POST /api/synonyms", modelId);
   }
 }

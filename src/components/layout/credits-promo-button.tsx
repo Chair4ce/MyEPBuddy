@@ -85,21 +85,21 @@ export function CreditsPromoButton() {
           size="sm"
           variant="outline"
           className="rounded-full shadow-lg gap-2 bg-background hover:bg-accent"
-          aria-label="AI call credits"
+          aria-label="AI tokens"
         >
           <Sparkles className="size-4" />
           <span className="hidden sm:inline">
-            {balance !== null ? `${balance} calls left` : "AI calls"}
+            {balance !== null ? `${balance} tokens left` : "Tokens"}
           </span>
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>AI Call Credits</SheetTitle>
+          <SheetTitle>AI Tokens</SheetTitle>
           <SheetDescription>
             {byokWithCredits
-              ? "You added your own API key — choose how you want to use your remaining free calls."
-              : "Your prepaid calls for generating and running assessments on our default AI model."}
+              ? "You added your own API key — choose how you want to use your remaining free tokens."
+              : "Your prepaid tokens for generating and running assessments on our default AI model."}
           </SheetDescription>
         </SheetHeader>
 
@@ -107,12 +107,12 @@ export function CreditsPromoButton() {
           <div className="mt-6 space-y-5 px-1">
             <div className="rounded-lg border bg-muted/40 p-4 space-y-1">
               <p className="text-sm text-muted-foreground">
-                Your free calls remaining
+                Your free tokens remaining
               </p>
               <p className="text-3xl font-bold tabular-nums">
                 {remaining}{" "}
                 <span className="text-base font-normal text-muted-foreground">
-                  {remaining === 1 ? "call" : "calls"}
+                  {remaining === 1 ? "token" : "tokens"}
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">
@@ -123,7 +123,7 @@ export function CreditsPromoButton() {
             <div className="space-y-1.5 text-sm">
               <p className="font-medium">Heads up</p>
               <p className="text-muted-foreground leading-relaxed">
-                Your free calls use our default model (Gemini Flash) —{" "}
+                Your free tokens use our default model (Gemini Flash) —{" "}
                 <span className="font-medium text-foreground">
                   not the model from the API key you added
                 </span>{" "}
@@ -150,7 +150,7 @@ export function CreditsPromoButton() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">
-                    Use free calls first
+                    Use free tokens first
                   </span>
                   {preferCreditsFirst && (
                     <Check className="size-4 text-primary shrink-0" />
@@ -158,7 +158,7 @@ export function CreditsPromoButton() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                   You&apos;ll spend your {remaining} remaining{" "}
-                  {remaining === 1 ? "call" : "calls"} on the default model, then
+                  {remaining === 1 ? "token" : "tokens"} on the default model, then
                   we&apos;ll switch you to your own key &amp; model automatically
                   when they run out.
                 </p>
@@ -186,7 +186,7 @@ export function CreditsPromoButton() {
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                   We&apos;ll switch you to your own model right away. Your{" "}
                   {remaining} free{" "}
-                  {remaining === 1 ? "call stays" : "calls stay"} saved for later
+                  {remaining === 1 ? "token stays" : "tokens stay"} saved for later
                   — they never expire.
                 </p>
               </button>
@@ -203,7 +203,7 @@ export function CreditsPromoButton() {
             <p className="text-3xl font-bold tabular-nums">
               {balance ?? "—"}{" "}
               <span className="text-base font-normal text-muted-foreground">
-                calls
+                tokens
               </span>
             </p>
           </div>
@@ -212,15 +212,15 @@ export function CreditsPromoButton() {
             <p className="font-medium">How it works</p>
             <ul className="space-y-2 text-muted-foreground list-disc pl-5">
               <li>
-                You start with {signupTrialCredits} free trial calls — one call each
+                You start with {signupTrialCredits} free trial tokens — one token each
                 time you generate or run an assessment.
               </li>
               <li>
-                Your calls use our default AI model (Gemini Flash) — fast and
+                Your tokens use our default AI model (Gemini Flash) — fast and
                 optimized for your EPB workflows.
               </li>
               <li>
-                The calls you buy never expire. There&apos;s no subscription —
+                The tokens you buy never expire. There&apos;s no subscription —
                 you pay only when you need more.
               </li>
               <li>
@@ -233,7 +233,7 @@ export function CreditsPromoButton() {
           <div className="rounded-lg border p-4 space-y-2">
             <p className="text-sm font-medium">{PURCHASE_PACKAGE_LABEL}</p>
             <p className="text-xs text-muted-foreground">
-              One-time payment · {PURCHASE_CREDITS} calls · never expire
+              One-time payment · {PURCHASE_CREDITS} tokens · never expire
             </p>
           </div>
 
@@ -268,7 +268,7 @@ export function CreditsPromoButton() {
               disabled={
                 isCheckoutLoading || (!billingTermsAccepted && !termsChecked)
               }
-              aria-label={`Purchase ${PURCHASE_CREDITS} AI calls for ${PURCHASE_PRICE_USD} dollars`}
+              aria-label={`Purchase ${PURCHASE_CREDITS} tokens for ${PURCHASE_PRICE_USD} dollars`}
             >
               {isCheckoutLoading ? (
                 <>
@@ -276,7 +276,7 @@ export function CreditsPromoButton() {
                   Opening checkout...
                 </>
               ) : (
-                `Buy ${PURCHASE_CREDITS} calls — $${PURCHASE_PRICE_USD}`
+                `Buy ${PURCHASE_CREDITS} tokens — $${PURCHASE_PRICE_USD}`
               )}
             </Button>
             <Button variant="outline" asChild>
@@ -284,7 +284,7 @@ export function CreditsPromoButton() {
             </Button>
             {(balance ?? 0) === 0 && (
               <Button variant="ghost" onClick={() => openPurchaseDialog()}>
-                I&apos;m out of calls — purchase now
+                I&apos;m out of tokens — purchase now
               </Button>
             )}
           </div>

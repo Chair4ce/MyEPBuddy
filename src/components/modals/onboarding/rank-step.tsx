@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK } from "@/lib/constants";
+import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isCivilian } from "@/lib/constants";
 import type { Rank, Profile } from "@/types/database";
 
 export function RankStep() {
@@ -71,7 +71,11 @@ export function RankStep() {
 
       setProfile(data as Profile);
       markRankModalDismissed(profile.id);
-      toast.success("Profile saved! EPB features are now enabled.");
+      toast.success(
+        isCivilian(selectedRank)
+          ? "Profile saved! You can now generate performance reports for your team."
+          : "Profile saved! EPB features are now enabled."
+      );
     } catch {
       toast.error("Failed to save profile");
     } finally {
@@ -86,7 +90,8 @@ export function RankStep() {
           Complete your profile
         </AlertDialogTitle>
         <AlertDialogDescription>
-          Adding your rank unlocks key features in MyEPBuddy
+          Select your rank to unlock the right features. Civilians supervise any
+          rank; military members need their rank for EPB/OPB workflows.
         </AlertDialogDescription>
       </AlertDialogHeader>
 
@@ -137,7 +142,7 @@ export function RankStep() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="onboarding-afsc">AFSC</Label>
+            <Label htmlFor="onboarding-afsc">AFSC (optional)</Label>
             <Input
               id="onboarding-afsc"
               placeholder="e.g., 3D0X2"

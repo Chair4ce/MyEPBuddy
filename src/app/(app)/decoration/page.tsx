@@ -408,6 +408,7 @@ export default function DecorationPage() {
 
           const { member, existingMatch } = await createManagedTeamMember(supabase, {
             supervisorId: profile.id,
+            supervisorRank: profile.rank,
             parentProfileId: profile.id,
             fullName: trimmedManualName,
             email,

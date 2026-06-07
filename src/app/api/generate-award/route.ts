@@ -4,8 +4,15 @@ import { NextResponse } from "next/server";
 import { AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES } from "@/lib/constants";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import type { Rank, UserLLMSettings, AwardLevel, AwardCategory, AwardSentencesPerCategory, WinLevel } from "@/types/database";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
@@ -335,6 +342,7 @@ Emulate the style, density, and impact of these examples.`;
 
 export async function POST(request: Request) {
   let modelId: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -477,7 +485,16 @@ export async function POST(request: Request) {
     modelId = await resolveRequestedModel(model, "award");
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "generate_award", modelId, userKeys);
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
+    const usageCheck = await checkAndTrackUsage(user.id, "generate_award", modelId, userKeys, billableCtx.idempotencyKey);
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -617,7 +634,7 @@ Format as JSON array (EACH statement must start with "- "):
         }
       }
 
-      return jsonWithCredits({ statements: results }, usageCheck);
+      return cacheBillableJson(billableCtx, { statements: results }, usageCheck);
     }
 
     // ============================================================
@@ -764,7 +781,7 @@ Format as JSON array (EACH statement must start with "- "):
         }
       }
 
-      return jsonWithCredits({ statements: results }, usageCheck);
+      return cacheBillableJson(billableCtx, { statements: results }, usageCheck);
     }
 
     // ============================================================
@@ -1138,8 +1155,11 @@ Format as JSON array of arrays (EACH statement must start with "- "):
       return lines.map(line => [line]);
     }
 
-    return jsonWithCredits({ statements: results }, usageCheck);
+    return cacheBillableJson(billableCtx, { statements: results }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/generate-award", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/generate-award", modelId);
   }
 }

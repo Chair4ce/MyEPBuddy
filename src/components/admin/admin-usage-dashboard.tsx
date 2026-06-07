@@ -171,7 +171,7 @@ export function AdminUsageDashboard({ data }: { data: AdminUsagePageData }) {
             <p className="text-xs text-muted-foreground">
               users with keys · {formatInt(totalByokCalls)} calls in period
               {credits.conversion.purchased_credits > 0
-                ? ` · ${formatInt(credits.conversion.purchased_credits)} bought credits`
+                ? ` · ${formatInt(credits.conversion.purchased_credits)} bought tokens`
                 : ""}
             </p>
           </CardHeader>

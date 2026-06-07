@@ -34,6 +34,6 @@ export function useRankModalDismissed(userId: string | undefined): boolean {
   return useSyncExternalStore(
     subscribeRankModalDismissed,
     () => getRankModalDismissedSnapshot(userId),
-    () => true
+    () => false
   );
 }

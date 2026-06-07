@@ -5,6 +5,7 @@ import { Analytics } from "@/lib/analytics";
 import { useUserStore } from "@/stores/user-store";
 import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Dialog,
   DialogContent,
@@ -603,6 +604,7 @@ export function EntryFormDialog({
                 ) : (
                   "Rate My Accomplishment"
                 )}
+                <TokenCostBadge compact className="ml-1.5" />
               </Button>
             </div>
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Card,
   CardContent,
@@ -436,6 +437,7 @@ export function OPBSectionCard({
                   <>
                     <Sparkles className="size-4 mr-2" />
                     Generate Statement
+                    <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                   </>
                 )}
               </Button>

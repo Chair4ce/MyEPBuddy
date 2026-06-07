@@ -3,8 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
-import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
@@ -47,8 +53,23 @@ export async function POST(req: NextRequest) {
     "global",
   );
 
+  const billableCtx: BillableRequestContext = {
+    ...(await createBillableRequestContext(req, user.id)),
+    usageCheck: null,
+  };
+
+  const replayed = await getReplayedBillableResponse(billableCtx);
+  if (replayed) return replayed;
+
   // Usage tracking — enforce weekly limit for default-key users
-  const usageCheck = await checkAndTrackUsage(user.id, "adapt_sentence", model, userKeys);
+  const usageCheck = await checkAndTrackUsage(
+    user.id,
+    "adapt_sentence",
+    model,
+    userKeys,
+    billableCtx.idempotencyKey,
+  );
+  billableCtx.usageCheck = usageCheck;
   if (!usageCheck.allowed) {
     return enforceUsageGate(usageCheck);
   }
@@ -113,7 +134,7 @@ Return ONLY the adapted statement (both sentences combined). Do not include any 
     if (adaptedStatement.length > targetMax) {
       // If still too long, try a more aggressive trim
       const trimmedStatement = adaptedStatement.slice(0, targetMax - 3) + "...";
-      return jsonWithCredits({
+      return cacheBillableJson(billableCtx, {
         adaptedStatement: trimmedStatement,
         originalLength: currentLength,
         newLength: trimmedStatement.length,
@@ -121,13 +142,18 @@ Return ONLY the adapted statement (both sentences combined). Do not include any 
       }, usageCheck);
     }
 
-    return jsonWithCredits({
+    return cacheBillableJson(billableCtx, {
       adaptedStatement,
       originalLength: currentLength,
       newLength: adaptedStatement.length,
       wasTruncated: false,
     }, usageCheck);
   } catch (error) {
-    return handleLLMError(error, "POST /api/adapt-sentence", model);
+    return handleBillableLLMError(
+      error,
+      "POST /api/adapt-sentence",
+      model,
+      billableCtx,
+    );
   }
 }

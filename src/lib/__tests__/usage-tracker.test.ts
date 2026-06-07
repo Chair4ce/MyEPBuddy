@@ -34,7 +34,7 @@ describe("checkAndTrackUsage", () => {
       "check_and_record_usage",
       expect.objectContaining({
         p_user_id: "user-1",
-        p_used_default_key: false,
+        p_action_type: "generate",
       }),
     );
   });
@@ -61,6 +61,7 @@ describe("checkAndTrackUsage", () => {
       expect.objectContaining({
         p_user_id: "user-1",
         p_action_type: "generate",
+        p_idempotency_key: null,
       }),
     );
   });

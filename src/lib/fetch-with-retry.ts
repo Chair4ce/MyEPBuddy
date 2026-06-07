@@ -13,6 +13,7 @@ import {
   maybeOptimisticConsume,
   reconcileCreditsAfterFailure,
 } from "@/lib/billable-api";
+import { withBillableIdempotencyKey } from "@/lib/billing/idempotency";
 
 interface FetchWithRetryOptions {
   /** Maximum number of retry attempts (default: 2, so 3 total attempts) */
@@ -60,6 +61,7 @@ export async function fetchWithRetry(
   const { maxRetries = 2, baseDelay = 1000, timeout = 55000 } = options ?? {};
 
   maybeOptimisticConsume(url, init?.method);
+  const requestInit = withBillableIdempotencyKey(init);
 
   let lastError: unknown;
 
@@ -68,14 +70,13 @@ export async function fetchWithRetry(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    // Merge with any existing signal from the caller
-    const mergedSignal = init?.signal
-      ? mergeAbortSignals(init.signal, controller.signal)
+    const mergedSignal = requestInit.signal
+      ? mergeAbortSignals(requestInit.signal, controller.signal)
       : controller.signal;
 
     try {
       const response = await fetch(url, {
-        ...init,
+        ...requestInit,
         signal: mergedSignal,
       });
 
@@ -143,9 +144,10 @@ export async function billableFetch(
   init?: RequestInit,
 ): Promise<Response> {
   maybeOptimisticConsume(url, init?.method);
+  const requestInit = withBillableIdempotencyKey(init);
 
   try {
-    const response = await fetch(url, init);
+    const response = await fetch(url, requestInit);
     syncCreditsFromResponse(response);
     if (!response.ok) {
       void reconcileCreditsAfterFailure(url, init?.method, response);

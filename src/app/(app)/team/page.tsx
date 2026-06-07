@@ -195,13 +195,11 @@ function canSupervise(rank: Rank | null | undefined): boolean {
 // Enlisted can only supervise enlisted
 function canSuperviseeRank(supervisorRank: Rank | null | undefined, subordinateRank: Rank | null | undefined): boolean {
   if (!supervisorRank || !canSupervise(supervisorRank)) return false;
-  if (!subordinateRank) return true; // Can supervise members without rank set
-  
-  // If supervisor is enlisted, they cannot supervise officers
+  if (!subordinateRank) return true;
+  if (supervisorRank === "Civilian") return true;
   if (isEnlisted(supervisorRank) && isOfficer(subordinateRank)) {
     return false;
   }
-  
   return true;
 }
 
@@ -946,6 +944,18 @@ export default function TeamPage() {
 
   async function sendRequest() {
     if (!profile || !searchedProfile) return;
+
+    if (inviteType === "supervise") {
+      if (!canSupervise(profile.rank)) {
+        toast.error("Your rank is not eligible to supervise others.");
+        return;
+      }
+      if (!canSuperviseeRank(profile.rank, searchedProfile.rank)) {
+        toast.error("Enlisted supervisors cannot supervise officers.");
+        return;
+      }
+    }
+
     setIsInviting(true);
 
     try {
@@ -1978,7 +1988,7 @@ export default function TeamPage() {
                 </Select>
                 {!canSupervise(profile?.rank) && (
                   <p className="text-[10px] sm:text-xs text-muted-foreground">
-                    Only NCOs (SSgt+) and Officers can supervise others
+                    NCOs (SSgt+), Officers, and Civilians can supervise others
                   </p>
                 )}
               </div>
@@ -2680,7 +2690,7 @@ export default function TeamPage() {
               {!canSupervise(profile?.rank) ? (
                 <div className="text-center py-6 sm:py-8">
                   <p className="text-sm sm:text-base text-muted-foreground">
-                    Only NCOs (SSgt+) and Officers can have a subordinate chain.
+                    NCOs (SSgt+), Officers, and Civilians can have a subordinate chain.
                   </p>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-2">
                     Current rank: {profile?.rank || "Unknown"}
@@ -2796,7 +2806,7 @@ export default function TeamPage() {
                   )}
                   
                   <p className="text-center text-xs text-muted-foreground border-t pt-4 mt-4">
-                    NCOs (SSgt+) and Officers can add subordinates to their team
+                    NCOs (SSgt+), Officers, and Civilians can add subordinates to their team
                   </p>
                 </div>
               ) : subordinates.length === 0 ? (

@@ -29,60 +29,22 @@ export async function getSignupTrialCreditsConfig(): Promise<number> {
   return data.signup_trial_credits;
 }
 
-/** Trial grant recorded for this user at signup (immutable ledger row). */
-export async function getUserTrialGrantAmount(userId: string): Promise<number> {
-  const configDefault = await getSignupTrialCreditsConfig();
-  const supabase = await createClient();
-
-  const [creditsResult, txnResult] = await Promise.all([
-    (supabase as unknown as {
-      from: (table: string) => {
-        select: (cols: string) => {
-          eq: (col: string, val: string) => {
-            maybeSingle: () => Promise<{
-              data: { lifetime_purchased: number } | null;
-              error: { message: string } | null;
-            }>;
-          };
-        };
-      };
-    })
-      .from("user_credits")
-      .select("lifetime_purchased")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    (supabase as unknown as {
-      from: (table: string) => {
-        select: (cols: string) => {
-          eq: (col: string, val: string) => {
-            eq: (col2: string, val2: string) => {
-              order: (col3: string, opts: { ascending: boolean }) => {
-                limit: (n: number) => {
-                  maybeSingle: () => Promise<{
-                    data: { amount: number } | null;
-                    error: { message: string } | null;
-                  }>;
-                };
-              };
-            };
-          };
-        };
-      };
-    })
-      .from("credit_transactions")
-      .select("amount")
-      .eq("user_id", userId)
-      .eq("type", "trial")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-
-  const ledgerAmount = txnResult.data?.amount ?? configDefault;
-
-  if ((creditsResult.data?.lifetime_purchased ?? 0) === 0) {
-    return Math.min(ledgerAmount, configDefault);
+/**
+ * Display value for a user's signup trial grant.
+ *
+ * Pure helper so callers that already hold the user_credits row and the trial
+ * ledger entry don't re-query. Trial-only users (never purchased) are shown the
+ * smaller of their recorded grant and the current admin default, so lowering the
+ * config visually caps legacy trial-only accounts without touching balances.
+ */
+export function computeDisplayTrialCredits(params: {
+  ledgerTrialAmount: number | null;
+  lifetimePurchased: number;
+  configDefault: number;
+}): number {
+  const ledgerAmount = params.ledgerTrialAmount ?? params.configDefault;
+  if (params.lifetimePurchased === 0) {
+    return Math.min(ledgerAmount, params.configDefault);
   }
-
   return ledgerAmount;
 }

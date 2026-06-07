@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Dialog,
   DialogContent,
@@ -581,6 +582,7 @@ export function AddStatementDialog({
                     Parse Statements
                   </>
                 )}
+                <TokenCostBadge compact className="ml-1 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
               </Button>
             </div>
           </>

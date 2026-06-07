@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 // IMPORTANT: Not using shadcn Button, Switch, Progress, Label to avoid Radix ref composition issues
 // Using native HTML elements instead
 import { Badge } from "@/components/ui/badge";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Card,
   CardContent,
@@ -28,6 +29,8 @@ import {
   Wand2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Crown,
   History,
   RotateCcw,
@@ -287,6 +290,17 @@ const DEFAULT_SECTION_STATE = {
   selectedAccomplishmentIds: [] as string[],
 };
 
+/** A single generated batch of revisions kept in short-term session history. */
+interface RevisionBatch {
+  revisions: string[];
+  context: string;
+  aggressiveness: number;
+  createdAt: number;
+}
+
+/** Cap on remembered revision sets per section (short-term, in-session). */
+const MAX_REVISION_HISTORY = 8;
+
 export function MPASectionCard({
   section,
   rateeId,
@@ -376,6 +390,10 @@ export function MPASectionCard({
   const [reviseAggressiveness, setReviseAggressiveness] = useState(50);
   const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
   const [isRevising, setIsRevising] = useState(false);
+  // Short-term, in-session history of generated revision sets so users can
+  // revisit previous results for free instead of spending another token.
+  const [revisionHistory, setRevisionHistory] = useState<RevisionBatch[]>([]);
+  const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
   
   // AI Generate panel state
   const [generateVersionCount, setGenerateVersionCount] = useState(3);
@@ -387,7 +405,9 @@ export function MPASectionCard({
   // Style learning feedback (non-blocking, fire-and-forget)
   const styleFeedback = useStyleFeedback();
   const mpaCategory = getMpaCategory(section.mpa);
-  const [isSavingExample, setIsSavingExample] = useState(false);
+  // Tracks which individual statement is currently being saved so only that
+  // one button shows a loading state (never disables the whole batch).
+  const [savingExampleText, setSavingExampleText] = useState<string | null>(null);
   
   // Refs for scrolling panels into view
   const aiGeneratePanelRef = useRef<HTMLDivElement>(null);
@@ -987,16 +1007,22 @@ export function MPASectionCard({
   };
   
   // Save a statement to the examples scratchpad
+  // Whether a given statement is already saved to this section's examples.
+  // Derived from the DB-backed list so the saved state survives regeneration,
+  // history navigation, and reloads.
+  const isExampleSaved = (text: string) =>
+    savedExamples.some((e) => e.statement_text.trim() === text.trim());
+
   const handleSaveToExamples = async (statement: string, note?: string) => {
-    if (!onSaveExample) return;
-    setIsSavingExample(true);
+    if (!onSaveExample || isExampleSaved(statement)) return;
+    setSavingExampleText(statement);
     try {
       await onSaveExample(statement, note);
-      toast.success("Saved to examples");
+      toast.success("Statement saved to your examples");
     } catch {
-      toast.error("Failed to save example");
+      toast.error("Failed to save statement");
     } finally {
-      setIsSavingExample(false);
+      setSavingExampleText(null);
     }
   };
 
@@ -1012,6 +1038,19 @@ export function MPASectionCard({
     try {
       const revisions = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
       if (revisions.length > 0) {
+        // Record this set in short-term history so the user can return to it
+        // for free instead of spending another token to regenerate.
+        const batch: RevisionBatch = {
+          revisions,
+          context: reviseContext.trim(),
+          aggressiveness: reviseAggressiveness,
+          createdAt: Date.now(),
+        };
+        setRevisionHistory((prev) => {
+          const next = [...prev, batch].slice(-MAX_REVISION_HISTORY);
+          setActiveRevisionIndex(next.length - 1);
+          return next;
+        });
         resizeCardBody(() => setGeneratedRevisions(revisions), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
@@ -1047,6 +1086,16 @@ export function MPASectionCard({
     dismissRevisePanel();
   };
   
+  // Switch the displayed revisions to a previously generated set (no token cost).
+  const viewRevisionBatch = (index: number) => {
+    const batch = revisionHistory[index];
+    if (!batch) return;
+    setActiveRevisionIndex(index);
+    setReviseContext(batch.context);
+    setReviseAggressiveness(batch.aggressiveness);
+    resizeCardBody(() => setGeneratedRevisions(batch.revisions));
+  };
+
   // Use a generated revision (replace current statement)
   const handleUseRevision = (revision: string, versionIndex: number) => {
     Analytics.statementRevisionApplied(section.mpa);
@@ -1446,7 +1495,16 @@ export function MPASectionCard({
                       if (opening) {
                         resizeCardBody(() => {
                           setShowRevisePanel(true);
-                          setGeneratedRevisions([]);
+                          // Restore the last viewed set so prior results return
+                          // for free instead of forcing a token-costing regenerate.
+                          setGeneratedRevisions(
+                            revisionHistory.length > 0
+                              ? (
+                                  revisionHistory[activeRevisionIndex] ??
+                                  revisionHistory[revisionHistory.length - 1]
+                                ).revisions
+                              : [],
+                          );
                         }, () => {
                           setTimeout(() => {
                             revisePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1821,6 +1879,7 @@ export function MPASectionCard({
                       <Wand2 className="size-5 mr-2" />
                     )}
                     Generate {reviseVersionCount} Revision{reviseVersionCount > 1 ? "s" : ""}
+                    <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                   </button>
                 </div>
 
@@ -1845,6 +1904,40 @@ export function MPASectionCard({
                         </span>
                       )}
                     </div>
+
+                    {/* Short-term history navigator — revisit earlier sets for
+                        free instead of regenerating (which spends a token). */}
+                    {revisionHistory.length > 1 && (
+                      <div className="flex items-center justify-between gap-2 rounded-md border border-dashed bg-background/60 px-2.5 py-1.5">
+                        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <History className="size-3.5 shrink-0" aria-hidden="true" />
+                          Set {activeRevisionIndex + 1} of {revisionHistory.length}
+                          <span className="hidden sm:inline text-muted-foreground/70">
+                            · revisit past sets free
+                          </span>
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => viewRevisionBatch(activeRevisionIndex - 1)}
+                            disabled={activeRevisionIndex === 0}
+                            aria-label="View previous revision set"
+                            className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                          >
+                            <ChevronLeft className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => viewRevisionBatch(activeRevisionIndex + 1)}
+                            disabled={activeRevisionIndex >= revisionHistory.length - 1}
+                            aria-label="View next revision set"
+                            className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                          >
+                            <ChevronRight className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {generatedRevisions.map((revision, index) => (
                       <div
                         key={index}
@@ -1878,22 +1971,38 @@ export function MPASectionCard({
                               </TooltipTrigger>
                               <TooltipContent>Copy this revision</TooltipContent>
                             </Tooltip>
-                            {/* Save to Examples button */}
-                            {onSaveExample && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    onClick={() => handleSaveToExamples(revision, `Revision v${index + 1}`)}
-                                    disabled={isSavingExample}
-                                    className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center disabled:opacity-50"
-                                  >
-                                    <Bookmark className="size-4 mr-1.5" />
-                                    Save
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>Save to examples for later</TooltipContent>
-                              </Tooltip>
-                            )}
+                            {/* Save this individual revision to examples */}
+                            {onSaveExample && (() => {
+                              const saved = isExampleSaved(revision);
+                              const saving = savingExampleText === revision;
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() => handleSaveToExamples(revision, `Revision v${index + 1}`)}
+                                      disabled={saved || saving}
+                                      aria-label={saved ? "Saved to your examples" : "Save this revision to your examples"}
+                                      className={cn(
+                                        "h-6 px-2 rounded text-[10px] transition-colors inline-flex items-center",
+                                        saved ? "text-primary cursor-default" : "hover:bg-muted disabled:opacity-50",
+                                      )}
+                                    >
+                                      {saving ? (
+                                        <Loader2 className="size-4 mr-1.5 animate-spin" />
+                                      ) : saved ? (
+                                        <BookMarked className="size-4 mr-1.5" />
+                                      ) : (
+                                        <Bookmark className="size-4 mr-1.5" />
+                                      )}
+                                      {saved ? "Saved" : "Save"}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {saved ? "Saved to your examples" : "Save this revision to your examples"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
                             {/* Use This button - only when not locked */}
                             {!isLockedByOther && (
                               <Tooltip>
@@ -2216,6 +2325,7 @@ export function MPASectionCard({
                       <Sparkles className="size-5 mr-2" />
                     )}
                     Generate {generateVersionCount} Statement{generateVersionCount > 1 ? "s" : ""}
+                    <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                   </button>
                 </div>
 
@@ -2279,22 +2389,38 @@ export function MPASectionCard({
                               </TooltipTrigger>
                               <TooltipContent>Copy this statement</TooltipContent>
                             </Tooltip>
-                            {/* Save to Examples button - always show when available */}
-                            {onSaveExample && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    onClick={() => handleSaveToExamples(statement, `Generated v${index + 1}`)}
-                                    disabled={isSavingExample}
-                                    className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors inline-flex items-center disabled:opacity-50"
-                                  >
-                                    <Bookmark className="size-4 mr-1.5" />
-                                    Save
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>Save to examples for later</TooltipContent>
-                              </Tooltip>
-                            )}
+                            {/* Save this individual statement to examples */}
+                            {onSaveExample && (() => {
+                              const saved = isExampleSaved(statement);
+                              const saving = savingExampleText === statement;
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() => handleSaveToExamples(statement, `Generated v${index + 1}`)}
+                                      disabled={saved || saving}
+                                      aria-label={saved ? "Saved to your examples" : "Save this statement to your examples"}
+                                      className={cn(
+                                        "h-6 px-2 rounded text-[10px] transition-colors inline-flex items-center",
+                                        saved ? "text-primary cursor-default" : "hover:bg-muted disabled:opacity-50",
+                                      )}
+                                    >
+                                      {saving ? (
+                                        <Loader2 className="size-4 mr-1.5 animate-spin" />
+                                      ) : saved ? (
+                                        <BookMarked className="size-4 mr-1.5" />
+                                      ) : (
+                                        <Bookmark className="size-4 mr-1.5" />
+                                      )}
+                                      {saved ? "Saved" : "Save"}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {saved ? "Saved to your examples" : "Save this statement to your examples"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
                             {/* Use This button - only when not locked */}
                             {!isLockedByOther && (
                               <Tooltip>

@@ -8,6 +8,7 @@ interface UserState {
   epbConfig: EPBConfig | null;
   isLoading: boolean;
   termsAcceptedThisSession: boolean;
+  isSigningOut: boolean;
   setProfile: (profile: Profile | null) => void;
   setSubordinates: (subordinates: Profile[]) => void;
   setManagedMembers: (members: ManagedMember[]) => void;
@@ -17,6 +18,7 @@ interface UserState {
   setEpbConfig: (config: EPBConfig | null) => void;
   setIsLoading: (loading: boolean) => void;
   setTermsAcceptedThisSession: (accepted: boolean) => void;
+  setIsSigningOut: (signingOut: boolean) => void;
   reset: () => void;
 }
 
@@ -27,6 +29,7 @@ export const useUserStore = create<UserState>((set) => ({
   epbConfig: null,
   isLoading: true,
   termsAcceptedThisSession: false,
+  isSigningOut: false,
   setProfile: (profile) => set({ profile }),
   setSubordinates: (subordinates) => set({ subordinates }),
   setManagedMembers: (managedMembers) => set({ managedMembers }),
@@ -47,6 +50,7 @@ export const useUserStore = create<UserState>((set) => ({
   setEpbConfig: (epbConfig) => set({ epbConfig }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setTermsAcceptedThisSession: (accepted) => set({ termsAcceptedThisSession: accepted }),
+  setIsSigningOut: (isSigningOut) => set({ isSigningOut }),
   reset: () =>
     set({
       profile: null,
@@ -55,6 +59,7 @@ export const useUserStore = create<UserState>((set) => ({
       epbConfig: null,
       isLoading: true,
       termsAcceptedThisSession: false,
+      isSigningOut: false,
     }),
 }));
 

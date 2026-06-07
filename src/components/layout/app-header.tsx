@@ -41,6 +41,7 @@ export function AppHeader({ profile: initialProfile }: AppHeaderProps) {
       return;
     }
 
+    useUserStore.getState().setIsSigningOut(true);
     clearAllTermsSessionFlags();
     useUserStore.getState().reset();
     useCreditsStore.getState().reset();

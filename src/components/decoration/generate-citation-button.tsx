@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { reconcileModelSelection } from "@/lib/ai-models/catalog";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Popover,
   PopoverContent,
@@ -73,6 +74,7 @@ export function GenerateCitationButton({
             <Sparkles className="size-3 mr-1" />
             Generate
             <ArrowRight className="size-3 ml-1" />
+            <TokenCostBadge compact className="ml-1.5 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
           </>
         )}
       </Button>

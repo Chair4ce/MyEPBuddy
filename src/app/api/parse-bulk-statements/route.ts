@@ -3,8 +3,16 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  refundAndError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
@@ -113,6 +121,7 @@ Return a JSON object with this exact structure:
 
 export async function POST(request: Request) {
   let modelId = DEFAULT_PARSE_MODEL;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -165,12 +174,22 @@ export async function POST(request: Request) {
     const userKeys = await getDecryptedApiKeys();
 
     // Usage tracking — enforce weekly limit for default-key users
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
     const usageCheck = await checkAndTrackUsage(
       user.id,
       "parse_bulk_statements",
       modelId,
       userKeys,
+      billableCtx.idempotencyKey,
     );
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -214,10 +233,7 @@ export async function POST(request: Request) {
       parsedResult = JSON.parse(jsonStr.trim());
     } catch (parseError) {
       console.error("Failed to parse LLM response:", llmResponse);
-      return NextResponse.json(
-        { error: "Failed to parse statements. Please try again." },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Failed to parse statements. Please try again." }, { status: 500 });
     }
 
     // Transform the parsed statements
@@ -240,8 +256,11 @@ export async function POST(request: Request) {
       extractedCycleYear,
     };
 
-    return jsonWithCredits(response, usageCheck);
+    return cacheBillableJson(billableCtx, response, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/parse-bulk-statements", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/parse-bulk-statements", modelId);
   }
 }

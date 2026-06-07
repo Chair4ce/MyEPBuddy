@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -245,7 +246,7 @@ export function StatementSelectionWorkspace({
             targetChars: charPerSlot,
             model,
             mpa: workspaceState?.selectedMPA || "executing_mission",
-            rateeRank: rateeInfo?.rank || "SSgt",
+            rateeRank: rateeInfo?.rank || "AB",
             rateeAfsc: rateeInfo?.afsc || "UNKNOWN",
             rateeId: rateeInfo?.id,
             cycleYear,
@@ -275,7 +276,7 @@ export function StatementSelectionWorkspace({
             targetChars: charPerSlot,
             model,
             mpa: workspaceState?.selectedMPA || "executing_mission",
-            rateeRank: rateeInfo?.rank || "SSgt",
+            rateeRank: rateeInfo?.rank || "AB",
             rateeAfsc: rateeInfo?.afsc || "UNKNOWN",
             rateeId: rateeInfo?.id,
             cycleYear,
@@ -504,6 +505,7 @@ export function StatementSelectionWorkspace({
                     >
                       <Sparkles className="size-4 mr-2" />
                       Generate
+                      <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                     </Button>
                   </div>
                 </div>

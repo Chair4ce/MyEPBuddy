@@ -129,10 +129,10 @@ export default function AdminConfigPage() {
         setTrialCreditsInput(String(data.signup_trial_credits));
       }
 
-      toast.success("Signup trial credits updated for new accounts only.");
+      toast.success("Signup trial tokens updated for new accounts only.");
     } catch {
       setConfig({ ...config, signup_trial_credits: previous });
-      toast.error("Failed to update signup trial credits");
+      toast.error("Failed to update signup trial tokens");
     } finally {
       setSavingTrialCredits(false);
     }
@@ -185,10 +185,10 @@ export default function AdminConfigPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Coins className="size-5" />
-            AI Call Credits
+            AI Tokens
           </CardTitle>
           <CardDescription>
-            Controls how many free AI calls new accounts receive at signup. Changing
+            Controls how many free tokens new accounts receive at signup. Changing
             this does not adjust existing user balances.
           </CardDescription>
         </CardHeader>
@@ -204,11 +204,11 @@ export default function AdminConfigPage() {
                 inputMode="numeric"
                 value={trialCreditsInput}
                 onChange={(e) => setTrialCreditsInput(e.target.value)}
-                aria-label="Signup trial AI call credits"
+                aria-label="Signup trial tokens"
                 className="tabular-nums"
               />
               <p className="text-xs text-muted-foreground">
-                Current value: {config.signup_trial_credits} calls for new signups
+                Current value: {config.signup_trial_credits} tokens for new signups
               </p>
             </div>
             <Button

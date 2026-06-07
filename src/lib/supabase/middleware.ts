@@ -49,7 +49,6 @@ export async function updateSession(request: NextRequest) {
     "/login",
     "/signup",
     "/phone-login",
-    "/complete-profile",
     "/forgot-password",
     "/reset-password",
     "/auth/callback",

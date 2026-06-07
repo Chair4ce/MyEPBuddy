@@ -3,9 +3,17 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  refundAndError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
-import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
+import { enforceUsageGate } from "@/lib/usage-gate";
+import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank, isCivilian, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
@@ -25,6 +33,7 @@ interface AssessEPBRequest {
 
 export async function POST(request: Request) {
   let modelId: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -42,6 +51,13 @@ export async function POST(request: Request) {
     if (!shellId || !rateeRank) {
       return NextResponse.json(
         { error: "Missing required fields: shellId and rateeRank" },
+        { status: 400 }
+      );
+    }
+
+    if (isCivilian(rateeRank)) {
+      return NextResponse.json(
+        { error: "Civilian ratees do not have EPB assessments" },
         { status: 400 }
       );
     }
@@ -126,7 +142,16 @@ export async function POST(request: Request) {
     modelId = await resolveRequestedModel(model, "generate");
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "assess_epb", modelId, userKeys);
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
+    const usageCheck = await checkAndTrackUsage(user.id, "assess_epb", modelId, userKeys, billableCtx.idempotencyKey);
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -175,10 +200,7 @@ export async function POST(request: Request) {
     } catch (parseError) {
       console.error("Failed to parse assessment response:", parseError);
       console.error("Raw response:", text);
-      return NextResponse.json(
-        { error: "Failed to parse assessment results. Please try again." },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Failed to parse assessment results. Please try again." }, { status: 500 });
     }
 
     // Validate the assessment structure (support both old mpaAssessments and new categoryAssessments)
@@ -187,10 +209,7 @@ export async function POST(request: Request) {
     const hasMPAs = (assessment as any).mpaAssessments && Array.isArray((assessment as any).mpaAssessments);
     
     if (!hasCategories && !hasMPAs) {
-      return NextResponse.json(
-        { error: "Invalid assessment structure returned" },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Invalid assessment structure returned" }, { status: 500 });
     }
     
     // Migrate old format to new format if needed
@@ -213,16 +232,19 @@ export async function POST(request: Request) {
       assessment.timestamp = new Date().toISOString();
     }
     
-    // Ensure rubricTier and formUsed are set based on ratee's rank
-    if (!assessment.rubricTier) {
-      assessment.rubricTier = getRubricTierForRank(rateeRank);
+    const resolvedRubricTier = getRubricTierForRank(rateeRank);
+    if (!assessment.rubricTier && resolvedRubricTier) {
+      assessment.rubricTier = resolvedRubricTier;
     }
     if (!assessment.formUsed) {
       assessment.formUsed = assessment.rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
     }
 
-    return jsonWithCredits({ assessment }, usageCheck);
+    return cacheBillableJson(billableCtx, { assessment }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/assess-epb", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/assess-epb", modelId);
   }
 }

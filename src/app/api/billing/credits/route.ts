@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getUsageStats } from "@/lib/usage-tracker";
 import { getKeyStatus } from "@/app/actions/api-keys";
-import { getSignupTrialCreditsConfig } from "@/lib/billing/signup-trial-credits";
 import { PURCHASE_CREDITS, PURCHASE_PRICE_USD } from "@/lib/billing/constants";
 
 export async function GET() {
@@ -15,30 +14,29 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [stats, keyStatus, profileResult, signupTrialCredits] = await Promise.all([
-      getUsageStats(user.id),
-      getKeyStatus(),
-      (supabase as unknown as {
-        from: (table: string) => {
-          select: (cols: string) => {
-            eq: (col: string, val: string) => {
-              single: () => Promise<{
-                data: {
-                  billing_terms_accepted_at: string | null;
-                  trial_intro_seen_at: string | null;
-                } | null;
-                error: unknown;
-              }>;
-            };
+  const [stats, keyStatus, profileResult] = await Promise.all([
+    getUsageStats(user.id),
+    getKeyStatus(),
+    (supabase as unknown as {
+      from: (table: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            single: () => Promise<{
+              data: {
+                billing_terms_accepted_at: string | null;
+                trial_intro_seen_at: string | null;
+              } | null;
+              error: unknown;
+            }>;
           };
         };
-      })
-        .from("profiles")
-        .select("billing_terms_accepted_at, trial_intro_seen_at")
-        .eq("id", user.id)
-        .single(),
-      getSignupTrialCreditsConfig(),
-    ]);
+      };
+    })
+      .from("profiles")
+      .select("billing_terms_accepted_at, trial_intro_seen_at")
+      .eq("id", user.id)
+      .single(),
+  ]);
 
   const hasOwnKey =
     keyStatus.openai_key ||
@@ -51,7 +49,6 @@ export async function GET() {
   return NextResponse.json({
     ...stats,
     hasOwnKey,
-    signupTrialCredits,
     billingTermsAccepted: !!profile?.billing_terms_accepted_at,
     trialIntroSeen: !!profile?.trial_intro_seen_at,
     purchasePackage: {

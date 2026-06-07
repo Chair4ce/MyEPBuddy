@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isCivilian, isEnlisted, isOfficer } from "@/lib/constants";
 import type { ManagedMember, Rank } from "@/types/database";
 
 type BrowserSupabaseClient = ReturnType<typeof createClient>;
@@ -12,6 +13,7 @@ export interface ExistingUserMatch {
 
 export interface CreateManagedMemberInput {
   supervisorId: string;
+  supervisorRank?: Rank | null;
   parentProfileId: string;
   fullName: string;
   email?: string | null;
@@ -84,7 +86,14 @@ export async function createManagedTeamMember(
 
   const member = data as unknown as ManagedMember;
 
-  if (existingMatch) {
+  const subordinateIsCivilian = isCivilian(existingMatch?.rank ?? null);
+  const supervisorIsMilitary =
+    isOfficer(input.supervisorRank ?? null) ||
+    isEnlisted(input.supervisorRank ?? null);
+  const skipAutoSupervise =
+    existingMatch && subordinateIsCivilian && supervisorIsMilitary;
+
+  if (existingMatch && !skipAutoSupervise) {
     const { error: requestError } = await supabase.from("team_requests").insert({
       requester_id: input.supervisorId,
       target_id: existingMatch.id,

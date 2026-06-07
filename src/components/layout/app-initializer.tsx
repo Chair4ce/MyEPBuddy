@@ -7,6 +7,7 @@ import { getGateProfile } from "@/lib/profile-gate";
 import { UpdatePrompt } from "@/components/layout/update-prompt";
 import { OnboardingFlowModal } from "@/components/modals/onboarding-flow-modal";
 import { useOnboardingStep } from "@/lib/onboarding-flow";
+import { useClientReady } from "@/lib/client-ready";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
@@ -35,6 +36,7 @@ export function AppInitializer({
     setEpbConfig,
     setIsLoading,
     profile: storeProfile,
+    isSigningOut,
   } = useUserStore();
 
   const {
@@ -83,7 +85,10 @@ export function AppInitializer({
     });
   }, [profile?.id, fetchCredits, initRealtime]);
 
+  const clientReady = useClientReady();
   const gateProfile = getGateProfile(profile, storeProfile);
+  const showOnboarding =
+    clientReady && !isSigningOut && gateProfile !== null;
   const onboardingStep = useOnboardingStep({
     profile: gateProfile,
     creditsLoading,
@@ -105,7 +110,7 @@ export function AppInitializer({
 
   return (
     <>
-      {gateProfile && (
+      {showOnboarding && gateProfile && (
         <OnboardingFlowModal
           profile={gateProfile}
           creditsLoading={creditsLoading}

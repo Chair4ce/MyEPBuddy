@@ -22,6 +22,8 @@ import {
   Wand2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   RotateCcw,
   History,
   Camera,
@@ -31,6 +33,7 @@ import {
   CheckCircle2,
   Circle,
 } from "lucide-react";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { useEPBShellStore } from "@/stores/epb-shell-store";
 import type { DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate } from "@/types/database";
 import { useStyleFeedback } from "@/hooks/use-style-feedback";
@@ -44,6 +47,18 @@ import {
   EPB_PANEL_CLOSE_MS,
 } from "./epb-animated-collapse";
 import { animateEpbShellResize } from "./epb-resize-transition";
+
+/** A single generated batch of revisions kept in short-term session history. */
+interface RevisionBatch {
+  revisions: string[];
+  context: string;
+  aggressiveness: number;
+  createdAt: number;
+}
+
+/** Cap on remembered revision sets per card (short-term, in-session). */
+const MAX_REVISION_HISTORY = 8;
+
 interface DutyDescriptionCardProps {
   currentDutyDescription: string;
   isCollapsed: boolean;
@@ -129,6 +144,13 @@ export function DutyDescriptionCard({
   const [reviseAggressiveness, setReviseAggressiveness] = useState(50);
   const [isRevising, setIsRevising] = useState(false);
   const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
+  // Short-term, in-session history of generated revision sets so users can
+  // revisit previous results for free instead of spending another token.
+  const [revisionHistory, setRevisionHistory] = useState<RevisionBatch[]>([]);
+  const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
+  // Tracks which individual revision is currently being saved so only that
+  // one button shows a loading state (never disables the whole batch).
+  const [savingExampleText, setSavingExampleText] = useState<string | null>(null);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showExamplesPanel, setShowExamplesPanel] = useState(false);
   const [showTemplatesPanel, setShowTemplatesPanel] = useState(false);
@@ -434,6 +456,19 @@ export function DutyDescriptionCard({
     try {
       const results = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
       if (results.length > 0) {
+        // Record this set in short-term history so the user can return to it
+        // for free instead of spending another token to regenerate.
+        const batch: RevisionBatch = {
+          revisions: results,
+          context: reviseContext.trim(),
+          aggressiveness: reviseAggressiveness,
+          createdAt: Date.now(),
+        };
+        setRevisionHistory((prev) => {
+          const next = [...prev, batch].slice(-MAX_REVISION_HISTORY);
+          setActiveRevisionIndex(next.length - 1);
+          return next;
+        });
         resizeCardBody(() => setGeneratedRevisions(results), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
@@ -443,6 +478,37 @@ export function DutyDescriptionCard({
       toast.error("Failed to generate revisions");
     } finally {
       setIsRevising(false);
+    }
+  };
+
+  // Switch the displayed revisions to a previously generated set (no token cost).
+  const viewRevisionBatch = (index: number) => {
+    const batch = revisionHistory[index];
+    if (!batch) return;
+    setActiveRevisionIndex(index);
+    setReviseContext(batch.context);
+    setReviseAggressiveness(batch.aggressiveness);
+    resizeCardBody(() => setGeneratedRevisions(batch.revisions));
+  };
+
+  // Whether a given revision is already saved to this card's examples.
+  // Derived from the DB-backed list so the saved state survives regeneration,
+  // history navigation, and reloads.
+  const isExampleSaved = (text: string) =>
+    savedExamples.some((e) => e.example_text.trim() === text.trim());
+
+  // Save a single generated revision to this shell's duty-description examples.
+  const handleSaveRevision = async (text: string) => {
+    if (!onSaveExample || isExampleSaved(text)) return;
+    setSavingExampleText(text);
+    try {
+      await onSaveExample(text);
+      toast.success("Revision saved to your examples");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to save revision");
+    } finally {
+      setSavingExampleText(null);
     }
   };
 
@@ -640,7 +706,16 @@ export function DutyDescriptionCard({
                         setShowHistoryPanel(false);
                         setShowExamplesPanel(false);
                         setShowTemplatesPanel(false);
-                        setGeneratedRevisions([]);
+                        // Restore the last viewed set so prior results return
+                        // for free instead of forcing a token-costing regenerate.
+                        setGeneratedRevisions(
+                          revisionHistory.length > 0
+                            ? (
+                                revisionHistory[activeRevisionIndex] ??
+                                revisionHistory[revisionHistory.length - 1]
+                              ).revisions
+                            : [],
+                        );
                         enterZenMode();
                       }, () => {
                         setTimeout(() => {
@@ -1039,6 +1114,7 @@ export function DutyDescriptionCard({
                     <Wand2 className="size-4 mr-2" />
                   )}
                   Generate {reviseVersionCount} Revision{reviseVersionCount > 1 ? "s" : ""}
+                  <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                 </button>
               </div>
 
@@ -1055,6 +1131,40 @@ export function DutyDescriptionCard({
                   <h5 className="text-xs font-medium text-muted-foreground">
                     Revisions ({generatedRevisions.length})
                   </h5>
+
+                  {/* Short-term history navigator — revisit earlier sets for
+                      free instead of regenerating (which spends a token). */}
+                  {revisionHistory.length > 1 && (
+                    <div className="flex items-center justify-between gap-2 rounded-md border border-dashed bg-background/60 px-2.5 py-1.5">
+                      <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <History className="size-3.5 shrink-0" aria-hidden="true" />
+                        Set {activeRevisionIndex + 1} of {revisionHistory.length}
+                        <span className="hidden sm:inline text-muted-foreground/70">
+                          · revisit past sets free
+                        </span>
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => viewRevisionBatch(activeRevisionIndex - 1)}
+                          disabled={activeRevisionIndex === 0}
+                          aria-label="View previous revision set"
+                          className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <ChevronLeft className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => viewRevisionBatch(activeRevisionIndex + 1)}
+                          disabled={activeRevisionIndex >= revisionHistory.length - 1}
+                          aria-label="View next revision set"
+                          className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <ChevronRight className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {generatedRevisions.map((version, index) => (
                     <div
                       key={index}
@@ -1088,6 +1198,38 @@ export function DutyDescriptionCard({
                             </TooltipTrigger>
                             <TooltipContent>Copy this version</TooltipContent>
                           </Tooltip>
+                          {/* Save this individual revision to examples */}
+                          {onSaveExample && (() => {
+                            const saved = isExampleSaved(version);
+                            const saving = savingExampleText === version;
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleSaveRevision(version)}
+                                    disabled={saved || saving}
+                                    aria-label={saved ? "Saved to your examples" : "Save this revision to your examples"}
+                                    className={cn(
+                                      "h-6 px-2 rounded text-[10px] transition-colors inline-flex items-center",
+                                      saved ? "text-primary cursor-default" : "hover:bg-muted disabled:opacity-50",
+                                    )}
+                                  >
+                                    {saving ? (
+                                      <Loader2 className="size-3 mr-1 animate-spin" />
+                                    ) : saved ? (
+                                      <BookMarked className="size-3 mr-1" />
+                                    ) : (
+                                      <Bookmark className="size-3 mr-1" />
+                                    )}
+                                    {saved ? "Saved" : "Save"}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {saved ? "Saved to your examples" : "Save this revision to your examples"}
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })()}
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button

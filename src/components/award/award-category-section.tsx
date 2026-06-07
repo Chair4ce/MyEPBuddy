@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo, useLayoutEffect } fr
 import { Badge } from "@/components/ui/badge";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Card,
   CardContent,
@@ -1197,6 +1198,7 @@ function StatementSlotCard({
                   <Sparkles className="size-3.5 mr-1.5" />
                 )}
                 Generate {versionCount} {hasContent ? "Revision" : "Statement"}{versionCount > 1 ? "s" : ""}
+                <TokenCostBadge compact className="ml-1.5 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
               </Button>
             </div>
 

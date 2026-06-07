@@ -361,7 +361,7 @@ export default function SignupPage() {
                 Verify your email first
               </p>
               <p className="text-sm text-muted-foreground">
-                Trial credits start once you confirm your inbox.{" "}
+                Trial tokens start once you confirm your inbox.{" "}
                 <span className="font-semibold text-foreground">.mil</span>{" "}
                 addresses like{" "}
                 <span className="font-semibold text-foreground">us.af.mil</span>{" "}

@@ -51,7 +51,7 @@ export default function BillingSettingsPage() {
   useEffect(() => {
     const checkout = searchParams.get("checkout");
     if (checkout === "success") {
-      toast.success("Payment successful! Your credits have been added.");
+      toast.success("Payment successful! Your tokens have been added.");
       void fetchCredits();
       setLedgerRefreshKey((key) => key + 1);
     } else if (checkout === "cancelled") {
@@ -136,11 +136,11 @@ export default function BillingSettingsPage() {
                 </div>
                 <div>
                   <CardTitle>
-                    {remaining} free {remaining === 1 ? "call" : "calls"}{" "}
+                    {remaining} free {remaining === 1 ? "token" : "tokens"}{" "}
                     remaining
                   </CardTitle>
                   <CardDescription>
-                    You still have free credits on the app&apos;s key. They never
+                    You still have free tokens on the app&apos;s key. They never
                     expire.
                   </CardDescription>
                 </div>
@@ -153,12 +153,12 @@ export default function BillingSettingsPage() {
               >
                 <div className="space-y-0.5">
                   <span className="text-base font-medium block">
-                    Use free credits first
+                    Use free tokens first
                   </span>
                   <span className="text-sm text-muted-foreground block">
-                    Spend your remaining free calls on Gemini 2.5 Flash Lite,
+                    Spend your remaining free tokens on Gemini 2.5 Flash Lite,
                     then automatically switch to your own key &amp; model. Turn
-                    off to use your own model now and save credits for later.
+                    off to use your own model now and save tokens for later.
                   </span>
                 </div>
                 <Switch
@@ -167,7 +167,7 @@ export default function BillingSettingsPage() {
                   onCheckedChange={(checked) =>
                     void setPreferCreditsFirst(checked === true)
                   }
-                  aria-label="Use free credits before switching to your own key"
+                  aria-label="Use free tokens before switching to your own key"
                 />
               </label>
 
@@ -176,7 +176,7 @@ export default function BillingSettingsPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Your own key &amp; model are active now. Your {remaining}{" "}
-                  free {remaining === 1 ? "call is" : "calls are"} saved — turn
+                  free {remaining === 1 ? "token is" : "tokens are"} saved — turn
                   this on anytime, or pick the free model in the generator to use
                   them.
                 </p>
@@ -187,7 +187,7 @@ export default function BillingSettingsPage() {
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-muted-foreground">
-                Unlimited AI usage with your own keys — no credit balance needed.
+                Unlimited AI usage with your own keys — no token balance needed.
               </p>
             </CardContent>
           </Card>
@@ -199,9 +199,9 @@ export default function BillingSettingsPage() {
   return (
     <div className="space-y-6 max-w-3xl pb-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">AI Call Credits</h1>
+        <h1 className="text-2xl font-bold tracking-tight">AI Tokens</h1>
         <p className="text-muted-foreground">
-          Monitor your balance, purchase more calls, and view usage history.
+          Monitor your balance, purchase more tokens, and view usage history.
         </p>
       </div>
 
@@ -214,7 +214,7 @@ export default function BillingSettingsPage() {
             <div>
               <CardTitle>Current Balance</CardTitle>
               <CardDescription>
-                One call = one generate or assessment action
+                One token = one generate or assessment action
               </CardDescription>
             </div>
           </div>
@@ -230,13 +230,13 @@ export default function BillingSettingsPage() {
               <p className="text-4xl font-bold tabular-nums">
                 {balance ?? 0}{" "}
                 <span className="text-lg font-normal text-muted-foreground">
-                  calls left
+                  tokens left
                 </span>
               </p>
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                <span>Trial grant: {trialCredits} calls</span>
-                <span>Purchased: {lifetimePurchased} calls</span>
-                <span>Used: {lifetimeConsumed} calls</span>
+                <span>Trial grant: {trialCredits} tokens</span>
+                <span>Purchased: {lifetimePurchased} tokens</span>
+                <span>Used: {lifetimeConsumed} tokens</span>
               </div>
             </>
           )}
@@ -245,7 +245,7 @@ export default function BillingSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Purchase More Calls</CardTitle>
+          <CardTitle>Purchase More Tokens</CardTitle>
           <CardDescription>
             {PURCHASE_PACKAGE_LABEL} · one-time · never expire · no subscription
           </CardDescription>
@@ -283,7 +283,7 @@ export default function BillingSettingsPage() {
                 isCheckoutLoading ||
                 (!billingTermsAccepted && !termsChecked)
               }
-              aria-label={`Purchase ${PURCHASE_CREDITS} AI calls`}
+              aria-label={`Purchase ${PURCHASE_CREDITS} tokens`}
             >
               {isCheckoutLoading ? (
                 <>
@@ -291,7 +291,7 @@ export default function BillingSettingsPage() {
                   Opening checkout...
                 </>
               ) : (
-                `Buy ${PURCHASE_CREDITS} calls — $${PURCHASE_PRICE_USD}`
+                `Buy ${PURCHASE_CREDITS} tokens — $${PURCHASE_PRICE_USD}`
               )}
             </Button>
             <Button variant="outline" onClick={openPortal}>
@@ -305,7 +305,7 @@ export default function BillingSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Your credit ledger (most recent first)</CardDescription>
+          <CardDescription>Your token ledger (most recent first)</CardDescription>
         </CardHeader>
         <CardContent>
           <CreditLedgerTable refreshKey={ledgerRefreshKey + ledgerRefreshNonce} />

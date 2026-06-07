@@ -21,7 +21,7 @@ import {
   Plus,
   TrendingUp,
 } from "lucide-react";
-import { SUPERVISOR_RANKS, getActiveCycleYear, isOfficer } from "@/lib/constants";
+import { SUPERVISOR_RANKS, getActiveCycleYear, isOfficer, isCivilian } from "@/lib/constants";
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
@@ -47,6 +47,7 @@ export default function DashboardPage() {
   
   // Check if user is an officer (officers don't have EPBs for themselves)
   const userIsOfficer = isOfficer(profile?.rank ?? null);
+  const userIsCivilian = isCivilian(profile?.rank ?? null);
 
   useEffect(() => {
     async function loadAccomplishments() {
@@ -84,7 +85,9 @@ export default function DashboardPage() {
           Welcome back, {profile?.rank} {profile?.last_name || profile?.full_name?.split(" ").pop() || (userIsOfficer ? "Sir/Ma'am" : "Airman")}
         </h1>
         <p className="text-muted-foreground text-sm">
-          {userIsOfficer ? (
+          {userIsCivilian ? (
+            "Supervisor mode — generate EPBs and OPBs for your team"
+          ) : userIsOfficer ? (
             userRank ? (
               <>OPR period: <CyclePeriodLabel rank={userRank} /></>
             ) : (
@@ -100,7 +103,7 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">
-        {!userIsOfficer && (
+        {!userIsOfficer && !userIsCivilian && (
           <Button asChild>
             <Link href="/entries?new=true">
               <Plus className="size-4 mr-2" />
@@ -108,22 +111,30 @@ export default function DashboardPage() {
             </Link>
           </Button>
         )}
-        {!userIsOfficer ? (
+        {userIsCivilian || userIsOfficer ? (
+          <>
+            <Button asChild>
+              <Link href="/epb">
+                <Sparkles className="size-4 mr-2" />
+                {userIsCivilian ? "Generate Performance Reports" : "Manage Team EPBs"}
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/team">
+                <Users className="size-4 mr-2" />
+                Manage Team
+              </Link>
+            </Button>
+          </>
+        ) : (
           <Button variant="outline" asChild>
             <Link href="/epb">
               <Sparkles className="size-4 mr-2" />
               Generate EPB
             </Link>
           </Button>
-        ) : (
-          <Button asChild>
-            <Link href="/team">
-              <Users className="size-4 mr-2" />
-              Manage Team
-            </Link>
-          </Button>
         )}
-        {!userIsOfficer && (subordinates.length > 0 || profile?.role === "admin") && (
+        {!userIsOfficer && !userIsCivilian && (subordinates.length > 0 || profile?.role === "admin") && (
           <Button variant="outline" asChild>
             <Link href="/team">
               <Users className="size-4 mr-2" />

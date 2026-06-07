@@ -27,16 +27,16 @@ import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { Loader2, UserPlus, User, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
-import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, SUPERVISOR_RANKS, isOfficer, isEnlisted } from "@/lib/constants";
+import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, SUPERVISOR_RANKS, isOfficer, isCivilian, isEnlisted } from "@/lib/constants";
 
-// Get available subordinate ranks based on supervisor's rank
-// Officers can supervise anyone, Enlisted can only supervise enlisted
+// Officers and civilians can assign any subordinate rank; enlisted supervisors are enlisted-only.
 function getAvailableSubordinateRanks(supervisorRank: Rank | null | undefined) {
-  const supervisorIsOfficer = isOfficer(supervisorRank ?? null);
-  
+  const canAssignOfficerRanks =
+    isOfficer(supervisorRank ?? null) || isCivilian(supervisorRank ?? null);
+
   return {
     enlisted: ENLISTED_RANKS,
-    officers: supervisorIsOfficer ? OFFICER_RANKS : [], // Only show officers if supervisor is an officer
+    officers: canAssignOfficerRanks ? OFFICER_RANKS : [],
     civilian: CIVILIAN_RANK,
   };
 }
@@ -324,9 +324,13 @@ export function AddManagedMemberDialog({
       // Add to store
       addManagedMember(data as unknown as ManagedMember);
 
-      // If existing user found, also send a team request
-      if (existingMatch) {
-        // Send a team request to the existing user
+      const subordinateIsCivilian = isCivilian(existingMatch?.rank ?? null);
+      const supervisorIsMilitary =
+        isOfficer(profile.rank) || isEnlisted(profile.rank);
+      const skipAutoSupervise =
+        existingMatch && subordinateIsCivilian && supervisorIsMilitary;
+
+      if (existingMatch && !skipAutoSupervise) {
         const { error: requestError } = await supabase.from("team_requests").insert({
           requester_id: profile.id,
           target_id: existingMatch.id,

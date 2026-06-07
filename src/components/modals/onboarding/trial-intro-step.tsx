@@ -22,21 +22,21 @@ export function TrialIntroStep({ trialCredits, onDismiss }: TrialIntroStepProps)
           <Sparkles className="h-5 w-5 text-primary shrink-0" aria-hidden />
         </div>
         <AlertDialogTitle className="text-center text-base md:text-lg">
-          Welcome — you have {trialCredits} free AI calls
+          Welcome — you have {trialCredits} free tokens
         </AlertDialogTitle>
         <AlertDialogDescription asChild>
           <div className="space-y-3 pt-1 text-sm text-center">
             <p>
               As a trial, you have{" "}
               <span className="font-semibold text-foreground">
-                {trialCredits} AI calls
+                {trialCredits} tokens
               </span>{" "}
               to generate statements and run assessments. Enjoy the app — we
               appreciate any feedback!
             </p>
             <p className="text-muted-foreground">
-              You can monitor your remaining calls anytime in the sidebar. Each
-              generate or assessment action uses one call.
+              You can monitor your remaining tokens anytime in the sidebar. Each
+              generate or assessment action uses one token.
             </p>
           </div>
         </AlertDialogDescription>

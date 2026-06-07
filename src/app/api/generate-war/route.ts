@@ -4,8 +4,16 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { getModelProvider } from "@/lib/llm-provider";
+import {
+  cacheBillableJson,
+  createBillableRequestContext,
+  getReplayedBillableResponse,
+  handleBillableLLMError,
+  refundAndError,
+  type BillableRequestContext,
+} from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
+import { enforceUsageGate } from "@/lib/usage-gate";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -145,6 +153,7 @@ Generate the WAR now:`;
 
 export async function POST(request: Request) {
   let modelId: string | undefined;
+  let billableCtx: BillableRequestContext | null = null;
   try {
     const supabase = await createClient();
 
@@ -199,7 +208,16 @@ export async function POST(request: Request) {
     modelId = await resolveRequestedModel(model || DEFAULT_MODEL, "generate");
 
     // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(user.id, "generate_war", modelId, userKeys);
+    billableCtx = {
+      ...(await createBillableRequestContext(request, user.id)),
+      usageCheck: null,
+    };
+
+    const replayed = await getReplayedBillableResponse(billableCtx);
+    if (replayed) return replayed;
+
+    const usageCheck = await checkAndTrackUsage(user.id, "generate_war", modelId, userKeys, billableCtx.idempotencyKey);
+    billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
       return enforceUsageGate(usageCheck);
     }
@@ -238,18 +256,12 @@ export async function POST(request: Request) {
       parsedResponse = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
       console.error("Error parsing WAR response:", parseError, "\nRaw text:", text);
-      return NextResponse.json(
-        { error: "Failed to parse AI response. Please try again." },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Failed to parse AI response. Please try again." }, { status: 500 });
     }
 
     // Validate the response structure
     if (!parsedResponse.categories || !Array.isArray(parsedResponse.categories)) {
-      return NextResponse.json(
-        { error: "Invalid response structure from AI" },
-        { status: 500 }
-      );
+      return refundAndError(billableCtx, { error: "Invalid response structure from AI" }, { status: 500 });
     }
 
     // Format the date range
@@ -278,8 +290,11 @@ export async function POST(request: Request) {
       })),
     };
 
-    return jsonWithCredits({ report }, usageCheck);
+    return cacheBillableJson(billableCtx, { report }, usageCheck);
   } catch (error) {
+    if (billableCtx) {
+      return handleBillableLLMError(error, "POST /api/generate-war", modelId, billableCtx);
+    }
     return handleLLMError(error, "POST /api/generate-war", modelId);
   }
 }
