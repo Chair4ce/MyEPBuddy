@@ -489,7 +489,7 @@ export async function POST(request: Request) {
       user.id,
       "award",
     );
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     // Fetch user-curated award examples
     const awardExamples = await fetchAwardExampleStatements(supabase, user.id);

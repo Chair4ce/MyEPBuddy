@@ -8,6 +8,7 @@ import { UpdatePrompt } from "@/components/layout/update-prompt";
 import { RankCompletionModal } from "@/components/modals/rank-completion-modal";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
+import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
 import { TrialIntroDialog } from "@/components/modals/trial-intro-dialog";
 import { usePromptRulesMode } from "@/lib/feature-flags";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
@@ -121,6 +122,7 @@ export function AppInitializer({
         />
       )}
       <InsufficientCreditsDialog />
+      <EmbeddedCheckoutDialog />
       {children}
     </>
   );

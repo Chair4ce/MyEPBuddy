@@ -223,7 +223,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return enforceUsageGate(usageCheck);
     }
 
-    const feedbackModel = getModelProvider(usageCheck.effectiveModel, userKeys);
+    const feedbackModel = getModelProvider(usageCheck.effectiveModel, userKeys, usageCheck.tracking);
 
     const systemPrompt = await appendUserRulesToPrompt(
       `You are a SURGICAL text editor. Apply ONE specific change to a document.

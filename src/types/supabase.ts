@@ -1675,15 +1675,20 @@ export type Database = {
       }
       llm_model_catalog: {
         Row: {
+          cached_input_price_per_mtok: number | null
           created_at: string
           deprecated_at: string | null
           description: string
           display_name: string
           first_seen_at: string
           id: string
+          input_price_per_mtok: number | null
           is_active: boolean
           is_app_default: boolean
           last_seen_at: string
+          output_price_per_mtok: number | null
+          price_currency: string
+          price_updated_at: string | null
           provider: string
           quality: string
           sort_order: number
@@ -1692,15 +1697,20 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cached_input_price_per_mtok?: number | null
           created_at?: string
           deprecated_at?: string | null
           description?: string
           display_name: string
           first_seen_at?: string
           id: string
+          input_price_per_mtok?: number | null
           is_active?: boolean
           is_app_default?: boolean
           last_seen_at?: string
+          output_price_per_mtok?: number | null
+          price_currency?: string
+          price_updated_at?: string | null
           provider: string
           quality?: string
           sort_order?: number
@@ -1709,15 +1719,20 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cached_input_price_per_mtok?: number | null
           created_at?: string
           deprecated_at?: string | null
           description?: string
           display_name?: string
           first_seen_at?: string
           id?: string
+          input_price_per_mtok?: number | null
           is_active?: boolean
           is_app_default?: boolean
           last_seen_at?: string
+          output_price_per_mtok?: number | null
+          price_currency?: string
+          price_updated_at?: string | null
           provider?: string
           quality?: string
           sort_order?: number
@@ -1726,6 +1741,59 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      llm_token_usage: {
+        Row: {
+          action_type: string
+          cached_input_tokens: number
+          created_at: string
+          estimated_cost_usd: number | null
+          id: string
+          input_tokens: number
+          model_id: string | null
+          output_tokens: number
+          provider: string | null
+          reasoning_tokens: number
+          used_default_key: boolean
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          cached_input_tokens?: number
+          created_at?: string
+          estimated_cost_usd?: number | null
+          id?: string
+          input_tokens?: number
+          model_id?: string | null
+          output_tokens?: number
+          provider?: string | null
+          reasoning_tokens?: number
+          used_default_key?: boolean
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          cached_input_tokens?: number
+          created_at?: string
+          estimated_cost_usd?: number | null
+          id?: string
+          input_tokens?: number
+          model_id?: string | null
+          output_tokens?: number
+          provider?: string | null
+          reasoning_tokens?: number
+          used_default_key?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "llm_token_usage_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       managed_member_history: {
         Row: {

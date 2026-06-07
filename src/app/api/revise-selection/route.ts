@@ -432,7 +432,7 @@ export async function POST(request: Request) {
     // Cost reduction: force cheapest model for default-key users
     const effectiveModel = usageCheck.effectiveModel;
     requestModelId = effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     const beforeSelection = fullStatement.substring(0, selectionStart);
     const afterSelection = fullStatement.substring(selectionEnd);

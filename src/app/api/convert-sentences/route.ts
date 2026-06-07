@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     const systemPrompt = await appendUserRulesToPrompt(
       `You are an expert Air Force writer specializing in award nominations on AF Form 1206.

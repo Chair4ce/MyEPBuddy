@@ -22,6 +22,10 @@ export interface CatalogModelRow {
   sort_order: number;
   last_seen_at: string;
   deprecated_at: string | null;
+  input_price_per_mtok: number | null;
+  output_price_per_mtok: number | null;
+  cached_input_price_per_mtok: number | null;
+  price_currency: string;
 }
 
 export interface AvailableModel {
@@ -60,4 +64,10 @@ export interface AvailableModelsPayload {
   preferences: UserModelPreferences;
   keyStatus: import("@/app/actions/api-keys").KeyStatus | null;
   catalogSyncedAt: string | null;
+  /**
+   * True when "use free credits first" is active: the user has their own key
+   * AND a positive credit balance AND the preference enabled. While active the
+   * default model stays the free app model until credits run out.
+   */
+  creditsFirstActive: boolean;
 }

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   }
 
   const effectiveModel = usageCheck.effectiveModel;
-  const modelProvider = getModelProvider(effectiveModel, userKeys);
+  const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
   const currentLength = (sentence1?.length || 0) + (sentence2?.length || 0) + (sentence1 && sentence2 ? 1 : 0);
   const needsTrimming = currentLength > targetMax;

@@ -283,7 +283,7 @@ export async function POST(request: Request) {
     );
 
     // Get model provider
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     // Generate the assessment
     const { text } = await generateText({

@@ -178,7 +178,7 @@ export async function POST(request: Request) {
     const effectiveModel = usageCheck.effectiveModel;
 
     // Get the LLM model
-    const llmModel = getModelProvider(effectiveModel, userKeys);
+    const llmModel = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     // Build the parsing prompt
     const systemPrompt = await appendUserRulesToPrompt(

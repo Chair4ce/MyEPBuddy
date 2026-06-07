@@ -29,6 +29,7 @@ export function InsufficientCreditsDialog() {
     setBillingTermsAccepted,
     isCheckoutLoading,
     setIsCheckoutLoading,
+    openEmbeddedCheckout,
   } = useCreditsStore();
 
   const [termsChecked, setTermsChecked] = useState(false);
@@ -54,20 +55,13 @@ export function InsufficientCreditsDialog() {
         setBillingTermsAccepted(true);
       }
 
-      const checkoutRes = await fetch("/api/billing/checkout", {
-        method: "POST",
-      });
-      const data = await checkoutRes.json();
-
-      if (!checkoutRes.ok || !data.url) {
-        throw new Error(data.error || "Unable to start checkout");
-      }
-
-      window.location.href = data.url;
+      // Swap the "out of calls" dialog for in-app checkout (no redirect).
+      await openEmbeddedCheckout();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Checkout failed. Try again.",
       );
+    } finally {
       setIsCheckoutLoading(false);
     }
   }
@@ -160,7 +154,7 @@ export function InsufficientCreditsDialog() {
             {isCheckoutLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Redirecting...
+                Opening checkout...
               </>
             ) : (
               `Buy ${PURCHASE_CREDITS} calls — $${PURCHASE_PRICE_USD}`

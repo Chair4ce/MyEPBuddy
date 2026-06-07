@@ -12,6 +12,10 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createXai } from "@ai-sdk/xai";
 import type { LanguageModel } from "ai";
 import type { DecryptedApiKeys } from "@/app/actions/api-keys";
+import {
+  wrapModelWithUsageTracking,
+  type TokenTrackingContext,
+} from "@/lib/ai-models/token-usage";
 
 /**
  * Supported LLM provider identifiers.
@@ -121,12 +125,16 @@ export class MissingApiKeyError extends Error {
  *
  * @param modelId - The model identifier (e.g., "gpt-4o", "claude-sonnet-4-20250514")
  * @param userKeys - Decrypted user API keys (null if not loaded)
+ * @param tracking - Optional token-usage tracking context. When provided, the
+ *   returned model captures input/output token usage for every call and records
+ *   it asynchronously (used for BYOK cost projection).
  * @returns A LanguageModel instance ready for use with generateText()
  * @throws MissingApiKeyError if no API key is available for the detected provider
  */
 export function getModelProvider(
   modelId: string,
   userKeys: Partial<DecryptedApiKeys> | null,
+  tracking?: TokenTrackingContext | null,
 ): LanguageModel {
   const provider = detectProvider(modelId);
   const apiKey = resolveApiKey(provider, userKeys);
@@ -135,22 +143,33 @@ export function getModelProvider(
     throw new MissingApiKeyError(provider);
   }
 
+  let model: LanguageModel;
   switch (provider) {
     case "anthropic": {
       const anthropic = createAnthropic({ apiKey });
-      return anthropic(modelId);
+      model = anthropic(modelId);
+      break;
     }
     case "google": {
       const google = createGoogleGenerativeAI({ apiKey });
-      return google(modelId);
+      model = google(modelId);
+      break;
     }
     case "xai": {
       const xai = createXai({ apiKey });
-      return xai(modelId);
+      model = xai(modelId);
+      break;
     }
     default: {
       const openai = createOpenAI({ apiKey });
-      return openai(modelId);
+      model = openai(modelId);
+      break;
     }
   }
+
+  if (tracking) {
+    return wrapModelWithUsageTracking(model, tracking, modelId, provider);
+  }
+
+  return model;
 }

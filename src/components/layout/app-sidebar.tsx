@@ -41,6 +41,7 @@ import {
   PanelLeft,
   PanelLeftOpen,
   Check,
+  Coins,
 } from "lucide-react";
 import { AppLogo } from "@/components/layout/app-logo";
 import { UsageIndicator } from "@/components/layout/usage-indicator";
@@ -142,6 +143,13 @@ const settingsItems = [
     icon: Shield,
     roles: ["admin"],
     tourId: "nav-admin-config",
+  },
+  {
+    title: "Usage Analytics",
+    href: "/admin/usage",
+    icon: Coins,
+    roles: ["admin"],
+    tourId: "nav-admin-usage",
   },
 ];
 

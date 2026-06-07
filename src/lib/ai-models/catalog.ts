@@ -132,7 +132,18 @@ export function getDefaultModelId(
   preferences: UserModelPreferences,
   context?: ModelContext,
   keyStatus?: KeyStatus,
+  creditsFirstActive = false,
 ): string {
+  // "Use free credits first": while the user has a positive balance and their
+  // own key, keep the free app model as the default so credits are consumed
+  // before their key takes over. Explicit picks still win (handled by the
+  // selector + reconcileModelSelection), this only governs the default.
+  if (creditsFirstActive) {
+    const appDefault = models.find((model) => model.isAppDefault);
+    if (appDefault) return appDefault.id;
+    return DEFAULT_APP_MODEL_ID;
+  }
+
   const preferred =
     (context && preferences.defaults[context]) ||
     preferences.defaults.global;

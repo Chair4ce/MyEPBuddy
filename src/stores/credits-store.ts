@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 import { TRIAL_CREDITS } from "@/lib/billing/constants";
+import { useAvailableModelsStore } from "@/stores/available-models-store";
 
 export interface CreditTransaction {
   id: string;
@@ -19,12 +20,18 @@ interface CreditsState {
   trialCredits: number;
   trialGranted: boolean;
   hasOwnKey: boolean;
+  preferCreditsFirst: boolean;
   billingTermsAccepted: boolean;
   trialIntroSeen: boolean;
   recentTransactions: CreditTransaction[];
   isLoading: boolean;
   isCheckoutLoading: boolean;
   isOpen: boolean;
+  embeddedCheckoutOpen: boolean;
+  embeddedClientSecret: string | null;
+  embeddedCheckoutLoading: boolean;
+  embeddedCheckoutError: string | null;
+  ledgerRefreshNonce: number;
   realtimeInitialized: boolean;
   setFromApi: (data: {
     creditsRemaining?: number;
@@ -34,11 +41,13 @@ interface CreditsState {
     trialCredits?: number;
     trialGranted?: boolean;
     hasOwnKey?: boolean;
+    preferCreditsFirst?: boolean;
     billingTermsAccepted?: boolean;
     trialIntroSeen?: boolean;
     recentTransactions?: CreditTransaction[];
   }) => void;
   setBalance: (balance: number) => void;
+  setPreferCreditsFirst: (prefer: boolean) => Promise<void>;
   applyOptimisticConsume: (count?: number) => void;
   setIsLoading: (loading: boolean) => void;
   setIsCheckoutLoading: (loading: boolean) => void;
@@ -46,6 +55,9 @@ interface CreditsState {
   setTrialIntroSeen: (seen: boolean) => void;
   openPurchaseDialog: () => void;
   closePurchaseDialog: () => void;
+  openEmbeddedCheckout: () => Promise<void>;
+  closeEmbeddedCheckout: () => void;
+  bumpLedgerRefresh: () => void;
   fetchCredits: () => Promise<void>;
   initRealtime: (userId: string) => void;
   reset: () => void;
@@ -61,12 +73,18 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   trialCredits: TRIAL_CREDITS,
   trialGranted: false,
   hasOwnKey: false,
+  preferCreditsFirst: true,
   billingTermsAccepted: false,
   trialIntroSeen: false,
   recentTransactions: [],
   isLoading: true,
   isCheckoutLoading: false,
   isOpen: false,
+  embeddedCheckoutOpen: false,
+  embeddedClientSecret: null,
+  embeddedCheckoutLoading: false,
+  embeddedCheckoutError: null,
+  ledgerRefreshNonce: 0,
   realtimeInitialized: false,
 
   setFromApi: (data) =>
@@ -77,6 +95,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       trialCredits: data.trialCredits ?? TRIAL_CREDITS,
       trialGranted: data.trialGranted ?? get().trialGranted,
       hasOwnKey: data.hasOwnKey ?? get().hasOwnKey,
+      preferCreditsFirst: data.preferCreditsFirst ?? get().preferCreditsFirst,
       billingTermsAccepted:
         data.billingTermsAccepted ?? get().billingTermsAccepted,
       trialIntroSeen: data.trialIntroSeen ?? get().trialIntroSeen,
@@ -85,6 +104,27 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
     }),
 
   setBalance: (balance) => set({ balance }),
+
+  // Optimistically flip the preference, persist it, and refresh the model
+  // catalog so the default model reflects the new credits-first state. Reverts
+  // on failure.
+  setPreferCreditsFirst: async (prefer) => {
+    const previous = get().preferCreditsFirst;
+    set({ preferCreditsFirst: prefer });
+    useAvailableModelsStore.getState().invalidate();
+
+    try {
+      const res = await fetch("/api/billing/credit-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferCreditsFirst: prefer }),
+      });
+      if (!res.ok) throw new Error("Failed to update preference");
+    } catch {
+      set({ preferCreditsFirst: previous });
+      useAvailableModelsStore.getState().invalidate();
+    }
+  },
 
   // Instant client-side decrement for snappy UX. The authoritative balance is
   // reconciled by Realtime (consume_credit UPDATE) or a response header, so any
@@ -110,6 +150,56 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   openPurchaseDialog: () => set({ isOpen: true }),
 
   closePurchaseDialog: () => set({ isOpen: false }),
+
+  // Opens the in-app embedded Stripe checkout. Fetches the session client
+  // secret here (rather than in a component effect) so the dialog can render
+  // declaratively from store state. Credits land via the webhook + realtime.
+  openEmbeddedCheckout: async () => {
+    set({
+      embeddedCheckoutOpen: true,
+      embeddedCheckoutLoading: true,
+      embeddedCheckoutError: null,
+      embeddedClientSecret: null,
+      isOpen: false,
+    });
+
+    try {
+      const res = await fetch("/api/billing/checkout/embedded", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.clientSecret) {
+        throw new Error(data.error || "Unable to start checkout");
+      }
+
+      set({
+        embeddedClientSecret: data.clientSecret,
+        embeddedCheckoutLoading: false,
+      });
+    } catch (error) {
+      set({
+        embeddedCheckoutLoading: false,
+        embeddedCheckoutError:
+          error instanceof Error
+            ? error.message
+            : "Checkout failed. Please try again.",
+      });
+    }
+  },
+
+  closeEmbeddedCheckout: () =>
+    set({
+      embeddedCheckoutOpen: false,
+      embeddedClientSecret: null,
+      embeddedCheckoutLoading: false,
+      embeddedCheckoutError: null,
+    }),
+
+  // Bumped after a successful purchase so views bound to it (e.g. the credit
+  // ledger) refetch without a page navigation.
+  bumpLedgerRefresh: () =>
+    set({ ledgerRefreshNonce: get().ledgerRefreshNonce + 1 }),
 
   fetchCredits: async () => {
     try {
@@ -139,7 +229,20 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
         (payload) => {
           const next = payload.new as { balance?: number };
           if (typeof next.balance === "number") {
+            const previousBalance = get().balance;
             set({ balance: next.balance });
+
+            // When the balance crosses the zero boundary, credits-first state
+            // changes, so refresh the model catalog to flip the default model
+            // (cutover to the user's own key at 0, back to free on top-up).
+            const crossedZero =
+              (previousBalance === null || previousBalance > 0) &&
+              next.balance === 0;
+            const refilledFromZero =
+              previousBalance === 0 && next.balance > 0;
+            if (crossedZero || refilledFromZero) {
+              useAvailableModelsStore.getState().invalidate();
+            }
           }
         },
       )
@@ -161,12 +264,18 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       trialCredits: TRIAL_CREDITS,
       trialGranted: false,
       hasOwnKey: false,
+      preferCreditsFirst: true,
       billingTermsAccepted: false,
       trialIntroSeen: false,
       recentTransactions: [],
       isLoading: true,
       isCheckoutLoading: false,
       isOpen: false,
+      embeddedCheckoutOpen: false,
+      embeddedClientSecret: null,
+      embeddedCheckoutLoading: false,
+      embeddedCheckoutError: null,
+      ledgerRefreshNonce: 0,
       realtimeInitialized: false,
     });
   },

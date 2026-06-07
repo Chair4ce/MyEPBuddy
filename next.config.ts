@@ -26,12 +26,15 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com",
+      // Stripe.js is required for in-app (embedded) checkout.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://js.stripe.com",
       "style-src 'self' 'unsafe-inline'",
       `img-src ${imageSources}`,
       "font-src 'self' https://fonts.gstatic.com",
-      `connect-src 'self' https://*.supabase.co https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://va.vercel-scripts.com wss://*.supabase.co ${localSupabaseUrls}`.trim(),
+      `connect-src 'self' https://*.supabase.co https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://va.vercel-scripts.com wss://*.supabase.co https://api.stripe.com https://checkout.stripe.com https://maps.googleapis.com ${localSupabaseUrls}`.trim(),
       "worker-src 'self' blob:",
+      // Embedded Checkout renders its payment UI inside Stripe-hosted iframes.
+      "frame-src 'self' https://js.stripe.com https://checkout.stripe.com https://hooks.stripe.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self' https://checkout.stripe.com",

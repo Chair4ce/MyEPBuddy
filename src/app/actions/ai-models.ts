@@ -12,6 +12,7 @@ import {
   parseModelPreferences,
   reconcileModelSelection,
   resolveAvailableModels,
+  userHasOwnApiKey,
 } from "@/lib/ai-models/catalog";
 import { runModelCatalogSync } from "@/lib/ai-models/run-catalog-sync";
 import { acquireCatalogSyncLock } from "@/lib/ai-models/sync-lock";
@@ -38,10 +39,12 @@ async function isUserAdmin(userId: string): Promise<boolean> {
 async function loadUserModelContext(userId: string): Promise<{
   keyStatus: KeyStatus;
   preferences: UserModelPreferences;
+  creditBalance: number;
+  preferCreditsFirst: boolean;
 }> {
   const supabase = await createClient();
 
-  const [keysResult, settingsResult] = await Promise.all([
+  const [keysResult, settingsResult, creditsResult] = await Promise.all([
     supabase
       .from("user_api_keys")
       .select("openai_key, anthropic_key, google_key, grok_key")
@@ -50,6 +53,22 @@ async function loadUserModelContext(userId: string): Promise<{
     supabase
       .from("user_llm_settings")
       .select("model_preferences")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    (supabase as unknown as {
+      from: (table: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            maybeSingle: () => Promise<{
+              data: { balance: number; prefer_credits_first: boolean } | null;
+              error: unknown;
+            }>;
+          };
+        };
+      };
+    })
+      .from("user_credits")
+      .select("balance, prefer_credits_first")
       .eq("user_id", userId)
       .maybeSingle(),
   ]);
@@ -70,7 +89,15 @@ async function loadUserModelContext(userId: string): Promise<{
           (settingsResult.data as { model_preferences: unknown }).model_preferences,
         );
 
-  return { keyStatus, preferences };
+  const credits = creditsResult.data;
+
+  return {
+    keyStatus,
+    preferences,
+    creditBalance: credits?.balance ?? 0,
+    // Default to true when no row/column yet — matches the DB column default.
+    preferCreditsFirst: credits?.prefer_credits_first ?? true,
+  };
 }
 
 export async function getAvailableModels(
@@ -81,6 +108,7 @@ export async function getAvailableModels(
   preferences: UserModelPreferences;
   keyStatus: KeyStatus;
   catalogSyncedAt: string | null;
+  creditsFirstActive: boolean;
 }> {
   const supabase = await createClient();
   const {
@@ -95,8 +123,24 @@ export async function getAvailableModels(
   const keyStatus = userContext?.keyStatus ?? EMPTY_KEY_STATUS;
   const preferences = userContext?.preferences ?? EMPTY_MODEL_PREFERENCES;
 
+  // Active only when the user has their own key, a positive balance, and the
+  // preference enabled. Drives default-model resolution so credits are spent
+  // on the free model before cutting over to the user's own-key model.
+  const creditsFirstActive = Boolean(
+    userContext &&
+      userContext.preferCreditsFirst &&
+      userContext.creditBalance > 0 &&
+      userHasOwnApiKey(keyStatus),
+  );
+
   const models = resolveAvailableModels(catalogRows, keyStatus, preferences);
-  const defaultModelId = getDefaultModelId(models, preferences, context, keyStatus);
+  const defaultModelId = getDefaultModelId(
+    models,
+    preferences,
+    context,
+    keyStatus,
+    creditsFirstActive,
+  );
 
   return {
     models,
@@ -104,6 +148,7 @@ export async function getAvailableModels(
     preferences,
     keyStatus,
     catalogSyncedAt: getCatalogSyncedAt(catalogRows),
+    creditsFirstActive,
   };
 }
 

@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     // Build the prompt — legacy synthesis instructions are replaced by WAR rules in rules mode
     const featureFlags = await getAppFeatureFlags();

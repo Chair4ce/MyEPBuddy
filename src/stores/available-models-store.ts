@@ -31,6 +31,7 @@ export const useAvailableModelsStore = create<AvailableModelsStoreState>((set, g
       payload.preferences,
       context,
       payload.keyStatus ?? undefined,
+      payload.creditsFirstActive ?? false,
     );
   },
 
@@ -68,6 +69,7 @@ export const useAvailableModelsStore = create<AvailableModelsStoreState>((set, g
           preferences: data.preferences ?? { visible_model_ids: null, defaults: {} },
           keyStatus: data.keyStatus ?? null,
           catalogSyncedAt: data.catalogSyncedAt ?? null,
+          creditsFirstActive: data.creditsFirstActive ?? false,
           fetchedAt: Date.now(),
         };
 

@@ -25,6 +25,7 @@ interface AvailableModelsState {
   preferences: UserModelPreferences;
   keyStatus: KeyStatus | null;
   catalogSyncedAt: string | null;
+  creditsFirstActive: boolean;
   isLoading: boolean;
   error: string | null;
   load: () => Promise<AvailableModelsPayload | null>;
@@ -39,6 +40,7 @@ function applyPayload(payload: AvailableModelsPayload, context: ModelContext | u
     preferences: payload.preferences,
     keyStatus: payload.keyStatus,
     catalogSyncedAt: payload.catalogSyncedAt,
+    creditsFirstActive: payload.creditsFirstActive ?? false,
   };
 }
 
@@ -51,6 +53,7 @@ export function useAvailableModels(
   const [preferences, setPreferences] = useState<UserModelPreferences>(EMPTY_MODEL_PREFERENCES);
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
   const [catalogSyncedAt, setCatalogSyncedAt] = useState<string | null>(null);
+  const [creditsFirstActive, setCreditsFirstActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eagerInitRef = useRef(false);
@@ -63,6 +66,7 @@ export function useAvailableModels(
       setPreferences(next.preferences);
       setKeyStatus(next.keyStatus);
       setCatalogSyncedAt(next.catalogSyncedAt);
+      setCreditsFirstActive(next.creditsFirstActive);
       return { ...payload, defaultModelId: next.defaultModelId };
     },
     [context],
@@ -118,6 +122,7 @@ export function useAvailableModels(
     preferences,
     keyStatus,
     catalogSyncedAt,
+    creditsFirstActive,
     isLoading,
     error,
     load,

@@ -133,7 +133,7 @@ export async function POST(request: Request) {
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, apiKeys);
+    const modelProvider = getModelProvider(effectiveModel, apiKeys, usageCheck.tracking);
     
     // Load user LLM settings for custom decoration prompt, rank verbs, and abbreviations
     const { data: settingsData } = await supabase

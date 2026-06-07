@@ -6,7 +6,7 @@ export const LLM_CATALOG_CACHE_TAG = "llm-model-catalog";
 const CATALOG_CACHE_SECONDS = 300;
 
 const CATALOG_SELECT =
-  "id, provider, display_name, description, quality, statement_tip, is_app_default, is_active, supports_default_key, sort_order, last_seen_at, deprecated_at";
+  "id, provider, display_name, description, quality, statement_tip, is_app_default, is_active, supports_default_key, sort_order, last_seen_at, deprecated_at, input_price_per_mtok, output_price_per_mtok, cached_input_price_per_mtok, price_currency";
 
 async function fetchCatalogRowsFromDb(): Promise<CatalogModelRow[]> {
   const service = createAdminClient();

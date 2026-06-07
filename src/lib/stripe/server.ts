@@ -93,6 +93,9 @@ export async function createCreditsCheckoutSession(params: {
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${getAppUrl()}/settings/billing?checkout=success`,
     cancel_url: `${getAppUrl()}/settings/billing?checkout=cancelled`,
+    // Generate an itemized invoice/receipt for this one-time purchase so it
+    // appears in the Stripe billing portal's invoice history and is emailed.
+    invoice_creation: { enabled: true },
     metadata: {
       user_id: params.userId,
       credits: String(PURCHASE_CREDITS),
@@ -110,6 +113,50 @@ export async function createCreditsCheckoutSession(params: {
   }
 
   return session.url;
+}
+
+/**
+ * Creates an *embedded* checkout session for the credits package. Unlike the
+ * hosted session above, this renders inside the app (Stripe iframe) and never
+ * redirects the user away — keeping them on whatever page they started from
+ * (e.g. mid-EPB). `redirect_on_completion: "never"` keeps the flow in-app;
+ * credits are granted by the `checkout.session.completed` webhook and surfaced
+ * live via the `user_credits` realtime subscription.
+ */
+export async function createEmbeddedCreditsCheckoutSession(params: {
+  userId: string;
+  email: string;
+}): Promise<string> {
+  const stripe = getStripe();
+  const customerId = await getOrCreateStripeCustomer(params.userId, params.email);
+  const priceId = await getValidatedCreditsPriceId(stripe);
+
+  const session = await stripe.checkout.sessions.create({
+    ui_mode: "embedded",
+    mode: "payment",
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    redirect_on_completion: "never",
+    // Generate an itemized invoice/receipt for this one-time purchase so it
+    // appears in the Stripe billing portal's invoice history and is emailed.
+    invoice_creation: { enabled: true },
+    metadata: {
+      user_id: params.userId,
+      credits: String(PURCHASE_CREDITS),
+    },
+    payment_intent_data: {
+      metadata: {
+        user_id: params.userId,
+        credits: String(PURCHASE_CREDITS),
+      },
+    },
+  });
+
+  if (!session.client_secret) {
+    throw new Error("Stripe embedded checkout session missing client_secret");
+  }
+
+  return session.client_secret;
 }
 
 export async function createBillingPortalSession(

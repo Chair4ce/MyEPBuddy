@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { reconcileModelSelection } from "@/lib/ai-models/catalog";
 import { type KeyStatus } from "@/app/actions/api-keys";
 import { useAvailableModels } from "@/hooks/use-available-models";
+import { useCreditsStore } from "@/stores/credits-store";
+import { CreditsFirstBanner } from "@/components/billing/credits-first-banner";
 import type { ModelContext } from "@/lib/ai-models/types";
 import { AI_MODELS, type ModelQuality } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -79,11 +81,13 @@ export function ModelSelector({
     models,
     defaultModelId,
     keyStatus: fetchedKeyStatus,
+    creditsFirstActive,
     isLoading,
     error,
     load,
   } = useAvailableModels(context, { eager: true });
 
+  const creditBalance = useCreditsStore((state) => state.balance);
   const keyStatus = externalKeyStatus ?? fetchedKeyStatus;
   const availableModels = models;
   const unavailableModels: typeof models = [];
@@ -302,16 +306,20 @@ export function ModelSelector({
         </div>
 
         <div className="border-t px-3 py-2.5 bg-muted/30 shrink-0">
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            <CircleAlert className="inline-block size-3 align-text-bottom mr-1 text-amber-500" />
-            Without your own API key, the app uses the free default (
-            {models.find((model) => model.isAppDefault)?.name ?? "Gemini 2.5 Flash Lite"}).
-            {" "}
-            <a href="/settings/api-keys" className="text-primary hover:underline">
-              Add a key
-            </a>{" "}
-            for premium models.
-          </p>
+          {creditsFirstActive && (creditBalance ?? 0) > 0 ? (
+            <CreditsFirstBanner balance={creditBalance ?? 0} compact />
+          ) : (
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              <CircleAlert className="inline-block size-3 align-text-bottom mr-1 text-amber-500" />
+              Without your own API key, the app uses the free default (
+              {models.find((model) => model.isAppDefault)?.name ?? "Gemini 2.5 Flash Lite"}).
+              {" "}
+              <a href="/settings/api-keys" className="text-primary hover:underline">
+                Add a key
+              </a>{" "}
+              for premium models.
+            </p>
+          )}
         </div>
       </PopoverContent>
     </Popover>

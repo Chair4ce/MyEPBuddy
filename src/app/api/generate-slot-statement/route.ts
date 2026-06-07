@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, apiKeys);
+    const modelProvider = getModelProvider(effectiveModel, apiKeys, usageCheck.tracking);
 
     let verbVarietyBlock = "";
     if (rateeId && cycleYear) {

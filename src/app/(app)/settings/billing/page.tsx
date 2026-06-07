@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCreditsStore } from "@/stores/credits-store";
 import { CreditLedgerTable } from "@/components/settings/credit-ledger-table";
+import { CreditsFirstBanner } from "@/components/billing/credits-first-banner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,8 +15,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, Sparkles, ExternalLink, Receipt } from "lucide-react";
+import { Loader2, Sparkles, ExternalLink, Receipt, Coins } from "lucide-react";
 import {
   PURCHASE_CREDITS,
   PURCHASE_PACKAGE_LABEL,
@@ -30,11 +33,15 @@ export default function BillingSettingsPage() {
     lifetimeConsumed,
     lifetimePurchased,
     hasOwnKey,
+    preferCreditsFirst,
     billingTermsAccepted,
     isLoading,
     isCheckoutLoading,
     setIsCheckoutLoading,
     setBillingTermsAccepted,
+    setPreferCreditsFirst,
+    openEmbeddedCheckout,
+    ledgerRefreshNonce,
     fetchCredits,
   } = useCreditsStore();
 
@@ -70,16 +77,13 @@ export default function BillingSettingsPage() {
         setBillingTermsAccepted(true);
       }
 
-      const res = await fetch("/api/billing/checkout", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || "Unable to start checkout");
-      }
-      window.location.href = data.url;
+      // Open in-app embedded checkout instead of redirecting to Stripe.
+      await openEmbeddedCheckout();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Checkout failed.",
       );
+    } finally {
       setIsCheckoutLoading(false);
     }
   }, [
@@ -87,6 +91,7 @@ export default function BillingSettingsPage() {
     termsChecked,
     setBillingTermsAccepted,
     setIsCheckoutLoading,
+    openEmbeddedCheckout,
   ]);
 
   async function openPortal() {
@@ -105,26 +110,88 @@ export default function BillingSettingsPage() {
   }
 
   if (hasOwnKey) {
+    const remaining = balance ?? 0;
+    const hasLeftoverCredits = remaining > 0;
+
     return (
       <div className="space-y-6 max-w-2xl pb-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">AI Billing</h1>
           <p className="text-muted-foreground">
-            You&apos;re using your own API keys — unlimited AI usage with no
-            credit balance needed.
+            You&apos;re using your own API keys — unlimited AI usage. Manage keys
+            in{" "}
+            <Link href="/settings/api-keys" className="text-primary underline">
+              Settings → AI Models
+            </Link>
+            .
           </p>
         </div>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              Manage keys in{" "}
-              <Link href="/settings/api-keys" className="text-primary underline">
-                Settings → AI Models
-              </Link>
-              .
-            </p>
-          </CardContent>
-        </Card>
+
+        {hasLeftoverCredits ? (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Coins className="size-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>
+                    {remaining} free {remaining === 1 ? "call" : "calls"}{" "}
+                    remaining
+                  </CardTitle>
+                  <CardDescription>
+                    You still have free credits on the app&apos;s key. They never
+                    expire.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <label
+                htmlFor="prefer-credits-first"
+                className="flex items-start justify-between gap-4 rounded-lg border p-4 cursor-pointer"
+              >
+                <div className="space-y-0.5">
+                  <span className="text-base font-medium block">
+                    Use free credits first
+                  </span>
+                  <span className="text-sm text-muted-foreground block">
+                    Spend your remaining free calls on Gemini 2.5 Flash Lite,
+                    then automatically switch to your own key &amp; model. Turn
+                    off to use your own model now and save credits for later.
+                  </span>
+                </div>
+                <Switch
+                  id="prefer-credits-first"
+                  checked={preferCreditsFirst}
+                  onCheckedChange={(checked) =>
+                    void setPreferCreditsFirst(checked === true)
+                  }
+                  aria-label="Use free credits before switching to your own key"
+                />
+              </label>
+
+              {preferCreditsFirst ? (
+                <CreditsFirstBanner balance={remaining} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Your own key &amp; model are active now. Your {remaining}{" "}
+                  free {remaining === 1 ? "call is" : "calls are"} saved — turn
+                  this on anytime, or pick the free model in the generator to use
+                  them.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">
+                Unlimited AI usage with your own keys — no credit balance needed.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
@@ -221,7 +288,7 @@ export default function BillingSettingsPage() {
               {isCheckoutLoading ? (
                 <>
                   <Loader2 className="size-4 animate-spin mr-2" />
-                  Redirecting...
+                  Opening checkout...
                 </>
               ) : (
                 `Buy ${PURCHASE_CREDITS} calls — $${PURCHASE_PRICE_USD}`
@@ -241,7 +308,7 @@ export default function BillingSettingsPage() {
           <CardDescription>Your credit ledger (most recent first)</CardDescription>
         </CardHeader>
         <CardContent>
-          <CreditLedgerTable refreshKey={ledgerRefreshKey} />
+          <CreditLedgerTable refreshKey={ledgerRefreshKey + ledgerRefreshNonce} />
         </CardContent>
       </Card>
 

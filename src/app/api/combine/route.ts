@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     let systemPrompt: string;
     let userPrompt: string;

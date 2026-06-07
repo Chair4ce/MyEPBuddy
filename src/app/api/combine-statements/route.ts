@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     }
 
     const effectiveModel = usageCheck.effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, apiKeys);
+    const modelProvider = getModelProvider(effectiveModel, apiKeys, usageCheck.tracking);
 
     const systemPrompt = await appendUserRulesToPrompt(
       `You are an expert Air Force EPB statement writer. Your task is to combine multiple performance statements into ONE cohesive, high-quality statement.

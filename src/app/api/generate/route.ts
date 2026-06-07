@@ -779,7 +779,7 @@ export async function POST(request: Request) {
       user.id,
       rulesContext,
     );
-    const modelProvider = getModelProvider(effectiveModel, userKeys);
+    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
 
     // Group accomplishments by MPA (only if not using custom context)
     const accomplishmentsByMPA = hasCustomContext ? {} : accomplishments.reduce(

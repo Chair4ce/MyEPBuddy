@@ -13,8 +13,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
 import {
   PURCHASE_CREDITS,
   PURCHASE_PACKAGE_LABEL,
@@ -26,17 +27,25 @@ export function CreditsPromoButton() {
   const {
     balance,
     hasOwnKey,
+    preferCreditsFirst,
+    setPreferCreditsFirst,
     billingTermsAccepted,
     setBillingTermsAccepted,
     isCheckoutLoading,
     setIsCheckoutLoading,
     openPurchaseDialog,
+    openEmbeddedCheckout,
   } = useCreditsStore();
 
   const [open, setOpen] = useState(false);
   const [termsChecked, setTermsChecked] = useState(false);
 
-  if (hasOwnKey) return null;
+  const remaining = balance ?? 0;
+  // BYOK users only see the button while they still have free calls to manage.
+  // Once exhausted, they're fully on their own key and there's nothing to show.
+  const byokWithCredits = hasOwnKey && remaining > 0;
+
+  if (hasOwnKey && !byokWithCredits) return null;
 
   async function handlePurchase() {
     if (!billingTermsAccepted && !termsChecked) {
@@ -57,16 +66,14 @@ export function CreditsPromoButton() {
         setBillingTermsAccepted(true);
       }
 
-      const checkoutRes = await fetch("/api/billing/checkout", { method: "POST" });
-      const data = await checkoutRes.json();
-      if (!checkoutRes.ok || !data.url) {
-        throw new Error(data.error || "Unable to start checkout");
-      }
-      window.location.href = data.url;
+      // Close the drawer and open in-app checkout so the user stays put.
+      setOpen(false);
+      await openEmbeddedCheckout();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Checkout failed. Try again.",
       );
+    } finally {
       setIsCheckoutLoading(false);
     }
   }
@@ -90,11 +97,106 @@ export function CreditsPromoButton() {
         <SheetHeader>
           <SheetTitle>AI Call Credits</SheetTitle>
           <SheetDescription>
-            Prepaid calls for generation and assessments using our default AI
-            model.
+            {byokWithCredits
+              ? "You added your own API key — choose how you want to use your remaining free calls."
+              : "Your prepaid calls for generating and running assessments on our default AI model."}
           </SheetDescription>
         </SheetHeader>
 
+        {byokWithCredits ? (
+          <div className="mt-6 space-y-5 px-1">
+            <div className="rounded-lg border bg-muted/40 p-4 space-y-1">
+              <p className="text-sm text-muted-foreground">
+                Your free calls remaining
+              </p>
+              <p className="text-3xl font-bold tabular-nums">
+                {remaining}{" "}
+                <span className="text-base font-normal text-muted-foreground">
+                  {remaining === 1 ? "call" : "calls"}
+                </span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                They never expire · they run on our default model (Gemini Flash)
+              </p>
+            </div>
+
+            <div className="space-y-1.5 text-sm">
+              <p className="font-medium">Heads up</p>
+              <p className="text-muted-foreground leading-relaxed">
+                Your free calls use our default model (Gemini Flash) —{" "}
+                <span className="font-medium text-foreground">
+                  not the model from the API key you added
+                </span>{" "}
+                — so your results may look different until you&apos;ve used them
+                up.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                How would you like to use them?
+              </p>
+
+              <button
+                type="button"
+                onClick={() => void setPreferCreditsFirst(true)}
+                aria-pressed={preferCreditsFirst}
+                className={cn(
+                  "w-full text-left rounded-lg border p-3 transition-colors",
+                  preferCreditsFirst
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "hover:bg-accent",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    Use free calls first
+                  </span>
+                  {preferCreditsFirst && (
+                    <Check className="size-4 text-primary shrink-0" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  You&apos;ll spend your {remaining} remaining{" "}
+                  {remaining === 1 ? "call" : "calls"} on the default model, then
+                  we&apos;ll switch you to your own key &amp; model automatically
+                  when they run out.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void setPreferCreditsFirst(false)}
+                aria-pressed={!preferCreditsFirst}
+                className={cn(
+                  "w-full text-left rounded-lg border p-3 transition-colors",
+                  !preferCreditsFirst
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "hover:bg-accent",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    Use my API key now
+                  </span>
+                  {!preferCreditsFirst && (
+                    <Check className="size-4 text-primary shrink-0" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  We&apos;ll switch you to your own model right away. Your{" "}
+                  {remaining} free{" "}
+                  {remaining === 1 ? "call stays" : "calls stay"} saved for later
+                  — they never expire.
+                </p>
+              </button>
+            </div>
+
+            <Button variant="outline" asChild>
+              <Link href="/settings/billing">View billing &amp; history</Link>
+            </Button>
+          </div>
+        ) : (
         <div className="mt-6 space-y-5 px-1">
           <div className="rounded-lg border bg-muted/40 p-4 space-y-1">
             <p className="text-sm text-muted-foreground">Your balance</p>
@@ -110,20 +212,20 @@ export function CreditsPromoButton() {
             <p className="font-medium">How it works</p>
             <ul className="space-y-2 text-muted-foreground list-disc pl-5">
               <li>
-                New users receive {TRIAL_CREDITS} free trial calls — one call
-                per generate or assessment action.
+                You start with {TRIAL_CREDITS} free trial calls — one call each
+                time you generate or run an assessment.
               </li>
               <li>
-                Uses our default AI model (Gemini Flash) — fast and optimized
-                for EPB workflows.
+                Your calls use our default AI model (Gemini Flash) — fast and
+                optimized for your EPB workflows.
               </li>
               <li>
-                Purchased calls never expire. No subscription — pay only when
-                you need more.
+                The calls you buy never expire. There&apos;s no subscription —
+                you pay only when you need more.
               </li>
               <li>
-                Add your own API key anytime in Settings for unlimited usage
-                with your provider account.
+                Add your own API key anytime in Settings for unlimited usage on
+                your provider account.
               </li>
             </ul>
           </div>
@@ -171,7 +273,7 @@ export function CreditsPromoButton() {
               {isCheckoutLoading ? (
                 <>
                   <Loader2 className="size-4 animate-spin mr-2" />
-                  Redirecting...
+                  Opening checkout...
                 </>
               ) : (
                 `Buy ${PURCHASE_CREDITS} calls — $${PURCHASE_PRICE_USD}`
@@ -187,6 +289,7 @@ export function CreditsPromoButton() {
             )}
           </div>
         </div>
+        )}
       </SheetContent>
     </Sheet>
   );

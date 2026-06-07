@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { TRIAL_CREDITS } from "@/lib/billing/constants";
 import { isUsingDefaultKey, detectProvider } from "@/lib/llm-provider";
+import type { TokenTrackingContext } from "@/lib/ai-models/token-usage";
 import type { DecryptedApiKeys } from "@/app/actions/api-keys";
 
 export const DEFAULT_KEY_MODEL = DEFAULT_APP_MODEL_ID;
@@ -43,6 +44,11 @@ export interface UsageCheckResult {
   trialCredits?: number;
   rateLimited?: boolean;
   insufficientCredits?: boolean;
+  /**
+   * Token-usage tracking context to forward to getModelProvider so each LLM
+   * call's token consumption is captured. Present only when the call is allowed.
+   */
+  tracking?: TokenTrackingContext;
 }
 
 export async function checkAndTrackUsage(
@@ -55,6 +61,12 @@ export async function checkAndTrackUsage(
   const effectiveModel = usingDefault ? DEFAULT_KEY_MODEL : modelId;
   const provider = detectProvider(effectiveModel);
   const supabase = await createClient();
+
+  const tracking: TokenTrackingContext = {
+    userId,
+    action,
+    usingDefaultKey: usingDefault,
+  };
 
   if (!usingDefault) {
     const { data: countAfter, error } = await (supabase.rpc as Function)(
@@ -75,6 +87,7 @@ export async function checkAndTrackUsage(
         allowed: true,
         usingDefaultKey: false,
         effectiveModel,
+        tracking,
       };
     }
 
@@ -91,6 +104,7 @@ export async function checkAndTrackUsage(
       allowed: true,
       usingDefaultKey: false,
       effectiveModel,
+      tracking,
     };
   }
 
@@ -142,6 +156,7 @@ export async function checkAndTrackUsage(
     effectiveModel,
     creditsRemaining: result,
     creditsBalance: result,
+    tracking,
   };
 }
 
@@ -152,6 +167,7 @@ export async function getUsageStats(userId: string): Promise<{
   lifetimePurchased: number;
   trialCredits: number;
   trialGranted: boolean;
+  preferCreditsFirst: boolean;
 }> {
   const supabase = await createClient();
 
@@ -165,6 +181,7 @@ export async function getUsageStats(userId: string): Promise<{
               lifetime_consumed: number;
               lifetime_purchased: number;
               trial_granted: boolean;
+              prefer_credits_first: boolean;
             } | null;
             error: { message: string } | null;
           }>;
@@ -173,7 +190,9 @@ export async function getUsageStats(userId: string): Promise<{
     };
   })
     .from("user_credits")
-    .select("balance, lifetime_consumed, lifetime_purchased, trial_granted")
+    .select(
+      "balance, lifetime_consumed, lifetime_purchased, trial_granted, prefer_credits_first",
+    )
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -185,6 +204,7 @@ export async function getUsageStats(userId: string): Promise<{
       lifetimePurchased: 0,
       trialCredits: TRIAL_CREDITS,
       trialGranted: false,
+      preferCreditsFirst: true,
     };
   }
 
@@ -195,5 +215,6 @@ export async function getUsageStats(userId: string): Promise<{
     lifetimePurchased: data.lifetime_purchased,
     trialCredits: TRIAL_CREDITS,
     trialGranted: data.trial_granted,
+    preferCreditsFirst: data.prefer_credits_first ?? true,
   };
 }
