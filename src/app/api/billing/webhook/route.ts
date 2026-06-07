@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
           userId,
           credits,
           stripeEventId: event.id,
+          stripeCheckoutSessionId: session.id,
         });
         break;
       }

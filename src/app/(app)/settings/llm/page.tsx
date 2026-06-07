@@ -1311,7 +1311,7 @@ export default function LLMSettingsPage() {
               <div className="space-y-2">
                 <Label className="text-xs sm:text-sm">Writing Style Signatures</Label>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Style signatures capture your unique writing patterns (sentence structure, verb choices, formality) for each rank, AFSC, and MPA combination. They are automatically refreshed when you finalize EPBs or update library examples. Use this button to manually regenerate them.
+                  Style signatures capture your unique writing patterns (sentence structure, verb choices, formality) for each rank, AFSC, and MPA combination. They refresh automatically when you finalize EPBs or update library examples and do not count against your AI call credits. If you add an OpenAI API key, signature analysis uses your key; otherwise the app refreshes a limited number per day in the background.
                 </p>
                 <Button
                   variant="outline"
@@ -1321,15 +1321,33 @@ export default function LLMSettingsPage() {
                     setIsRefreshingSignatures(true);
                     try {
                       const response = await fetch("/api/refresh-style-signatures", { method: "POST" });
-                      if (!response.ok) throw new Error("Refresh failed");
                       const result = await response.json();
+                      if (!response.ok) {
+                        throw new Error(result.error || "Refresh failed");
+                      }
+                      if (result.quotaExhausted && result.signaturesGenerated === 0) {
+                        toast.info(
+                          "Daily style signature refresh limit reached. Remaining signatures will update tomorrow, or add an OpenAI API key in Settings to use your own key.",
+                        );
+                        return;
+                      }
+                      if (result.quotaExhausted) {
+                        toast.success(
+                          `Refreshed ${result.signaturesGenerated} style signature${result.signaturesGenerated > 1 ? "s" : ""}. Daily app refresh limit reached; the rest will update tomorrow.`,
+                        );
+                        return;
+                      }
                       toast.success(
                         result.signaturesGenerated > 0
                           ? `Refreshed ${result.signaturesGenerated} style signature${result.signaturesGenerated > 1 ? "s" : ""}`
-                          : "All signatures are up to date"
+                          : "All signatures are up to date",
                       );
-                    } catch {
-                      toast.error("Failed to refresh style signatures");
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : "Failed to refresh style signatures",
+                      );
                     } finally {
                       setIsRefreshingSignatures(false);
                     }

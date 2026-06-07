@@ -18,7 +18,7 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Per-user cooldown — this route always uses the app's OpenAI key
+    // Manual refresh cooldown — style signatures do not consume AI call credits.
     const cooldownCutoff = new Date(
       Date.now() - COOLDOWN_MINUTES * 60 * 1000,
     ).toISOString();
@@ -32,25 +32,29 @@ export async function POST() {
 
     if (count && count > 0) {
       return NextResponse.json(
-        { error: `Style signatures can only be refreshed once every ${COOLDOWN_MINUTES} minutes.` },
+        {
+          error: `Style signatures can only be refreshed once every ${COOLDOWN_MINUTES} minutes.`,
+        },
         { status: 429 },
       );
     }
 
+    const { generated, quotaExhausted } = await refreshUserSignatures(user.id);
+
+    // Record manual refresh for cooldown tracking only (not billable).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from("api_usage").insert({
       user_id: user.id,
       action_type: "refresh_style_signatures",
-      used_default_key: true,
-      model_id: "gpt-4o-mini",
-      provider: "openai",
+      used_default_key: false,
+      model_id: null,
+      provider: null,
     });
-
-    const generated = await refreshUserSignatures(user.id);
 
     return NextResponse.json({
       success: true,
       signaturesGenerated: generated,
+      quotaExhausted,
     });
   } catch (error) {
     console.error("[refresh-style-signatures] Error:", error);

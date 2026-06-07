@@ -194,6 +194,7 @@ export async function grantCreditsFromStripe(params: {
   userId: string;
   credits: number;
   stripeEventId: string;
+  stripeCheckoutSessionId: string;
 }): Promise<number> {
   const supabase = createAdminClient();
 
@@ -204,6 +205,7 @@ export async function grantCreditsFromStripe(params: {
       p_amount: params.credits,
       p_type: "purchase",
       p_stripe_event_id: params.stripeEventId,
+      p_stripe_checkout_session_id: params.stripeCheckoutSessionId,
       p_description: `Purchased ${params.credits} AI calls`,
     },
   ) as { data: number | null; error: { message: string } | null };

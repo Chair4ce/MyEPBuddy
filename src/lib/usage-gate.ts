@@ -9,6 +9,16 @@ export function enforceUsageGate(usageCheck: UsageCheckResult): NextResponse {
   if (usageCheck.rateLimited) {
     return handleBurstRateLimited();
   }
+  if (usageCheck.serviceError) {
+    return NextResponse.json(
+      {
+        error:
+          "Unable to verify your usage right now. Please try again in a moment.",
+        errorCode: "usage_check_failed",
+      },
+      { status: 503 },
+    );
+  }
   return handleInsufficientCredits();
 }
 

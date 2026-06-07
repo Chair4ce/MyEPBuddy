@@ -12,8 +12,13 @@
  * - getUserStyleSignature() - Loads a user's own style signature
  */
 
+import { getDecryptedApiKeys, type DecryptedApiKeys } from "@/app/actions/api-keys";
 import { createClient } from "@/lib/supabase/server";
-import { createOpenAI } from "@ai-sdk/openai";
+import {
+  STYLE_SIGNATURE_DAILY_APP_LIMIT,
+  STYLE_SIGNATURE_MODEL,
+} from "@/lib/style-signatures/constants";
+import { getModelProvider, isUsingDefaultKey, MissingApiKeyError } from "@/lib/llm-provider";
 import { generateText } from "ai";
 import { createHash } from "crypto";
 import type { Rank } from "@/types/database";
@@ -148,12 +153,36 @@ interface ChainStyleResult {
  *
  * @returns true if signature was generated/updated, false if skipped (no statements or hash unchanged)
  */
+async function reserveStyleSignatureAppKeyCall(userId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await (supabase.rpc as Function)(
+    "try_record_style_signature_app_call",
+    {
+      p_user_id: userId,
+      p_daily_limit: STYLE_SIGNATURE_DAILY_APP_LIMIT,
+    },
+  ) as { data: boolean | null; error: { message: string } | null };
+
+  if (error) {
+    console.error("[style-signatures] quota RPC error:", error.message);
+    return false;
+  }
+
+  return data === true;
+}
+
+export type StyleSignatureGenerateResult =
+  | "generated"
+  | "skipped"
+  | "quota_exhausted";
+
 export async function generateStyleSignature(
   userId: string,
   targetRank: string,
   targetAfsc: string,
-  mpa: StyleMPA
-): Promise<boolean> {
+  mpa: StyleMPA,
+  userKeys: Partial<DecryptedApiKeys> | null,
+): Promise<StyleSignatureGenerateResult> {
   const supabase = await createClient();
 
   // Only use QUALITY sources for signature generation:
@@ -240,7 +269,7 @@ export async function generateStyleSignature(
 
   // Need at least 3 statements for a meaningful signature
   if (allStatements.length < 3) {
-    return false;
+    return "skipped";
   }
 
   // Compute source hash to detect staleness
@@ -257,7 +286,7 @@ export async function generateStyleSignature(
     .maybeSingle();
 
   if (existing && (existing as { source_hash: string | null }).source_hash === sourceHash) {
-    return false; // No change in source statements, skip regeneration
+    return "skipped";
   }
 
   // Build the analysis prompt with the statements (text only, no IDs)
@@ -267,18 +296,33 @@ export async function generateStyleSignature(
 
   const userPrompt = `Analyze the writing style of these ${allStatements.length} Air Force performance statements written for a ${targetRank} in AFSC ${targetAfsc}${mpa !== "general" ? ` under the "${mpa.replace(/_/g, " ")}" performance area` : ""}:\n\n${statementsBlock}`;
 
-  // Use a fast, cheap model for fingerprint generation
-  const openai = createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY || "",
-  });
+  const usingAppKey = isUsingDefaultKey(STYLE_SIGNATURE_MODEL, userKeys);
 
-  const { text: rawResponse } = await generateText({
-    model: openai("gpt-4o-mini"),
-    system: FINGERPRINT_META_PROMPT,
-    prompt: userPrompt,
-    maxOutputTokens: 800,
-    temperature: 0.3, // Low temperature for consistent analysis
-  });
+  // Style signatures are non-billable; cap app-key usage to prevent abuse.
+  if (usingAppKey) {
+    const reserved = await reserveStyleSignatureAppKeyCall(userId);
+    if (!reserved) {
+      return "quota_exhausted";
+    }
+  }
+
+  let rawResponse: string;
+  try {
+    const model = getModelProvider(STYLE_SIGNATURE_MODEL, userKeys);
+    const result = await generateText({
+      model,
+      system: FINGERPRINT_META_PROMPT,
+      prompt: userPrompt,
+      maxOutputTokens: 800,
+      temperature: 0.3,
+    });
+    rawResponse = result.text;
+  } catch (error) {
+    if (error instanceof MissingApiKeyError) {
+      return "skipped";
+    }
+    throw error;
+  }
 
   // Parse the response: extract signature text and structured factors
   let signatureText = rawResponse;
@@ -320,10 +364,10 @@ export async function generateStyleSignature(
 
   if (error) {
     console.error("[style-signatures] Upsert error:", error.message);
-    return false;
+    return "skipped";
   }
 
-  return true;
+  return "generated";
 }
 
 /**
@@ -333,8 +377,13 @@ export async function generateStyleSignature(
  *
  * This is a heavier operation - call sparingly (on finalization, manual refresh).
  */
-export async function refreshUserSignatures(userId: string): Promise<number> {
+export async function refreshUserSignatures(userId: string): Promise<{
+  generated: number;
+  quotaExhausted: boolean;
+}> {
   const supabase = await createClient();
+  const userKeys = await getDecryptedApiKeys();
+  let quotaExhausted = false;
 
   // Get all unique rank + AFSC + MPA combinations from the user's statements
   // We need to determine the ratee's rank from EPB shells
@@ -344,7 +393,7 @@ export async function refreshUserSignatures(userId: string): Promise<number> {
     .eq("user_id", userId);
 
   if (!shells || shells.length === 0) {
-    return 0;
+    return { generated: 0, quotaExhausted: false };
   }
 
   // Build a map of AFSC → rank for the user's ratees
@@ -363,16 +412,30 @@ export async function refreshUserSignatures(userId: string): Promise<number> {
     // Generate a general signature and per-MPA signatures
     for (const mpa of VALID_MPAS) {
       try {
-        const result = await generateStyleSignature(userId, rank, afsc, mpa);
-        if (result) generated++;
+        const result = await generateStyleSignature(
+          userId,
+          rank,
+          afsc,
+          mpa,
+          userKeys,
+        );
+        if (result === "generated") {
+          generated++;
+        } else if (result === "quota_exhausted") {
+          quotaExhausted = true;
+          break;
+        }
       } catch (err) {
         console.error(`[style-signatures] Error generating for ${rank}/${afsc}/${mpa}:`, err);
-        // Continue with other combinations
       }
+    }
+
+    if (quotaExhausted) {
+      break;
     }
   }
 
-  return generated;
+  return { generated, quotaExhausted };
 }
 
 /**

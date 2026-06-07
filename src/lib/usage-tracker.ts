@@ -44,6 +44,8 @@ export interface UsageCheckResult {
   trialCredits?: number;
   rateLimited?: boolean;
   insufficientCredits?: boolean;
+  /** Usage RPC failed — request must not proceed (fail closed). */
+  serviceError?: boolean;
   /**
    * Token-usage tracking context to forward to getModelProvider so each LLM
    * call's token consumption is captured. Present only when the call is allowed.
@@ -84,10 +86,10 @@ export async function checkAndTrackUsage(
     if (error) {
       console.error("[usage-tracker] BYOK RPC error:", error.message);
       return {
-        allowed: true,
+        allowed: false,
         usingDefaultKey: false,
         effectiveModel,
-        tracking,
+        serviceError: true,
       };
     }
 
