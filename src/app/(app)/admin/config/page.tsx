@@ -12,9 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2 } from "lucide-react";
+import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2, Coins } from "lucide-react";
 import type { EPBConfig } from "@/types/database";
 
 type FeatureFlagKey =
@@ -27,6 +29,8 @@ export default function AdminConfigPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [savingField, setSavingField] = useState<FeatureFlagKey | null>(null);
+  const [savingTrialCredits, setSavingTrialCredits] = useState(false);
+  const [trialCreditsInput, setTrialCreditsInput] = useState("20");
   const [config, setConfig] = useState<EPBConfig | null>(null);
 
   const supabase = createClient();
@@ -47,7 +51,9 @@ export default function AdminConfigPage() {
         .single();
 
       if (!error && data) {
-        setConfig(data);
+        const nextConfig = data as EPBConfig;
+        setConfig(nextConfig);
+        setTrialCreditsInput(String(nextConfig.signup_trial_credits ?? 20));
       }
       setIsLoading(false);
     }
@@ -86,6 +92,49 @@ export default function AdminConfigPage() {
       toast.error("Failed to update setting");
     } finally {
       setSavingField(null);
+    }
+  }
+
+  async function saveSignupTrialCredits() {
+    if (!config) return;
+
+    const parsed = parseInt(trialCreditsInput, 10);
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 1000) {
+      toast.error("Enter a whole number between 1 and 1000.");
+      return;
+    }
+
+    const previous = config.signup_trial_credits;
+    setConfig({ ...config, signup_trial_credits: parsed });
+    setSavingTrialCredits(true);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from("epb_config")
+        .update({ signup_trial_credits: parsed })
+        .eq("id", 1)
+        .select()
+        .single();
+
+      if (error) {
+        setConfig({ ...config, signup_trial_credits: previous });
+        toast.error(error.message);
+        return;
+      }
+
+      if (data) {
+        setConfig(data);
+        setEpbConfig(data);
+        setTrialCreditsInput(String(data.signup_trial_credits));
+      }
+
+      toast.success("Signup trial credits updated for new accounts only.");
+    } catch {
+      setConfig({ ...config, signup_trial_credits: previous });
+      toast.error("Failed to update signup trial credits");
+    } finally {
+      setSavingTrialCredits(false);
     }
   }
 
@@ -130,6 +179,55 @@ export default function AdminConfigPage() {
             When you write an EPB for someone else, the app uses their rank to determine the active cycle.
           </CardDescription>
         </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Coins className="size-5" />
+            AI Call Credits
+          </CardTitle>
+          <CardDescription>
+            Controls how many free AI calls new accounts receive at signup. Changing
+            this does not adjust existing user balances.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="space-y-2 flex-1 max-w-xs">
+              <Label htmlFor="signup_trial_credits">Signup trial grant</Label>
+              <Input
+                id="signup_trial_credits"
+                type="number"
+                min={1}
+                max={1000}
+                inputMode="numeric"
+                value={trialCreditsInput}
+                onChange={(e) => setTrialCreditsInput(e.target.value)}
+                aria-label="Signup trial AI call credits"
+                className="tabular-nums"
+              />
+              <p className="text-xs text-muted-foreground">
+                Current value: {config.signup_trial_credits} calls for new signups
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void saveSignupTrialCredits()}
+              disabled={
+                savingTrialCredits ||
+                parseInt(trialCreditsInput, 10) === config.signup_trial_credits
+              }
+              className="sm:mb-0.5"
+            >
+              {savingTrialCredits ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       <Card>

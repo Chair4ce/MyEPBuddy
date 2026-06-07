@@ -20,7 +20,6 @@ import {
   PURCHASE_CREDITS,
   PURCHASE_PACKAGE_LABEL,
   PURCHASE_PRICE_USD,
-  TRIAL_CREDITS,
 } from "@/lib/billing/constants";
 
 export function CreditsPromoButton() {
@@ -29,6 +28,7 @@ export function CreditsPromoButton() {
     hasOwnKey,
     preferCreditsFirst,
     setPreferCreditsFirst,
+    signupTrialCredits,
     billingTermsAccepted,
     setBillingTermsAccepted,
     isCheckoutLoading,
@@ -212,7 +212,7 @@ export function CreditsPromoButton() {
             <p className="font-medium">How it works</p>
             <ul className="space-y-2 text-muted-foreground list-disc pl-5">
               <li>
-                You start with {TRIAL_CREDITS} free trial calls — one call each
+                You start with {signupTrialCredits} free trial calls — one call each
                 time you generate or run an assessment.
               </li>
               <li>

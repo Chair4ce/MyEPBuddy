@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AdminUsageDashboard } from "@/components/admin/admin-usage-dashboard";
 import type {
@@ -26,25 +25,6 @@ export default async function AdminUsagePage({
   searchParams: Promise<{ days?: string }>;
 }) {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if ((profile as { role?: string } | null)?.role !== "admin") {
-    redirect("/dashboard");
-  }
-
   const days = resolveDays((await searchParams).days);
 
   const [defaultKeyResult, creditsResult] = await Promise.all([

@@ -1,5 +1,5 @@
-/** One-time trial grant for default-key AI usage */
-export const TRIAL_CREDITS = 100;
+/** Fallback when epb_config cannot be loaded */
+export const DEFAULT_SIGNUP_TRIAL_CREDITS = 20;
 
 /** Starter purchase package */
 export const PURCHASE_CREDITS = 100;

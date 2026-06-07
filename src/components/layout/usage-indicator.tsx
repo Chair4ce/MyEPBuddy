@@ -9,7 +9,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCreditsStore } from "@/stores/credits-store";
-import { TRIAL_CREDITS } from "@/lib/billing/constants";
 import { Sparkles } from "lucide-react";
 
 interface UsageIndicatorProps {

@@ -176,6 +176,8 @@ export interface EPBConfig {
   show_prompt_editors: boolean;
   /** When true, per-context prompt rules CRUD is enabled and rules are injected at generation. */
   enable_prompt_rules: boolean;
+  /** AI call credits granted once at signup (new accounts only). */
+  signup_trial_credits: number;
   updated_at: string;
 }
 
@@ -1460,6 +1462,7 @@ export interface Database {
         Row: {
           id: string;
           user_id: string | null;
+          user_email: string | null;
           feature: string;
           feedback: string;
           created_at: string;
@@ -1467,6 +1470,7 @@ export interface Database {
         Insert: {
           id?: string;
           user_id?: string | null;
+          user_email?: string | null;
           feature: string;
           feedback: string;
           created_at?: string;
@@ -1474,6 +1478,7 @@ export interface Database {
         Update: {
           feature?: string;
           feedback?: string;
+          user_email?: string | null;
         };
       };
       statement_history: {

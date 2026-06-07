@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getUsageStats } from "@/lib/usage-tracker";
 import { getKeyStatus } from "@/app/actions/api-keys";
+import { getSignupTrialCreditsConfig } from "@/lib/billing/signup-trial-credits";
 import { PURCHASE_CREDITS, PURCHASE_PRICE_USD } from "@/lib/billing/constants";
 
 export async function GET() {
@@ -14,7 +15,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [stats, keyStatus, profileResult] = await Promise.all([
+  const [stats, keyStatus, profileResult, signupTrialCredits] = await Promise.all([
       getUsageStats(user.id),
       getKeyStatus(),
       (supabase as unknown as {
@@ -36,6 +37,7 @@ export async function GET() {
         .select("billing_terms_accepted_at, trial_intro_seen_at")
         .eq("id", user.id)
         .single(),
+      getSignupTrialCreditsConfig(),
     ]);
 
   const hasOwnKey =
@@ -49,6 +51,7 @@ export async function GET() {
   return NextResponse.json({
     ...stats,
     hasOwnKey,
+    signupTrialCredits,
     billingTermsAccepted: !!profile?.billing_terms_accepted_at,
     trialIntroSeen: !!profile?.trial_intro_seen_at,
     purchasePackage: {

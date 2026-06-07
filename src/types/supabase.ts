@@ -1026,6 +1026,7 @@ export type Database = {
           rank_verb_progression: Json
           scod_date: string
           show_prompt_editors: boolean
+          signup_trial_credits: number
           style_guidelines: string
           updated_at: string
         }
@@ -1040,6 +1041,7 @@ export type Database = {
           rank_verb_progression?: Json
           scod_date?: string
           show_prompt_editors?: boolean
+          signup_trial_credits?: number
           style_guidelines?: string
           updated_at?: string
         }
@@ -1054,6 +1056,7 @@ export type Database = {
           rank_verb_progression?: Json
           scod_date?: string
           show_prompt_editors?: boolean
+          signup_trial_credits?: number
           style_guidelines?: string
           updated_at?: string
         }
@@ -3134,6 +3137,7 @@ export type Database = {
           feature: string
           feedback: string
           id: string
+          user_email: string | null
           user_id: string | null
         }
         Insert: {
@@ -3141,6 +3145,7 @@ export type Database = {
           feature: string
           feedback: string
           id?: string
+          user_email?: string | null
           user_id?: string | null
         }
         Update: {
@@ -3148,6 +3153,7 @@ export type Database = {
           feature?: string
           feedback?: string
           id?: string
+          user_email?: string | null
           user_id?: string | null
         }
         Relationships: [

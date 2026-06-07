@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
-import { TRIAL_CREDITS } from "@/lib/billing/constants";
+import { DEFAULT_SIGNUP_TRIAL_CREDITS } from "@/lib/billing/constants";
 import { useAvailableModelsStore } from "@/stores/available-models-store";
 
 export interface CreditTransaction {
@@ -18,6 +18,7 @@ interface CreditsState {
   lifetimeConsumed: number;
   lifetimePurchased: number;
   trialCredits: number;
+  signupTrialCredits: number;
   trialGranted: boolean;
   hasOwnKey: boolean;
   preferCreditsFirst: boolean;
@@ -39,6 +40,7 @@ interface CreditsState {
     lifetimeConsumed?: number;
     lifetimePurchased?: number;
     trialCredits?: number;
+    signupTrialCredits?: number;
     trialGranted?: boolean;
     hasOwnKey?: boolean;
     preferCreditsFirst?: boolean;
@@ -70,7 +72,8 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   balance: null,
   lifetimeConsumed: 0,
   lifetimePurchased: 0,
-  trialCredits: TRIAL_CREDITS,
+  trialCredits: DEFAULT_SIGNUP_TRIAL_CREDITS,
+  signupTrialCredits: DEFAULT_SIGNUP_TRIAL_CREDITS,
   trialGranted: false,
   hasOwnKey: false,
   preferCreditsFirst: true,
@@ -92,7 +95,8 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       balance: data.creditsRemaining ?? data.creditsBalance ?? get().balance,
       lifetimeConsumed: data.lifetimeConsumed ?? get().lifetimeConsumed,
       lifetimePurchased: data.lifetimePurchased ?? get().lifetimePurchased,
-      trialCredits: data.trialCredits ?? TRIAL_CREDITS,
+      trialCredits: data.trialCredits ?? get().trialCredits,
+      signupTrialCredits: data.signupTrialCredits ?? get().signupTrialCredits,
       trialGranted: data.trialGranted ?? get().trialGranted,
       hasOwnKey: data.hasOwnKey ?? get().hasOwnKey,
       preferCreditsFirst: data.preferCreditsFirst ?? get().preferCreditsFirst,
@@ -270,7 +274,8 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       balance: null,
       lifetimeConsumed: 0,
       lifetimePurchased: 0,
-      trialCredits: TRIAL_CREDITS,
+      trialCredits: DEFAULT_SIGNUP_TRIAL_CREDITS,
+      signupTrialCredits: DEFAULT_SIGNUP_TRIAL_CREDITS,
       trialGranted: false,
       hasOwnKey: false,
       preferCreditsFirst: true,

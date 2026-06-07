@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
-import { TRIAL_CREDITS } from "@/lib/billing/constants";
+import { useCreditsStore } from "@/stores/credits-store";
 
 interface TrialIntroDialogProps {
   open: boolean;
@@ -18,20 +18,21 @@ interface TrialIntroDialogProps {
 }
 
 export function TrialIntroDialog({ open, onDismiss }: TrialIntroDialogProps) {
+  const trialCredits = useCreditsStore((s) => s.trialCredits);
   return (
     <AlertDialog open={open}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary shrink-0" />
-            Welcome — you have {TRIAL_CREDITS} free AI calls
+            Welcome — you have {trialCredits} free AI calls
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3 pt-1 text-sm">
               <p>
                 As a trial, you have{" "}
                 <span className="font-semibold text-foreground">
-                  {TRIAL_CREDITS} AI calls
+                  {trialCredits} AI calls
                 </span>{" "}
                 to generate statements and run assessments. Enjoy the app — we
                 appreciate any feedback!

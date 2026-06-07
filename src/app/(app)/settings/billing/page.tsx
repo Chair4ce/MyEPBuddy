@@ -23,7 +23,6 @@ import {
   PURCHASE_CREDITS,
   PURCHASE_PACKAGE_LABEL,
   PURCHASE_PRICE_USD,
-  TRIAL_CREDITS,
 } from "@/lib/billing/constants";
 
 export default function BillingSettingsPage() {
@@ -32,6 +31,7 @@ export default function BillingSettingsPage() {
     balance,
     lifetimeConsumed,
     lifetimePurchased,
+    trialCredits,
     hasOwnKey,
     preferCreditsFirst,
     billingTermsAccepted,
@@ -234,7 +234,7 @@ export default function BillingSettingsPage() {
                 </span>
               </p>
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                <span>Trial grant: {TRIAL_CREDITS} calls</span>
+                <span>Trial grant: {trialCredits} calls</span>
                 <span>Purchased: {lifetimePurchased} calls</span>
                 <span>Used: {lifetimeConsumed} calls</span>
               </div>

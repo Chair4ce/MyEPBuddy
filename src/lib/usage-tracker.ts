@@ -9,7 +9,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
-import { TRIAL_CREDITS } from "@/lib/billing/constants";
+import { DEFAULT_SIGNUP_TRIAL_CREDITS } from "@/lib/billing/constants";
+import { getUserTrialGrantAmount } from "@/lib/billing/signup-trial-credits";
 import { isUsingDefaultKey, detectProvider } from "@/lib/llm-provider";
 import type { TokenTrackingContext } from "@/lib/ai-models/token-usage";
 import type { DecryptedApiKeys } from "@/app/actions/api-keys";
@@ -79,7 +80,7 @@ export async function checkAndTrackUsage(
         p_used_default_key: false,
         p_model_id: effectiveModel,
         p_provider: provider,
-        p_weekly_limit: TRIAL_CREDITS,
+        p_weekly_limit: DEFAULT_SIGNUP_TRIAL_CREDITS,
       },
     ) as { data: number | null; error: { message: string } | null };
 
@@ -173,30 +174,35 @@ export async function getUsageStats(userId: string): Promise<{
 }> {
   const supabase = await createClient();
 
-  const { data, error } = await (supabase as unknown as {
-    from: (table: string) => {
-      select: (cols: string) => {
-        eq: (col: string, val: string) => {
-          maybeSingle: () => Promise<{
-            data: {
-              balance: number;
-              lifetime_consumed: number;
-              lifetime_purchased: number;
-              trial_granted: boolean;
-              prefer_credits_first: boolean;
-            } | null;
-            error: { message: string } | null;
-          }>;
+  const [creditsResult, trialGrant] = await Promise.all([
+    (supabase as unknown as {
+      from: (table: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            maybeSingle: () => Promise<{
+              data: {
+                balance: number;
+                lifetime_consumed: number;
+                lifetime_purchased: number;
+                trial_granted: boolean;
+                prefer_credits_first: boolean;
+              } | null;
+              error: { message: string } | null;
+            }>;
+          };
         };
       };
-    };
-  })
-    .from("user_credits")
-    .select(
-      "balance, lifetime_consumed, lifetime_purchased, trial_granted, prefer_credits_first",
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
+    })
+      .from("user_credits")
+      .select(
+        "balance, lifetime_consumed, lifetime_purchased, trial_granted, prefer_credits_first",
+      )
+      .eq("user_id", userId)
+      .maybeSingle(),
+    getUserTrialGrantAmount(userId),
+  ]);
+
+  const { data, error } = creditsResult;
 
   if (error || !data) {
     return {
@@ -204,7 +210,7 @@ export async function getUsageStats(userId: string): Promise<{
       creditsBalance: 0,
       lifetimeConsumed: 0,
       lifetimePurchased: 0,
-      trialCredits: TRIAL_CREDITS,
+      trialCredits: trialGrant,
       trialGranted: false,
       preferCreditsFirst: true,
     };
@@ -215,7 +221,7 @@ export async function getUsageStats(userId: string): Promise<{
     creditsBalance: data.balance,
     lifetimeConsumed: data.lifetime_consumed,
     lifetimePurchased: data.lifetime_purchased,
-    trialCredits: TRIAL_CREDITS,
+    trialCredits: trialGrant,
     trialGranted: data.trial_granted,
     preferCreditsFirst: data.prefer_credits_first ?? true,
   };
