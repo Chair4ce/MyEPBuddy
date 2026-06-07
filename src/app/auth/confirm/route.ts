@@ -54,6 +54,22 @@ export async function GET(request: Request) {
   let redirectTo: string;
   if (type === "recovery") {
     redirectTo = "/reset-password";
+  } else if (type === "magiclink") {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data: profile } = (await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", user.id)
+        .maybeSingle()) as { data: { email: string } | null };
+
+      redirectTo = profile?.email ? "/dashboard" : "/complete-profile";
+    } else {
+      redirectTo = next;
+    }
   } else {
     redirectTo = next;
   }

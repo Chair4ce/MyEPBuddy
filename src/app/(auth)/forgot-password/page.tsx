@@ -20,6 +20,7 @@ import { Loader2, ArrowLeft, Mail, AlertTriangle } from "lucide-react";
 import { parseAuthError } from "@/lib/auth-errors";
 import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
+import { ResizeContainer } from "@/components/ui/resize-container";
 
 function ForgotPasswordContent() {
   const [email, setEmail] = useState("");
@@ -84,18 +85,19 @@ function ForgotPasswordContent() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl">Change your password</CardTitle>
-          <CardDescription>
-            {emailSent
-              ? "Check your email for the password reset link"
-              : "Need to sign in instead? Use a magic link on the sign-in page. Enter your email below only if you want to set a new password."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {emailSent ? (
-            <div className="space-y-4">
+      <ResizeContainer>
+        <Card className="overflow-hidden">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl">Change your password</CardTitle>
+            <CardDescription>
+              {emailSent
+                ? "Check your email for the password reset link"
+                : "Need to sign in instead? Use a magic link on the sign-in page. Enter your email below only if you want to set a new password."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {emailSent ? (
+              <div className="space-y-4" key="reset-email-sent">
               <div className="flex items-center justify-center p-6 rounded-lg bg-primary/10 border border-primary/20">
                 <Mail className="size-12 text-primary" />
               </div>
@@ -127,7 +129,7 @@ function ForgotPasswordContent() {
               </Button>
             </div>
           ) : (
-            <form onSubmit={handleResetRequest} className="space-y-4">
+            <form onSubmit={handleResetRequest} className="space-y-4" key="reset-email-form">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -166,7 +168,8 @@ function ForgotPasswordContent() {
             Back to sign in
           </Link>
         </CardFooter>
-      </Card>
+        </Card>
+      </ResizeContainer>
     </div>
   );
 }

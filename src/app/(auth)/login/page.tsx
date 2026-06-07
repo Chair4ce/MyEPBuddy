@@ -29,6 +29,7 @@ import {
 import { parseAuthError } from "@/lib/auth-errors";
 import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
+import { ResizeContainer } from "@/components/ui/resize-container";
 
 function isRestrictedBrowser(): { restricted: boolean; browserName: string } {
   if (typeof window === "undefined") return { restricted: false, browserName: "" };
@@ -129,13 +130,21 @@ function LoginPageContent() {
         email: trimmedEmail,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/confirm?type=magiclink`,
-          shouldCreateUser: false,
         },
       });
 
       if (error) {
-        const errorInfo = parseAuthError(error.message);
+        const errorInfo = parseAuthError(
+          "code" in error && error.code === "otp_disabled"
+            ? "Signups not allowed for otp"
+            : error.message
+        );
         if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
+          toast.error(errorInfo.title, {
+            description: errorInfo.action || errorInfo.message,
+            duration: 8000,
+          });
+        } else if ("code" in error && error.code === "otp_disabled") {
           toast.error(errorInfo.title, {
             description: errorInfo.action || errorInfo.message,
             duration: 8000,
@@ -236,40 +245,41 @@ function LoginPageContent() {
         </p>
       </div>
 
-      {restrictedBrowser.restricted && (
-        <Card className="mb-4 border-yellow-400 dark:border-yellow-600/50 bg-yellow-50 dark:bg-yellow-900/20">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center gap-3">
-              <ExternalLink className="size-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-              <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300 flex-1">
-                Open in Safari or Chrome for full features
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyUrl}
-                className="shrink-0 h-7 px-2.5 text-xs border-yellow-500 dark:border-yellow-600 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
-              >
-                {copied ? (
-                  <Check className="size-3.5 text-green-600 dark:text-green-400" />
-                ) : (
-                  <Copy className="size-3.5" />
-                )}
-                {copied ? "Copied!" : "Copy URL"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <ResizeContainer className="flex flex-col gap-4">
+        {restrictedBrowser.restricted && (
+          <Card className="border-yellow-400 dark:border-yellow-600/50 bg-yellow-50 dark:bg-yellow-900/20">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-3">
+                <ExternalLink className="size-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300 flex-1">
+                  Open in Safari or Chrome for full features
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyUrl}
+                  className="shrink-0 h-7 px-2.5 text-xs border-yellow-500 dark:border-yellow-600 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
+                >
+                  {copied ? (
+                    <Check className="size-3.5 text-green-600 dark:text-green-400" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                  {copied ? "Copied!" : "Copy URL"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      <Card>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl">Sign in</CardTitle>
-          <CardDescription>
-            Use a magic link, Google, phone, or your password
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <Card className="overflow-hidden">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl">Sign in</CardTitle>
+            <CardDescription>
+              Use a magic link, Google, phone, or your password
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
@@ -338,9 +348,9 @@ function LoginPageContent() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="magic-link" className="mt-4 space-y-4">
+            <TabsContent value="magic-link" className="mt-4 space-y-4 focus-visible:outline-none">
               {magicLinkSent ? (
-                <div className="space-y-4">
+                <div className="space-y-4" key="magic-link-sent">
                   <div className="flex items-center justify-center p-6 rounded-lg bg-primary/10 border border-primary/20">
                     <Mail className="size-12 text-primary" />
                   </div>
@@ -365,7 +375,7 @@ function LoginPageContent() {
                   </Button>
                 </div>
               ) : (
-                <form onSubmit={handleMagicLink} className="space-y-4">
+                <form onSubmit={handleMagicLink} className="space-y-4" key="magic-link-form">
                   <div className="space-y-2">
                     <Label htmlFor="magic-email">Email</Label>
                     <Input
@@ -398,7 +408,7 @@ function LoginPageContent() {
               )}
             </TabsContent>
 
-            <TabsContent value="password" className="mt-4">
+            <TabsContent value="password" className="mt-4 focus-visible:outline-none">
               <form onSubmit={handleEmailLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -450,16 +460,17 @@ function LoginPageContent() {
               </form>
             </TabsContent>
           </Tabs>
-        </CardContent>
-        <CardFooter>
-          <p className="text-sm text-muted-foreground w-full text-center">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-primary hover:underline">
-              Sign up
-            </Link>
-          </p>
-        </CardFooter>
-      </Card>
+          </CardContent>
+          <CardFooter>
+            <p className="text-sm text-muted-foreground w-full text-center">
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="text-primary hover:underline">
+                Sign up
+              </Link>
+            </p>
+          </CardFooter>
+        </Card>
+      </ResizeContainer>
     </div>
   );
 }

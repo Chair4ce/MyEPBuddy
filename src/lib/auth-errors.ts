@@ -115,6 +115,17 @@ const ERROR_PATTERNS: Array<{
       isEmailDelivery: true,
     },
   },
+  // Magic link / OTP sign-in for unknown email (shouldCreateUser: false)
+  {
+    pattern: /signups not allowed for otp|otp_disabled/i,
+    info: {
+      title: "No account found",
+      message: "We couldn't find an account with that email address.",
+      action: "Sign up for a new account, or try Google or phone sign-in.",
+      isRateLimit: false,
+      isEmailDelivery: false,
+    },
+  },
   // Too many signup attempts
   {
     pattern: /too many.*request/i,
