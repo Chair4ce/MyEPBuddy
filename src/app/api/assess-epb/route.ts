@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { buildACAAssessmentPrompt, ENTRY_MGAS, getRubricTierForRank, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import type { Rank } from "@/types/database";
@@ -221,7 +221,7 @@ export async function POST(request: Request) {
       assessment.formUsed = assessment.rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
     }
 
-    return NextResponse.json({ assessment });
+    return jsonWithCredits({ assessment }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/assess-epb", modelId);
   }

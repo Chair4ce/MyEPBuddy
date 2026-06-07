@@ -5,7 +5,7 @@ import { formatAbbreviationsList } from "@/lib/default-abbreviations";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import type { Rank, UserLLMSettings } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -248,7 +248,7 @@ Format as JSON array only:
     // Trim to exactly 3 statements
     statements = statements.slice(0, 3);
 
-    return NextResponse.json({ statements });
+    return jsonWithCredits({ statements }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/combine", modelId);
   }

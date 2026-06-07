@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { cleanText, extractDateRange, extractCycleYear } from "@/lib/text-cleaning";
 import type { Rank } from "@/types/database";
@@ -240,7 +240,7 @@ export async function POST(request: Request) {
       extractedCycleYear,
     };
 
-    return NextResponse.json(response);
+    return jsonWithCredits(response, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/parse-bulk-statements", modelId);
   }

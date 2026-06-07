@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
@@ -125,7 +125,7 @@ Output as a JSON array of 3 strings (each starting with "- "):
       versions = [statement]; // Return original if parsing fails
     }
 
-    return NextResponse.json({ versions });
+    return jsonWithCredits({ versions }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/convert-sentences", modelId);
   }

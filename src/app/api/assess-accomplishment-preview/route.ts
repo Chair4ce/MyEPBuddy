@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { 
   DEFAULT_MPA_DESCRIPTIONS, 
   ENTRY_MGAS, 
@@ -288,13 +288,13 @@ export async function POST(request: Request) {
     const rubricTier = getRubricTierForRank(profile?.rank as Rank);
     const formUsed = rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
 
-    return NextResponse.json({ 
+    return jsonWithCredits({
       assessment,
       model,
       rubricTier,
       formUsed,
-      rateeRank: profile?.rank || null
-    });
+      rateeRank: profile?.rank || null,
+    }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/assess-accomplishment-preview", modelId);
   }

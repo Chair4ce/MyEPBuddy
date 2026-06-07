@@ -19,7 +19,7 @@ import { getModelProvider } from "@/lib/llm-provider";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
 import {
   performQualityControl,
@@ -1770,7 +1770,7 @@ ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about
       }
     }
 
-    return NextResponse.json({ statements: results });
+    return jsonWithCredits({ statements: results }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/generate", requestModel);
   }

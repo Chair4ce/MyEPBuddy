@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { fetchWithRetry, billableFetch } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -46,7 +46,6 @@ import {
 } from "lucide-react";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
-import { useCreditsStore } from "@/stores/credits-store";
 import { ClarifyingQuestionsModal, ClarifyingQuestionsIndicator } from "./clarifying-questions-modal";
 
 // Types
@@ -791,10 +790,9 @@ export function CustomContextWorkspace({
 
     // Optimistically decrement the credit counter for instant feedback.
     // Realtime reconciles the authoritative balance once consume_credit runs.
-    useCreditsStore.getState().applyOptimisticConsume();
 
     try {
-      const response = await fetch("/api/generate", {
+      const response = await billableFetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -891,7 +889,6 @@ export function CustomContextWorkspace({
     } catch (error) {
       console.error(error);
       // Request never consumed a credit server-side; restore the optimistic decrement.
-      void useCreditsStore.getState().fetchCredits();
       toast.error(error instanceof Error ? error.message : "Failed to generate statement");
     } finally {
       setGeneratingMPA(null);
@@ -905,10 +902,8 @@ export function CustomContextWorkspace({
     setIsRegeneratingWithContext(true);
     setGeneratingMPA(mpaKey);
 
-    useCreditsStore.getState().applyOptimisticConsume();
-
     try {
-      const response = await fetch("/api/generate", {
+      const response = await billableFetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -974,7 +969,6 @@ export function CustomContextWorkspace({
       toast.success(`Enhanced statement with your clarifying details`);
     } catch (error) {
       console.error(error);
-      void useCreditsStore.getState().fetchCredits();
       toast.error(error instanceof Error ? error.message : "Failed to regenerate statement");
     } finally {
       setIsRegeneratingWithContext(false);
@@ -987,8 +981,6 @@ export function CustomContextWorkspace({
     const data = getMPAData(mpaKey);
     const currentText = statementNum === 1 ? (data.edited?.text1 ?? data.generated?.text1 ?? "") : (data.edited?.text2 ?? data.generated?.text2 ?? "");
     const originalContext = statementNum === 1 ? data.statement1.context : (data.statement2?.context || "");
-
-    useCreditsStore.getState().applyOptimisticConsume();
 
     try {
       // Use revise-selection API with proper format
@@ -1047,28 +1039,24 @@ export function CustomContextWorkspace({
       toast.success("Statement revised!");
     } catch (error) {
       console.error(error);
-      void useCreditsStore.getState().fetchCredits();
       toast.error(error instanceof Error ? error.message : "Failed to revise statement");
     }
   };
 
   // Synonym lookup - needs word, full statement context, and model
   const synonymLookup = async (word: string, fullStatement: string): Promise<string[]> => {
-    useCreditsStore.getState().applyOptimisticConsume();
     try {
-      const response = await fetch("/api/synonyms", {
+      const response = await billableFetch("/api/synonyms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ word, fullStatement, model }),
       });
       if (!response.ok) {
-        void useCreditsStore.getState().fetchCredits();
         return [];
       }
       const result = await response.json();
       return result.synonyms || [];
     } catch {
-      void useCreditsStore.getState().fetchCredits();
       return [];
     }
   };

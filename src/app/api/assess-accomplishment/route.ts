@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { 
   DEFAULT_MPA_DESCRIPTIONS, 
   ENTRY_MGAS,
@@ -342,11 +342,11 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ 
+    return jsonWithCredits({
       assessment,
       assessed_at: new Date().toISOString(),
-      model 
-    });
+      model,
+    }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/assess-accomplishment", modelId);
   }

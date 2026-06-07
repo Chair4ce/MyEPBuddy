@@ -5,7 +5,7 @@ import { AWARD_1206_CATEGORIES, DEFAULT_AWARD_SENTENCES } from "@/lib/constants"
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import type { Rank, UserLLMSettings, AwardLevel, AwardCategory, AwardSentencesPerCategory, WinLevel } from "@/types/database";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
@@ -617,7 +617,7 @@ Format as JSON array (EACH statement must start with "- "):
         }
       }
 
-      return NextResponse.json({ statements: results });
+      return jsonWithCredits({ statements: results }, usageCheck);
     }
 
     // ============================================================
@@ -764,7 +764,7 @@ Format as JSON array (EACH statement must start with "- "):
         }
       }
 
-      return NextResponse.json({ statements: results });
+      return jsonWithCredits({ statements: results }, usageCheck);
     }
 
     // ============================================================
@@ -1138,7 +1138,7 @@ Format as JSON array of arrays (EACH statement must start with "- "):
       return lines.map(line => [line]);
     }
 
-    return NextResponse.json({ statements: results });
+    return jsonWithCredits({ statements: results }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/generate-award", modelId);
   }

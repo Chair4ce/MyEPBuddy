@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -117,7 +117,7 @@ Output ONLY the combined statement.`;
     // Clean up the response
     const combined = text.trim().replace(/^["']|["']$/g, "");
 
-    return NextResponse.json({ combined });
+    return jsonWithCredits({ combined }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/combine-statements", modelId);
   }

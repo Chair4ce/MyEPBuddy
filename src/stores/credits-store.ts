@@ -232,6 +232,15 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
             const previousBalance = get().balance;
             set({ balance: next.balance });
 
+            // Webhook grants land after checkout completes — refresh billing
+            // stats + ledger when balance goes up (purchase, refund, etc.).
+            const balanceIncreased =
+              previousBalance !== null && next.balance > previousBalance;
+            if (balanceIncreased) {
+              get().bumpLedgerRefresh();
+              void get().fetchCredits();
+            }
+
             // When the balance crosses the zero boundary, credits-first state
             // changes, so refresh the model catalog to flip the default model
             // (cutover to the user's own key at 0, back to free on top-up).

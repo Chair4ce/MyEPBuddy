@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { DEFAULT_APP_MODEL_ID } from "@/lib/constants";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -318,18 +318,18 @@ Return valid JSON:`;
           if (!validation.valid) {
             console.warn("LLM validation warning:", validation.reason);
             // Return the proposed text but flag it for user review
-            return NextResponse.json({ 
+            return jsonWithCredits({
               success: true,
               newText,
               needsReview: true,
-              reviewReason: validation.reason
-            });
+              reviewReason: validation.reason,
+            }, usageCheck);
           }
           
-          return NextResponse.json({ 
-            success: true, 
-            newText 
-          });
+          return jsonWithCredits({
+            success: true,
+            newText,
+          }, usageCheck);
         } else if (result.aborted) {
           return NextResponse.json({ 
             success: false, 

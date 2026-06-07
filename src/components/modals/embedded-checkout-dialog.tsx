@@ -30,8 +30,6 @@ export function EmbeddedCheckoutDialog() {
     embeddedCheckoutError,
     closeEmbeddedCheckout,
     openEmbeddedCheckout,
-    fetchCredits,
-    bumpLedgerRefresh,
   } = useCreditsStore();
 
   const [completed, setCompleted] = useState(false);
@@ -45,11 +43,8 @@ export function EmbeddedCheckoutDialog() {
 
   function handleComplete() {
     setCompleted(true);
-    // Realtime keeps the balance live, but refetch as a belt-and-suspenders
-    // fallback in case the realtime event is missed.
-    void fetchCredits();
-    // Refresh any ledger views (e.g. the billing page) now that a row exists.
-    bumpLedgerRefresh();
+    // Credits are granted by the Stripe webhook (usually 1–3s later). The
+    // user_credits realtime subscription bumps the ledger once balance increases.
   }
 
   return (

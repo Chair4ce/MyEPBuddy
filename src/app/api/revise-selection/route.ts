@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { 
   getUserStyleContext, 
   buildStyleGuidance, 
@@ -591,10 +591,10 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       triggerStyleProcessing(user.id);
     }
 
-    return NextResponse.json({ 
+    return jsonWithCredits({
       revisions,
       original: selectedText,
-    });
+    }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/revise-selection", requestModelId);
   }

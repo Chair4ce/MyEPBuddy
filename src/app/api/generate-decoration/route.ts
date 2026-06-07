@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { buildDecorationSystemPrompt, expandAbbreviations } from "@/lib/decoration-prompts";
 import type { DecorationAwardType, DecorationReason } from "@/lib/decoration-constants";
 import { DECORATION_TYPES } from "@/lib/decoration-constants";
@@ -247,7 +247,7 @@ HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} ch
     // Also calculate legacy line estimate for reference
     const estimatedLines = Math.ceil(characterCount / 80);
     
-    return NextResponse.json({
+    return jsonWithCredits({
       citation,
       metadata: {
         awardType: body.awardType,
@@ -258,7 +258,7 @@ HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} ch
         estimatedLines, // Legacy reference
         model: body.model,
       },
-    });
+    }, usageCheck);
     
   } catch (error) {
     return handleLLMError(error, "POST /api/generate-decoration", modelId);

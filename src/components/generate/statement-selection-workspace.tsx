@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { fetchWithRetry, billableFetch } from "@/lib/fetch-with-retry";
 import { 
   Crown, 
   Check, 
@@ -232,7 +232,7 @@ export function StatementSelectionWorkspace({
       let generated2 = "";
       
       if (hasSlot1) {
-        const response = await fetch("/api/generate-slot-statement", {
+        const response = await billableFetch("/api/generate-slot-statement", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -262,7 +262,7 @@ export function StatementSelectionWorkspace({
       }
       
       if (hasSlot2) {
-        const response = await fetch("/api/generate-slot-statement", {
+        const response = await billableFetch("/api/generate-slot-statement", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

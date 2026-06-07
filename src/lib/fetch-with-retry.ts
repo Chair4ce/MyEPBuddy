@@ -7,7 +7,12 @@
  * - Safe error classification (retryable vs non-retryable)
  */
 
-import { syncCreditsFromResponse } from "@/stores/credits-store";
+import { syncCreditsFromResponse, useCreditsStore } from "@/stores/credits-store";
+import {
+  isBillableApiRequest,
+  maybeOptimisticConsume,
+  reconcileCreditsAfterFailure,
+} from "@/lib/billable-api";
 
 interface FetchWithRetryOptions {
   /** Maximum number of retry attempts (default: 2, so 3 total attempts) */
@@ -54,6 +59,8 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   const { maxRetries = 2, baseDelay = 1000, timeout = 55000 } = options ?? {};
 
+  maybeOptimisticConsume(url, init?.method);
+
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -99,6 +106,9 @@ export async function fetchWithRetry(
       }
 
       syncCreditsFromResponse(response);
+      if (!response.ok) {
+        void reconcileCreditsAfterFailure(url, init?.method, response);
+      }
       return response;
     } catch (error) {
       clearTimeout(timeoutId);
@@ -115,12 +125,38 @@ export async function fetchWithRetry(
         continue;
       }
 
+      if (isBillableApiRequest(url, init?.method)) {
+        void useCreditsStore.getState().fetchCredits();
+      }
+
       throw error;
     }
   }
 
   // Should not reach here, but just in case
   throw lastError;
+}
+
+/** Plain fetch wrapper with the same instant credit counter updates. */
+export async function billableFetch(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  maybeOptimisticConsume(url, init?.method);
+
+  try {
+    const response = await fetch(url, init);
+    syncCreditsFromResponse(response);
+    if (!response.ok) {
+      void reconcileCreditsAfterFailure(url, init?.method, response);
+    }
+    return response;
+  } catch (error) {
+    if (isBillableApiRequest(url, init?.method)) {
+      void useCreditsStore.getState().fetchCredits();
+    }
+    throw error;
+  }
 }
 
 function delay(ms: number): Promise<void> {

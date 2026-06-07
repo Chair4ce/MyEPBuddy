@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { handleLLMError } from "@/lib/llm-error-handler";
-import { enforceUsageGate } from "@/lib/usage-gate";
+import { enforceUsageGate, jsonWithCredits } from "@/lib/usage-gate";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -169,7 +169,7 @@ CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${tar
       statement = statement.slice(0, -1);
     }
 
-    return NextResponse.json({ statement });
+    return jsonWithCredits({ statement }, usageCheck);
   } catch (error) {
     return handleLLMError(error, "POST /api/generate-slot-statement", modelId);
   }
