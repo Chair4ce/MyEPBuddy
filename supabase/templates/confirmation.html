@@ -28,11 +28,11 @@
                 Thanks for signing up for MyEPBuddy. Click the button below to confirm your email address and activate your account.
               </p>
               
-              <!-- CTA Button -->
+              <!-- CTA Button (token_hash link works across browsers/devices) -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center" style="padding: 8px 0 24px;">
-                    <a href="{{ .ConfirmationURL }}" target="_blank" style="display: inline-block; padding: 14px 32px; background-color: #818cf8; color: #1f1f1f; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+                    <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=signup" target="_blank" style="display: inline-block; padding: 14px 32px; background-color: #818cf8; color: #1f1f1f; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
                       Confirm Email Address
                     </a>
                   </td>
@@ -44,7 +44,7 @@
                 Or copy and paste this link into your browser:
               </p>
               <p style="margin: 0; font-size: 12px; color: #818cf8; text-align: center; word-break: break-all;">
-                {{ .ConfirmationURL }}
+                {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=signup
               </p>
             </td>
           </tr>

@@ -116,6 +116,8 @@ export function EpbPromptUpdateModal() {
   useEffect(() => {
     if (!profile || hasChecked) return;
 
+    if (!profile.terms_accepted_at) return;
+
     let cancelled = false;
 
     async function checkPromptRevision() {

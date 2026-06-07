@@ -102,8 +102,8 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# SECURITY: Enable for production to prevent email enumeration attacks
-enable_confirmations = false
+# SECURITY: Required to prevent unverified account / credit farming
+enable_confirmations = true
 # Maximum frequency for sending emails (in seconds)
 max_frequency = 60
 

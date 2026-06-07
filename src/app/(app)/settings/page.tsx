@@ -24,6 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { AvatarCropDialog } from "@/components/settings/avatar-crop-dialog";
+import { DeleteAccountSection } from "@/components/settings/delete-account-section";
 import { 
   ENLISTED_RANKS,
   OFFICER_RANKS,
@@ -526,9 +527,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <CardTitle>Profile Photo</CardTitle>
-              <CardDescription>
-                Your photo appears in the navigation and team views
-              </CardDescription>
+       
             </div>
           </div>
         </CardHeader>
@@ -635,9 +634,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <CardTitle>Personal Information</CardTitle>
-              <CardDescription>
-                Update your profile details used across the app
-              </CardDescription>
+      
             </div>
           </div>
         </CardHeader>
@@ -919,9 +916,7 @@ export default function SettingsPage() {
                   "Add Phone Number"
                 )}
               </Button>
-              <p className="text-xs text-muted-foreground">
-                You'll receive a 6-digit code via SMS to verify your number. Message and data rates may apply.
-              </p>
+        
             </form>
           )}
         </CardContent>
@@ -1036,10 +1031,6 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
-
-          <p className="text-xs text-muted-foreground pt-2">
-            Link multiple sign-in methods to access your account with any of them. You must have at least one method connected.
-          </p>
         </CardContent>
       </Card>
 
@@ -1071,6 +1062,8 @@ export default function SettingsPage() {
 
       {/* EPB Close-out Date Card */}
       <EPBCloseoutCard rank={profile?.rank || null} />
+
+      <DeleteAccountSection userEmail={userEmail} />
     </div>
   );
 }
@@ -1348,10 +1341,7 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
         )}
 
         {/* Info about dates */}
-        <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-1">
-          <p><strong>Note:</strong> These are the official AF static dates for your rank tier.</p>
-          <p>Have your EPB draft ready and submitted to your immediate supervisor 60 days before close-out so they can begin the review and editing process up the chain.</p>
-        </div>
+      
       </CardContent>
     </Card>
   );

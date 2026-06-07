@@ -220,7 +220,7 @@ export default function CompleteProfilePage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="your.email@mail.mil"
+                placeholder="you@personal-email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

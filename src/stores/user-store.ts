@@ -20,22 +20,13 @@ interface UserState {
   reset: () => void;
 }
 
-// Check sessionStorage for existing session acceptance on store creation
-function getInitialSessionTerms(): boolean {
-  try {
-    return sessionStorage.getItem("epb_terms_accepted_session") === "true";
-  } catch {
-    return false;
-  }
-}
-
 export const useUserStore = create<UserState>((set) => ({
   profile: null,
   subordinates: [],
   managedMembers: [],
   epbConfig: null,
   isLoading: true,
-  termsAcceptedThisSession: getInitialSessionTerms(),
+  termsAcceptedThisSession: false,
   setProfile: (profile) => set({ profile }),
   setSubordinates: (subordinates) => set({ subordinates }),
   setManagedMembers: (managedMembers) => set({ managedMembers }),

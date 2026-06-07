@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { useCreditsStore } from "@/stores/credits-store";
-import { TermsAgreementDialog } from "@/components/layout/terms-agreement-dialog";
+import { getGateProfile } from "@/lib/profile-gate";
 import { UpdatePrompt } from "@/components/layout/update-prompt";
-import { RankCompletionModal } from "@/components/modals/rank-completion-modal";
+import { OnboardingFlowModal } from "@/components/modals/onboarding-flow-modal";
+import { useOnboardingStep } from "@/lib/onboarding-flow";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
-import { TrialIntroDialog } from "@/components/modals/trial-intro-dialog";
 import { usePromptRulesMode } from "@/lib/feature-flags";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
 
@@ -44,11 +44,11 @@ export function AppInitializer({
     hasOwnKey,
     setTrialIntroSeen,
     isLoading: creditsLoading,
+    trialCredits,
   } = useCreditsStore();
 
   const hasHydrated = useRef(false);
   const creditsInitialized = useRef(false);
-  const [showTrialIntro, setShowTrialIntro] = useState(false);
 
   useEffect(() => {
     if (!hasHydrated.current) {
@@ -83,20 +83,16 @@ export function AppInitializer({
     });
   }, [profile?.id, fetchCredits, initRealtime]);
 
-  useEffect(() => {
-    if (creditsLoading || hasOwnKey || trialIntroSeen) {
-      setShowTrialIntro(false);
-      return;
-    }
-    setShowTrialIntro(true);
-  }, [trialIntroSeen, hasOwnKey, creditsLoading]);
-
-  const currentProfile = storeProfile ?? profile;
-  const { termsAcceptedThisSession } = useUserStore();
-  const showTermsDialog = currentProfile && !termsAcceptedThisSession;
+  const gateProfile = getGateProfile(profile, storeProfile);
+  const onboardingStep = useOnboardingStep({
+    profile: gateProfile,
+    creditsLoading,
+    hasOwnKey,
+    trialIntroSeen,
+  });
+  const onboardingComplete = gateProfile !== null && onboardingStep === null;
 
   async function dismissTrialIntro() {
-    setShowTrialIntro(false);
     setTrialIntroSeen(true);
     await fetch("/api/billing/accept-terms", {
       method: "PATCH",
@@ -109,17 +105,17 @@ export function AppInitializer({
 
   return (
     <>
-      {showTermsDialog && currentProfile && (
-        <TermsAgreementDialog open={true} userId={currentProfile.id} />
-      )}
-      {!showTermsDialog && <RankCompletionModal />}
-      {!showTermsDialog && !usePromptRulesModeEnabled && <EpbPromptUpdateModal />}
-      {!showTermsDialog && !hasOwnKey && (
-        <TrialIntroDialog
-          open={showTrialIntro && !trialIntroSeen}
-          onDismiss={dismissTrialIntro}
+      {gateProfile && (
+        <OnboardingFlowModal
+          profile={gateProfile}
+          creditsLoading={creditsLoading}
+          hasOwnKey={hasOwnKey}
+          trialIntroSeen={trialIntroSeen}
+          trialCredits={trialCredits}
+          onDismissTrialIntro={dismissTrialIntro}
         />
       )}
+      {onboardingComplete && !usePromptRulesModeEnabled && <EpbPromptUpdateModal />}
       <InsufficientCreditsDialog />
       <EmbeddedCheckoutDialog />
       {/* Render last so the blocking update gate sits above all other modals */}

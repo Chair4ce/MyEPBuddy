@@ -206,9 +206,13 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
     set({ ledgerRefreshNonce: get().ledgerRefreshNonce + 1 }),
 
   fetchCredits: async () => {
+    set({ isLoading: true });
     try {
       const res = await fetch("/api/billing/credits");
-      if (!res.ok) return;
+      if (!res.ok) {
+        set({ isLoading: false });
+        return;
+      }
       const data = await res.json();
       get().setFromApi(data);
     } catch {

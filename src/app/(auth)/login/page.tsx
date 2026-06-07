@@ -76,6 +76,7 @@ function LoginPageContent() {
   const [isMagicLinkLoading, setIsMagicLinkLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [showSignupPrompt, setShowSignupPrompt] = useState(false);
   const [restrictedBrowser, setRestrictedBrowser] = useState<{
     restricted: boolean;
     browserName: string;
@@ -95,6 +96,12 @@ function LoginPageContent() {
       });
       return;
     }
+    if (emailVerified === "pending") {
+      toast.success("Check your email to verify your account, then sign in.", {
+        duration: 6000,
+      });
+      return;
+    }
 
     const error = searchParams.get("error");
     if (error) {
@@ -109,6 +116,7 @@ function LoginPageContent() {
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     setIsMagicLinkLoading(true);
+    setShowSignupPrompt(false);
 
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) {
@@ -130,21 +138,25 @@ function LoginPageContent() {
         email: trimmedEmail,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/confirm?type=magiclink`,
+          shouldCreateUser: false,
         },
       });
 
       if (error) {
-        const errorInfo = parseAuthError(
-          "code" in error && error.code === "otp_disabled"
-            ? "Signups not allowed for otp"
-            : error.message
-        );
-        if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
-          toast.error(errorInfo.title, {
-            description: errorInfo.action || errorInfo.message,
+        const isUnknownAccount =
+          "code" in error && error.code === "otp_disabled";
+
+        if (isUnknownAccount) {
+          setShowSignupPrompt(true);
+          toast.error("No account found with this email", {
+            description: "Create an account to get started, or try Google or phone sign-in.",
             duration: 8000,
           });
-        } else if ("code" in error && error.code === "otp_disabled") {
+          return;
+        }
+
+        const errorInfo = parseAuthError(error.message);
+        if (errorInfo.isRateLimit || errorInfo.isEmailDelivery) {
           toast.error(errorInfo.title, {
             description: errorInfo.action || errorInfo.message,
             duration: 8000,
@@ -349,6 +361,19 @@ function LoginPageContent() {
             </TabsList>
 
             <TabsContent value="magic-link" className="mt-4 space-y-4 focus-visible:outline-none">
+              {showSignupPrompt && !magicLinkSent && (
+                <div
+                  className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-center"
+                  role="status"
+                >
+                  <p className="text-sm text-muted-foreground">
+                    New to MyEPBuddy?{" "}
+                    <Link href="/signup" className="text-primary font-medium hover:underline">
+                      Create an account
+                    </Link>
+                  </p>
+                </div>
+              )}
               {magicLinkSent ? (
                 <div className="space-y-4" key="magic-link-sent">
                   <div className="flex items-center justify-center p-6 rounded-lg bg-primary/10 border border-primary/20">
@@ -368,6 +393,7 @@ function LoginPageContent() {
                     className="w-full"
                     onClick={() => {
                       setMagicLinkSent(false);
+                      setShowSignupPrompt(false);
                       setEmail("");
                     }}
                   >
@@ -381,7 +407,7 @@ function LoginPageContent() {
                     <Input
                       id="magic-email"
                       type="email"
-                      placeholder="your.email@mail.mil"
+                      placeholder="you@personal-email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -415,7 +441,7 @@ function LoginPageContent() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="your.email@mail.mil"
+                    placeholder="you@personal-email.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required

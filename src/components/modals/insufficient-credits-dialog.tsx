@@ -73,7 +73,7 @@ export function InsufficientCreditsDialog() {
         if (!open) closePurchaseDialog();
       }}
     >
-      <AlertDialogContent className="max-w-md">
+      <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary shrink-0" />

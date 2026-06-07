@@ -17,6 +17,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/sonner";
 import { Sun, Moon, LogOut, User, Settings } from "lucide-react";
 import type { Profile } from "@/types/database";
+import { clearAllTermsSessionFlags } from "@/lib/terms-session";
+import { useCreditsStore } from "@/stores/credits-store";
 
 interface AppHeaderProps {
   profile: Profile | null;
@@ -38,6 +40,10 @@ export function AppHeader({ profile: initialProfile }: AppHeaderProps) {
       toast.error("Error signing out");
       return;
     }
+
+    clearAllTermsSessionFlags();
+    useUserStore.getState().reset();
+    useCreditsStore.getState().reset();
 
     router.push("/login");
     router.refresh();

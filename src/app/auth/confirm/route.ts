@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   let redirectTo: string;
   if (type === "recovery") {
     redirectTo = "/reset-password";
-  } else if (type === "magiclink") {
+  } else if (type === "magiclink" || type === "signup" || type === "email") {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -62,11 +62,14 @@ export async function GET(request: Request) {
     if (user) {
       const { data: profile } = (await supabase
         .from("profiles")
-        .select("email")
+        .select("email, rank, afsc")
         .eq("id", user.id)
-        .maybeSingle()) as { data: { email: string } | null };
+        .maybeSingle()) as { data: { email: string; rank: string | null; afsc: string | null } | null };
 
-      redirectTo = profile?.email ? "/dashboard" : "/complete-profile";
+      const profileComplete =
+        !!profile?.email && !!profile?.rank && !!profile?.afsc;
+
+      redirectTo = profileComplete ? "/dashboard" : "/complete-profile";
     } else {
       redirectTo = next;
     }

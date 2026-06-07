@@ -83,6 +83,7 @@ export default async function AppLayout({
 
   return (
     <AppInitializer
+      key={user.id}
       profile={profile}
       subordinates={subordinates}
       managedMembers={managedMembers}

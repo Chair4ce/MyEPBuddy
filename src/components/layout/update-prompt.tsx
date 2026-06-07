@@ -39,7 +39,8 @@ export function UpdatePrompt({ pollInterval = 900000 }: UpdatePromptProps) {
   return (
     <AlertDialog open={hasUpdate}>
       <AlertDialogContent
-        className="z-[100] sm:max-w-md"
+        size="sm"
+        className="z-[100]"
         onEscapeKeyDown={(event) => event.preventDefault()}
       >
         <AlertDialogHeader>

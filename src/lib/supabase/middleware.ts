@@ -56,6 +56,7 @@ export async function updateSession(request: NextRequest) {
     "/privacy",
     "/terms",
     "/billing-terms",
+    "/account-deleted",
   ];
   const isPublicPath = publicPaths.some(
     (path) =>

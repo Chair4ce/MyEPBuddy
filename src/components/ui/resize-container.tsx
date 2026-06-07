@@ -3,17 +3,26 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
+type ResizeMeasure = "height" | "both";
+
 interface ResizeContainerProps {
   children: ReactNode;
   className?: string;
+  /** When "both", width and height tween on content changes (modal step transitions). */
+  measure?: ResizeMeasure;
 }
 
 /**
- * Smoothly animates height when children change size (tabs, conditional panels, etc.).
- * Based on transitions.dev card-resize — explicit height tween via ResizeObserver.
+ * Smoothly animates size when children change (tabs, modal steps, conditional panels).
+ * Based on transitions.dev card-resize — explicit dimension tween via ResizeObserver.
  */
-export function ResizeContainer({ children, className }: ResizeContainerProps) {
+export function ResizeContainer({
+  children,
+  className,
+  measure = "height",
+}: ResizeContainerProps) {
   const [height, setHeight] = useState<number | null>(null);
+  const [width, setWidth] = useState<number | null>(null);
   const [canAnimate, setCanAnimate] = useState(false);
   const observerRef = useRef<ResizeObserver | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -30,11 +39,15 @@ export function ResizeContainer({ children, className }: ResizeContainerProps) {
 
     if (!node) return;
 
-    const measure = () => {
-      setHeight(node.getBoundingClientRect().height);
+    const measureNode = () => {
+      const rect = node.getBoundingClientRect();
+      setHeight(rect.height);
+      if (measure === "both") {
+        setWidth(rect.width);
+      }
     };
 
-    measure();
+    measureNode();
 
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = requestAnimationFrame(() => {
@@ -44,23 +57,40 @@ export function ResizeContainer({ children, className }: ResizeContainerProps) {
     });
 
     const observer = new ResizeObserver(() => {
-      measure();
+      measureNode();
     });
     observer.observe(node);
     observerRef.current = observer;
-  }, []);
+  }, [measure]);
+
+  const animateBoth = measure === "both" && canAnimate;
 
   return (
     <div
       className={cn(
         "overflow-hidden",
-        canAnimate &&
-          "transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[height] motion-reduce:transition-none",
+        canAnimate && "t-resize",
         className
       )}
-      style={{ height: height === null ? "auto" : `${height}px` }}
+      style={{
+        height: height === null ? "auto" : `${height}px`,
+        width:
+          measure === "both"
+            ? width === null
+              ? "auto"
+              : `${width}px`
+            : undefined,
+      }}
     >
-      <div ref={contentRef}>{children}</div>
+      <div
+        ref={contentRef}
+        className={cn(
+          measure === "both" && "w-fit max-w-full",
+          animateBoth && "min-w-0"
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
