@@ -71,6 +71,7 @@ import { ReviewLinksManager } from "@/components/review/review-links-manager";
 import { FeedbackListDialog } from "@/components/feedback/feedback-list-dialog";
 import { FeedbackViewerDialog } from "@/components/feedback/feedback-viewer-dialog";
 import { FeedbackBadge } from "@/components/feedback/feedback-badge";
+import { MemberRankInsignia } from "@/components/rank/rank-insignia";
 
 export default function GeneratePage() {
   const { profile, subordinates, managedMembers } = useUserStore();
@@ -876,6 +877,10 @@ export default function GeneratePage() {
                   </Badge>
                 )}
               </div>
+              <MemberRankInsignia
+                rank={rateeRankForCycle}
+                className="sm:ml-auto"
+              />
             </div>
           </CardContent>
         </Card>

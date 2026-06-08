@@ -29,7 +29,8 @@ import {
 import { cn } from "@/lib/utils";
 import { AWARD_TYPES, AWARD_LEVELS, AWARD_CATEGORIES } from "@/lib/constants";
 import { AwardBadge, AwardSummary } from "./award-badges";
-import type { Award, AwardType, Profile, ManagedMember } from "@/types/database";
+import { MemberRankInsignia } from "@/components/rank/rank-insignia";
+import type { Award, AwardType, Profile, ManagedMember, Rank } from "@/types/database";
 import {
   Trophy,
   Medal,
@@ -323,6 +324,7 @@ export function AwardsPanel({
                           </div>
                         </div>
 
+                        <MemberRankInsignia rank={member.rank as Rank | null} />
                         <Badge variant="secondary" className="shrink-0 text-xs">
                           {member.awards.length}
                         </Badge>

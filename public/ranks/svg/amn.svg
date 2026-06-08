@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 772 354" role="img">
+  <defs>
+    <linearGradient id="metal-silver" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="22%" stop-color="#e2e8f0"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="78%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <filter id="insignia-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.25" flood-color="#fff" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g transform="translate(0,354) scale(0.1,-0.1)" filter="url(#insignia-shadow)">
+    <path fill="url(#metal-silver)" d="M7275 3039 c-500 -220 -1053 -522 -1503 -822 -313 -209 -355 -243
+-347 -275 29 -117 43 -382 26 -514 -9 -70 -13 -69 63 -9 438 346 1152 768
+1736 1026 96 43 178 81 183 84 4 4 6 136 5 294 l-3 286 -160 -70z"/>
+    <path fill="url(#metal-silver)" d="M280 2816 l0 -284 143 -63 c624 -275 1262 -649 1765 -1036 45 -34 84
+-63 85 -63 2 0 -1 30 -6 68 -12 87 -2 356 18 451 8 40 13 77 10 81 -19 31
+-537 372 -801 527 -359 211 -1143 603 -1205 603 -5 0 -9 -128 -9 -284z"/>
+    <path fill="url(#metal-silver)" d="M3852 2999 c-6 -15 -77 -217 -157 -450 -81 -233 -153 -438 -160 -455
+l-13 -31 -393 -7 c-217 -3 -444 -9 -506 -12 l-112 -6 382 -290 c210 -159 392
+-298 403 -308 l22 -18 -139 -458 c-77 -253 -143 -472 -149 -487 -12 -35 -59
+-65 423 270 l407 284 408 -283 c224 -156 412 -287 419 -291 9 -6 10 -1 3 20
+-5 15 -68 224 -140 463 -72 239 -134 446 -139 460 -8 24 11 40 394 330 l402
+305 -126 7 c-69 5 -297 11 -506 15 l-379 8 -58 165 c-31 91 -106 307 -167 480
+-96 279 -110 312 -119 289z m134 -1028 c220 -78 324 -325 226 -534 -140 -300
+-564 -300 -704 0 -145 309 157 646 478 534z"/>
+  </g>
+</svg>

@@ -112,6 +112,7 @@ import { ProjectMembersManager } from "@/components/team/project-members-manager
 import { AddProjectAccomplishmentDialog } from "@/components/team/add-project-accomplishment-dialog";
 import { ProjectsInfoModal, useProjectsInfoModal } from "@/components/team/projects-info-modal";
 import { HierarchyTreeView } from "@/components/team/hierarchy-tree-view";
+import { MemberRankInsignia } from "@/components/rank/rank-insignia";
 import { SetExpectationsDialog } from "@/components/team/set-expectations-dialog";
 import { AwardPackagesManager } from "@/components/team/award-packages-manager";
 import { useProjectsStore } from "@/stores/projects-store";
@@ -1627,6 +1628,7 @@ export default function TeamPage() {
                   </div>
                 ) : null;
               })()}
+              <MemberRankInsignia rank={node.data.rank} />
             </div>
             
             {/* Bottom row: Badges and action buttons - visible for non-current user */}
@@ -2035,6 +2037,7 @@ export default function TeamPage() {
                           </p>
                         )}
                       </div>
+                      <MemberRankInsignia rank={searchedProfile.rank} />
                       <Badge variant="outline" className="shrink-0 text-xs">
                         {searchedProfile.rank}
                       </Badge>
@@ -2481,7 +2484,8 @@ export default function TeamPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2 w-full sm:w-auto shrink-0">
+                <div className="flex gap-2 w-full sm:w-auto shrink-0 items-center">
+                  <MemberRankInsignia rank={request.requester?.rank} />
                   <Button
                     size="sm"
                     variant="outline"
@@ -2777,6 +2781,7 @@ export default function TeamPage() {
                             </p>
                             <p className="text-xs text-muted-foreground truncate">{sup.unit}</p>
                           </div>
+                          <MemberRankInsignia rank={sup.rank} />
                           <Badge variant="outline" className="shrink-0">Supervisor</Badge>
                         </div>
                       ))}
@@ -2796,6 +2801,7 @@ export default function TeamPage() {
                         </p>
                         <p className="text-xs text-muted-foreground truncate">{profile?.unit}</p>
                       </div>
+                      <MemberRankInsignia rank={profile?.rank} />
                     </div>
                   </div>
 
@@ -2842,6 +2848,7 @@ export default function TeamPage() {
                           </div>
                         </div>
                         <div className="flex items-center justify-between gap-2 sm:justify-end">
+                          <MemberRankInsignia rank={sub.rank} />
                           <Badge variant="secondary" className="text-xs">{sub.role}</Badge>
                           <Button
                             variant="ghost"
@@ -2928,6 +2935,7 @@ export default function TeamPage() {
                             </div>
                           </div>
                           <div className="flex items-center justify-between gap-2 sm:justify-end">
+                            <MemberRankInsignia rank={member.rank} />
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -3013,6 +3021,7 @@ export default function TeamPage() {
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2 sm:justify-end">
+                        <MemberRankInsignia rank={sup.rank} />
                         <Badge variant="outline" className="text-xs">Supervisor</Badge>
                         <Button
                           variant="ghost"
@@ -3106,6 +3115,7 @@ export default function TeamPage() {
                           )}
                         </div>
                       </div>
+                      <MemberRankInsignia rank={record.supervisor_rank as Rank | null} />
                     </div>
                   ))}
                 </div>
@@ -3155,15 +3165,18 @@ export default function TeamPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full sm:w-auto text-destructive text-xs sm:text-sm shrink-0"
-                        onClick={() => cancelRequest(request.id)}
-                      >
+                      <div className="flex items-center gap-2 shrink-0">
+                        <MemberRankInsignia rank={request.target?.rank} />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full sm:w-auto text-destructive text-xs sm:text-sm shrink-0"
+                          onClick={() => cancelRequest(request.id)}
+                        >
                         <X className="size-3 sm:size-4 mr-1" />
                         Cancel Request
                       </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -3229,9 +3242,12 @@ export default function TeamPage() {
                             </span>
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-[10px] shrink-0">
-                          {record.relationship_type}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <MemberRankInsignia rank={record.member_rank as Rank | null} />
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {record.relationship_type}
+                          </Badge>
+                        </div>
                       </div>
                     ))
                   )}
@@ -3287,6 +3303,7 @@ export default function TeamPage() {
                             </span>
                           </div>
                         </div>
+                        <MemberRankInsignia rank={record.supervisor_rank as Rank | null} />
                       </div>
                     ))
                   )}

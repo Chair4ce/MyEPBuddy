@@ -26,7 +26,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { AWARD_LEVELS, AWARD_CATEGORIES, AWARD_QUARTERS } from "@/lib/constants";
-import type { AwardRequest, Award } from "@/types/database";
+import type { AwardRequest, Award, Rank } from "@/types/database";
+import { MemberRankInsignia } from "@/components/rank/rank-insignia";
 import {
   Check,
   X,
@@ -159,6 +160,16 @@ export function AwardRequestsPanel({
     return "Unknown recipient";
   }
 
+  function getRecipientRank(request: AwardRequest): Rank | null {
+    if (request.recipient_profile) {
+      return request.recipient_profile.rank;
+    }
+    if (request.recipient_team_member) {
+      return request.recipient_team_member.rank;
+    }
+    return null;
+  }
+
   if (pendingRequests.length === 0) {
     return null;
   }
@@ -214,6 +225,7 @@ export function AwardRequestsPanel({
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-1 shrink-0">
+                      <MemberRankInsignia rank={getRecipientRank(request)} />
                       <Button
                         size="sm"
                         variant="ghost"

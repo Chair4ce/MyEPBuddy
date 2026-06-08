@@ -20,11 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarCropDialog } from "@/components/settings/avatar-crop-dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
-import { AvatarCropDialog } from "@/components/settings/avatar-crop-dialog";
 import { DeleteAccountSection } from "@/components/settings/delete-account-section";
+import { ProfileAvatar } from "@/components/profile/profile-avatar";
+import { RankInsignia } from "@/components/rank/rank-insignia";
 import { 
   ENLISTED_RANKS,
   OFFICER_RANKS,
@@ -35,7 +36,7 @@ import {
   RANK_TO_TIER,
   isOfficer 
 } from "@/lib/constants";
-import { Loader2, User, Calendar, Clock, Camera, X, RotateCcw, Smartphone, CheckCircle2, Link as LinkIcon, Mail } from "lucide-react";
+import { Loader2, User, Calendar, Clock, Camera, X, RotateCcw, Smartphone, CheckCircle2, Link as LinkIcon, Mail, Medal } from "lucide-react";
 import {
   InputOTP,
   InputOTPGroup,
@@ -43,7 +44,14 @@ import {
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { hasRankInsignia } from "@/lib/rank-insignia";
+import {
+  getStorageAvatarPath,
+  isRankInsigniaAvatar,
+  isStorageAvatarUrl,
+  RANK_INSIGNIA_AVATAR_URL,
+} from "@/lib/profile-avatar";
 import type { Rank, Profile } from "@/types/database";
 
 export default function SettingsPage() {
@@ -92,11 +100,17 @@ export default function SettingsPage() {
     fetchGooglePicture();
   }, [supabase.auth]);
 
-  // Check if current avatar is NOT the Google picture (i.e., user uploaded a custom one)
-  const hasCustomAvatar = profile?.avatar_url && googlePictureUrl && profile.avatar_url !== googlePictureUrl;
-  const canRevertToGoogle = googlePictureUrl && (hasCustomAvatar || !profile?.avatar_url);
-  
-  const initials = getInitials(profile) || profile?.email?.charAt(0).toUpperCase() || "U";
+  // Check if current avatar is a custom upload (not Google or rank insignia)
+  const hasCustomUploadAvatar =
+    isStorageAvatarUrl(profile?.avatar_url) &&
+    profile?.avatar_url !== googlePictureUrl;
+  const canRevertToGoogle =
+    googlePictureUrl &&
+    (hasCustomUploadAvatar ||
+      isRankInsigniaAvatar(profile?.avatar_url) ||
+      !profile?.avatar_url);
+  const canUseRankInsignia = hasRankInsignia(profile?.rank);
+  const isUsingRankInsignia = isRankInsigniaAvatar(profile?.avatar_url);
 
   // When user selects a file, show the crop dialog
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -137,12 +151,10 @@ export default function SettingsPage() {
       // Generate unique filename
       const fileName = `${profile.id}/avatar-${Date.now()}.jpeg`;
 
-      // Delete old avatar if it exists in storage (not a Google URL)
-      if (profile.avatar_url && profile.avatar_url.includes("/storage/v1/object/")) {
-        const oldPath = profile.avatar_url.split("/avatars/")[1]?.split("?")[0];
-        if (oldPath) {
-          await supabase.storage.from("avatars").remove([oldPath]);
-        }
+      // Delete old avatar if it exists in storage
+      const oldPath = getStorageAvatarPath(profile.avatar_url);
+      if (oldPath) {
+        await supabase.storage.from("avatars").remove([oldPath]);
       }
 
       // Upload cropped avatar
@@ -215,11 +227,9 @@ export default function SettingsPage() {
 
     try {
       // Delete from storage if it's a storage URL
-      if (profile.avatar_url && profile.avatar_url.includes("/storage/v1/object/")) {
-        const oldPath = profile.avatar_url.split("/avatars/")[1];
-        if (oldPath) {
-          await supabase.storage.from("avatars").remove([oldPath]);
-        }
+      const oldPath = getStorageAvatarPath(profile.avatar_url);
+      if (oldPath) {
+        await supabase.storage.from("avatars").remove([oldPath]);
       }
 
       // Update profile to remove avatar
@@ -246,6 +256,39 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleUseRankInsignia() {
+    if (!profile || !canUseRankInsignia) return;
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const oldPath = getStorageAvatarPath(profile.avatar_url);
+      if (oldPath) {
+        await supabase.storage.from("avatars").remove([oldPath]);
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from("profiles")
+        .update({ avatar_url: RANK_INSIGNIA_AVATAR_URL })
+        .eq("id", profile.id)
+        .select()
+        .single();
+
+      if (error) {
+        toast.error("Failed to set rank insignia photo");
+        return;
+      }
+
+      setProfile(data as Profile);
+      toast.success("Profile photo updated to rank insignia");
+    } catch {
+      toast.error("Failed to set rank insignia photo");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }
+
   async function handleRevertToGoogle() {
     if (!profile || !googlePictureUrl) return;
 
@@ -253,11 +296,9 @@ export default function SettingsPage() {
 
     try {
       // Delete custom avatar from storage if it exists
-      if (profile.avatar_url && profile.avatar_url.includes("/storage/v1/object/")) {
-        const oldPath = profile.avatar_url.split("/avatars/")[1]?.split("?")[0];
-        if (oldPath) {
-          await supabase.storage.from("avatars").remove([oldPath]);
-        }
+      const oldPath = getStorageAvatarPath(profile.avatar_url);
+      if (oldPath) {
+        await supabase.storage.from("avatars").remove([oldPath]);
       }
 
       // Update profile to use Google picture
@@ -320,17 +361,35 @@ export default function SettingsPage() {
       // Combine first and last name for full_name (backwards compatibility)
       const fullName = [form.first_name, form.last_name].filter(Boolean).join(" ") || null;
       
+      const nextRank = form.rank || null;
+      const updatePayload: {
+        first_name: string | null;
+        last_name: string | null;
+        full_name: string | null;
+        rank: Rank | null;
+        afsc: string | null;
+        unit: string | null;
+        avatar_url?: null;
+      } = {
+        first_name: form.first_name || null,
+        last_name: form.last_name || null,
+        full_name: fullName,
+        rank: nextRank,
+        afsc: form.afsc || null,
+        unit: form.unit || null,
+      };
+
+      if (
+        isRankInsigniaAvatar(profile?.avatar_url) &&
+        !hasRankInsignia(nextRank)
+      ) {
+        updatePayload.avatar_url = null;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("profiles")
-        .update({
-          first_name: form.first_name || null,
-          last_name: form.last_name || null,
-          full_name: fullName, // Keep full_name synced for backwards compatibility
-          rank: form.rank || null,
-          afsc: form.afsc || null,
-          unit: form.unit || null,
-        })
+        .update(updatePayload)
         .eq("id", profile?.id)
         .select()
         .single();
@@ -532,24 +591,24 @@ export default function SettingsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-6">
-            <div className="relative group">
-              <Avatar key={profile?.avatar_url || "no-avatar"} className="size-24 border-2 border-muted">
-                <AvatarImage
-                  src={profile?.avatar_url || undefined}
-                  alt={profile?.full_name || "User"}
-                />
-                <AvatarFallback className="bg-primary/10 text-primary text-2xl">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+            <div className="relative group shrink-0">
+              <ProfileAvatar
+                key={profile?.avatar_url || "no-avatar"}
+                profile={profile}
+                className="size-24 border-2 border-muted"
+                fallbackClassName="bg-primary/10 text-primary text-2xl"
+              />
               {isUploadingAvatar && (
                 <div className="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
                   <Loader2 className="size-6 animate-spin text-primary" />
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Choose a profile photo
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -567,7 +626,9 @@ export default function SettingsPage() {
                   ) : (
                     <>
                       <Camera className="size-4 mr-2" />
-                      {profile?.avatar_url ? "Change Photo" : "Upload Photo"}
+                      {profile?.avatar_url && !isUsingRankInsignia
+                        ? "Change Photo"
+                        : "Upload Photo"}
                     </>
                   )}
                 </Button>
@@ -599,6 +660,26 @@ export default function SettingsPage() {
                   </Button>
                 )}
               </div>
+              {canUseRankInsignia && !isUsingRankInsignia && (
+                <button
+                  type="button"
+                  onClick={handleUseRankInsignia}
+                  disabled={isUploadingAvatar}
+                  aria-label="Use rank insignia as profile photo"
+                  className="flex w-full max-w-sm items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 disabled:opacity-50"
+                >
+                  <RankInsignia rank={profile?.rank} size="sm" className="shrink-0" />
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      <Medal className="size-4 shrink-0 text-muted-foreground" />
+                      Rank insignia
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Uses your current rank badge and updates when your rank changes
+                    </p>
+                  </div>
+                </button>
+              )}
               <p className="text-xs text-muted-foreground">
                 JPG, PNG, GIF or WebP. Max 2MB.
               </p>

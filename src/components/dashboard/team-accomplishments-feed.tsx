@@ -62,6 +62,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 // import { useOnboardingStore } from "@/stores/onboarding-store";
 import { useRouter } from "next/navigation";
 import { UserPlus, Link2 } from "lucide-react";
+import { RankInsignia } from "@/components/rank/rank-insignia";
+import { hasRankInsignia } from "@/lib/rank-insignia";
 
 // All ranks for filtering (enlisted + officer, excluding civilian for typical use)
 const FEED_FILTER_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
@@ -115,6 +117,11 @@ function EmptyTeamState() {
       </div>
     </div>
   );
+}
+
+function FeedAuthorInsignia({ rank }: { rank: Rank | null }) {
+  if (!hasRankInsignia(rank)) return null;
+  return <RankInsignia rank={rank} size="md" className="shrink-0" />;
 }
 
 export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedProps) {
@@ -1298,24 +1305,29 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                     }
                                   }}
                                 >
-                                  <div className="flex items-center gap-2.5">
-                                    <div className={cn(
-                                      "size-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium",
-                                      acc.chain_depth === 1 ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-                                    )}>
-                                      {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                                        <span className="font-medium text-xs">
-                                          {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
-                                          {acc.author_name}
-                                        </span>
-                                        <Badge variant="outline" className="text-[10px] h-4 px-1.5">{mpaLabel}</Badge>
+                                  <div className="flex items-center gap-2 sm:gap-3 w-full">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1 basis-0">
+                                      <div className={cn(
+                                        "size-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium",
+                                        acc.chain_depth === 1 ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+                                      )}>
+                                        {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                                       </div>
-                                      <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                          <span className="font-medium text-xs">
+                                            {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
+                                            {acc.author_name}
+                                          </span>
+                                          <Badge variant="outline" className="text-[10px] h-4 px-1.5">{mpaLabel}</Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
+                                      </div>
                                     </div>
-                                    <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors shrink-0" />
+                                    <FeedAuthorInsignia rank={acc.author_rank} />
+                                    <div className="flex items-center justify-end flex-1 basis-0 shrink-0">
+                                      <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors shrink-0" />
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -1421,33 +1433,33 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                     }
                                   }}
                                 >
-                                  <div className="flex items-start gap-3">
-                                    {/* Avatar */}
-                                    <div className={cn(
-                                      "size-8 rounded-full flex items-center justify-center shrink-0 text-xs font-medium",
-                                      acc.chain_depth === 1 ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-                                    )}>
-                                      {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                                    </div>
-                                    
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                        <span className="font-medium text-sm">
-                                          {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
-                                          {acc.author_name}
-                                        </span>
-                                        <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>
-                                        {(acc.unresolved_comment_count ?? 0) > 0 && (
-                                          <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                            <MessageSquare className="size-3" />
-                                            {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
-                                          </Badge>
-                                        )}
+                                  <div className="flex items-center gap-2 sm:gap-3 w-full">
+                                    <div className="flex items-start gap-3 min-w-0 flex-1 basis-0">
+                                      <div className={cn(
+                                        "size-8 rounded-full flex items-center justify-center shrink-0 text-xs font-medium",
+                                        acc.chain_depth === 1 ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+                                      )}>
+                                        {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                                       </div>
-                                      <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                          <span className="font-medium text-sm">
+                                            {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
+                                            {acc.author_name}
+                                          </span>
+                                          <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>
+                                          {(acc.unresolved_comment_count ?? 0) > 0 && (
+                                            <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                              <MessageSquare className="size-3" />
+                                              {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
+                                      </div>
                                     </div>
-                                    
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <FeedAuthorInsignia rank={acc.author_rank} />
+                                    <div className="flex items-center gap-2 justify-end flex-1 basis-0 shrink-0">
                                       <span className="text-xs text-muted-foreground">
                                         {new Date(acc.date).toLocaleDateString("en-US", { day: "numeric" })}
                                       </span>
@@ -1509,25 +1521,22 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                         }}
                       >
                         <CardContent className="p-4">
-                          <div className="flex items-start gap-3">
-                            {/* Avatar */}
-                            <div className={cn(
-                              "size-10 rounded-full flex items-center justify-center shrink-0 text-sm font-medium",
-                              isDirectSubordinate ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-                            )}>
-                              {acc.author_name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </div>
+                          <div className="flex items-center gap-2 sm:gap-3 w-full">
+                            <div className="flex items-start gap-3 min-w-0 flex-1 basis-0">
+                              <div className={cn(
+                                "size-10 rounded-full flex items-center justify-center shrink-0 text-sm font-medium",
+                                isDirectSubordinate ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+                              )}>
+                                {acc.author_name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .slice(0, 2)
+                                  .toUpperCase()}
+                              </div>
 
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              {/* Header */}
-                              <div className="flex items-start justify-between gap-2 mb-1">
-                                <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-1">
                                   <span className="font-medium text-sm">
                                     {acc.author_rank && (
                                       <span className="text-muted-foreground">
@@ -1542,43 +1551,43 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-                                  <Clock className="size-3" />
-                                  {formatTimeAgo(acc.created_at)}
-                                </div>
-                              </div>
 
-                              {/* MPA and Action */}
-                              <div className="flex flex-wrap items-center gap-2 mb-2">
-                                <Badge variant="outline" className="text-xs">
-                                  {mpaLabel}
-                                </Badge>
-                                <Badge variant="secondary" className="text-xs">
-                                  {acc.action_verb}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Calendar className="size-3" />
-                                  {new Date(acc.date).toLocaleDateString("en-US", {
-                                    day: "numeric",
-                                  })}
-                                </span>
-                                {/* Comment Indicator */}
-                                {(acc.unresolved_comment_count ?? 0) > 0 && (
-                                  <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
-                                    <MessageSquare className="size-3" />
-                                    {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {mpaLabel}
                                   </Badge>
-                                )}
-                              </div>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {acc.action_verb}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Calendar className="size-3" />
+                                    {new Date(acc.date).toLocaleDateString("en-US", {
+                                      day: "numeric",
+                                    })}
+                                  </span>
+                                  {(acc.unresolved_comment_count ?? 0) > 0 && (
+                                    <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                                      <MessageSquare className="size-3" />
+                                      {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
+                                    </Badge>
+                                  )}
+                                </div>
 
-                              {/* Preview */}
-                              <p className="text-sm text-muted-foreground line-clamp-2">
-                                {acc.details}
-                              </p>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {acc.details}
+                                </p>
+                              </div>
                             </div>
 
-                            {/* Arrow indicator */}
-                            <ChevronRight className="size-5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0 transition-colors mt-2" />
+                            <FeedAuthorInsignia rank={acc.author_rank} />
+
+                            <div className="flex items-center gap-2 justify-end flex-1 basis-0 shrink-0 self-center">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Clock className="size-3" />
+                                {formatTimeAgo(acc.created_at)}
+                              </div>
+                              <ChevronRight className="size-5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0 transition-colors" />
+                            </div>
                           </div>
                         </CardContent>
                       </Card>

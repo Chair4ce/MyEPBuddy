@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { toast } from "@/components/ui/sonner";
 import { Sun, Moon, LogOut, User, Settings } from "lucide-react";
 import type { Profile } from "@/types/database";
@@ -50,13 +50,6 @@ export function AppHeader({ profile: initialProfile }: AppHeaderProps) {
     router.refresh();
   }
 
-  const initials =
-    profile?.full_name
-      ?.split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase() || profile?.email?.charAt(0).toUpperCase() || "U";
-
   return (
     <header className="sticky top-0 z-30 h-16 flex-shrink-0 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center justify-between h-full px-4 md:px-6 lg:px-8">
@@ -88,15 +81,12 @@ export function AppHeader({ profile: initialProfile }: AppHeaderProps) {
                 className="relative h-9 w-9 rounded-full flex-shrink-0"
                 aria-label="User menu"
               >
-                <Avatar key={profile?.avatar_url || "no-avatar"} className="size-9 flex-shrink-0">
-                  <AvatarImage
-                    src={profile?.avatar_url || undefined}
-                    alt={profile?.full_name || "User"}
-                  />
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+                <ProfileAvatar
+                  key={profile?.avatar_url || "no-avatar"}
+                  profile={profile}
+                  className="size-9 flex-shrink-0"
+                  fallbackClassName="bg-primary/10 text-primary"
+                />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
