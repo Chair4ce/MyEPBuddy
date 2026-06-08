@@ -33,7 +33,6 @@ import {
   X,
   Library,
   Wand2,
-  Heart,
   Award,
   Medal,
   Loader2,
@@ -496,24 +495,6 @@ export function AppSidebar({ profile }: AppSidebarProps) {
             {/* Usage indicator for default-key users */}
             <UsageIndicator isCollapsed={isCollapsed} />
 
-            <Separator className="my-4 mx-3" />
-
-            {/* Support Link */}
-            <nav className="px-3">
-              <NavItem
-                item={{
-                  title: "Support",
-                  href: "/support",
-                  icon: Heart,
-                  roles: ["member", "admin"],
-                  tourId: "nav-support",
-                }}
-                isActive={pathname === "/support"}
-                isLoading={loadingHref === "/support"}
-                isCollapsed={isCollapsed}
-                onClick={() => handleNavClick("/support")}
-              />
-            </nav>
           </ScrollArea>
 
           {/* Sidebar mode toggle at bottom */}

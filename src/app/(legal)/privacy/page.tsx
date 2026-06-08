@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | My EPBuddy",
@@ -176,13 +175,6 @@ export default function PrivacyPolicyPage() {
             <a href="mailto:JacyLH@oaiken.com" className="text-primary hover:underline">
               JacyLH@oaiken.com
             </a>
-          </li>
-          <li>
-            Visit our{" "}
-            <Link href="/support" className="text-primary hover:underline">
-              Support page
-            </Link>{" "}
-            within the application
           </li>
           <li>
             Open an issue on our{" "}
