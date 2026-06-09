@@ -121,7 +121,7 @@ export default function BillingSettingsPage() {
             You&apos;re using your own API keys — unlimited AI usage. Manage keys
             in{" "}
             <Link href="/settings/api-keys" className="text-primary underline">
-              Settings → AI Models
+              Settings → My API Keys
             </Link>
             .
           </p>

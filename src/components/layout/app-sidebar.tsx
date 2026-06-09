@@ -130,7 +130,7 @@ const settingsItems = [
     tourId: "nav-settings-billing",
   },
   {
-    title: "AI Models",
+    title: "My API Keys",
     href: "/settings/api-keys",
     icon: Sparkles,
     roles: ["member", "admin"],

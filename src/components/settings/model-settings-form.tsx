@@ -223,7 +223,7 @@ export function ModelSettingsForm({
     <div className="w-full max-w-3xl space-y-6 pb-10 sm:pb-12">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1 min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">AI Models</h1>
+          <h1 className="text-2xl font-bold tracking-tight">My API Keys</h1>
           <p className="text-muted-foreground">
             Add your API keys, test them, and choose which models appear in your dropdowns.
           </p>

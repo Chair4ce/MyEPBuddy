@@ -192,7 +192,7 @@ export function ModelSelector({
           <p className="text-xs text-muted-foreground mt-0.5">
             Models are synced from provider APIs. Customize visibility in{" "}
             <a href="/settings/api-keys" className="text-primary hover:underline">
-              AI Models
+              My API Keys
             </a>
             .
           </p>

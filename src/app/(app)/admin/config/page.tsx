@@ -167,7 +167,7 @@ export default function AdminConfigPage() {
         </h1>
         <p className="text-muted-foreground">
           App-wide settings for all users. AI prompts, character limits, and model pickers are
-          configured individually under Settings → LLM and Settings → AI Models.
+          configured individually under Settings → LLM and Settings → My API Keys.
         </p>
       </div>
 
