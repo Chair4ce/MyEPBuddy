@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCreditsStore } from "@/stores/credits-store";
 import { CreditLedgerTable } from "@/components/settings/credit-ledger-table";
-import { CreditsFirstBanner } from "@/components/billing/credits-first-banner";
+import { EarnedTokensTracker } from "@/components/billing/earned-tokens-tracker";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -43,6 +43,10 @@ export default function BillingSettingsPage() {
     openEmbeddedCheckout,
     ledgerRefreshNonce,
     fetchCredits,
+    earnRewardsEligible,
+    earnRewardsSummary,
+    earnRewardsLoading,
+    fetchEarnRewards,
   } = useCreditsStore();
 
   const [termsChecked, setTermsChecked] = useState(false);
@@ -53,11 +57,12 @@ export default function BillingSettingsPage() {
     if (checkout === "success") {
       toast.success("Payment successful! Your tokens have been added.");
       void fetchCredits();
+      void fetchEarnRewards();
       setLedgerRefreshKey((key) => key + 1);
     } else if (checkout === "cancelled") {
       toast.message("Checkout cancelled.");
     }
-  }, [searchParams, fetchCredits]);
+  }, [searchParams, fetchCredits, fetchEarnRewards]);
 
   const startCheckout = useCallback(async () => {
     if (!billingTermsAccepted && !termsChecked) {
@@ -201,7 +206,8 @@ export default function BillingSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">AI Tokens</h1>
         <p className="text-muted-foreground">
-          Monitor your balance, purchase more tokens, and view usage history.
+          Monitor your balance, purchase more tokens, earn bonuses, and view usage
+          history.
         </p>
       </div>
 
@@ -242,6 +248,13 @@ export default function BillingSettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {earnRewardsEligible && (
+        <EarnedTokensTracker
+          summary={earnRewardsSummary}
+          isLoading={earnRewardsLoading}
+        />
+      )}
 
       <Card>
         <CardHeader>

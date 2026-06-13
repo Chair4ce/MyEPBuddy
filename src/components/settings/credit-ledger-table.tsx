@@ -40,6 +40,8 @@ function formatTransactionType(type: string): string {
       return "Refund";
     case "adjustment":
       return "Adjustment";
+    case "bonus":
+      return "Earn bonus";
     default:
       return type;
   }

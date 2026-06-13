@@ -846,8 +846,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Phone Number Management Card */}
-      <Card>
+      {/* Phone Number Management Card — required for earn-token promotions */}
+      <Card id="phone-verification">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">

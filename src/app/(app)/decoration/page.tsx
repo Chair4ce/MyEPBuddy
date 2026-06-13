@@ -6,6 +6,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Analytics } from "@/lib/analytics";
+import {
+  earnRewardToastMessage,
+  refreshCreditsAfterEarnAction,
+} from "@/lib/billing/refresh-earn-rewards";
+import { useCreditsStore } from "@/stores/credits-store";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -406,6 +411,8 @@ export default function DecorationPage() {
             return;
           }
 
+          const earnSummaryBefore = useCreditsStore.getState().earnRewardsSummary;
+
           const { member, existingMatch } = await createManagedTeamMember(supabase, {
             supervisorId: profile.id,
             supervisorRank: profile.rank,
@@ -423,6 +430,12 @@ export default function DecorationPage() {
           addManagedMember(member);
           Analytics.managedMemberAdded();
           Analytics.teamMemberAdded("managed");
+
+          const newlyGranted = await refreshCreditsAfterEarnAction(earnSummaryBefore);
+          for (const rewardKey of newlyGranted) {
+            const message = earnRewardToastMessage(rewardKey);
+            if (message) toast.success(message);
+          }
         } else {
           recipientName = trimmedManualName;
         }

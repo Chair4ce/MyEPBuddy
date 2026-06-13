@@ -25,6 +25,11 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import {
+  earnRewardToastMessage,
+  refreshCreditsAfterEarnAction,
+} from "@/lib/billing/refresh-earn-rewards";
+import { useCreditsStore } from "@/stores/credits-store";
 import { Loader2, UserPlus, User, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, SUPERVISOR_RANKS, isOfficer, isCivilian, isEnlisted } from "@/lib/constants";
@@ -269,6 +274,7 @@ export function AddManagedMemberDialog({
     }
 
     setIsSubmitting(true);
+    const earnSummaryBefore = useCreditsStore.getState().earnRewardsSummary;
 
     try {
       // Parse the parent ID to determine if it's a profile or managed member
@@ -365,6 +371,13 @@ export function AddManagedMemberDialog({
 
       Analytics.managedMemberAdded();
       Analytics.teamMemberAdded("managed");
+
+      const newlyGranted = await refreshCreditsAfterEarnAction(earnSummaryBefore);
+      for (const rewardKey of newlyGranted) {
+        const message = earnRewardToastMessage(rewardKey);
+        if (message) toast.success(message);
+      }
+
       resetForm();
       onOpenChange(false);
     } catch (error) {

@@ -13,6 +13,7 @@
     "db:push:local": "supabase db push --local",
     "db:push:remote": "supabase db push",
     "db:reset": "supabase db reset",
+    "db:seed:test-users": "tsx scripts/seed-test-users.ts",
     "stripe:listen": "bash scripts/stripe-listen.sh",
     "test": "vitest run",
     "test:watch": "vitest"

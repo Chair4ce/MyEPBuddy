@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_SIGNUP_TRIAL_CREDITS } from "@/lib/billing/constants";
+import type { EarnRewardsSummary } from "@/lib/billing/reward-constants";
 import { useAvailableModelsStore } from "@/stores/available-models-store";
 
 export interface CreditTransaction {
@@ -24,6 +25,7 @@ interface CreditsState {
   preferCreditsFirst: boolean;
   billingTermsAccepted: boolean;
   trialIntroSeen: boolean;
+  earnTokensIntroSeen: boolean;
   recentTransactions: CreditTransaction[];
   isLoading: boolean;
   isCheckoutLoading: boolean;
@@ -34,6 +36,9 @@ interface CreditsState {
   embeddedCheckoutError: string | null;
   ledgerRefreshNonce: number;
   realtimeInitialized: boolean;
+  earnRewardsEligible: boolean;
+  earnRewardsSummary: EarnRewardsSummary | null;
+  earnRewardsLoading: boolean;
   setFromApi: (data: {
     creditsRemaining?: number;
     creditsBalance?: number;
@@ -46,6 +51,7 @@ interface CreditsState {
     preferCreditsFirst?: boolean;
     billingTermsAccepted?: boolean;
     trialIntroSeen?: boolean;
+    earnTokensIntroSeen?: boolean;
     recentTransactions?: CreditTransaction[];
   }) => void;
   setBalance: (balance: number) => void;
@@ -55,12 +61,14 @@ interface CreditsState {
   setIsCheckoutLoading: (loading: boolean) => void;
   setBillingTermsAccepted: (accepted: boolean) => void;
   setTrialIntroSeen: (seen: boolean) => void;
+  setEarnTokensIntroSeen: (seen: boolean) => void;
   openPurchaseDialog: () => void;
   closePurchaseDialog: () => void;
   openEmbeddedCheckout: () => Promise<void>;
   closeEmbeddedCheckout: () => void;
   bumpLedgerRefresh: () => void;
   fetchCredits: () => Promise<void>;
+  fetchEarnRewards: () => Promise<void>;
   initRealtime: (userId: string) => void;
   reset: () => void;
 }
@@ -79,6 +87,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   preferCreditsFirst: true,
   billingTermsAccepted: false,
   trialIntroSeen: false,
+  earnTokensIntroSeen: false,
   recentTransactions: [],
   isLoading: true,
   isCheckoutLoading: false,
@@ -89,6 +98,9 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   embeddedCheckoutError: null,
   ledgerRefreshNonce: 0,
   realtimeInitialized: false,
+  earnRewardsEligible: false,
+  earnRewardsSummary: null,
+  earnRewardsLoading: true,
 
   setFromApi: (data) =>
     set({
@@ -103,6 +115,8 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       billingTermsAccepted:
         data.billingTermsAccepted ?? get().billingTermsAccepted,
       trialIntroSeen: data.trialIntroSeen ?? get().trialIntroSeen,
+      earnTokensIntroSeen:
+        data.earnTokensIntroSeen ?? get().earnTokensIntroSeen,
       recentTransactions: data.recentTransactions ?? get().recentTransactions,
       isLoading: false,
     }),
@@ -150,6 +164,8 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
     set({ billingTermsAccepted }),
 
   setTrialIntroSeen: (trialIntroSeen) => set({ trialIntroSeen }),
+
+  setEarnTokensIntroSeen: (earnTokensIntroSeen) => set({ earnTokensIntroSeen }),
 
   openPurchaseDialog: () => set({ isOpen: true }),
 
@@ -205,6 +221,25 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   bumpLedgerRefresh: () =>
     set({ ledgerRefreshNonce: get().ledgerRefreshNonce + 1 }),
 
+  fetchEarnRewards: async () => {
+    set({ earnRewardsLoading: true });
+    try {
+      const res = await fetch("/api/billing/earn-rewards");
+      if (!res.ok) {
+        set({ earnRewardsLoading: false });
+        return;
+      }
+      const data = await res.json();
+      set({
+        earnRewardsEligible: data.eligible === true,
+        earnRewardsSummary: data.summary ?? null,
+        earnRewardsLoading: false,
+      });
+    } catch {
+      set({ earnRewardsLoading: false });
+    }
+  },
+
   fetchCredits: async () => {
     set({ isLoading: true });
     try {
@@ -215,6 +250,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       }
       const data = await res.json();
       get().setFromApi(data);
+      void get().fetchEarnRewards();
     } catch {
       set({ isLoading: false });
     }
@@ -247,6 +283,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
             if (balanceIncreased) {
               get().bumpLedgerRefresh();
               void get().fetchCredits();
+              void get().fetchEarnRewards();
             }
 
             // When the balance crosses the zero boundary, credits-first state
@@ -285,6 +322,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       preferCreditsFirst: true,
       billingTermsAccepted: false,
       trialIntroSeen: false,
+      earnTokensIntroSeen: false,
       recentTransactions: [],
       isLoading: true,
       isCheckoutLoading: false,
@@ -295,6 +333,9 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       embeddedCheckoutError: null,
       ledgerRefreshNonce: 0,
       realtimeInitialized: false,
+      earnRewardsEligible: false,
+      earnRewardsSummary: null,
+      earnRewardsLoading: true,
     });
   },
 }));

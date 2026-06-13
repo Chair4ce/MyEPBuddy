@@ -25,6 +25,7 @@ export async function GET() {
               data: {
                 billing_terms_accepted_at: string | null;
                 trial_intro_seen_at: string | null;
+                earn_tokens_intro_seen_at: string | null;
               } | null;
               error: unknown;
             }>;
@@ -33,7 +34,9 @@ export async function GET() {
       };
     })
       .from("profiles")
-      .select("billing_terms_accepted_at, trial_intro_seen_at")
+      .select(
+        "billing_terms_accepted_at, trial_intro_seen_at, earn_tokens_intro_seen_at",
+      )
       .eq("id", user.id)
       .single(),
   ]);
@@ -51,6 +54,7 @@ export async function GET() {
     hasOwnKey,
     billingTermsAccepted: !!profile?.billing_terms_accepted_at,
     trialIntroSeen: !!profile?.trial_intro_seen_at,
+    earnTokensIntroSeen: !!profile?.earn_tokens_intro_seen_at,
     purchasePackage: {
       credits: PURCHASE_CREDITS,
       priceUsd: PURCHASE_PRICE_USD,

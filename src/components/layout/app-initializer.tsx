@@ -9,6 +9,7 @@ import { OnboardingFlowModal } from "@/components/modals/onboarding-flow-modal";
 import { useOnboardingStep } from "@/lib/onboarding-flow";
 import { useClientReady } from "@/lib/client-ready";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
+import { EarnTokensIntroModal } from "@/components/modals/earn-tokens-intro-modal";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
 import { usePromptRulesMode } from "@/lib/feature-flags";
@@ -43,9 +44,13 @@ export function AppInitializer({
     fetchCredits,
     initRealtime,
     trialIntroSeen,
+    earnTokensIntroSeen,
     hasOwnKey,
     setTrialIntroSeen,
+    setEarnTokensIntroSeen,
     isLoading: creditsLoading,
+    earnRewardsLoading,
+    earnRewardsSummary,
     trialCredits,
   } = useCreditsStore();
 
@@ -97,12 +102,33 @@ export function AppInitializer({
   });
   const onboardingComplete = gateProfile !== null && onboardingStep === null;
 
+  const earnTokensIntroDismissed =
+    earnTokensIntroSeen || Boolean(gateProfile?.earn_tokens_intro_seen_at);
+
+  const showEarnTokensIntro =
+    clientReady &&
+    !isSigningOut &&
+    onboardingComplete &&
+    gateProfile !== null &&
+    !earnTokensIntroDismissed &&
+    !creditsLoading &&
+    !earnRewardsLoading;
+
   async function dismissTrialIntro() {
     setTrialIntroSeen(true);
     await fetch("/api/billing/accept-terms", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trialIntroSeen: true }),
+    }).catch(() => undefined);
+  }
+
+  async function dismissEarnTokensIntro() {
+    setEarnTokensIntroSeen(true);
+    await fetch("/api/billing/accept-terms", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ earnTokensIntroSeen: true }),
     }).catch(() => undefined);
   }
 
@@ -121,6 +147,12 @@ export function AppInitializer({
         />
       )}
       {onboardingComplete && !usePromptRulesModeEnabled && <EpbPromptUpdateModal />}
+      <EarnTokensIntroModal
+        open={showEarnTokensIntro}
+        hasOwnKey={hasOwnKey}
+        trackerEntries={earnRewardsSummary?.trackerEntries ?? []}
+        onDismiss={dismissEarnTokensIntro}
+      />
       <InsufficientCreditsDialog />
       <EmbeddedCheckoutDialog />
       {/* Render last so the blocking update gate sits above all other modals */}
