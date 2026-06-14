@@ -288,7 +288,6 @@ async function createAuthUser(user: TestUser) {
         terms_accepted_at: onboardedAt,
         billing_terms_accepted_at: onboardedAt,
         trial_intro_seen_at: onboardedAt,
-        earn_tokens_intro_seen_at: onboardedAt,
       })
       .eq("id", user.id);
 

@@ -267,8 +267,11 @@ export default function TeamPage() {
       // Clear the query param
       router.replace("/team", { scroll: false });
     } else if (action === "request-supervision") {
+      const intent = searchParams.get("intent");
+      if (intent === "supervise" || intent === "be_supervised") {
+        setInviteType(intent);
+      }
       setShowInviteDialog(true);
-      // Clear the query param
       router.replace("/team", { scroll: false });
     }
   }, [searchParams, router]);

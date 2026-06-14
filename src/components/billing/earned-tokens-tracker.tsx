@@ -6,7 +6,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,11 +19,11 @@ import { cn } from "@/lib/utils";
 import {
   EARN_REWARD_RULES,
   rewardTypeLabel,
-  trackerEntryProgress,
   type CreditRewardType,
   type EarnRewardsSummary,
   type TokenRewardTrackerEntry,
 } from "@/lib/billing/reward-constants";
+import { EarnRewardTrackerEntryRow } from "@/components/billing/earn-reward-tracker-entry-row";
 import {
   ChevronDown,
   Gift,
@@ -32,7 +31,6 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Clock,
 } from "lucide-react";
 
 interface EarnedTokensTrackerProps {
@@ -68,50 +66,6 @@ function repeatBadge(entry: TokenRewardTrackerEntry) {
     <Badge variant="secondary" className="font-normal shrink-0">
       Repeatable
     </Badge>
-  );
-}
-
-function progressLabel(entry: TokenRewardTrackerEntry): string {
-  const { count, cap, complete } = trackerEntryProgress(entry);
-  if (entry.repeat_mode === "once_per_user" || entry.repeat_mode === "once_per_source") {
-    return complete ? "Claimed" : "Not yet";
-  }
-  if (cap === null) return `${count} this year`;
-  return `${count} / ${cap} this year`;
-}
-
-function TrackerEntryRow({ entry }: { entry: TokenRewardTrackerEntry }) {
-  const { percent, complete } = trackerEntryProgress(entry);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-start justify-between gap-2 text-sm">
-        <div className="min-w-0 space-y-0.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{entry.public_label}</span>
-            {repeatBadge(entry)}
-            {!entry.enabled && (
-              <Badge variant="outline" className="font-normal gap-1">
-                <Clock className="size-3" aria-hidden />
-                Coming soon
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">{entry.rule_summary}</p>
-        </div>
-        <div className="text-right shrink-0 tabular-nums">
-          <p className="font-medium text-emerald-600 dark:text-emerald-400">
-            +{entry.amount}
-          </p>
-          <p className="text-xs text-muted-foreground">{progressLabel(entry)}</p>
-        </div>
-      </div>
-      <Progress
-        value={percent}
-        className={cn("h-2", complete && "[&>[data-slot=progress-indicator]]:bg-emerald-500")}
-        aria-label={`${entry.public_label} progress ${progressLabel(entry)}`}
-      />
-    </div>
   );
 }
 
@@ -188,7 +142,7 @@ export function EarnedTokensTracker({
                         Verified
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="gap-1">
+                      <Badge variant="secondary" className="gap-1 shrink-0">
                         <AlertCircle className="size-3" aria-hidden />
                         Required for referrals
                       </Badge>
@@ -215,11 +169,35 @@ export function EarnedTokensTracker({
             </div>
 
             {trackerEntries.length > 0 && (
-              <div className="space-y-4" aria-label="Earn token actions">
+              <div className="space-y-3" aria-label="Earn token actions">
                 <p className="text-sm font-medium">Ways to earn</p>
                 {trackerEntries.map((entry) => (
-                  <TrackerEntryRow key={entry.reward_key} entry={entry} />
+                  <EarnRewardTrackerEntryRow key={entry.reward_key} entry={entry} />
                 ))}
+              </div>
+            )}
+
+            {trackerEntries.some((e) => e.reward_key.startsWith("referral")) && (
+              <div
+                id="earn-referrals"
+                className="scroll-mt-6 rounded-lg border border-dashed p-4 space-y-2"
+              >
+                <p className="text-sm font-medium">Referral program</p>
+                <p className="text-sm text-muted-foreground">
+                  Referral link sharing and automatic payouts are coming soon. Verify
+                  your phone now so you are ready when referrals go live.
+                </p>
+                {!phoneVerified && (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link
+                      href="/settings#phone-verification"
+                      aria-label="Verify phone in profile settings"
+                    >
+                      <Phone className="size-4 mr-2" />
+                      Verify phone in Profile
+                    </Link>
+                  </Button>
+                )}
               </div>
             )}
 
@@ -262,7 +240,7 @@ export function EarnedTokensTracker({
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-between px-0 hover:bg-transparent"
+              className="mt-2 w-full justify-between px-0 hover:bg-transparent focus-visible:ring-inset"
               aria-label="Expand earn token rules"
             >
               <span className="font-medium">Full rules</span>

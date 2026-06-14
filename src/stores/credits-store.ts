@@ -100,7 +100,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   realtimeInitialized: false,
   earnRewardsEligible: false,
   earnRewardsSummary: null,
-  earnRewardsLoading: true,
+  earnRewardsLoading: false,
 
   setFromApi: (data) =>
     set({
@@ -246,6 +246,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       const res = await fetch("/api/billing/credits");
       if (!res.ok) {
         set({ isLoading: false });
+        void get().fetchEarnRewards();
         return;
       }
       const data = await res.json();
@@ -253,6 +254,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       void get().fetchEarnRewards();
     } catch {
       set({ isLoading: false });
+      void get().fetchEarnRewards();
     }
   },
 

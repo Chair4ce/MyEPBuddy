@@ -1,19 +1,21 @@
 import { useRankModalDismissed } from "@/lib/rank-modal-storage";
 import type { Profile } from "@/types/database";
 
-export type OnboardingStep = "terms" | "trial-intro" | "rank";
+export type OnboardingStep = "terms" | "trial-intro" | "rank" | "earn-tokens";
 
 export function resolveOnboardingStep({
   profile,
   creditsLoading,
   hasOwnKey,
   trialIntroSeen,
+  earnTokensIntroSeen,
   rankDismissed,
 }: {
   profile: Profile | null;
   creditsLoading: boolean;
   hasOwnKey: boolean;
   trialIntroSeen: boolean;
+  earnTokensIntroSeen: boolean;
   rankDismissed: boolean;
 }): OnboardingStep | null {
   if (!profile) return null;
@@ -33,6 +35,13 @@ export function resolveOnboardingStep({
     return "trial-intro";
   }
 
+  const earnIntroDismissed =
+    earnTokensIntroSeen || Boolean(profile.earn_tokens_intro_seen_at);
+
+  if (!earnIntroDismissed) {
+    return "earn-tokens";
+  }
+
   return null;
 }
 
@@ -41,11 +50,13 @@ export function useOnboardingStep({
   creditsLoading,
   hasOwnKey,
   trialIntroSeen,
+  earnTokensIntroSeen,
 }: {
   profile: Profile | null;
   creditsLoading: boolean;
   hasOwnKey: boolean;
   trialIntroSeen: boolean;
+  earnTokensIntroSeen: boolean;
 }): OnboardingStep | null {
   const rankDismissed = useRankModalDismissed(profile?.id);
   return resolveOnboardingStep({
@@ -53,6 +64,7 @@ export function useOnboardingStep({
     creditsLoading,
     hasOwnKey,
     trialIntroSeen,
+    earnTokensIntroSeen,
     rankDismissed,
   });
 }
