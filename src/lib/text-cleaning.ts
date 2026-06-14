@@ -170,12 +170,6 @@ export function splitStatements(text: string): string[] {
   // First, split by obvious statement boundaries
   const statements: string[] = [];
   
-  // Split by periods followed by uppercase letter (new sentence start)
-  // But be careful with abbreviations and numbers
-  const sentencePattern = /([^.]+(?:\.[A-Z][a-z]*\.)?[^.]*\.)\s*(?=[A-Z])/g;
-  
-  let match;
-  let lastIndex = 0;
   const trimmedText = text.trim();
   
   // Simple approach: split on ". " followed by uppercase, but keep 2-sentence groups

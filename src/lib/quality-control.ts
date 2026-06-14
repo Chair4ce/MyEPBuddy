@@ -369,10 +369,6 @@ export interface QualityControlConfig {
   context?: string;
   /** The LLM model to use for QC */
   model: LanguageModel;
-  /** Minimum diversity score required (0-100, default 60) */
-  minDiversityScore?: number;
-  /** Minimum instruction compliance score required (0-100, default 70) */
-  minComplianceScore?: number;
 }
 
 export interface StatementEvaluation {
@@ -418,12 +414,6 @@ export interface QualityControlResult {
 // CONSTANTS
 // ============================================================================
 
-/** Minimum diversity score - if statements are too similar, flag it */
-const DEFAULT_MIN_DIVERSITY = 60;
-
-/** Minimum instruction compliance score */
-const DEFAULT_MIN_COMPLIANCE = 70;
-
 /** Only do QC if we have enough content to evaluate */
 const MIN_STATEMENT_LENGTH = 50;
 
@@ -452,8 +442,6 @@ export async function performQualityControl(
     fillToMax,
     context,
     model,
-    minDiversityScore = DEFAULT_MIN_DIVERSITY,
-    minComplianceScore = DEFAULT_MIN_COMPLIANCE,
   } = config;
 
   // Quick validation - skip QC if no statements or statements too short

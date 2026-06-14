@@ -49,7 +49,6 @@ export interface CharacterValidationResult {
 export interface CharacterVerificationConfig {
   targetMax: number;
   targetMin?: number; // defaults to targetMax - 10
-  tolerancePercent?: number; // defaults to 3% (±3% of target)
   maxRetries?: number; // defaults to 2, hard capped at MAX_ABSOLUTE_RETRIES
   model: LanguageModel;
   context?: string; // MPA or category context for better prompts
@@ -73,8 +72,7 @@ export interface EnforcementResult {
 export function validateCharacterCount(
   statement: string,
   targetMax: number,
-  targetMin?: number,
-  tolerancePercent: number = 3
+  targetMin?: number
 ): CharacterValidationResult {
   const actualLength = statement.length;
   const effectiveMin = targetMin ?? Math.max(0, targetMax - 10);
@@ -219,7 +217,6 @@ export async function enforceCharacterLimits(
   const {
     targetMax,
     targetMin = Math.max(0, targetMax - 10),
-    tolerancePercent = 3,
     maxRetries = 2,
     model,
     context,
@@ -239,7 +236,7 @@ export async function enforceCharacterLimits(
   let previousDeficit = Infinity;
   
   // Initial validation
-  let validation = validateCharacterCount(currentStatement, targetMax, targetMin, tolerancePercent);
+  let validation = validateCharacterCount(currentStatement, targetMax, targetMin);
   
   // If already compliant, return immediately
   if (validation.isCompliant) {
@@ -299,7 +296,7 @@ export async function enforceCharacterLimits(
       currentStatement = newStatement;
       
       // Re-validate
-      validation = validateCharacterCount(currentStatement, targetMax, targetMin, tolerancePercent);
+      validation = validateCharacterCount(currentStatement, targetMax, targetMin);
       
       // If now compliant, we're done
       if (validation.isCompliant) {
@@ -354,7 +351,7 @@ export async function enforceCharacterLimits(
     if (finalStatement !== currentStatement) {
       console.log(`[CharVerify] Sanitized malformed statement content`);
       // Re-validate after sanitization
-      validation = validateCharacterCount(finalStatement, targetMax, targetMin, tolerancePercent);
+      validation = validateCharacterCount(finalStatement, targetMax, targetMin);
     }
   }
   

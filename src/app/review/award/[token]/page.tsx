@@ -9,7 +9,6 @@ export default function AwardReviewPage({ params }: { params: Promise<{ token: s
   return (
     <GenericReviewPage 
       token={resolvedParams.token} 
-      shellType="award" 
       shellTypeLabel="Award Package" 
     />
   );

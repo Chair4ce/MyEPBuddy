@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import type { Project, ProjectMember } from "@/types/database";
 
 // GET /api/projects - List user's projects
 export async function GET(request: Request) {

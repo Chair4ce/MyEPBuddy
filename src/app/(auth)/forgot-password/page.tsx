@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, ArrowLeft, Mail, AlertTriangle } from "lucide-react";
+import { Loader2, ArrowLeft, Mail } from "lucide-react";
 import { parseAuthError } from "@/lib/auth-errors";
 import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";

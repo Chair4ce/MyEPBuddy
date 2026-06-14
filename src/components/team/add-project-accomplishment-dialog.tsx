@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useUserStore } from "@/stores/user-store";
-import { useProjectsStore } from "@/stores/projects-store";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,7 +32,7 @@ import {
   ENTRY_MGAS,
   getActiveCycleYear,
 } from "@/lib/constants";
-import type { Rank, Project, ProjectMember } from "@/types/database";
+import type { Rank, Project } from "@/types/database";
 import {
   Loader2,
   ChevronRight,
@@ -273,20 +272,6 @@ export function AddProjectAccomplishmentDialog({
   }, [selectedMembers]);
 
   // Get roles that are already taken (for disabling in dropdowns)
-  const takenLeadershipRoles = useMemo(() => {
-    const taken = new Set<string>();
-    selectedMembers.forEach((m) => {
-      if (m.role) {
-        const roleInfo = ALL_ROLES.find((r) => r.value === m.role);
-        if (roleInfo && !roleInfo.allowMultiple) {
-          taken.add(m.role);
-        }
-      }
-    });
-    return taken;
-  }, [selectedMembers]);
-
-  // Check if a role is available for a member
   function isRoleAvailable(role: string, currentMemberId: string, currentMemberType: string) {
     const roleInfo = ALL_ROLES.find((r) => r.value === role);
     if (!roleInfo) return true;

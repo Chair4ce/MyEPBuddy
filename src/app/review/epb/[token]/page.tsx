@@ -9,7 +9,6 @@ export default function EPBReviewPage({ params }: { params: Promise<{ token: str
   return (
     <GenericReviewPage 
       token={resolvedParams.token} 
-      shellType="epb" 
       shellTypeLabel="EPB" 
     />
   );

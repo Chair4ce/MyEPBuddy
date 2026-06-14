@@ -54,41 +54,6 @@ export function StarRating({
     }
   }
 
-  // Render filled/empty stars for display
-  function renderDisplayStars(rating: number, showEmpty = true) {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating - fullStars >= 0.5;
-    const stars = [];
-
-    for (let i = 1; i <= 5; i++) {
-      if (i <= fullStars) {
-        stars.push(
-          <Star
-            key={i}
-            className={cn(iconSize, "text-primary fill-primary")}
-          />
-        );
-      } else if (i === fullStars + 1 && hasHalfStar) {
-        // Half star - use gradient or just show filled
-        stars.push(
-          <Star
-            key={i}
-            className={cn(iconSize, "text-primary fill-primary/50")}
-          />
-        );
-      } else if (showEmpty) {
-        stars.push(
-          <Star
-            key={i}
-            className={cn(iconSize, "text-muted-foreground/40")}
-          />
-        );
-      }
-    }
-
-    return stars;
-  }
-
   // Render interactive stars for selection
   function renderSelectableStars() {
     const displayRating = hoveredRating ?? userRating ?? 0;

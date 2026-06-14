@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
-import type { Profile } from "@/types/database";
 import { RealtimeChannel } from "@supabase/supabase-js";
 
 export interface SectionEditingSession {

@@ -62,7 +62,6 @@ interface ActionSelectorSheetProps {
   /** The MPA this selector is opened from - used as default filter */
   targetMpa?: string;
   statementNumber?: 1 | 2;
-  cycleYear: number;
   trigger?: React.ReactNode;
 }
 
@@ -72,7 +71,6 @@ export function ActionSelectorSheet({
   onSelectionChange,
   targetMpa,
   statementNumber,
-  cycleYear,
   trigger,
 }: ActionSelectorSheetProps) {
   const [isOpen, setIsOpen] = useState(false);

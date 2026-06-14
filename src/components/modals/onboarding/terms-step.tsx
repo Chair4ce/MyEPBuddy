@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ShieldAlert, FlaskConical } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { getTermsSessionKey } from "@/lib/terms-session";
 
 const PROHIBITED_ITEMS = [

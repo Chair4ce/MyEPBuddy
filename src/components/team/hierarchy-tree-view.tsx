@@ -232,21 +232,6 @@ function groupByDisplayTier(members: Map<string, HierarchyMember>): Map<Rank | "
   return groups;
 }
 
-// Group members by depth (for proper tier placement when same-rank supervision exists)
-function groupByDepth(members: Map<string, HierarchyMember>): Map<number, HierarchyMember[]> {
-  const groups = new Map<number, HierarchyMember[]>();
-  
-  for (const member of members.values()) {
-    const depth = member.depth ?? 0;
-    if (!groups.has(depth)) {
-      groups.set(depth, []);
-    }
-    groups.get(depth)!.push(member);
-  }
-  
-  return groups;
-}
-
 // Get display tier index for ordering
 function getDisplayTierIndex(tier: Rank | "JuniorEnlisted" | "Unknown"): number {
   if (tier === "Unknown") return DISPLAY_TIERS.length;
@@ -566,12 +551,6 @@ export function HierarchyTreeView({
     return visibleRanks.has(rank);
   }, [visibleRanks]);
   
-  // Check if a rank should be included in tree layout (for collapse mode)
-  const isRankIncluded = useCallback((rank: Rank | null): boolean => {
-    if (filterMode === "fade") return true; // Fade mode always includes all
-    return isRankVisible(rank);
-  }, [filterMode, isRankVisible]);
-  
   // Zoom state (1 = 100%, 0.5 = 50%, 2 = 200%)
   const [zoom, setZoom] = useState(1);
   const MIN_ZOOM = 0.25;
@@ -604,7 +583,7 @@ export function HierarchyTreeView({
       };
     }
     
-    const { baseRowHeight, juniorStackHeight, topPadding, leftPadding, rightPadding, bottomPadding, nodeWidth } = LAYOUT_CONFIG;
+    const { baseRowHeight, juniorStackHeight, topPadding, rightPadding, bottomPadding, nodeWidth } = LAYOUT_CONFIG;
     
     // First, build a map of original children count (before collapse filtering)
     const childrenCount = new Map<string, number>();

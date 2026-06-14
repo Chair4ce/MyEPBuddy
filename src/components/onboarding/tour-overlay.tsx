@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   useOnboardingStore,
   TOUR_DEFINITIONS,
-  type TourStep,
 } from "@/stores/onboarding-store";
 import {
   X,
@@ -29,7 +28,6 @@ interface SpotlightRect {
 
 export function TourOverlay() {
   const router = useRouter();
-  const pathname = usePathname();
   const {
     activeTour,
     currentStepIndex,
@@ -37,7 +35,6 @@ export function TourOverlay() {
     nextStep,
     prevStep,
     skipTour,
-    completeTour,
   } = useOnboardingStore();
 
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);

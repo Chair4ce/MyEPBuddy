@@ -1,10 +1,8 @@
 "use client";
 
-import { useCallback } from "react";
 import {
   useDecorationShellStore,
   HIGHLIGHT_COLORS,
-  type BulkStatement,
 } from "@/stores/decoration-shell-store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +27,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { GenerateCitationButton } from "@/components/decoration/generate-citation-button";
 import { cn } from "@/lib/utils";
-import { toast } from "@/components/ui/sonner";
 import {
   Palette,
   X,
@@ -41,55 +38,6 @@ interface BulkStatementInputProps {
   onGenerate?: () => void;
 }
 
-/**
- * Splits raw pasted text into individual statements using sentence-boundary
- * heuristics. Statements shorter than 20 characters are discarded.
- */
-function parseStatementsLocally(rawText: string): BulkStatement[] {
-  const cleaned = rawText
-    .replace(/\r\n/g, "\n")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/\u2013/g, "-")
-    .replace(/\u2014/g, "--")
-    .replace(/\u2026/g, "...")
-    .trim();
-
-  if (!cleaned) return [];
-
-  const lines = cleaned.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-  const candidates: string[] = [];
-
-  for (const line of lines) {
-    if (/^(EXECUTING THE MISSION|LEADING PEOPLE|MANAGING RESOURCES|IMPROVING THE UNIT|RATER ASSESSMENT)/i.test(line)) {
-      continue;
-    }
-    if (/^[A-Z]{2,4}:\s*$/i.test(line)) continue;
-
-    const parts = line.split(/(?<=\.)\s+(?=[A-Z])/).map((s) => s.trim());
-    for (const part of parts) {
-      if (part.length >= 20) {
-        candidates.push(part);
-      }
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped: string[] = [];
-  for (const c of candidates) {
-    const key = c.toLowerCase().replace(/\s+/g, " ");
-    if (!seen.has(key)) {
-      seen.add(key);
-      deduped.push(c);
-    }
-  }
-
-  return deduped.map((text, i) => ({
-    id: `bulk-${Date.now()}-${i}`,
-    text,
-  }));
-}
-
 export function BulkStatementInput({
   className,
   onGenerate,
@@ -98,11 +46,8 @@ export function BulkStatementInput({
     bulkRawText,
     setBulkRawText,
     bulkStatements,
-    setBulkStatements,
     removeBulkStatement,
     clearBulkStatements,
-    isBulkParsing,
-    setIsBulkParsing,
     statementColors,
     setStatementColor,
     clearStatementColors,
@@ -115,25 +60,6 @@ export function BulkStatementInput({
     if (!colorId) return null;
     return HIGHLIGHT_COLORS.find((c) => c.id === colorId) || null;
   };
-
-  const handleParse = useCallback(() => {
-    if (!bulkRawText.trim()) {
-      toast.error("Paste some text first");
-      return;
-    }
-    setIsBulkParsing(true);
-    try {
-      const parsed = parseStatementsLocally(bulkRawText);
-      if (parsed.length === 0) {
-        toast.error("No statements detected. Make sure each statement is at least 20 characters.");
-        return;
-      }
-      setBulkStatements(parsed);
-      toast.success(`${parsed.length} statement${parsed.length !== 1 ? "s" : ""} detected`);
-    } finally {
-      setIsBulkParsing(false);
-    }
-  }, [bulkRawText, setBulkStatements, setIsBulkParsing]);
 
   const coloredCount = bulkStatements.filter((s) => statementColors[s.id]).length;
 

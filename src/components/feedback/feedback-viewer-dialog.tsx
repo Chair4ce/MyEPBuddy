@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -651,20 +650,6 @@ function FeedbackCommentCard({
   
   // Text has changed indicator
   const textHasChanged = currentText !== sectionText;
-  
-  // For LLM-based application, we don't need to pre-check validity
-  // The LLM will determine if the change can be applied
-  const canApply = useMemo(() => {
-    if (!isActionable || !onApply) return { safe: false, reason: "Not applicable" };
-    if (comment.is_full_rewrite) return { safe: true };
-    
-    const highlightedText = comment.highlighted_text;
-    if (!highlightedText) return { safe: false, reason: "Missing highlight info" };
-    
-    // With LLM-based application, we can attempt to apply even if text has changed
-    // The LLM will abort if it can't find a match
-    return { safe: true };
-  }, [isActionable, onApply, comment.is_full_rewrite, comment.highlighted_text]);
 
   return (
     <div className={cn("space-y-4", !isPending && "opacity-60")}>

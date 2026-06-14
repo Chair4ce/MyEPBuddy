@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -24,15 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { AI_MODELS, STANDARD_MGAS, ENTRY_MGAS, getActiveCycleYear, getCyclePeriodForYear, isOfficer, isEnlisted, isCivilian, isPriorCycleShell } from "@/lib/constants";
+import { AI_MODELS, STANDARD_MGAS, getActiveCycleYear, getCyclePeriodForYear, isOfficer, isEnlisted, isCivilian, isPriorCycleShell } from "@/lib/constants";
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import { ModelSelector } from "@/components/model-selector";
 import {
@@ -50,7 +41,6 @@ import {
   Settings2,
   ChevronDown,
   ChevronUp,
-  ListChecks,
   Share2,
   MessageSquareText,
 } from "lucide-react";
@@ -60,7 +50,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import Link from "next/link";
-import type { Accomplishment, WritingStyle, Profile, ManagedMember, EPBShell, Rank } from "@/types/database";
+import type { Accomplishment, WritingStyle, Rank } from "@/types/database";
 import { EPBShellForm } from "@/components/epb/epb-shell-form";
 import { MpaDescriptionPanel } from "@/components/epb/mpa-description-editor";
 import { getEpbZenChromeClassName, handleEpbZenPointerDown } from "@/components/epb/epb-zen-mode";
@@ -97,11 +87,8 @@ export default function GeneratePage() {
   // Officer workspace mode: "opb" for personal OPB, "epb" for team EPBs
   const [officerWorkspaceMode, setOfficerWorkspaceMode] = useState<"opb" | "epb">("epb");
 
-  // Accomplishment selection dialog
-  const [showAccomplishmentDialog, setShowAccomplishmentDialog] = useState(false);
-  const [selectedMPAForAccomplishments, setSelectedMPAForAccomplishments] = useState<string | null>(null);
+  // Accomplishment data for EPB shell form
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
-  const [selectedAccomplishmentIds, setSelectedAccomplishmentIds] = useState<string[]>([]);
 
   const supabase = createClient();
 
@@ -330,7 +317,7 @@ export default function GeneratePage() {
     loadAvailableAfscs();
   }, [supabase]);
 
-  // Load accomplishments for the dialog (EPB shell form loads its own for generation)
+  // Load accomplishments for EPB shell form
   useEffect(() => {
     async function loadAccomplishments() {
       if (!selectedRatee || !profile) return;
@@ -426,36 +413,6 @@ export default function GeneratePage() {
       toast.error("Failed to apply suggestion");
     }
   }, [profile, currentShell, shellSections, supabase, setCurrentShell, updateSection]);
-
-  // Handle opening accomplishment selection for an MPA
-  const handleOpenAccomplishments = (mpa: string) => {
-    setSelectedMPAForAccomplishments(mpa);
-    setSelectedAccomplishmentIds([]);
-    setShowAccomplishmentDialog(true);
-  };
-
-  // Toggle accomplishment selection
-  const toggleAccomplishment = (id: string) => {
-    setSelectedAccomplishmentIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-  };
-
-  // Confirm accomplishment selection
-  const confirmAccomplishmentSelection = () => {
-    if (selectedMPAForAccomplishments) {
-      const { updateSectionState } = useEPBShellStore.getState();
-      updateSectionState(selectedMPAForAccomplishments, {
-        selectedAccomplishmentIds,
-      });
-    }
-    setShowAccomplishmentDialog(false);
-  };
-
-  // Filter accomplishments for the selected MPA
-  const filteredAccomplishments = selectedMPAForAccomplishments
-    ? accomplishments.filter((a) => a.mpa === selectedMPAForAccomplishments)
-    : accomplishments;
 
   const selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
   const handleModelSelectionChange = useCallback((model: string) => {
@@ -673,7 +630,6 @@ export default function GeneratePage() {
           isOpen={showShareDialog}
           onClose={() => setShowShareDialog(false)}
           ratee={selectedRatee}
-          currentUserId={profile?.id}
         />
       )}
 
@@ -1073,95 +1029,9 @@ export default function GeneratePage() {
           cycleYear={currentShell?.cycle_year ?? cycleYear}
           model={selectedModel}
           writingStyle={writingStyle}
-          onOpenAccomplishments={handleOpenAccomplishments}
           accomplishments={accomplishments}
         />
       )}
-
-      {/* Accomplishment Selection Dialog */}
-      <Dialog open={showAccomplishmentDialog} onOpenChange={setShowAccomplishmentDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ListChecks className="size-5" />
-              Select Performance Actions
-            </DialogTitle>
-            <DialogDescription>
-              Choose accomplishments to include in your{" "}
-              {selectedMPAForAccomplishments && (
-                <strong>{STANDARD_MGAS.find((m) => m.key === selectedMPAForAccomplishments)?.label}</strong>
-              )}{" "}
-              statement
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="flex-1 overflow-y-auto space-y-2 py-4">
-            {filteredAccomplishments.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No performance actions found for this MPA.</p>
-                <p className="text-sm mt-1">
-                  <a href="/entries" className="text-primary hover:underline">
-                    Add entries
-                  </a>{" "}
-                  or use custom context instead.
-                </p>
-              </div>
-            ) : (
-              filteredAccomplishments.map((acc) => {
-                const isSelected = selectedAccomplishmentIds.includes(acc.id);
-                return (
-                  <label
-                    key={acc.id}
-                    className={cn(
-                      "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                      isSelected
-                        ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20"
-                        : "bg-card hover:bg-muted/50"
-                    )}
-                  >
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => toggleAccomplishment(acc.id)}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <Badge variant="outline" className="text-xs">
-                          {acc.action_verb}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(acc.date).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-sm line-clamp-2">{acc.details}</p>
-                      {acc.impact && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                          Impact: {acc.impact}
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                );
-              })
-            )}
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t">
-            <span className="text-sm text-muted-foreground">
-              {selectedAccomplishmentIds.length} selected
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowAccomplishmentDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={confirmAccomplishmentSelection}>
-                <Sparkles className="size-4 mr-1.5" />
-                Use Selected
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
         </div>
 

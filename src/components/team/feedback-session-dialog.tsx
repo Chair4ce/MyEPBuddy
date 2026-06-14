@@ -27,7 +27,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
@@ -46,8 +45,7 @@ import {
   ClipboardCheck
 } from "lucide-react";
 import type { Rank, Profile, ManagedMember, SupervisorFeedback, FeedbackType } from "@/types/database";
-import { 
-  getFeedback,
+import {
   saveFeedback, 
   shareFeedback, 
   unshareFeedback,
@@ -247,7 +245,6 @@ export function FeedbackSessionDialog({
   }
 
   function handlePrint() {
-    const printContent = formatFeedbackForExport();
     const printWindow = window.open("", "_blank");
     if (printWindow) {
       printWindow.document.write(`
@@ -288,7 +285,6 @@ ${content}`;
 
   const hasChanges = content.trim() !== (feedback?.content || "");
   const isShared = feedback?.status === "shared";
-  const canEdit = !isShared || feedback?.supervisor_id;
 
   return (
     <>

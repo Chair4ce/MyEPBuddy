@@ -27,14 +27,13 @@ import {
 } from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
 import { enforceUsageGate } from "@/lib/usage-gate";
-import { buildCharacterEmphasisPrompt } from "@/lib/character-verification";
 import {
   performQualityControl,
   shouldRunQualityControl,
   type QualityControlConfig,
 } from "@/lib/quality-control";
-import type { MPADescriptions, Project, ProjectStakeholder, AwardSelection } from "@/types/database";
-import type { Rank, WritingStyle, UserLLMSettings, MajorGradedArea, Acronym, Abbreviation } from "@/types/database";
+import type { MPADescriptions, AwardSelection } from "@/types/database";
+import type { Rank, WritingStyle, UserLLMSettings } from "@/types/database";
 import { getChainStyleSignature, getUserStyleSignature, buildSignaturePromptSection } from "@/lib/style-signatures";
 import { scanAccomplishmentsForLLM, scanTextForLLM } from "@/lib/sensitive-data-scanner";
 import {
@@ -53,16 +52,6 @@ import {
 
 // Allow up to 60s for LLM calls (initial generation + quality control)
 export const maxDuration = 60;
-
-interface ProjectContext {
-  project: Project;
-  subordinateAccomplishments?: {
-    memberName: string;
-    memberRank: string | null;
-    action: string;
-    details: string;
-  }[];
-}
 
 interface AccomplishmentData {
   id?: string; // Optional - used for fetching project context
@@ -138,31 +127,6 @@ interface ClarifyingQuestionResponse {
   sentenceNumber?: 1 | 2;
 }
 
-// Overused/cliché verbs that should be avoided
-const BANNED_VERBS = [
-  "spearheaded",
-  "orchestrated", 
-  "synergized",
-  "leveraged",
-  "impacted",
-  "utilized",
-  "facilitated",
-];
-
-// Strong action verbs organized by category for variety
-const VERB_POOL = {
-  leadership: ["led", "directed", "managed", "commanded", "guided", "championed", "drove"],
-  transformation: ["transformed", "revolutionized", "modernized", "pioneered", "innovated", "overhauled"],
-  improvement: ["accelerated", "streamlined", "optimized", "enhanced", "elevated", "strengthened", "bolstered"],
-  security: ["secured", "safeguarded", "protected", "defended", "fortified", "hardened", "shielded"],
-  development: ["trained", "mentored", "developed", "coached", "cultivated", "empowered", "groomed"],
-  problemSolving: ["resolved", "eliminated", "eradicated", "mitigated", "prevented", "reduced", "corrected"],
-  creation: ["delivered", "produced", "generated", "created", "built", "established", "launched"],
-  coordination: ["coordinated", "synchronized", "integrated", "unified", "consolidated", "aligned"],
-  analysis: ["analyzed", "assessed", "evaluated", "identified", "diagnosed", "investigated", "audited"],
-  acquisition: ["negotiated", "acquired", "procured", "saved", "recovered", "reclaimed", "captured"],
-};
-
 // Clarifying question guidance for the LLM (encouraged but non-blocking)
 const CLARIFYING_QUESTION_GUIDANCE = `
 === CLARIFYING QUESTIONS (PLEASE INCLUDE 1-3) ===
@@ -209,150 +173,6 @@ interface ExampleStatement {
   mpa: string;
   statement: string;
   source: "personal" | "community";
-}
-
-// Fetch project context for accomplishments (if linked to projects)
-async function fetchProjectContext(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  accomplishmentIds: string[],
-  userId: string
-): Promise<ProjectContext[]> {
-  if (accomplishmentIds.length === 0) return [];
-
-  try {
-    // Get project links for these accomplishments
-    // Type assertion needed due to Supabase type generation issue with new tables
-    const { data: projectLinks } = await (supabase
-      .from("accomplishment_projects") as any)
-      .select(`
-        accomplishment_id,
-        project_id,
-        project:projects(*)
-      `)
-      .in("accomplishment_id", accomplishmentIds) as { data: Array<{ accomplishment_id: string; project_id: string; project: Project | null }> | null };
-
-    if (!projectLinks || projectLinks.length === 0) return [];
-
-    // Get unique projects
-    const projectMap = new Map<string, Project>();
-    for (const link of projectLinks) {
-      if (link.project && !projectMap.has(link.project_id)) {
-        projectMap.set(link.project_id, link.project);
-      }
-    }
-
-    const contexts: ProjectContext[] = [];
-
-    for (const [projectId, project] of projectMap) {
-      // Get subordinate accomplishments for this project (if user is in supervisor chain)
-      // Type assertion for RPC call
-      const { data: subordinateChain } = await (supabase.rpc as any)("get_subordinate_chain", {
-        supervisor_uuid: userId,
-      }) as { data: Array<{ subordinate_id: string; depth: number }> | null };
-
-      let subordinateAccomplishments: ProjectContext["subordinateAccomplishments"] = [];
-
-      if (subordinateChain && subordinateChain.length > 0) {
-        const subordinateIds = subordinateChain.map((s) => s.subordinate_id);
-
-        // Get accomplishments from subordinates that are linked to this project
-        const { data: subAccomplishments } = await (supabase
-          .from("accomplishment_projects") as any)
-          .select(`
-            accomplishment:accomplishments(
-              id,
-              user_id,
-              action_verb,
-              details,
-              owner_profile:profiles!accomplishments_user_id_fkey(full_name, rank),
-              team_member:team_members(full_name, rank)
-            )
-          `)
-          .eq("project_id", projectId) as { data: Array<{ accomplishment: any }> | null };
-
-        if (subAccomplishments) {
-          for (const sa of subAccomplishments) {
-            const acc = sa.accomplishment;
-            if (!acc) continue;
-
-            // Only include if from a subordinate (not self)
-            if (acc.user_id !== userId && subordinateIds.includes(acc.user_id)) {
-              subordinateAccomplishments.push({
-                memberName: acc.owner_profile?.full_name || acc.team_member?.full_name || "Team member",
-                memberRank: acc.owner_profile?.rank || acc.team_member?.rank || null,
-                action: acc.action_verb,
-                details: acc.details,
-              });
-            }
-          }
-        }
-      }
-
-      contexts.push({
-        project,
-        subordinateAccomplishments: subordinateAccomplishments.length > 0 ? subordinateAccomplishments : undefined,
-      });
-    }
-
-    return contexts;
-  } catch (error) {
-    console.warn("Error fetching project context:", error);
-    return [];
-  }
-}
-
-// Build project context prompt section
-function buildProjectContextPrompt(projectContexts: ProjectContext[]): string {
-  if (projectContexts.length === 0) return "";
-
-  const sections: string[] = [];
-
-  for (const { project, subordinateAccomplishments } of projectContexts) {
-    const projectSection: string[] = [
-      `\n=== PROJECT CONTEXT: ${project.name} ===`,
-    ];
-
-    if (project.description) {
-      projectSection.push(`Description: ${project.description}`);
-    }
-
-    if (project.scope) {
-      projectSection.push(`Scope: ${project.scope}`);
-    }
-
-    if (project.result) {
-      projectSection.push(`Result: ${project.result}`);
-    }
-
-    if (project.impact) {
-      projectSection.push(`Impact: ${project.impact}`);
-    }
-
-    if (project.metrics?.people_impacted) {
-      projectSection.push(`People Impacted: ${project.metrics.people_impacted.toLocaleString()}`);
-    }
-
-    if (project.key_stakeholders && project.key_stakeholders.length > 0) {
-      const stakeholdersList = project.key_stakeholders
-        .map((s: ProjectStakeholder) => `${s.name} (${s.title})`)
-        .join(", ");
-      projectSection.push(`Key Stakeholders: ${stakeholdersList}`);
-    }
-
-    if (subordinateAccomplishments && subordinateAccomplishments.length > 0) {
-      projectSection.push(`\nTEAM ACCOMPLISHMENTS (you led/directed this team):`);
-      for (const sub of subordinateAccomplishments.slice(0, 5)) { // Limit to 5
-        projectSection.push(`- ${sub.memberRank || ""} ${sub.memberName}: ${sub.action} - ${sub.details.substring(0, 100)}...`);
-      }
-      projectSection.push(`\nIMPORTANT: When generating statements, frame these team accomplishments as YOUR leadership/direction. Use phrases like "led team that...", "directed personnel who...", "supervised effort that...". Connect your actions to the team's results and the project's overall impact.`);
-    } else {
-      projectSection.push(`\nIMPORTANT: Use the project's result and impact to enhance your personal accomplishment. Connect your specific actions to the broader project outcomes.`);
-    }
-
-    sections.push(projectSection.join("\n"));
-  }
-
-  return sections.join("\n");
 }
 
 // Default settings if user hasn't configured their own
@@ -849,8 +669,7 @@ export async function POST(request: Request) {
       // Calculate character limits (HLR has smaller limit)
       const effectiveMaxChars = isHLR ? maxHlrChars : maxChars;
       
-      // Track per-statement target for QC (set in multi-accomplishment branch)
-      let perStatementCharTarget = effectiveMaxChars;
+      // Track multi-statement generation for QC
       let isMultiStatementGeneration = false;
 
       // Build shared award context (available for all MPA categories)
@@ -973,9 +792,8 @@ The primary impact MUST emphasize RESOURCE EFFICIENCY. Frame around:
 - Abbreviations: hrs, mos, wks, sq, &`
           : `TARGET: Statement should be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters.`;
         
-        // Set per-statement target for QC when generating 2 statements
+        // Set multi-statement flag for QC when generating 2 statements
         if (stmtCount === 2) {
-          perStatementCharTarget = charLimitPerStatement;
           isMultiStatementGeneration = true;
         }
         
@@ -1483,8 +1301,6 @@ Output ONLY the statement text, no quotes or JSON.`;
         const perStatementTarget = Math.floor((effectiveMaxChars - 2) / mpaAccomplishments.length);
         const isMultiAccomplishment = mpaAccomplishments.length > 1;
         
-        // Set the per-statement target for QC
-        perStatementCharTarget = perStatementTarget;
         isMultiStatementGeneration = isMultiAccomplishment;
 
         userPrompt = `Generate EPB narrative statements for "${mpa.label}".

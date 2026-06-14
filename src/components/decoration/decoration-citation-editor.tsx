@@ -87,7 +87,6 @@ export function DecorationCitationEditor({
     setShowHistory,
     citationHighlights,
     addCitationHighlight,
-    removeCitationHighlight,
     clearCitationHighlights,
     statementColors,
     leftPaneMode,
@@ -685,18 +684,6 @@ export function DecorationCitationEditor({
     setSynonymsLocked(false);
   }, [citationText, selectionStart, stagedSynonym, originalWord, setCitationText]);
   
-  // Legacy apply for revisions (multi-word) - kept for backward compatibility
-  const applySynonym = useCallback(
-    (synonym: string) => {
-      const newText =
-        citationText.substring(0, selectionStart) + synonym + citationText.substring(selectionEnd);
-      setCitationText(newText);
-      closeSelectionPopup();
-      toast.success("Word replaced");
-    },
-    [citationText, selectionStart, selectionEnd, setCitationText, closeSelectionPopup]
-  );
-  
   // Render citation text with highlights
   const renderHighlightedText = useMemo(() => {
     if (citationHighlights.length === 0) return null;
@@ -853,23 +840,6 @@ export function DecorationCitationEditor({
   const handleClear = useCallback(() => {
     setCitationText("");
   }, [setCitationText]);
-
-  // Get aggressiveness label
-  const getAggressivenessLabel = (value: number) => {
-    if (value <= 20) return "Minimal";
-    if (value <= 40) return "Conservative";
-    if (value <= 60) return "Moderate";
-    if (value <= 80) return "Aggressive";
-    return "Maximum";
-  };
-
-  const getAggressivenessDescription = (value: number) => {
-    if (value <= 20) return "Only fix obvious issues, preserve your voice";
-    if (value <= 40) return "Light touch, replace only weak words";
-    if (value <= 60) return "Balanced refresh with new phrasing";
-    if (value <= 80) return "Substantial rewrite, keep only metrics";
-    return "Complete rewrite, preserve only data";
-  };
 
   return (
     <TooltipProvider>

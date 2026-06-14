@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useAwardsStore } from "@/stores/awards-store";
 import { useUserStore } from "@/stores/user-store";
 import {
   Card,
@@ -13,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -27,10 +25,10 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { AWARD_TYPES, AWARD_LEVELS, AWARD_CATEGORIES } from "@/lib/constants";
+import { AWARD_TYPES } from "@/lib/constants";
 import { AwardBadge, AwardSummary } from "./award-badges";
 import { MemberRankInsignia } from "@/components/rank/rank-insignia";
-import type { Award, AwardType, Profile, ManagedMember, Rank } from "@/types/database";
+import type { Award, AwardType, Rank } from "@/types/database";
 import {
   Trophy,
   Medal,
@@ -60,7 +58,7 @@ export function AwardsPanel({
   canAddAwards = false,
   className,
 }: AwardsPanelProps) {
-  const { profile, subordinates, managedMembers } = useUserStore();
+  const { subordinates, managedMembers } = useUserStore();
   const [selectedType, setSelectedType] = useState<AwardType | "all">("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());

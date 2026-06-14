@@ -21,8 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { getActiveCycleYear } from "@/lib/constants";
-import type { Project, Rank } from "@/types/database";
+import type { Project } from "@/types/database";
 import {
   FolderKanban,
   Plus,
@@ -92,7 +91,6 @@ export function ProjectsSidePanel({
   } = useProjectsStore();
 
   const [selectedYear, setSelectedYear] = useState<string>("all");
-  const cycleYear = getActiveCycleYear(profile?.rank as Rank | null);
 
   // Load projects
   useEffect(() => {

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, Send, AlertCircle, CheckCircle2, FileEdit } from "lucide-react";
+import { Loader2, Send, AlertCircle, CheckCircle2 } from "lucide-react";
 import { ReviewerNameInput } from "@/components/review/reviewer-name-input";
 import { ReviewSection } from "@/components/review/review-section";
 import { CommentSidebar } from "@/components/review/comment-sidebar";
@@ -43,7 +43,6 @@ type ReviewStep = "loading" | "error" | "name" | "review" | "submitting" | "succ
 
 interface GenericReviewPageProps {
   token: string;
-  shellType: "epb" | "award" | "decoration";
   shellTypeLabel: string;
 }
 
@@ -57,7 +56,7 @@ interface StoredProgress {
   step: ReviewStep;
 }
 
-export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericReviewPageProps) {
+export function GenericReviewPage({ token, shellTypeLabel }: GenericReviewPageProps) {
   const [step, setStep] = useState<ReviewStep>("loading");
   const [error, setError] = useState<string | null>(null);
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
@@ -68,7 +67,6 @@ export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericR
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
-  const [hasRestoredProgress, setHasRestoredProgress] = useState(false);
   const [rewriteEditorSection, setRewriteEditorSection] = useState<{
     key: string;
     label: string;
@@ -137,7 +135,6 @@ export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericR
             // If we have a name and were in review step, go directly to review
             if (progress.reviewerName && progress.step === "review") {
               setStep("review");
-              setHasRestoredProgress(true);
               return;
             }
           }
@@ -406,7 +403,6 @@ export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericR
         rateeRank={reviewData.rateeRank}
         cycleYear={reviewData.cycleYear}
         linkLabel={reviewData.linkLabel}
-        isAnonymous={reviewData.isAnonymous}
         onContinue={handleNameSubmit}
       />
     );
@@ -567,7 +563,6 @@ export function GenericReviewPage({ token, shellType, shellTypeLabel }: GenericR
           <SectionRewriteEditor
             open={true}
             onOpenChange={(open) => !open && setRewriteEditorSection(null)}
-            sectionKey={rewriteEditorSection.key}
             sectionLabel={rewriteEditorSection.label}
             originalText={rewriteEditorSection.content}
             existingRewrite={getExistingRewrite(rewriteEditorSection.key)}

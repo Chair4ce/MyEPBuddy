@@ -38,7 +38,7 @@ import { TagFilterPopover } from "@/components/entries/tag-filter-popover";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
-import { Plus, Pencil, Trash2, Filter, FileText, LayoutList, CalendarDays, Calendar } from "lucide-react";
+import { Plus, Pencil, Trash2, Filter, FileText, LayoutList, CalendarDays } from "lucide-react";
 import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import { EPBProgressCard } from "@/components/epb/epb-progress-card";
 import { SupervisorFeedbackPanel } from "@/components/entries/supervisor-feedback-panel";
@@ -46,7 +46,7 @@ import type { Rank } from "@/types/database";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { Accomplishment, ManagedMember, Profile, AwardQuarter } from "@/types/database";
+import type { Accomplishment, AwardQuarter } from "@/types/database";
 import { UserCheck } from "lucide-react";
 import {
   Tooltip,
@@ -57,7 +57,7 @@ import {
 
 function EntriesContent() {
   const searchParams = useSearchParams();
-  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
+  const { profile, subordinates, managedMembers } = useUserStore();
   const {
     accomplishments,
     setAccomplishments,
@@ -166,34 +166,6 @@ function EntriesContent() {
     dateRange: { start: string; end: string };
     entries: Accomplishment[];
   }
-
-  const quarterGroups = useMemo((): QuarterGroup[] => {
-    const groups: QuarterGroup[] = AWARD_QUARTERS.map((q) => {
-      const dateRange = useFiscalYear
-        ? getFiscalQuarterDateRange(q.value, cycleYear)
-        : getQuarterDateRange(q.value, cycleYear);
-
-      return {
-        quarter: q.value,
-        label: useFiscalYear ? `FY${cycleYear.toString().slice(-2)} ${q.value}` : `${q.value} ${cycleYear}`,
-        dateRange,
-        entries: [],
-      };
-    });
-
-    // Assign entries to quarters based on date
-    accomplishments.forEach((entry) => {
-      const entryDate = entry.date;
-      for (const group of groups) {
-        if (entryDate >= group.dateRange.start && entryDate <= group.dateRange.end) {
-          group.entries.push(entry);
-          break;
-        }
-      }
-    });
-
-    return groups;
-  }, [accomplishments, useFiscalYear, cycleYear]);
 
   // Extract all unique tags from accomplishments for the filter
   const availableTags = useMemo(() => {

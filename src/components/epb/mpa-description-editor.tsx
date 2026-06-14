@@ -100,7 +100,7 @@ function scrollItemWithinContainer(container: HTMLDivElement, item: HTMLDivEleme
     return;
   }
 
-  let targetScroll = itemTop - Math.max(padding, container.clientHeight * 0.12);
+  const targetScroll = itemTop - Math.max(padding, container.clientHeight * 0.12);
 
   container.scrollTo({
     top: Math.min(maxScroll, Math.max(0, targetScroll)),

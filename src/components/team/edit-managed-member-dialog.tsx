@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { Loader2, UserCog, Link2, AlertCircle } from "lucide-react";
-import type { Rank, ManagedMember, Profile } from "@/types/database";
+import type { Rank, ManagedMember } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer, isCivilian } from "@/lib/constants";
 
 function getAvailableSubordinateRanks(supervisorRank: Rank | null | undefined) {

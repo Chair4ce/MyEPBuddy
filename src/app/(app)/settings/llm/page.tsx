@@ -86,7 +86,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { UserLLMSettings, Acronym, Abbreviation, RankVerbProgression, MPADescriptions, Rank } from "@/types/database";
-import { RANKS, STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, getActiveCyclePeriod, isOfficer, isCivilian, ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
+import { STANDARD_MGAS, DEFAULT_AWARD_SENTENCES, DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS, getStaticCloseoutDate, getActiveCycleYear, getActiveCyclePeriod, isOfficer, isCivilian, ENLISTED_RANKS, OFFICER_RANKS, DEFAULT_OPB_SYSTEM_PROMPT, DEFAULT_OPB_STYLE_GUIDELINES } from "@/lib/constants";
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import Link from "next/link";
 import { Award, Medal } from "lucide-react";
@@ -232,7 +232,6 @@ function PlaceholderStatus({ systemPrompt }: { systemPrompt: string }) {
   }, [systemPrompt]);
 
   const usedCount = placeholderStatus.filter((p) => p.isUsed).length;
-  const missingCount = placeholderStatus.length - usedCount;
 
   return (
     <div className="space-y-2">

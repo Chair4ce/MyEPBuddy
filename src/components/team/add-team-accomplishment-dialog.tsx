@@ -105,7 +105,7 @@ export function AddTeamAccomplishmentDialog({
   subordinates,
   managedMembers,
 }: AddTeamAccomplishmentDialogProps) {
-  const { profile, epbConfig } = useUserStore();
+  const { profile } = useUserStore();
 
   const [step, setStep] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -560,7 +560,7 @@ export function AddTeamAccomplishmentDialog({
 
                   <ScrollArea className="h-[200px] pr-3">
                     <div className="space-y-3">
-                      {selectedMembers.map((member, index) => (
+                      {selectedMembers.map((member) => (
                         <div
                           key={`${member.type}-${member.id}`}
                           className="flex items-start gap-3 p-3 rounded-lg border bg-card"

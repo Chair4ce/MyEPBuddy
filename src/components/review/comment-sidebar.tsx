@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { CommentCard, type CommentData } from "./comment-card";
 import { MessageSquarePlus } from "lucide-react";
 
@@ -43,7 +42,6 @@ export function CommentSidebar({
   const prevCommentsLengthRef = useRef(comments.length);
   const pendingCount = comments.filter((c) => c.status === "pending" || !c.status).length;
   const acceptedCount = comments.filter((c) => c.status === "accepted").length;
-  const dismissedCount = comments.filter((c) => c.status === "dismissed").length;
 
   // Scroll to newly added comment (when comments length increases and we have an active comment)
   useEffect(() => {

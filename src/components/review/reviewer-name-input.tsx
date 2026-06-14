@@ -23,7 +23,6 @@ interface ReviewerNameInputProps {
   rateeRank?: string;
   cycleYear?: number;
   linkLabel?: string | null;
-  isAnonymous: boolean;
   onContinue: (name: string, nameSource: "label" | "provided" | "generated") => void;
 }
 
@@ -32,7 +31,6 @@ export function ReviewerNameInput({
   rateeRank,
   cycleYear,
   linkLabel,
-  isAnonymous,
   onContinue,
 }: ReviewerNameInputProps) {
   const [name, setName] = useState("");

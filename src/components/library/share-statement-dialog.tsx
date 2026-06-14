@@ -38,13 +38,6 @@ interface ShareStatementDialogProps {
   onSharesUpdated?: () => void;
 }
 
-type ShareTarget = {
-  id: string;
-  type: "user" | "team" | "community";
-  label: string;
-  sublabel?: string;
-};
-
 export function ShareStatementDialog({
   statement,
   open,
@@ -257,14 +250,6 @@ export function ShareStatementDialog({
       setIsSaving(false);
     }
   }
-
-  const hasChanges =
-    shareWithTeam !== existingShares.some((s) => s.share_type === "team") ||
-    shareWithCommunity !== existingShares.some((s) => s.share_type === "community") ||
-    selectedUsers.length !== existingShares.filter((s) => s.share_type === "user").length ||
-    selectedUsers.some(
-      (u) => !existingShares.find((s) => s.share_type === "user" && s.shared_with_id === u.id)
-    );
 
   const activeShareCount =
     (shareWithTeam ? 1 : 0) + (shareWithCommunity ? 1 : 0) + selectedUsers.length;

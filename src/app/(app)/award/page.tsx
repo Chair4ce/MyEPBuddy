@@ -178,7 +178,6 @@ export default function AwardPage() {
 
   // User award categories state
   const [userCategories, setUserCategories] = useState<UserAwardCategory[]>([]);
-  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
 
   // ============================================================================
   // Load User Award Categories
@@ -187,7 +186,6 @@ export default function AwardPage() {
   const loadUserCategories = useCallback(async () => {
     if (!profile) return;
 
-    setIsLoadingCategories(true);
     try {
       // Try to fetch existing categories
       const { data: existingCategories, error: fetchError } = await supabase
@@ -225,8 +223,6 @@ export default function AwardPage() {
     } catch (error) {
       console.error("Error loading user categories:", error);
       // Fallback: categories will be empty, user can reset to defaults
-    } finally {
-      setIsLoadingCategories(false);
     }
   }, [profile, supabase, createAwardCategory]);
 
@@ -837,7 +833,6 @@ export default function AwardPage() {
                   onCategoriesChange={setUserCategories}
                   selectedCategoryKey={createAwardCategory}
                   onSelectCategory={(key) => setCreateAwardCategory(key as AwardCategory)}
-                  compact
                 />
               )}
 

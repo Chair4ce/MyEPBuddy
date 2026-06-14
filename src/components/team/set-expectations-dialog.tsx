@@ -25,8 +25,7 @@ import {
   Plus,
   Eye,
   EyeOff,
-  ChevronRight,
-  FileText
+  ChevronRight
 } from "lucide-react";
 import {
   AlertDialog,
@@ -58,7 +57,6 @@ interface SetExpectationsDialogProps {
   // Either a real subordinate profile or a managed member
   subordinate?: Profile | null;
   managedMember?: ManagedMember | null;
-  supervisorRank?: Rank | null;
   onSuccess?: () => void;
 }
 
@@ -67,7 +65,6 @@ export function SetExpectationsDialog({
   onOpenChange,
   subordinate,
   managedMember,
-  supervisorRank,
   onSuccess,
 }: SetExpectationsDialogProps) {
   const [isLoading, setIsLoading] = useState(false);

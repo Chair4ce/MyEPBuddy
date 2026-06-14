@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useCreditsStore } from "@/stores/credits-store";
 import { CreditLedgerTable } from "@/components/settings/credit-ledger-table";
 import { EarnedTokensTracker } from "@/components/billing/earned-tokens-tracker";
+import { CreditsFirstBanner } from "@/components/billing/credits-first-banner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,7 +16,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 import { Loader2, Sparkles, ExternalLink, Receipt, Coins } from "lucide-react";

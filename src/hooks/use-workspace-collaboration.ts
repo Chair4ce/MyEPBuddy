@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
-import type { WorkspaceSession, WorkspaceSessionParticipant, WorkspaceState, Profile } from "@/types/database";
+import type { WorkspaceSession, WorkspaceState } from "@/types/database";
 import { RealtimeChannel } from "@supabase/supabase-js";
 
 interface CollaboratorPresence {

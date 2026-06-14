@@ -66,7 +66,6 @@ import {
   Calendar,
   History,
   Trophy,
-  Medal,
   Plus,
   Pencil,
   FileText,
@@ -127,8 +126,6 @@ import {
   getActiveCycleRangeLabel,
   ENTRY_MGAS,
   SUPERVISOR_RANKS,
-  ENLISTED_RANKS,
-  OFFICER_RANKS,
   isOfficer,
   isEnlisted,
 } from "@/lib/constants";
@@ -229,7 +226,7 @@ function formatDaysSupervised(days: number): string {
 export default function TeamPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { profile, subordinates, setSubordinates, managedMembers, removeManagedMember, epbConfig } = useUserStore();
+  const { profile, subordinates, setSubordinates, managedMembers, removeManagedMember } = useUserStore();
   const [isLoading, setIsLoading] = useState(true);
   const [supervisors, setSupervisors] = useState<Profile[]>([]);
   const [pendingRequests, setPendingRequests] = useState<TeamRequest[]>([]);
@@ -663,7 +660,6 @@ export default function TeamPage() {
     subordinates.forEach((s) => registerMember(s.id, s.rank));
     managedMembers.forEach((m) => registerMember(m.id, m.rank));
 
-    const allMemberIds = Array.from(memberCycleYears.keys());
     const uniqueCycleYears = [...new Set(memberCycleYears.values())];
 
     try {
@@ -910,18 +906,6 @@ export default function TeamPage() {
     return Boolean(rankColors[rank || ""]);
   }
 
-  // Stats for the chain
-  const stats = useMemo(() => {
-    const rankCounts: Record<string, number> = {};
-    allProfiles.forEach((p) => {
-      if (p.id !== profile?.id) {
-        const rank = p.rank || "Unknown";
-        rankCounts[rank] = (rankCounts[rank] || 0) + 1;
-      }
-    });
-    return rankCounts;
-  }, [allProfiles, profile]);
-
   async function searchProfile() {
     if (!inviteEmail.trim()) return;
     setIsSearching(true);
@@ -1071,7 +1055,7 @@ export default function TeamPage() {
 
       toast.success("Request cancelled");
       loadTeamData();
-    } catch (error) {
+    } catch {
       toast.error("Failed to cancel request");
     }
   }
@@ -1106,7 +1090,7 @@ export default function TeamPage() {
       } else {
         setSubordinates(subordinates.filter((s) => s.id !== memberId));
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to remove team member");
     }
   }
@@ -1121,7 +1105,7 @@ export default function TeamPage() {
       removeManagedMember(memberId);
       Analytics.teamMemberRemoved("managed");
       toast.success("Team member removed");
-    } catch (error) {
+    } catch {
       toast.error("Failed to remove team member");
     }
   }
@@ -1753,7 +1737,6 @@ export default function TeamPage() {
                         memberName={node.data.full_name || "Unknown"}
                         memberRank={node.data.rank}
                         isManagedMember={isManagedMember}
-                        cycleYear={getActiveCycleYear(node.data.rank as import("@/types/database").Rank | null)}
                         currentUserId={profile?.id || ""}
                         trigger={
                           <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
@@ -2111,7 +2094,6 @@ export default function TeamPage() {
           onOpenChange={setShowExpectationsDialog}
           subordinate={expectationsTarget?.subordinate}
           managedMember={expectationsTarget?.managedMember}
-          supervisorRank={profile?.rank}
           onSuccess={() => setExpectationsTarget(null)}
         />
 
@@ -2709,7 +2691,7 @@ export default function TeamPage() {
                     tree={tree}
                     currentUserId={profile?.id || ""}
                     rankColors={rankColors}
-                    onMemberClick={(memberId, isManagedMember) => {
+                    onMemberClick={(memberId) => {
                       // Find the node data to populate the details dialog
                       const findNode = (node: TreeNode): TreeNode | null => {
                         if (node.data.id === memberId) return node;

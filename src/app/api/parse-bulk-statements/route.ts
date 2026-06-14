@@ -138,7 +138,6 @@ export async function POST(request: Request) {
       rawText,
       mpaDetectionMode,
       manualMpa,
-      statementType,
       defaultCycleYear,
       defaultAfsc,
       defaultRank,
@@ -231,7 +230,7 @@ export async function POST(request: Request) {
         jsonStr = jsonStr.slice(0, -3);
       }
       parsedResult = JSON.parse(jsonStr.trim());
-    } catch (parseError) {
+    } catch {
       console.error("Failed to parse LLM response:", llmResponse);
       return refundAndError(billableCtx, { error: "Failed to parse statements. Please try again." }, { status: 500 });
     }

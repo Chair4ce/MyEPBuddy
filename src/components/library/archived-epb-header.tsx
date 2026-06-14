@@ -33,7 +33,6 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Profile } from "@/types/database";
 
 interface ArchivedEPBHeaderProps {
   epbId: string;
@@ -56,7 +55,6 @@ export function ArchivedEPBHeader({
   const { profile, subordinates } = useUserStore();
   const [isSharing, setIsSharing] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [shareResult, setShareResult] = useState<number | null>(null);
 
@@ -104,7 +102,6 @@ export function ArchivedEPBHeader({
   };
 
   const openShareDialog = (target: ShareTarget) => {
-    setShareTarget(target);
     setSelectedUserId(null);
     setShareResult(null);
 

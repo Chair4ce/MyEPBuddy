@@ -9,7 +9,6 @@ import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,

@@ -123,8 +123,6 @@ export function DutyDescriptionCard({
   
   // Get state from store
   const {
-    dutyDescriptionDraft,
-    isDutyDescriptionDirty,
     isSavingDutyDescription,
     setDutyDescriptionDraft,
     setIsDutyDescriptionDirty,

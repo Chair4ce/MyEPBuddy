@@ -30,7 +30,7 @@ import {
   refreshCreditsAfterEarnAction,
 } from "@/lib/billing/refresh-earn-rewards";
 import { useCreditsStore } from "@/stores/credits-store";
-import { Loader2, UserPlus, User, Link2, AlertCircle } from "lucide-react";
+import { Loader2, UserPlus, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, SUPERVISOR_RANKS, isOfficer, isCivilian, isEnlisted } from "@/lib/constants";
 
@@ -72,7 +72,7 @@ export function AddManagedMemberDialog({
   open,
   onOpenChange,
 }: AddManagedMemberDialogProps) {
-  const { profile, subordinates, managedMembers, addManagedMember } = useUserStore();
+  const { profile, managedMembers, addManagedMember } = useUserStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [existingUser, setExistingUser] = useState<ExistingUserMatch | null>(null);

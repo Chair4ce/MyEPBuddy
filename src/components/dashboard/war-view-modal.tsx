@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -38,7 +37,6 @@ import {
   X,
   Plus,
   Trash2,
-  GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -70,22 +68,6 @@ interface WARReport {
     prepared_by: string;
   };
   categories: WARReportCategory[];
-}
-
-interface SavedWARReport {
-  id: string;
-  user_id: string;
-  week_start: string;
-  week_end: string;
-  title: string | null;
-  unit_office_symbol: string | null;
-  prepared_by: string;
-  content: { categories: WARReportCategory[] };
-  entry_count: number;
-  model_used: string | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
 }
 
 interface WARViewModalProps {

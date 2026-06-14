@@ -13,8 +13,6 @@ import type {
   DecorationAwardType,
   DecorationReason,
   DecorationConfig,
-  DecorationReasonOption,
-  RankVerbs,
   ClosingIntensity,
 } from "./types";
 

@@ -52,8 +52,6 @@ import {
   Pencil,
   Search,
   RefreshCw,
-  Plus,
-  X,
 } from "lucide-react";
 
 // ============================================================================
@@ -152,7 +150,7 @@ export function AwardPackagesManager({
   onOpenChange,
   onAwardsApplied,
 }: AwardPackagesManagerProps) {
-  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
+  const { profile, subordinates, managedMembers } = useUserStore();
   const supabase = createClient();
 
   // State

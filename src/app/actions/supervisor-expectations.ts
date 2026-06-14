@@ -52,7 +52,7 @@ export async function getExpectation(
 
   // Transform the joined data
   if (data) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { supervisor, ...rest } = data;
     const expectation: SupervisorExpectation = {
       ...rest,
