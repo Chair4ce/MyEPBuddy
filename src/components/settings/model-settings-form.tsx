@@ -20,6 +20,7 @@ import type {
 } from "@/lib/ai-models/types";
 import { Analytics } from "@/lib/analytics";
 import { KEY_NAME_TO_PROVIDER } from "@/lib/model-preferences";
+import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -108,8 +109,9 @@ export function ModelSettingsForm({
         }
 
         useAvailableModelsStore.getState().invalidate();
-      } catch {
+      } catch (error) {
         if (seq !== saveSeqRef.current) return;
+        if (handleStaleDeploymentError(error)) return;
         toast.error("Failed to save model preference");
         await reloadSettings();
       } finally {

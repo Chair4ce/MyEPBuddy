@@ -28,6 +28,7 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { createClient } from "@/lib/supabase/client";
 import { createAccomplishment } from "@/app/actions/accomplishments";
+import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 import {
   ENTRY_MGAS,
   getActiveCycleYear,
@@ -344,6 +345,7 @@ export function AddProjectAccomplishmentDialog({
           }).catch(() => {});
         }
       } catch (error) {
+        if (handleStaleDeploymentError(error)) return;
         errors.push(`${member.rank || ""} ${member.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }

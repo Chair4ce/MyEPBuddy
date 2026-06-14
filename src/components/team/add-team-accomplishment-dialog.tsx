@@ -28,6 +28,7 @@ import {
 import { ComboboxInput } from "@/components/ui/combobox-input";
 import { toast } from "@/components/ui/sonner";
 import { createAccomplishment } from "@/app/actions/accomplishments";
+import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 import {
   DEFAULT_ACTION_VERBS,
   ENTRY_MGAS,
@@ -279,6 +280,7 @@ export function AddTeamAccomplishmentDialog({
           }
         }
       } catch (error) {
+        if (handleStaleDeploymentError(error)) return;
         errors.push(`${member.rank || ""} ${member.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }

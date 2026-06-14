@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { APP_BUILD_ID } from "@/lib/app-build-id";
+import { STALE_DEPLOYMENT_EVENT } from "@/lib/stale-deployment";
 
 interface VersionInfo {
   version: string;
@@ -11,7 +12,7 @@ interface VersionInfo {
 }
 
 interface UseVersionCheckOptions {
-  /** Base polling interval in milliseconds (default: 900000 = 15 minutes) */
+  /** Base polling interval in milliseconds (default: 300000 = 5 minutes) */
   pollInterval?: number;
   /** Whether to check on tab/window focus (default: true) */
   checkOnFocus?: boolean;
@@ -99,7 +100,7 @@ export function useVersionCheck(
   options: UseVersionCheckOptions = {}
 ): UseVersionCheckReturn {
   const {
-    pollInterval = 900000, // 15 minutes default
+    pollInterval = 300000, // 5 minutes default
     checkOnFocus = true,
     disabled = false,
   } = options;
@@ -206,6 +207,19 @@ export function useVersionCheck(
       setHasUpdate(true);
     }
   }, [disabled, fetchVersion]);
+
+  // Immediate prompt when a server action fails due to deploy skew
+  useEffect(() => {
+    if (disabled) return;
+
+    const handleStaleDeployment = () => {
+      setHasUpdate(true);
+    };
+
+    window.addEventListener(STALE_DEPLOYMENT_EVENT, handleStaleDeployment);
+    return () =>
+      window.removeEventListener(STALE_DEPLOYMENT_EVENT, handleStaleDeployment);
+  }, [disabled]);
 
   // Listen for version updates from other tabs
   useEffect(() => {

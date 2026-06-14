@@ -12,7 +12,10 @@ import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-moda
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
 import { usePromptRulesMode } from "@/lib/feature-flags";
+import { installStaleDeploymentGuard } from "@/lib/stale-deployment-guard";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
+
+installStaleDeploymentGuard();
 
 interface AppInitializerProps {
   profile: Profile | null;
