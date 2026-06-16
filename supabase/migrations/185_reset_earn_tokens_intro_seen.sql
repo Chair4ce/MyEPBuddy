@@ -3,4 +3,4 @@
 
 UPDATE profiles
 SET earn_tokens_intro_seen_at = NULL
-WHERE earn_tokens_intro_seen_at IS NOT NULL
+WHERE earn_tokens_intro_seen_at IS NOT NULL;

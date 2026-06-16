@@ -9,7 +9,6 @@ export default function DecorationReviewPage({ params }: { params: Promise<{ tok
   return (
     <GenericReviewPage 
       token={resolvedParams.token} 
-      shellType="decoration" 
       shellTypeLabel="Decoration" 
     />
   );

@@ -24,7 +24,6 @@ import {
   X,
   Loader2,
   Users,
-  Check,
   User,
   Crown,
   Shield,

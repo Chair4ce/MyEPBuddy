@@ -44,7 +44,6 @@ import {
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { cn } from "@/lib/utils";
 import { hasRankInsignia } from "@/lib/rank-insignia";
 import {
   getStorageAvatarPath,
@@ -432,7 +431,7 @@ export default function SettingsPage() {
     }
 
     try {
-      const { data, error } = await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({
         phone: newPhone,
       });
 
@@ -464,7 +463,7 @@ export default function SettingsPage() {
     setPhoneLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { error } = await supabase.auth.verifyOtp({
         phone: newPhone,
         token: phoneOtp,
         type: 'phone_change',
@@ -846,8 +845,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Phone Number Management Card */}
-      <Card>
+      {/* Phone Number Management Card — required for earn-token promotions */}
+      <Card id="phone-verification">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">

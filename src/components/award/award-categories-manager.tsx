@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,6 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
-  X,
 } from "lucide-react";
 import type { UserAwardCategory } from "@/types/database";
 
@@ -53,20 +52,7 @@ interface AwardCategoriesManagerProps {
   onCategoriesChange: (categories: UserAwardCategory[]) => void;
   selectedCategoryKey: string;
   onSelectCategory: (categoryKey: string) => void;
-  compact?: boolean;
 }
-
-// Default categories that can be restored
-const DEFAULT_CATEGORIES = [
-  { category_key: "snco", label: "SNCO" },
-  { category_key: "nco", label: "NCO" },
-  { category_key: "amn", label: "Airman" },
-  { category_key: "jr_tech", label: "Junior Technician" },
-  { category_key: "sr_tech", label: "Senior Technician" },
-  { category_key: "innovation", label: "Innovation" },
-  { category_key: "volunteer", label: "Volunteer" },
-  { category_key: "team", label: "Team" },
-];
 
 export function AwardCategoriesManager({
   userId,
@@ -74,13 +60,11 @@ export function AwardCategoriesManager({
   onCategoriesChange,
   selectedCategoryKey,
   onSelectCategory,
-  compact = false,
 }: AwardCategoriesManagerProps) {
   const supabase = createClient();
 
   // UI State
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   // Add/Edit dialog state
   const [showAddDialog, setShowAddDialog] = useState(false);

@@ -16,9 +16,9 @@ BEGIN
     RAISE EXCEPTION 'Access denied: admin only';
   END IF;
 END;
-$$
+$$;
 
-REVOKE ALL ON FUNCTION admin_assert_is_admin() FROM PUBLIC, anon, authenticated
+REVOKE ALL ON FUNCTION admin_assert_is_admin() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION admin_search_users(
   p_query TEXT,
@@ -57,7 +57,7 @@ BEGIN
     ) u
   ), '[]'::jsonb);
 END;
-$$
+$$;
 
 CREATE OR REPLACE FUNCTION admin_grant_target_count()
 RETURNS INTEGER
@@ -70,7 +70,7 @@ BEGIN
 
   RETURN (SELECT COUNT(*)::INTEGER FROM profiles);
 END;
-$$
+$$;
 
 CREATE OR REPLACE FUNCTION admin_grant_credits(
   p_user_ids UUID[],
@@ -155,7 +155,7 @@ BEGIN
     'users', v_results
   );
 END;
-$$
+$$;
 
 CREATE OR REPLACE FUNCTION admin_grant_credits_all(
   p_amount INTEGER,
@@ -225,28 +225,21 @@ BEGIN
     'total_tokens', v_granted_count * p_amount
   );
 END;
-$$
+$$;
 
-REVOKE ALL ON FUNCTION admin_search_users(TEXT, INTEGER) FROM PUBLIC
+REVOKE ALL ON FUNCTION admin_search_users(TEXT, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_search_users(TEXT, INTEGER) TO authenticated;
 
-GRANT EXECUTE ON FUNCTION admin_search_users(TEXT, INTEGER) TO authenticated
+REVOKE ALL ON FUNCTION admin_grant_target_count() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_grant_target_count() TO authenticated;
 
-REVOKE ALL ON FUNCTION admin_grant_target_count() FROM PUBLIC
+REVOKE ALL ON FUNCTION admin_grant_credits(UUID[], INTEGER, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_grant_credits(UUID[], INTEGER, TEXT) TO authenticated;
 
-GRANT EXECUTE ON FUNCTION admin_grant_target_count() TO authenticated
+REVOKE ALL ON FUNCTION admin_grant_credits_all(INTEGER, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_grant_credits_all(INTEGER, TEXT) TO authenticated;
 
-REVOKE ALL ON FUNCTION admin_grant_credits(UUID[], INTEGER, TEXT) FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION admin_grant_credits(UUID[], INTEGER, TEXT) TO authenticated
-
-REVOKE ALL ON FUNCTION admin_grant_credits_all(INTEGER, TEXT) FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION admin_grant_credits_all(INTEGER, TEXT) TO authenticated
-
-COMMENT ON FUNCTION admin_search_users(TEXT, INTEGER) IS 'Admin-only. Search profiles by email or name for token grants.'
-
-COMMENT ON FUNCTION admin_grant_target_count() IS 'Admin-only. Count of profiles eligible for bulk token grants.'
-
-COMMENT ON FUNCTION admin_grant_credits(UUID[], INTEGER, TEXT) IS 'Admin-only. Grant tokens to one or more users (adjustment ledger entries).'
-
-COMMENT ON FUNCTION admin_grant_credits_all(INTEGER, TEXT) IS 'Admin-only. Grant tokens to every profile (adjustment ledger entries).'
+COMMENT ON FUNCTION admin_search_users(TEXT, INTEGER) IS 'Admin-only. Search profiles by email or name for token grants.';
+COMMENT ON FUNCTION admin_grant_target_count() IS 'Admin-only. Count of profiles eligible for bulk token grants.';
+COMMENT ON FUNCTION admin_grant_credits(UUID[], INTEGER, TEXT) IS 'Admin-only. Grant tokens to one or more users (adjustment ledger entries).';
+COMMENT ON FUNCTION admin_grant_credits_all(INTEGER, TEXT) IS 'Admin-only. Grant tokens to every profile (adjustment ledger entries).';

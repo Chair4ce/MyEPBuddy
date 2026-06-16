@@ -13,12 +13,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+
+
 import {
   STANDARD_MGAS,
   MAX_STATEMENT_CHARACTERS,
@@ -42,7 +38,7 @@ import { useUserStore } from "@/stores/user-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { useOPBShellStore } from "@/stores/opb-shell-store";
 import { OPBSectionCard } from "./opb-section-card";
-import type { OPBShell, OPBShellSection, OPBShellSnapshot, Rank, Accomplishment, UserLLMSettings } from "@/types/database";
+import type { OPBShell, OPBShellSnapshot, Rank, Accomplishment } from "@/types/database";
 
 interface OPBShellFormProps {
   cycleYear: number;
@@ -54,19 +50,16 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
   const { profile } = useUserStore();
 
   const {
-    officerInfo,
     setOfficerInfo,
     currentShell,
     setCurrentShell,
     sections,
     updateSection,
-    sectionStates,
     snapshots,
     setSnapshots,
     addSnapshot,
     collapsedSections,
     toggleSectionCollapsed,
-    setSectionCollapsed,
     expandAll,
     collapseAll,
     isLoadingShell,
@@ -78,35 +71,11 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
     isDutyDescriptionDirty,
     isSavingDutyDescription,
     setIsSavingDutyDescription,
-    loadVersion,
   } = useOPBShellStore();
 
   const [isDutyDescriptionCollapsed, setIsDutyDescriptionCollapsed] = useState(false);
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
-  const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
-
-  // Load user's LLM settings (including custom OPB prompt)
-  useEffect(() => {
-    if (!profile) return;
-
-    async function loadSettings() {
-      if (!profile) return;
-      const { data, error } = await supabase
-        .from("user_llm_settings")
-        .select("opb_system_prompt, opb_style_guidelines, abbreviations, acronyms")
-        .eq("user_id", profile.id)
-        .maybeSingle();
-
-      if (!error && data) {
-        setUserSettings(data as Partial<UserLLMSettings>);
-      }
-    }
-
-    loadSettings();
-  }, [profile, supabase]);
-
-  // Load user's accomplishments for context
   useEffect(() => {
     if (!profile) return;
 
@@ -414,7 +383,6 @@ ${contextForGeneration}`;
     (s) => s.is_complete
   ).length;
   const totalSections = STANDARD_MGAS.length;
-  const progress = totalSections > 0 ? (completedSections / totalSections) * 100 : 0;
 
   // Loading state
   if (isLoadingShell) {

@@ -160,11 +160,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     const body: ApplyFeedbackRequest = await request.json();
     const { 
       currentText, 
-      snapshotText, 
       suggestionType, 
       highlightedText, 
       replacementText,
-      commentText,
     } = body;
 
     if (!highlightedText) {

@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
-import { cn } from "@/lib/utils";
 import {
   Share2,
   Search,
@@ -24,7 +23,6 @@ import {
   X,
   Loader2,
   Users,
-  Check,
   User,
   Crown,
   Shield,

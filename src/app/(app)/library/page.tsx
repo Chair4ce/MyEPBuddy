@@ -30,7 +30,6 @@ import { Analytics } from "@/lib/analytics";
 import { cn, getCharacterCountColor } from "@/lib/utils";
 import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AWARD_1206_CATEGORIES } from "@/lib/constants";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Rank, StatementType, WinLevel } from "@/types/database";
 
@@ -49,7 +48,6 @@ import {
   Share2,
   Globe,
   Plus,
-  Combine,
   FileText,
   Award,
   Sparkles,
@@ -60,7 +58,7 @@ import { ShareStatementDialog } from "@/components/library/share-statement-dialo
 import { AddStatementDialog } from "@/components/library/add-statement-dialog";
 import { StatementWorkspaceDialog } from "@/components/library/statement-workspace-dialog";
 import { ArchivedEPBHeader } from "@/components/library/archived-epb-header";
-import type { RefinedStatement, StatementHistory, CommunityStatement, SharedStatementView, StatementShare, ArchivedEPBView } from "@/types/database";
+import type { RefinedStatement, CommunityStatement, SharedStatementView, StatementShare, ArchivedEPBView } from "@/types/database";
 
 type UserRatings = Record<string, number>;
 
@@ -72,7 +70,7 @@ interface ArchivedEPBOption {
 }
 
 export default function LibraryPage() {
-  const { profile, epbConfig } = useUserStore();
+  const { profile } = useUserStore();
   const [activeTab, setActiveTab] = useState<"my" | "shared" | "community">("my");
   const [myStatements, setMyStatements] = useState<RefinedStatement[]>([]);
   const [myStatementShares, setMyStatementShares] = useState<Record<string, StatementShare[]>>({});
@@ -88,7 +86,6 @@ export default function LibraryPage() {
   const [filterArchivedEPB, setFilterArchivedEPB] = useState<string>("all");
   const [archivedEPBs, setArchivedEPBs] = useState<ArchivedEPBOption[]>([]);
   const [ratingId, setRatingId] = useState<string | null>(null);
-  const [copyingId, setCopyingId] = useState<string | null>(null);
   
   // Edit dialog - comprehensive state for all fields
   const [editingStatement, setEditingStatement] = useState<RefinedStatement | null>(null);
@@ -883,7 +880,6 @@ export default function LibraryPage() {
                     statement={statement}
                     mpaLabel={getMpaLabel(statement.mpa)}
                     onCopyToLibrary={copyToLibrary}
-                    isCopying={copyingId === statement.id}
                   />
                 ))
               )}
@@ -924,7 +920,6 @@ export default function LibraryPage() {
                         onRemoveRating={removeRating}
                         onCopyToLibrary={copyToLibrary}
                         onDeleteCommunity={deleteCommunityStatement}
-                        isCopying={copyingId === statement.id}
                       />
                     );
                   })}

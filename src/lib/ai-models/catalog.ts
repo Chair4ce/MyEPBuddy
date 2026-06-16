@@ -2,7 +2,6 @@ import { DEFAULT_APP_MODEL_ID, AI_MODELS, remapRetiredModelId, type ModelQuality
 import type { KeyStatus } from "@/app/actions/api-keys";
 import {
   isModelAvailableForStatus,
-  KEY_NAME_TO_PROVIDER,
 } from "@/lib/model-preferences";
 import type {
   AvailableModel,

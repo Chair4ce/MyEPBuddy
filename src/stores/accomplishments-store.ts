@@ -16,7 +16,7 @@ interface AccomplishmentsState {
 }
 
 export const useAccomplishmentsStore = create<AccomplishmentsState>(
-  (set, get) => ({
+  (set) => ({
     accomplishments: [],
     selectedAccomplishments: [],
     isLoading: true,

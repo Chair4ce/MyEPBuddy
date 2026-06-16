@@ -16,7 +16,6 @@ import { FileEdit, ArrowRight } from "lucide-react";
 interface SectionRewriteEditorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sectionKey: string;
   sectionLabel: string;
   originalText: string;
   existingRewrite?: string;
@@ -26,7 +25,6 @@ interface SectionRewriteEditorProps {
 export function SectionRewriteEditor({
   open,
   onOpenChange,
-  sectionKey,
   sectionLabel,
   originalText,
   existingRewrite,

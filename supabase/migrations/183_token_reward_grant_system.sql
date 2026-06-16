@@ -5,7 +5,7 @@ CREATE TYPE token_reward_repeat_mode AS ENUM (
   'once_per_user',
   'once_per_source',
   'repeatable_per_cycle'
-)
+);
 
 CREATE TABLE token_reward_config (
   reward_key credit_reward_type PRIMARY KEY,
@@ -23,18 +23,18 @@ CREATE TABLE token_reward_config (
   visible_in_tracker BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)
+);
 
 CREATE TRIGGER update_token_reward_config_updated_at
   BEFORE UPDATE ON token_reward_config
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-ALTER TABLE token_reward_config ENABLE ROW LEVEL SECURITY
+ALTER TABLE token_reward_config ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Authenticated users can read token reward config"
   ON token_reward_config FOR SELECT
   TO authenticated
-  USING (visible_in_tracker = true OR enabled = true)
+  USING (visible_in_tracker = true OR enabled = true);
 
 INSERT INTO token_reward_config (
   reward_key,
@@ -119,7 +119,7 @@ INSERT INTO token_reward_config (
     31,
     false,
     true
-  )
+  );
 
 CREATE OR REPLACE FUNCTION user_uses_own_api_key(p_user_id UUID)
 RETURNS BOOLEAN
@@ -139,7 +139,7 @@ AS $$
         OR k.grok_key IS NOT NULL
       )
   );
-$$
+$$;
 
 CREATE OR REPLACE FUNCTION user_phone_verified(p_user_id UUID)
 RETURNS BOOLEAN
@@ -153,7 +153,7 @@ AS $$
     FROM auth.users u
     WHERE u.id = p_user_id
   ), false);
-$$
+$$;
 
 -- Action-specific gates. Extend with new WHEN branches as rewards are wired up.
 CREATE OR REPLACE FUNCTION validate_token_reward_context(
@@ -188,7 +188,7 @@ BEGIN
       RETURN false;
   END CASE;
 END;
-$$
+$$;
 
 -- Central grant entry point. Server/trigger context only (auth.uid() IS NULL).
 -- Returns tokens granted (0 = skipped).
@@ -335,7 +335,7 @@ BEGIN
 
   RETURN v_config.amount;
 END;
-$$
+$$;
 
 CREATE OR REPLACE FUNCTION trg_team_members_token_reward()
 RETURNS TRIGGER
@@ -352,14 +352,14 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$
+$$;
 
-DROP TRIGGER IF EXISTS team_members_first_managed_bonus ON team_members
+DROP TRIGGER IF EXISTS team_members_first_managed_bonus ON team_members;
 
 CREATE TRIGGER team_members_token_reward
   AFTER INSERT ON team_members
   FOR EACH ROW
-  EXECUTE FUNCTION trg_team_members_token_reward()
+  EXECUTE FUNCTION trg_team_members_token_reward();
 
 CREATE OR REPLACE FUNCTION get_user_earn_rewards_summary()
 RETURNS JSON
@@ -453,33 +453,26 @@ BEGIN
     ), '[]'::JSON)
   );
 END;
-$$
+$$;
 
-REVOKE ALL ON FUNCTION user_uses_own_api_key(UUID) FROM PUBLIC
+REVOKE ALL ON FUNCTION user_uses_own_api_key(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION user_uses_own_api_key(UUID) TO service_role;
 
-GRANT EXECUTE ON FUNCTION user_uses_own_api_key(UUID) TO service_role
+REVOKE ALL ON FUNCTION user_phone_verified(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION user_phone_verified(UUID) TO service_role;
 
-REVOKE ALL ON FUNCTION user_phone_verified(UUID) FROM PUBLIC
+REVOKE ALL ON FUNCTION validate_token_reward_context(UUID, credit_reward_type, TEXT, JSONB) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION validate_token_reward_context(UUID, credit_reward_type, TEXT, JSONB) TO service_role;
 
-GRANT EXECUTE ON FUNCTION user_phone_verified(UUID) TO service_role
+REVOKE ALL ON FUNCTION grant_token_reward(UUID, credit_reward_type, TEXT, JSONB) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION grant_token_reward(UUID, credit_reward_type, TEXT, JSONB) TO service_role;
 
-REVOKE ALL ON FUNCTION validate_token_reward_context(UUID, credit_reward_type, TEXT, JSONB) FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION validate_token_reward_context(UUID, credit_reward_type, TEXT, JSONB) TO service_role
-
-REVOKE ALL ON FUNCTION grant_token_reward(UUID, credit_reward_type, TEXT, JSONB) FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION grant_token_reward(UUID, credit_reward_type, TEXT, JSONB) TO service_role
-
-REVOKE ALL ON FUNCTION get_user_earn_rewards_summary() FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION get_user_earn_rewards_summary() TO authenticated
+REVOKE ALL ON FUNCTION get_user_earn_rewards_summary() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION get_user_earn_rewards_summary() TO authenticated;
 
 COMMENT ON TABLE token_reward_config IS
-  'Catalog of earn-token actions. Add rows + enum values + eligibility branch + event hook to extend.'
-
+  'Catalog of earn-token actions. Add rows + enum values + eligibility branch + event hook to extend.';
 COMMENT ON FUNCTION grant_token_reward(UUID, credit_reward_type, TEXT, JSONB) IS
-  'Central idempotent promotional token grant. Callable only without a user JWT (triggers, service role).'
-
+  'Central idempotent promotional token grant. Callable only without a user JWT (triggers, service role).';
 COMMENT ON FUNCTION validate_token_reward_context(UUID, credit_reward_type, TEXT, JSONB) IS
-  'Per-action eligibility beyond config (extend CASE when adding new reward types).'
+  'Per-action eligibility beyond config (extend CASE when adding new reward types).';

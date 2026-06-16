@@ -63,25 +63,28 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
           <p className="text-xs text-muted-foreground">
             Monitor usage or get more tokens
           </p>
+          <Link
+            href="/settings/billing#earn-tokens"
+            className="text-xs text-primary underline underline-offset-2 mt-1 inline-block"
+          >
+            Earn free tokens
+          </Link>
         </TooltipContent>
       </Tooltip>
     );
   }
 
   return (
-    <Link
-      href="/settings/billing"
+    <div
       className={cn(
-        "block px-3 py-2.5 rounded-md transition-colors group",
-        isActive
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "hover:bg-sidebar-accent/50",
+        "px-4 py-2.5 mx-3 rounded-md transition-colors group",
+        isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/50",
       )}
-      aria-label={label}
       data-tour="nav-settings-billing"
     >
       <div className="flex items-center justify-between mb-1.5">
-        <span
+        <Link
+          href="/settings/billing"
           className={cn(
             "text-xs font-medium transition-colors",
             isActive
@@ -89,26 +92,40 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
               : "text-muted-foreground group-hover:text-foreground",
           )}
         >
-          AI Tokens
-        </span>
-        <span
-          className={cn(
-            "text-xs tabular-nums font-medium",
-            isCritical
-              ? "text-red-500"
-              : isWarning
-                ? "text-amber-500"
-                : "text-muted-foreground",
-          )}
-        >
-          {balance} left
-        </span>
+          Tokens
+        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/settings/billing#earn-tokens"
+            className="text-[10px] text-primary underline underline-offset-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+          >
+            Earn
+          </Link>
+          <Link
+            href="/settings/billing"
+            className={cn(
+              "text-xs tabular-nums font-medium",
+              isCritical
+                ? "text-red-500"
+                : isWarning
+                  ? "text-amber-500"
+                  : isActive
+                    ? "text-sidebar-accent-foreground"
+                    : "text-muted-foreground",
+            )}
+            aria-label={label}
+          >
+            {balance} left
+          </Link>
+        </div>
       </div>
-      <Progress
-        value={100 - pct}
-        className={cn("h-1.5 bg-muted", barColor)}
-        aria-label={label}
-      />
-    </Link>
+      <Link href="/settings/billing" aria-hidden tabIndex={-1}>
+        <Progress
+          value={100 - pct}
+          className={cn("h-1.5 bg-muted", barColor)}
+          aria-label={label}
+        />
+      </Link>
+    </div>
   );
 }

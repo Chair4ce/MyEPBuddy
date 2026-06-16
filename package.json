@@ -13,6 +13,7 @@
     "db:push:local": "supabase db push --local",
     "db:push:remote": "supabase db push",
     "db:reset": "supabase db reset",
+    "db:seed:test-users": "tsx scripts/seed-test-users.ts",
     "stripe:listen": "bash scripts/stripe-listen.sh",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -87,6 +88,7 @@
     "@types/react-dom": "^19.0.2",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.5.11",
+    "eslint-plugin-unused-imports": "^4.4.1",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",

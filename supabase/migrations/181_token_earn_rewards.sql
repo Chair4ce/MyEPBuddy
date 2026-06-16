@@ -1,14 +1,14 @@
 -- Token earn rewards: ledger for connection bonuses (referrals, supervision).
 -- Grants are issued server-side only (future grant_connection_bonus RPC).
 
-ALTER TYPE credit_transaction_type ADD VALUE IF NOT EXISTS 'bonus'
+ALTER TYPE credit_transaction_type ADD VALUE IF NOT EXISTS 'bonus';
 
 CREATE TYPE credit_reward_type AS ENUM (
   'referral_referrer',
   'referral_referee',
   'supervision_requester',
   'supervision_accepter'
-)
+);
 
 CREATE TABLE credit_rewards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,13 +21,13 @@ CREATE TABLE credit_rewards (
   description TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (reward_type, source_id)
-)
+);
 
 CREATE INDEX idx_credit_rewards_user_cycle
-  ON credit_rewards (user_id, cycle_year)
+  ON credit_rewards (user_id, cycle_year);
 
 CREATE INDEX idx_credit_rewards_user_created
-  ON credit_rewards (user_id, created_at DESC)
+  ON credit_rewards (user_id, created_at DESC);
 
 -- Durable phone identity for promotion abuse prevention (server-side only).
 CREATE TABLE promotion_phone_identities (
@@ -36,15 +36,14 @@ CREATE TABLE promotion_phone_identities (
   first_user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)
+);
 
-ALTER TABLE credit_rewards ENABLE ROW LEVEL SECURITY
-
-ALTER TABLE promotion_phone_identities ENABLE ROW LEVEL SECURITY
+ALTER TABLE credit_rewards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE promotion_phone_identities ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own credit rewards"
   ON credit_rewards FOR SELECT
-  USING (user_id = auth.uid())
+  USING (user_id = auth.uid());
 
 -- No policies on promotion_phone_identities: service-role / SECURITY DEFINER only.
 
@@ -116,14 +115,12 @@ BEGIN
     ), '[]'::JSON)
   );
 END;
-$$
+$$;
 
-REVOKE ALL ON FUNCTION get_user_earn_rewards_summary() FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION get_user_earn_rewards_summary() TO authenticated
+REVOKE ALL ON FUNCTION get_user_earn_rewards_summary() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION get_user_earn_rewards_summary() TO authenticated;
 
 COMMENT ON TABLE credit_rewards IS
-  'Immutable log of promotional token grants. source_id is idempotency key per reward_type.'
-
+  'Immutable log of promotional token grants. source_id is idempotency key per reward_type.';
 COMMENT ON FUNCTION get_user_earn_rewards_summary() IS
-  'Returns earn-tracker stats for the authenticated user (referral/supervision counts, totals).'
+  'Returns earn-tracker stats for the authenticated user (referral/supervision counts, totals).';

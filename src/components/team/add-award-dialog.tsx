@@ -42,8 +42,6 @@ import type {
   AwardLevel,
   AwardCategory,
   AwardQuarter,
-  Profile,
-  ManagedMember,
   AwardCatalog,
   Award as AwardType_DB,
   AwardRequest as AwardRequestType_DB,
@@ -55,7 +53,6 @@ import {
   Trophy,
   Star,
   Users,
-  Calendar,
   User,
 } from "lucide-react";
 
@@ -83,9 +80,8 @@ export function AddAwardDialog({
   onSuccess,
 }: AddAwardDialogProps) {
   const { profile, subordinates, managedMembers } = useUserStore();
-  const { awardCatalog, addAward, addMyRequest } = useAwardsStore();
+  const { addAward, addMyRequest } = useAwardsStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [localCatalog, setLocalCatalog] = useState<AwardCatalog[]>([]);
 
   // Form state
@@ -154,7 +150,6 @@ export function AddAwardDialog({
   }, [open, recipientProfileId, recipientTeamMemberId]);
 
   async function loadCatalog() {
-    setLoadingCatalog(true);
     try {
       const { data, error } = await supabase
         .from("award_catalog")
@@ -166,13 +161,8 @@ export function AddAwardDialog({
       setLocalCatalog(data || []);
     } catch (error) {
       console.error("Error loading award catalog:", error);
-    } finally {
-      setLoadingCatalog(false);
     }
   }
-
-  // Filter catalog by award type
-  const filteredCatalog = localCatalog.filter((c) => c.award_type === awardType);
 
   // All available recipients
   const allRecipients: { id: string; name: string; rank: string | null; type: "profile" | "team_member" }[] = [

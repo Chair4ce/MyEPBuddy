@@ -380,7 +380,7 @@ export function optimizeBullet(
     };
   }
   
-  let optWords = tokenize(sentence.trimEnd());
+  const optWords = tokenize(sentence.trimEnd());
   const newSpace = initResults.overflow > 0 ? THIN_SPACE : MEDIUM_SPACE;
   
   // Check worst case - all spaces replaced
@@ -535,12 +535,10 @@ export function optimizeMultiLineBullet(
 ): OptimizeResult {
   // First normalize any existing special spaces
   const normalizedText = normalizeSpaces(text);
-  const beforeWidth = getTextWidthPx(normalizedText);
   const beforeRendering = renderBulletText(normalizedText, targetWidthPx);
   
   // Compress all spaces to thin spaces
   const { text: compressedText, savedPx } = compressText(normalizedText);
-  const afterWidth = getTextWidthPx(compressedText);
   const afterRendering = renderBulletText(compressedText, targetWidthPx);
   
   // Check if compression helped

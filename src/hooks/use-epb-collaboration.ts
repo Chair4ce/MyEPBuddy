@@ -102,7 +102,7 @@ function getRandomColor(): string {
 export function useEPBCollaboration(
   options: UseEPBCollaborationOptions
 ): UseEPBCollaborationReturn {
-  const { shellId, onStateChange, onParticipantJoin, onParticipantLeave } = options;
+  const { shellId } = options;
   const { profile } = useUserStore();
   const supabase = createClient();
   

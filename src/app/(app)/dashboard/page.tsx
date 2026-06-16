@@ -31,7 +31,7 @@ import { TeamAccomplishmentsFeed } from "@/components/dashboard/team-accomplishm
 import type { Rank } from "@/types/database";
 
 export default function DashboardPage() {
-  const { profile, subordinates, epbConfig } = useUserStore();
+  const { profile, subordinates } = useUserStore();
   const { setAccomplishments, isLoading, setIsLoading } =
     useAccomplishmentsStore();
 

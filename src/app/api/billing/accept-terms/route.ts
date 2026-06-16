@@ -58,21 +58,73 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const schema = z.object({ trialIntroSeen: z.literal(true) });
+  const schema = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("trialIntro"), trialIntroSeen: z.literal(true) }),
+    z.object({
+      kind: z.literal("earnTokensIntro"),
+      earnTokensIntroSeen: z.literal(true),
+    }),
+  ]);
+
+  const legacyTrial = z.object({ trialIntroSeen: z.literal(true) }).safeParse(body);
+  const legacyEarn = z
+    .object({ earnTokensIntroSeen: z.literal(true) })
+    .safeParse(body);
   const parsed = schema.safeParse(body);
+
+  const seenAt = new Date().toISOString();
+
+  if (legacyTrial.success) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ trial_intro_seen_at: seenAt } as never)
+      .eq("id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+
+    return NextResponse.json({ trialIntroSeenAt: seenAt });
+  }
+
+  if (legacyEarn.success) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ earn_tokens_intro_seen_at: seenAt } as never)
+      .eq("id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+
+    return NextResponse.json({ earnTokensIntroSeenAt: seenAt });
+  }
+
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const seenAt = new Date().toISOString();
+  if (parsed.data.kind === "trialIntro") {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ trial_intro_seen_at: seenAt } as never)
+      .eq("id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+
+    return NextResponse.json({ trialIntroSeenAt: seenAt });
+  }
+
   const { error } = await supabase
     .from("profiles")
-    .update({ trial_intro_seen_at: seenAt } as never)
+    .update({ earn_tokens_intro_seen_at: seenAt } as never)
     .eq("id", user.id);
 
   if (error) {
     return NextResponse.json({ error: "Failed to save" }, { status: 500 });
   }
 
-  return NextResponse.json({ trialIntroSeenAt: seenAt });
+  return NextResponse.json({ earnTokensIntroSeenAt: seenAt });
 }

@@ -16,7 +16,6 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-  TooltipProvider,
 } from "@/components/ui/tooltip";
 import {
   Popover,
@@ -70,7 +69,6 @@ interface SectionWithState {
 interface AwardCategorySectionProps {
   categoryKey: string;
   categoryLabel: string;
-  categoryHeading: string;
   categoryDescription?: string;
   sections: SectionWithState[];
   accomplishments: Accomplishment[];
@@ -210,7 +208,6 @@ function StatementSlotCard({
   onToggleCollapse,
   model,
   nomineeId,
-  categoryLabel,
 }: {
   categoryKey: string;
   slotIndex: number;
@@ -224,7 +221,6 @@ function StatementSlotCard({
   onToggleCollapse: () => void;
   model: string;
   nomineeId: string;
-  categoryLabel: string;
 }) {
   // Subscribe directly to the store for this slot's state
   const slotKey = `${categoryKey}:${slotIndex}`;
@@ -258,7 +254,6 @@ function StatementSlotCard({
   const [selectedText, setSelectedText] = useState("");
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
   const [isRevising, setIsRevising] = useState(false);
   const [revisionResults, setRevisionResults] = useState<string[]>([]);
   
@@ -407,13 +402,6 @@ function StatementSlotCard({
       setSelectedText(text);
       setSelectionStart(start);
       setSelectionEnd(end);
-      
-      // Position popup near selection (simplified - appears below textarea)
-      const rect = textarea.getBoundingClientRect();
-      setPopupPosition({
-        top: rect.bottom + 8,
-        left: rect.left + (rect.width / 2) - 150, // Center the 300px popup
-      });
       setShowSelectionPopup(true);
       setRevisionResults([]);
     } else {
@@ -473,48 +461,6 @@ function StatementSlotCard({
     toast.success("Applied revision");
   };
 
-
-  // AI-powered reshape (rewrite with different word lengths)
-  const handleAiReshape = async (mode: "expand" | "compress") => {
-    if (!draftText.trim()) return;
-    
-    onUpdate({ isRevising: true });
-    
-    try {
-      const response = await fetchWithRetry("/api/revise-selection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullStatement: draftText,
-          selectedText: draftText,
-          selectionStart: 0,
-          selectionEnd: draftText.length,
-          model,
-          mode,
-          context: mode === "expand" 
-            ? "Use longer, more descriptive words to fill more space on the 1206 form" 
-            : "Use shorter, punchier words to save space on the 1206 form",
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (handleUsageLimitResponse(errorData)) return;
-        throw new Error(errorData.error || "Reshape failed");
-      }
-
-      const data = await response.json();
-      if (data.revisions?.[0]) {
-        onUpdate({ draftText: data.revisions[0], isDirty: true });
-        toast.success(mode === "expand" ? "Words expanded" : "Words compressed");
-      }
-    } catch (error) {
-      console.error("Reshape error:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to reshape statement");
-    } finally {
-      onUpdate({ isRevising: false });
-    }
-  };
 
   return (
     <div className="border rounded-lg bg-card/50 overflow-hidden">
@@ -1310,7 +1256,6 @@ function StatementSlotCard({
 export function AwardCategorySectionCard({
   categoryKey,
   categoryLabel,
-  categoryHeading,
   categoryDescription,
   sections,
   accomplishments,
@@ -1333,7 +1278,6 @@ export function AwardCategorySectionCard({
 }: AwardCategorySectionProps) {
 
   const { addQuestionSet } = useClarifyingQuestionsStore();
-  const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
 
   const generateStatement = useCallback(async (
     slotIndex: number, 
@@ -1565,7 +1509,6 @@ export function AwardCategorySectionCard({
                   onGenerate={(revisionMode, revisionIntensity, versionCount, clarifyingContext) => generateStatement(s.slotIndex, s.slotState || getSlotState(s), revisionMode, revisionIntensity, versionCount, clarifyingContext)}
                   model={model}
                   nomineeId={nomineeId}
-                  categoryLabel={categoryLabel}
                 />
               </AnimatedHeightWrapper>
             );

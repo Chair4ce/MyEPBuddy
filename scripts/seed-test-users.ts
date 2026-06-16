@@ -277,6 +277,7 @@ async function createAuthUser(user: TestUser) {
     }
 
     // Update profile with rank, afsc, unit (profile is auto-created by trigger)
+    const onboardedAt = new Date().toISOString();
     const { error: profileError } = await supabase
       .from("profiles")
       .update({
@@ -284,6 +285,9 @@ async function createAuthUser(user: TestUser) {
         rank: user.rank,
         afsc: user.afsc,
         unit: user.unit,
+        terms_accepted_at: onboardedAt,
+        billing_terms_accepted_at: onboardedAt,
+        trial_intro_seen_at: onboardedAt,
       })
       .eq("id", user.id);
 

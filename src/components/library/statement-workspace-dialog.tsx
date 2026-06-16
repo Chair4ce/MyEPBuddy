@@ -47,7 +47,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
-import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, RANKS, AI_MODELS, getActiveCycleYear } from "@/lib/constants";
+import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, AI_MODELS, getActiveCycleYear } from "@/lib/constants";
 import { getAppDefaultModelId } from "@/lib/model-preferences";
 import { ModelSelector } from "@/components/model-selector";
 import {
@@ -61,16 +61,14 @@ import {
   BookMarked,
   Share2,
   Globe,
-  ChevronRight,
   Wand2,
-  ArrowRight,
   History,
   Save,
   Replace,
   Search,
   Trash2,
 } from "lucide-react";
-import type { Rank, RefinedStatement, SharedStatementView, CommunityStatement, WorkspaceState, WorkspaceSnapshot } from "@/types/database";
+import type { Rank, RefinedStatement, SharedStatementView, CommunityStatement, WorkspaceState } from "@/types/database";
 import { useWorkspaceCollaboration } from "@/hooks/use-workspace-collaboration";
 import { WorkspaceCollaboration } from "./workspace-collaboration";
 
@@ -122,7 +120,7 @@ export function StatementWorkspaceDialog({
   sharedStatements,
   communityStatements,
 }: StatementWorkspaceDialogProps) {
-  const { profile, epbConfig } = useUserStore();
+  const { profile } = useUserStore();
   const supabase = createClient();
 
   // Source selection state
@@ -583,17 +581,6 @@ export function StatementWorkspaceDialog({
   // Remove a source
   function removeSource(id: string) {
     setSelectedSources((prev) => prev.filter((s) => s.id !== id));
-  }
-
-  // Copy portion to draft
-  function appendToDraft(text: string) {
-    setDraftStatement((prev) => {
-      if (prev.trim()) {
-        return prev + " " + text;
-      }
-      return text;
-    });
-    toast.success("Added to draft");
   }
 
   // Copy suggestion text

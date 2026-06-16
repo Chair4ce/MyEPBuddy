@@ -31,12 +31,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
-import { cn } from "@/lib/utils";
-import type { Project, ProjectMember, Profile, ManagedMember } from "@/types/database";
+import type { Project, ProjectMember } from "@/types/database";
 import {
   Users,
   Crown,
-  Plus,
   Trash2,
   Loader2,
   User,

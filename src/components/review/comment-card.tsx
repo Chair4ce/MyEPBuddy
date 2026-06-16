@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { X, Check, MessageSquare, ArrowRightLeft, Trash2, FileEdit, ArrowRight } from "lucide-react";
+import { X, Check, MessageSquare, ArrowRightLeft, Trash2, FileEdit } from "lucide-react";
 
 export type SuggestionType = "comment" | "replace" | "delete";
 

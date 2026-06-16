@@ -64,7 +64,6 @@ interface MemberStatementsDialogProps {
   memberName: string;
   memberRank: string | null;
   isManagedMember: boolean;
-  cycleYear: number;
   currentUserId: string;
   trigger?: React.ReactNode;
 }
@@ -74,7 +73,6 @@ export function MemberStatementsDialog({
   memberName,
   memberRank,
   isManagedMember,
-  cycleYear,
   currentUserId,
   trigger,
 }: MemberStatementsDialogProps) {

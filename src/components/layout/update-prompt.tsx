@@ -14,7 +14,7 @@ import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 interface UpdatePromptProps {
-  /** Polling interval in milliseconds (default: 900000 = 15 minutes) */
+  /** Polling interval in milliseconds (default: 300000 = 5 minutes) */
   pollInterval?: number;
 }
 
@@ -22,7 +22,7 @@ interface UpdatePromptProps {
  * Blocking update gate — when the user's cached bundle is stale, they must
  * refresh before continuing. No dismiss; only action is "Refresh now".
  */
-export function UpdatePrompt({ pollInterval = 900000 }: UpdatePromptProps) {
+export function UpdatePrompt({ pollInterval = 300000 }: UpdatePromptProps) {
   const { hasUpdate, latestVersion, refreshApp } = useVersionCheck({
     pollInterval,
     checkOnFocus: true,

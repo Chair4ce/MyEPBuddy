@@ -39,7 +39,6 @@ import {
   Settings2,
   Loader2,
   FolderOpen,
-  Check,
 } from "lucide-react";
 import { ENTRY_MGAS, SUPERVISOR_RANKS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, ENLISTED_RANKS, OFFICER_RANKS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -204,7 +203,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         }
 
         // Fetch profiles for subordinates in chain
-        let profilesMap: Record<string, Profile> = {};
+        const profilesMap: Record<string, Profile> = {};
         if (subordinateIds.length > 0) {
           const { data: profiles } = await supabase
             .from("profiles")
@@ -1481,7 +1480,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         ) : (
           /* List View with Month Dividers */
           <div className="space-y-2">
-            {monthGroups.map((monthGroup, monthIndex) => (
+            {monthGroups.map((monthGroup) => (
               <div key={monthGroup.key}>
                 {/* Month Divider */}
                 <div className="flex items-center gap-3 py-2">

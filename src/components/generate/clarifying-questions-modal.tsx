@@ -33,7 +33,6 @@ import {
   Lightbulb,
   CheckCircle2,
   FileText,
-  ArrowRight,
 } from "lucide-react";
 import {
   useClarifyingQuestionsStore,

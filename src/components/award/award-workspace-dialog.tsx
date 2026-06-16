@@ -6,7 +6,6 @@ import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore } from "@/stores/award-shell-store";
 import { Analytics } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogClose,
@@ -89,8 +88,6 @@ import type {
   AwardCategory,
   AwardShell,
   AwardShellSection,
-  Profile,
-  ManagedMember,
   Rank,
 } from "@/types/database";
 
@@ -140,7 +137,6 @@ export function AwardWorkspaceDialog({
 }: AwardWorkspaceDialogProps) {
   const supabase = createClient();
   const { profile, subordinates, managedMembers } = useUserStore();
-  const cycleYear = shell.cycle_year;
 
   // Award shell store
   const {
@@ -148,7 +144,6 @@ export function AwardWorkspaceDialog({
     setCurrentShell,
     sections,
     setSections,
-    updateSection,
     addSection,
     removeSection,
     slotStates,
@@ -1110,7 +1105,6 @@ export function AwardWorkspaceDialog({
                         key={cat.key}
                         categoryKey={cat.key}
                         categoryLabel={cat.label}
-                        categoryHeading={cat.heading}
                         categoryDescription={cat.description}
                         sections={categorySections}
                         accomplishments={accomplishments}

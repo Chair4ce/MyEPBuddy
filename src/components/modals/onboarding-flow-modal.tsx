@@ -8,33 +8,30 @@ import { ResizeContainer } from "@/components/ui/resize-container";
 import { TermsStep } from "@/components/modals/onboarding/terms-step";
 import { TrialIntroStep } from "@/components/modals/onboarding/trial-intro-step";
 import { RankStep } from "@/components/modals/onboarding/rank-step";
-import { useOnboardingStep } from "@/lib/onboarding-flow";
+import { EarnTokensIntroStep } from "@/components/modals/onboarding/earn-tokens-intro-step";
+import type { OnboardingStep } from "@/lib/onboarding-flow";
+import type { TokenRewardTrackerEntry } from "@/lib/billing/reward-constants";
 import type { Profile } from "@/types/database";
 
 interface OnboardingFlowModalProps {
+  step: OnboardingStep | null;
   profile: Profile;
-  creditsLoading: boolean;
   hasOwnKey: boolean;
-  trialIntroSeen: boolean;
   trialCredits: number;
+  trackerEntries: TokenRewardTrackerEntry[];
   onDismissTrialIntro: () => void;
+  onDismissEarnTokensIntro: () => void;
 }
 
 export function OnboardingFlowModal({
+  step,
   profile,
-  creditsLoading,
   hasOwnKey,
-  trialIntroSeen,
   trialCredits,
+  trackerEntries,
   onDismissTrialIntro,
+  onDismissEarnTokensIntro,
 }: OnboardingFlowModalProps) {
-  const step = useOnboardingStep({
-    profile,
-    creditsLoading,
-    hasOwnKey,
-    trialIntroSeen,
-  });
-
   return (
     <AlertDialog open={step !== null}>
       <AlertDialogContent
@@ -69,6 +66,18 @@ export function OnboardingFlowModal({
               className="animate-in fade-in-0 duration-200 motion-reduce:animate-none"
             >
               <RankStep />
+            </div>
+          )}
+          {step === "earn-tokens" && (
+            <div
+              key="earn-tokens"
+              className="animate-in fade-in-0 duration-200 motion-reduce:animate-none"
+            >
+              <EarnTokensIntroStep
+                hasOwnKey={hasOwnKey}
+                trackerEntries={trackerEntries}
+                onDismiss={onDismissEarnTokensIntro}
+              />
             </div>
           )}
         </ResizeContainer>

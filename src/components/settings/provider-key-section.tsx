@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { testApiKey } from "@/app/actions/api-keys";
+import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 import type { ProviderKeyName } from "@/lib/model-preferences";
 import {
   Check,
@@ -80,7 +81,8 @@ export function ProviderKeySection({
         setTestError(result.error || "Key validation failed");
         toast.error(result.error || "Key validation failed");
       }
-    } catch {
+    } catch (error) {
+      if (handleStaleDeploymentError(error)) return;
       setTestState("invalid");
       setTestError("Failed to test key");
       toast.error("Failed to test key");
@@ -100,7 +102,8 @@ export function ProviderKeySection({
         setTestError(result.error || "Key validation failed");
         toast.error(result.error || "Key validation failed");
       }
-    } catch {
+    } catch (error) {
+      if (handleStaleDeploymentError(error)) return;
       setTestState("invalid");
       setTestError("Failed to test key");
       toast.error("Failed to test key");

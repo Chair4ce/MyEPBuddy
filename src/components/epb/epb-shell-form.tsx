@@ -9,18 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
+
+
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 import {
@@ -42,7 +33,6 @@ import {
   ENTRY_MGAS,
   MAX_STATEMENT_CHARACTERS,
   MAX_HLR_CHARACTERS,
-  MAX_DUTY_DESCRIPTION_CHARACTERS,
   getActiveCycleYear,
   getNextEpbShellCycleYear,
   isPriorCycleShell,
@@ -81,7 +71,7 @@ import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
 import { useShellFieldLocks } from "@/hooks/use-shell-field-locks";
 import { useIdleDetection } from "@/hooks/use-idle-detection";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, Profile, ManagedMember, UserLLMSettings, Rank, DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate, WritingStyle, AwardSelection } from "@/types/database";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate, WritingStyle, AwardSelection } from "@/types/database";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 
 // Map raw award records to simplified selection format for statement integration
@@ -127,20 +117,10 @@ function mapAwardsToSelection(awards: RawAwardRecord[]): AwardSelection[] {
   });
 }
 
-// Shared EPB info - represents an EPB shell that has been shared with the current user
-interface SharedEPBInfo {
-  shell: EPBShell;
-  // For real user EPBs (team_member_id is null)
-  ownerProfile: Profile | null;
-  // For managed member EPBs (team_member_id is not null)
-  teamMember: { id: string; full_name: string; rank: Rank | null; afsc: string | null } | null;
-}
-
 interface EPBShellFormProps {
   cycleYear: number;
   model: string;
   writingStyle: WritingStyle;
-  onOpenAccomplishments: (mpa: string) => void;
   accomplishments: Accomplishment[];
 }
 
@@ -148,11 +128,10 @@ export function EPBShellForm({
   cycleYear,
   model,
   writingStyle,
-  onOpenAccomplishments,
   accomplishments,
 }: EPBShellFormProps) {
   const supabase = createClient();
-  const { profile, subordinates, managedMembers, epbConfig } = useUserStore();
+  const { profile, epbConfig } = useUserStore();
   
   // Feature flag for collaboration
   const isCollaborationEnabled = epbConfig?.enable_collaboration ?? false;
@@ -173,7 +152,6 @@ export function EPBShellForm({
     removeSavedExample,
     collapsedSections,
     toggleSectionCollapsed,
-    setSectionCollapsed,
     expandAll,
     collapseAll,
     splitViewSections,
@@ -185,15 +163,12 @@ export function EPBShellForm({
     isCreatingShell,
     setIsCreatingShell,
     loadVersion,
-    reset,
     zenModeMpaKey,
   } = useEPBShellStore();
 
   const [rateeAwards, setRateeAwards] = useState<AwardSelection[]>([]);
 
-  const [userSettings, setUserSettings] = useState<Partial<UserLLMSettings> | null>(null);
   const [isTogglingMode, setIsTogglingMode] = useState(false);
-  const [sharedEPBs, setSharedEPBs] = useState<SharedEPBInfo[]>([]);
   const [isPageVisible, setIsPageVisible] = useState(true);
   const [isDutyDescriptionCollapsed, setIsDutyDescriptionCollapsed] = useState(false);
   
@@ -528,7 +503,7 @@ export function EPBShellForm({
   const handleSentenceReplace = async () => {
     if (!pendingDrop) return;
     
-    const { sourceMpa, sourceIndex, sourceSentence, targetMpa, targetIndex, sourceOtherSentence, targetOtherSentence } = pendingDrop;
+    const { sourceMpa, sourceSentence, targetMpa, targetIndex, sourceOtherSentence, targetOtherSentence } = pendingDrop;
     
     const targetMpaInfo = STANDARD_MGAS.find(m => m.key === targetMpa);
     const targetMaxChars = targetMpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
@@ -672,249 +647,8 @@ export function EPBShellForm({
     }
   };
 
-  // Build ratee selector options
-  const rateeOptions: { value: string; label: string; ratee: SelectedRatee }[] = [
-    {
-      value: "self",
-      label: `Myself (${profile?.rank} ${profile?.full_name})`,
-      ratee: {
-        id: profile?.id || "",
-        fullName: profile?.full_name || null,
-        rank: profile?.rank as SelectedRatee["rank"],
-        afsc: profile?.afsc || null,
-        isManagedMember: false,
-      },
-    },
-    ...subordinates.map((sub) => ({
-      value: sub.id,
-      label: `${sub.rank} ${sub.full_name}`,
-      ratee: {
-        id: sub.id,
-        fullName: sub.full_name,
-        rank: sub.rank as SelectedRatee["rank"],
-        afsc: sub.afsc,
-        isManagedMember: false,
-      },
-    })),
-    ...managedMembers.map((member) => ({
-      value: `managed:${member.id}`,
-      label: `${member.rank} ${member.full_name}${member.is_placeholder ? " (Managed)" : ""}`,
-      ratee: {
-        id: member.id,
-        fullName: member.full_name,
-        rank: member.rank as SelectedRatee["rank"],
-        afsc: member.afsc,
-        isManagedMember: true,
-      },
-    })),
-  ];
-
-  // Build shared EPB options - these are EPBs shared with the current user
-  const sharedEPBOptions: { value: string; label: string; ratee: SelectedRatee }[] = sharedEPBs
-    .filter((shared) => {
-      const sharedRateeRank =
-        (shared.teamMember?.rank ?? shared.ownerProfile?.rank ?? null) as SelectedRatee["rank"];
-      const sharedCycleYear = getActiveCycleYear(sharedRateeRank);
-      if (shared.shell.cycle_year !== sharedCycleYear) return false;
-      
-      // Exclude EPBs we already have access to (self, subordinates, managed members)
-      if (shared.ownerProfile) {
-        // Real user EPB - check if already in our lists
-        if (shared.ownerProfile.id === profile?.id) return false;
-        if (subordinates.some((sub) => sub.id === shared.ownerProfile?.id)) return false;
-      }
-      if (shared.teamMember) {
-        // Managed member EPB - check if already in our list
-        if (managedMembers.some((m) => m.id === shared.teamMember?.id)) return false;
-      }
-      return true;
-    })
-    .map((shared) => {
-      if (shared.teamMember) {
-        // Managed member EPB
-        return {
-          value: `shared-managed:${shared.teamMember.id}`,
-          label: `${shared.teamMember.rank || ""} ${shared.teamMember.full_name}`.trim(),
-          ratee: {
-            id: shared.teamMember.id,
-            fullName: shared.teamMember.full_name,
-            rank: shared.teamMember.rank as SelectedRatee["rank"],
-            afsc: shared.teamMember.afsc,
-            isManagedMember: true,
-          },
-        };
-      } else if (shared.ownerProfile) {
-        // Real user EPB
-        return {
-          value: `shared:${shared.ownerProfile.id}`,
-          label: `${shared.ownerProfile.rank || ""} ${shared.ownerProfile.full_name}`.trim(),
-          ratee: {
-            id: shared.ownerProfile.id,
-            fullName: shared.ownerProfile.full_name,
-            rank: shared.ownerProfile.rank as SelectedRatee["rank"],
-            afsc: shared.ownerProfile.afsc,
-            isManagedMember: false,
-          },
-        };
-      }
-      return null;
-    })
-    .filter((opt): opt is NonNullable<typeof opt> => opt !== null);
-
   // LocalStorage key for persisting selected EPB (includes profile ID to prevent cross-user issues)
   const SELECTED_RATEE_KEY = profile ? `epb-selected-ratee-${profile.id}` : null;
-
-  // Handle ratee selection change
-  const handleRateeChange = (value: string) => {
-    // Check regular options first
-    const option = rateeOptions.find((o) => o.value === value);
-    if (option) {
-      setSelectedRatee(option.ratee);
-      // Persist to localStorage
-      if (SELECTED_RATEE_KEY) {
-        localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: option.ratee }));
-      }
-      return;
-    }
-    // Check shared EPB options
-    const sharedOption = sharedEPBOptions.find((o) => o.value === value);
-    if (sharedOption) {
-      setSelectedRatee(sharedOption.ratee);
-      // Persist to localStorage
-      if (SELECTED_RATEE_KEY) {
-        localStorage.setItem(SELECTED_RATEE_KEY, JSON.stringify({ value, ratee: sharedOption.ratee }));
-      }
-    }
-  };
-
-  // Compute the current select value - handles self, subordinates, managed members, and shared EPBs
-  const getSelectedRateeValue = (): string => {
-    if (!selectedRatee) return "self";
-    
-    // Check if it's self
-    if (selectedRatee.id === profile?.id && !selectedRatee.isManagedMember) {
-      return "self";
-    }
-    
-    // Check if it's a subordinate
-    if (!selectedRatee.isManagedMember && subordinates.some((s) => s.id === selectedRatee.id)) {
-      return selectedRatee.id;
-    }
-    
-    // Check if it's a managed member
-    if (selectedRatee.isManagedMember && managedMembers.some((m) => m.id === selectedRatee.id)) {
-      return `managed:${selectedRatee.id}`;
-    }
-    
-    // Check if it's a shared EPB
-    const sharedMatch = sharedEPBOptions.find((o) => o.ratee.id === selectedRatee.id);
-    if (sharedMatch) {
-      return sharedMatch.value;
-    }
-    
-    // Fallback - use the ID pattern based on isManagedMember
-    return selectedRatee.isManagedMember ? `managed:${selectedRatee.id}` : selectedRatee.id;
-  };
-
-  // Load user settings
-  useEffect(() => {
-    async function loadSettings() {
-      if (!profile) return;
-      const { data } = await supabase
-        .from("user_llm_settings")
-        .select("*")
-        .eq("user_id", profile.id)
-        .maybeSingle();
-      if (data) {
-        setUserSettings(data as unknown as UserLLMSettings);
-      }
-    }
-    loadSettings();
-  }, [profile, supabase]);
-
-  // Load EPBs shared with current user
-  useEffect(() => {
-    async function loadSharedEPBs() {
-      if (!profile) return;
-
-      // Get all shares where current user is the recipient
-      const { data: sharesData, error } = await supabase
-        .from("epb_shell_shares")
-        .select(`
-          shell_id,
-          shell:epb_shells!inner(
-            id,
-            user_id,
-            team_member_id,
-            created_by,
-            cycle_year,
-            multi_user_enabled,
-            created_at,
-            updated_at
-          )
-        `)
-        .eq("shared_with_id", profile.id);
-
-      if (error) {
-        console.error("Failed to load shared EPBs:", error);
-        return;
-      }
-
-      if (!sharesData || sharesData.length === 0) {
-        setSharedEPBs([]);
-        return;
-      }
-
-      // Process each shared shell to get owner info
-      const sharedInfos: SharedEPBInfo[] = [];
-
-      // Type the shares data to help TypeScript understand the nested join
-      type ShareWithShell = { shell_id: string; shell: EPBShell };
-      const typedShares = sharesData as unknown as ShareWithShell[];
-
-      for (const share of typedShares) {
-        const shell = share.shell;
-        if (!shell) continue;
-
-        // Check if this is a managed member EPB or a real user EPB
-        if (shell.team_member_id) {
-          // Managed member - get team member info
-          const { data: teamMemberData } = await supabase
-            .from("team_members")
-            .select("id, full_name, rank, afsc")
-            .eq("id", shell.team_member_id)
-            .single();
-
-          if (teamMemberData) {
-            sharedInfos.push({
-              shell,
-              ownerProfile: null,
-              teamMember: teamMemberData as { id: string; full_name: string; rank: Rank | null; afsc: string | null },
-            });
-          }
-        } else {
-          // Real user - get profile info
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("id, full_name, rank, afsc, email")
-            .eq("id", shell.user_id)
-            .single();
-
-          if (profileData) {
-            sharedInfos.push({
-              shell,
-              ownerProfile: profileData as Profile,
-              teamMember: null,
-            });
-          }
-        }
-      }
-
-      setSharedEPBs(sharedInfos);
-    }
-
-    loadSharedEPBs();
-  }, [profile, supabase]);
 
   // Track which profile we've initialized ratee selection for
   const [initializedFor, setInitializedFor] = useState<string | null>(null);
@@ -1778,7 +1512,6 @@ export function EPBShellForm({
       dismissDutyDescriptionTip();
     }
 
-    const maxChars = mpa === "hlr_assessment" ? MAX_HLR_CHARACTERS : MAX_STATEMENT_CHARACTERS;
     const versionCount = options.versionCount || 1;
     const generateStartTime = Date.now();
     
@@ -2010,11 +1743,6 @@ export function EPBShellForm({
     }
   };
 
-  // Get accomplishments count for an MPA
-  const getAccomplishmentsCountForMPA = (mpa: string) => {
-    return accomplishments.filter((a) => a.mpa === mpa).length;
-  };
-
   // Check if EPB is ready for assessment (at least one MPA has content)
   // Available to: the user on their own EPB, or supervisors on subordinates' EPBs
   const isEPBReadyForAssessment = useCallback(() => {
@@ -2037,18 +1765,6 @@ export function EPBShellForm({
       (s) => coreMPAs.includes(s.mpa) && s.mpa !== "hlr_assessment" && s.statement_text && s.statement_text.trim().length > 10
     ).length;
   }, [sections]);
-
-  // Check if all core MPAs are complete
-  const isEPBComplete = useCallback(() => {
-    if (!currentShell) return false;
-    
-    const coreMPAs = ENTRY_MGAS.map((m) => m.key);
-    const completedSections = Object.values(sections).filter(
-      (s) => coreMPAs.includes(s.mpa) && s.is_complete
-    );
-    
-    return completedSections.length === coreMPAs.length;
-  }, [currentShell, sections]);
 
   // Handle EPB assessment
   const handleAssessEPB = useCallback(async () => {
@@ -2438,8 +2154,6 @@ export function EPBShellForm({
                 onAcquireLock={() => sectionLocks.acquireLock(section.id)}
                 onReleaseLock={() => sectionLocks.releaseLock(section.id)}
                 accomplishments={accomplishments}
-                onOpenAccomplishments={() => onOpenAccomplishments(mpa.key)}
-                cycleYear={workspaceCycleYear}
                 // Enable real-time text sync when collaborating
                 isCollaborating={collaboration.isInSession}
                 // Completion toggle

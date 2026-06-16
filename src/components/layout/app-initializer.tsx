@@ -12,7 +12,10 @@ import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-moda
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
 import { usePromptRulesMode } from "@/lib/feature-flags";
+import { installStaleDeploymentGuard } from "@/lib/stale-deployment-guard";
 import type { Profile, EPBConfig, ManagedMember } from "@/types/database";
+
+installStaleDeploymentGuard();
 
 interface AppInitializerProps {
   profile: Profile | null;
@@ -43,9 +46,12 @@ export function AppInitializer({
     fetchCredits,
     initRealtime,
     trialIntroSeen,
+    earnTokensIntroSeen,
     hasOwnKey,
     setTrialIntroSeen,
+    setEarnTokensIntroSeen,
     isLoading: creditsLoading,
+    earnRewardsSummary,
     trialCredits,
   } = useCreditsStore();
 
@@ -59,6 +65,12 @@ export function AppInitializer({
       setManagedMembers(managedMembers);
       setEpbConfig(epbConfig);
       setIsLoading(false);
+      if (profile?.trial_intro_seen_at) {
+        setTrialIntroSeen(true);
+      }
+      if (profile?.earn_tokens_intro_seen_at) {
+        setEarnTokensIntroSeen(true);
+      }
       hasHydrated.current = true;
     } else {
       setSubordinates(subordinates);
@@ -75,6 +87,8 @@ export function AppInitializer({
     setManagedMembers,
     setEpbConfig,
     setIsLoading,
+    setTrialIntroSeen,
+    setEarnTokensIntroSeen,
   ]);
 
   useEffect(() => {
@@ -89,13 +103,16 @@ export function AppInitializer({
   const gateProfile = getGateProfile(profile, storeProfile);
   const showOnboarding =
     clientReady && !isSigningOut && gateProfile !== null;
+
   const onboardingStep = useOnboardingStep({
     profile: gateProfile,
     creditsLoading,
     hasOwnKey,
     trialIntroSeen,
+    earnTokensIntroSeen,
   });
-  const onboardingComplete = gateProfile !== null && onboardingStep === null;
+  const onboardingComplete =
+    gateProfile !== null && onboardingStep === null;
 
   async function dismissTrialIntro() {
     setTrialIntroSeen(true);
@@ -106,24 +123,35 @@ export function AppInitializer({
     }).catch(() => undefined);
   }
 
+  async function dismissEarnTokensIntro() {
+    setEarnTokensIntroSeen(true);
+    await fetch("/api/billing/accept-terms", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ earnTokensIntroSeen: true }),
+    }).catch(() => undefined);
+  }
+
   const usePromptRulesModeEnabled = usePromptRulesMode();
 
   return (
     <>
       {showOnboarding && gateProfile && (
         <OnboardingFlowModal
+          step={onboardingStep}
           profile={gateProfile}
-          creditsLoading={creditsLoading}
           hasOwnKey={hasOwnKey}
-          trialIntroSeen={trialIntroSeen}
           trialCredits={trialCredits}
+          trackerEntries={earnRewardsSummary?.trackerEntries ?? []}
           onDismissTrialIntro={dismissTrialIntro}
+          onDismissEarnTokensIntro={dismissEarnTokensIntro}
         />
       )}
-      {onboardingComplete && !usePromptRulesModeEnabled && <EpbPromptUpdateModal />}
+      {onboardingComplete && !usePromptRulesModeEnabled && (
+        <EpbPromptUpdateModal />
+      )}
       <InsufficientCreditsDialog />
       <EmbeddedCheckoutDialog />
-      {/* Render last so the blocking update gate sits above all other modals */}
       <UpdatePrompt />
       {children}
     </>

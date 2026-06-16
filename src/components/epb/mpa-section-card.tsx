@@ -86,10 +86,8 @@ interface MPASectionCardProps {
   onReviseStatement: (text: string, context?: string, versionCount?: number, aggressiveness?: number) => Promise<string[]>;
   snapshots: EPBShellSnapshot[];
   accomplishments: Accomplishment[]; // All available accomplishments
-  onOpenAccomplishments: () => void;
   enableAutosave?: boolean;
   autosaveDelayMs?: number;
-  cycleYear: number;
   // Section lock props (for single-user mode)
   isLockedByOther?: boolean;
   lockedByInfo?: { name: string; rank: string | null } | null;
@@ -312,10 +310,8 @@ export function MPASectionCard({
   onReviseStatement,
   snapshots,
   accomplishments,
-  onOpenAccomplishments,
   enableAutosave = true,
   autosaveDelayMs = 2000,
-  cycleYear,
   // Lock props for single-user mode
   isLockedByOther = false,
   lockedByInfo,
@@ -671,7 +667,6 @@ export function MPASectionCard({
     accomplishments.filter((a) => state.statement2ActionIds.includes(a.id)),
     [accomplishments, state.statement2ActionIds]
   );
-  const totalLoadedActions = statement1Actions.length + statement2Actions.length;
 
   // Filter accomplishments for this MPA
   const mpaAccomplishments = useMemo(() => 
@@ -754,30 +749,6 @@ export function MPASectionCard({
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Save changes - use localText if in edit mode
-  const handleSave = async () => {
-    const textToSave = state.mode === "edit" ? localText : state.draftText;
-    if (textToSave.length > maxChars) {
-      toast.error(`Statement exceeds ${maxChars} character limit`);
-      return;
-    }
-    // Sync local text to store first
-    if (state.mode === "edit") {
-      updateSectionState(section.mpa, { draftText: localText });
-    }
-    updateSectionState(section.mpa, { isSaving: true });
-    try {
-      await onSave(textToSave);
-      updateSectionState(section.mpa, { isDirty: false });
-      toast.success("Statement saved");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to save");
-    } finally {
-      updateSectionState(section.mpa, { isSaving: false });
-    }
   };
 
   // Create snapshot instantly
@@ -2175,7 +2146,6 @@ export function MPASectionCard({
                           onSelectionChange={handleStatement1ActionsChange}
                           targetMpa={section.mpa}
                           statementNumber={state.usesTwoStatements ? 1 : undefined}
-                          cycleYear={cycleYear}
                           trigger={
                             <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                               <Plus className="size-4 mr-1.5" />
@@ -2209,7 +2179,6 @@ export function MPASectionCard({
                             onSelectionChange={handleStatement2ActionsChange}
                             targetMpa={section.mpa}
                             statementNumber={2}
-                            cycleYear={cycleYear}
                             trigger={
                               <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                                 <Plus className="size-4 mr-1.5" />

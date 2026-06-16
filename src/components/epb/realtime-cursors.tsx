@@ -8,7 +8,7 @@
 import { useEffect, useCallback, useRef } from "react";
 import { MousePointer2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRealtimeCursors, type CursorPosition, type RemoteCursor } from "@/hooks/use-realtime-cursors";
+import { useRealtimeCursors, type RemoteCursor } from "@/hooks/use-realtime-cursors";
 
 // Individual cursor component
 export function Cursor({

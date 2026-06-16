@@ -24,7 +24,6 @@ import {
   X,
   Loader2,
   Users,
-  Check,
   User,
   Crown,
   Shield,
@@ -38,7 +37,6 @@ interface EPBShellShareDialogProps {
   isOpen: boolean;
   onClose: () => void;
   ratee: SelectedRatee | null;
-  currentUserId?: string;
 }
 
 interface AccessUser {
@@ -56,7 +54,6 @@ export function EPBShellShareDialog({
   isOpen,
   onClose,
   ratee,
-  currentUserId,
 }: EPBShellShareDialogProps) {
   const supabase = createClient();
   const [searchQuery, setSearchQuery] = useState("");

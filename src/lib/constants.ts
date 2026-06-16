@@ -1279,8 +1279,6 @@ function getRankCalibratedScopeGuidance(rateeRank: string): string {
   const rank = rateeRank?.trim() || "Unknown";
 
   const juniorEnlisted = ["AB", "Amn", "A1C", "SrA"];
-  const nco = ["SSgt", "TSgt"];
-  const snco = ["MSgt", "SMSgt", "CMSgt"];
 
   if (juniorEnlisted.includes(rank)) {
     return `**Rank-calibrated expectations for ${rank} (Junior Enlisted)**:
@@ -1356,9 +1354,9 @@ export function buildACAAssessmentPrompt(
 
   // Build rubric reference section
   let rubricSection = "";
-  for (const [categoryKey, category] of Object.entries(rubric)) {
+  for (const category of Object.values(rubric)) {
     rubricSection += `\n## ${category.title}\nFocus: ${category.focus}\n`;
-    for (const [subKey, sub] of Object.entries(category.subcategories)) {
+    for (const sub of Object.values(category.subcategories)) {
       rubricSection += `\n### ${sub.label}\n${sub.description}\n`;
       rubricSection += "Proficiency Levels:\n";
       for (const [level, desc] of Object.entries(sub.levels)) {

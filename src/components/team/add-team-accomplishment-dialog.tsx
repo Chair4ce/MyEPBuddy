@@ -28,6 +28,7 @@ import {
 import { ComboboxInput } from "@/components/ui/combobox-input";
 import { toast } from "@/components/ui/sonner";
 import { createAccomplishment } from "@/app/actions/accomplishments";
+import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 import {
   DEFAULT_ACTION_VERBS,
   ENTRY_MGAS,
@@ -105,7 +106,7 @@ export function AddTeamAccomplishmentDialog({
   subordinates,
   managedMembers,
 }: AddTeamAccomplishmentDialogProps) {
-  const { profile, epbConfig } = useUserStore();
+  const { profile } = useUserStore();
 
   const [step, setStep] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -279,6 +280,7 @@ export function AddTeamAccomplishmentDialog({
           }
         }
       } catch (error) {
+        if (handleStaleDeploymentError(error)) return;
         errors.push(`${member.rank || ""} ${member.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }
@@ -560,7 +562,7 @@ export function AddTeamAccomplishmentDialog({
 
                   <ScrollArea className="h-[200px] pr-3">
                     <div className="space-y-3">
-                      {selectedMembers.map((member, index) => (
+                      {selectedMembers.map((member) => (
                         <div
                           key={`${member.type}-${member.id}`}
                           className="flex items-start gap-3 p-3 rounded-lg border bg-card"

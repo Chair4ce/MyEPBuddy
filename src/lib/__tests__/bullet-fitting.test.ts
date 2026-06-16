@@ -815,13 +815,6 @@ describe("Line re-evaluation after per-line compression", () => {
     // The new line 1 width must be within the line width
     expect(line1Width).toBeLessThanOrEqual(LINE_WIDTH);
 
-    // Log the math for visibility
-    const triServiceWidth = getTextWidthPx("tri-service");
-    const remainingSpace = LINE_WIDTH - result.before.segments[0].width;
-    const remainingSpaceAfterCompress = LINE_WIDTH - getTextWidthPx(
-      result.after.segments[0].text.replace(/tri-service.*$/, "").trimEnd()
-    );
-
     // Verify the re-evaluation produced valid segments
     for (const seg of result.after.segments) {
       expect(seg.width).toBeLessThanOrEqual(LINE_WIDTH + 1); // +1 for float rounding
@@ -838,13 +831,8 @@ describe("Line re-evaluation after per-line compression", () => {
     // Compression should have saved space
     expect(result.spaceSaved).toBeGreaterThan(0);
 
-    // The compressed line's raw text width should be less than the original
-    const originalLine1Width = result.before.segments[0].width;
-    const compressedFullText = result.after.text;
-    const compressedSegments = result.after.segments;
-
     // Total text width of the compressed version should be less
-    expect(getTextWidthPx(compressedFullText)).toBeLessThan(getTextWidthPx(text));
+    expect(getTextWidthPx(result.after.text)).toBeLessThan(getTextWidthPx(text));
   });
 
   it("reports the exact space savings and remaining room", () => {

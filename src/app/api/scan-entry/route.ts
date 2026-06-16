@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import {
   scanForSensitiveData,
   redactSensitiveData,
-  type SensitiveMatch,
 } from "@/lib/sensitive-data-scanner";
 
 /**

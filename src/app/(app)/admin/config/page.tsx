@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2, Coins } from "lucide-react";
+import { AdminTokenGrantPanel } from "@/components/admin/admin-token-grant-panel";
 import type { EPBConfig } from "@/types/database";
 
 type FeatureFlagKey =
@@ -188,11 +189,10 @@ export default function AdminConfigPage() {
             AI Tokens
           </CardTitle>
           <CardDescription>
-            Controls how many free tokens new accounts receive at signup. Changing
-            this does not adjust existing user balances.
+            Configure signup trial grants and manually add tokens to existing accounts.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="space-y-2 flex-1 max-w-xs">
               <Label htmlFor="signup_trial_credits">Signup trial grant</Label>
@@ -227,6 +227,8 @@ export default function AdminConfigPage() {
               )}
             </Button>
           </div>
+
+          <AdminTokenGrantPanel />
         </CardContent>
       </Card>
 

@@ -113,7 +113,6 @@ export function AccomplishmentDetailDialog({
   
   // Unsaved changes confirmation
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
-  const [pendingClose, setPendingClose] = useState(false);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = () => {
@@ -133,7 +132,6 @@ export function AccomplishmentDetailDialog({
   // Handle dialog close with change detection
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen && isEditing && hasUnsavedChanges()) {
-      setPendingClose(true);
       setShowDiscardDialog(true);
     } else {
       onOpenChange(newOpen);
@@ -146,7 +144,6 @@ export function AccomplishmentDetailDialog({
   // Discard changes and close
   const handleDiscardChanges = () => {
     setShowDiscardDialog(false);
-    setPendingClose(false);
     setIsEditing(false);
     // Reset form to original values
     if (accomplishment) {
@@ -871,7 +868,6 @@ export function AccomplishmentDetailDialog({
         <AlertDialogFooter>
           <AlertDialogCancel onClick={() => {
             setShowDiscardDialog(false);
-            setPendingClose(false);
           }}>
             Keep Editing
           </AlertDialogCancel>

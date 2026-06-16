@@ -18,7 +18,6 @@ import {
 import {
   getStaticCloseoutDate,
   getDaysUntilCloseout,
-  getCycleProgress,
   getEPBMilestones,
   ENTRY_MGAS,
   MPA_ABBREVIATIONS,
@@ -48,7 +47,6 @@ interface EPBProgressCardProps {
 
 // Recommended minimum entries per MPA for a complete EPB
 const RECOMMENDED_ENTRIES_PER_MPA = 3;
-const RECOMMENDED_STATEMENTS_PER_MPA = 2;
 
 export function EPBProgressCard({
   rank,
@@ -63,7 +61,6 @@ export function EPBProgressCard({
   const tier = rank ? RANK_TO_TIER[rank] : null;
   const closeout = getStaticCloseoutDate(rank);
   const daysUntil = getDaysUntilCloseout(rank);
-  const cycleProgress = getCycleProgress(rank);
   const milestones = getEPBMilestones(rank);
 
   // Calculate MPA coverage

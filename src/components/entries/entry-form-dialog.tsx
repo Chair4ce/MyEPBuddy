@@ -9,7 +9,6 @@ import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -39,6 +38,7 @@ import type { Accomplishment, AccomplishmentAssessmentScores } from "@/types/dat
 import { ProjectSelector } from "@/components/entries/project-selector";
 import { createClient } from "@/lib/supabase/client";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
+import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 
 interface EntryFormDialogProps {
   open: boolean;
@@ -427,7 +427,8 @@ export function EntryFormDialog({
       }
 
       onOpenChange(false);
-    } catch {
+    } catch (error) {
+      if (handleStaleDeploymentError(error)) return;
       toast.error("An error occurred");
     } finally {
       setIsSubmitting(false);

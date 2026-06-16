@@ -92,7 +92,7 @@ export async function getFeedback(
   }
 
   if (data) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { supervisor, ...rest } = data;
     const feedback: SupervisorFeedback = {
       ...rest,

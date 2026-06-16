@@ -28,7 +28,6 @@ import {
 import {
   Search,
   FileText,
-  Calendar,
   Trash2,
   Eye,
   Clock,
@@ -36,7 +35,6 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface WARReportCategory {
@@ -259,7 +257,6 @@ export function WARHistoryModal({
     filteredReports.forEach((report) => {
       const date = new Date(report.week_start);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      const label = date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
       if (!groupMap.has(key)) {
         groupMap.set(key, []);

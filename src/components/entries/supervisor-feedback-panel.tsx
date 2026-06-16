@@ -6,7 +6,6 @@ import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sheet,
@@ -34,10 +33,10 @@ import {
   History,
   User
 } from "lucide-react";
-import type { Profile, SupervisorExpectation, SupervisorFeedback, Rank } from "@/types/database";
+import type { Profile, SupervisorExpectation, SupervisorFeedback } from "@/types/database";
 import { getMyExpectations } from "@/app/actions/supervisor-expectations";
 import { getMyReceivedFeedbacks } from "@/app/actions/supervisor-feedbacks";
-import { getFeedbackTypeLabel, getActiveCycleYear } from "@/lib/constants";
+import { getFeedbackTypeLabel } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 interface SupervisorWithData {
@@ -61,7 +60,6 @@ export function SupervisorFeedbackPanel({ trigger }: SupervisorFeedbackPanelProp
   const [expandedSupervisors, setExpandedSupervisors] = useState<Set<string>>(new Set());
   
   const supabase = createClient();
-  const cycleYear = getActiveCycleYear(profile?.rank as Rank);
 
   // Load data when panel opens
   useEffect(() => {

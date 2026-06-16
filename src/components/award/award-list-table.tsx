@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AWARD_LEVELS, AWARD_CATEGORIES, AWARD_WIN_LEVELS } from "@/lib/constants";
-import type { AwardShell, Profile, ManagedMember, Rank, AwardLevel, AwardCategory, AwardPeriodType, AwardWinLevel } from "@/types/database";
+import type { Profile, ManagedMember, AwardLevel, AwardCategory, AwardPeriodType, AwardWinLevel } from "@/types/database";
 
 // ============================================================================
 // Types
@@ -100,16 +100,6 @@ function getRecipientName(award: AwardShellWithDetails): string {
     return `${award.owner_profile.rank || ""} ${award.owner_profile.full_name}`.trim();
   }
   return "Unknown";
-}
-
-function getRecipientRank(award: AwardShellWithDetails): Rank | null {
-  if (award.owner_team_member) {
-    return award.owner_team_member.rank as Rank | null;
-  }
-  if (award.owner_profile) {
-    return award.owner_profile.rank as Rank | null;
-  }
-  return null;
 }
 
 function getCreatorName(award: AwardShellWithDetails): string {
@@ -274,7 +264,6 @@ export function AwardListTable({
 
   const renderAwardRow = (award: AwardShellWithDetails, isOwn: boolean) => {
     const recipientName = getRecipientName(award);
-    const recipientRank = getRecipientRank(award);
     const creatorName = getCreatorName(award);
     const progress = getProgress(award);
     const isManagedMember = !!award.team_member_id;
