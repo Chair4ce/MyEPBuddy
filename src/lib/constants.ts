@@ -113,6 +113,16 @@ export type ModelQuality = "excellent" | "good" | "basic";
 /** Free default when no user API key is saved (replaces retired gemini-2.0-flash). */
 export const DEFAULT_APP_MODEL_ID = "gemini-2.5-flash-lite";
 
+/** Retired model IDs mapped to their Anthropic-recommended replacements. */
+export const RETIRED_MODEL_REPLACEMENTS: Record<string, string> = {
+  "claude-sonnet-4-20250514": "claude-sonnet-4-6",
+  "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
+};
+
+export function remapRetiredModelId(modelId: string): string {
+  return RETIRED_MODEL_REPLACEMENTS[modelId] ?? modelId;
+}
+
 export const AI_MODELS = [
   {
     id: "gpt-4o",
@@ -133,8 +143,8 @@ export const AI_MODELS = [
       "Good output for most statements. May occasionally need light editing on tone or impact phrasing.",
   },
   {
-    id: "claude-sonnet-4-20250514",
-    name: "Claude Sonnet 4",
+    id: "claude-sonnet-4-6",
+    name: "Claude Sonnet 4.6",
     provider: "anthropic",
     description: "Anthropic's balanced model",
     quality: "excellent" as ModelQuality,
@@ -142,8 +152,8 @@ export const AI_MODELS = [
       "Top-tier for EPB statements. Strong at matching writing style, following instructions, and capturing impact.",
   },
   {
-    id: "claude-3-5-haiku-20241022",
-    name: "Claude 3.5 Haiku",
+    id: "claude-haiku-4-5-20251001",
+    name: "Claude Haiku 4.5",
     provider: "anthropic",
     description: "Fast and efficient",
     quality: "good" as ModelQuality,

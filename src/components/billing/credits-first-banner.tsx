@@ -51,7 +51,7 @@ export function CreditsFirstBanner({
               href="/settings/billing"
               className="underline underline-offset-2 hover:opacity-80"
             >
-              AI Billing
+              AI Tokens
             </a>{" "}
             to use your own model now.
           </p>

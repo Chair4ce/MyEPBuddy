@@ -25,7 +25,6 @@ import {
   LayoutDashboard,
   FileText,
   Users,
-  CreditCard,
   Sparkles,
   Settings,
   Shield,
@@ -121,13 +120,6 @@ const settingsItems = [
     icon: Wand2,
     roles: ["member", "admin"],
     tourId: "nav-settings-llm",
-  },
-  {
-    title: "AI Billing",
-    href: "/settings/billing",
-    icon: CreditCard,
-    roles: ["member", "admin"],
-    tourId: "nav-settings-billing",
   },
   {
     title: "My API Keys",
@@ -490,10 +482,8 @@ export function AppSidebar({ profile }: AppSidebarProps) {
                   />
                 );
               })}
+              <UsageIndicator isCollapsed={isCollapsed} />
             </nav>
-
-            {/* Usage indicator for default-key users */}
-            <UsageIndicator isCollapsed={isCollapsed} />
 
           </ScrollArea>
 

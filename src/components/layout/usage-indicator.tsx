@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -16,7 +17,9 @@ interface UsageIndicatorProps {
 }
 
 export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
+  const pathname = usePathname();
   const { balance, hasOwnKey, trialCredits, isLoading } = useCreditsStore();
+  const isActive = pathname === "/settings/billing";
 
   if (hasOwnKey || isLoading || balance === null) return null;
 
@@ -42,12 +45,15 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
           <Link
             href="/settings/billing"
             className={cn(
-              "flex items-center justify-center h-10 w-10 mx-auto rounded-md",
-              "text-muted-foreground hover:bg-sidebar-accent/50 transition-colors",
-              isCritical && "text-red-500",
-              isWarning && "text-amber-500",
+              "flex items-center justify-center h-10 w-10 mx-auto rounded-md transition-colors",
+              isActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-muted-foreground hover:bg-sidebar-accent/50",
+              !isActive && isCritical && "text-red-500",
+              !isActive && isWarning && "text-amber-500",
             )}
             aria-label={label}
+            data-tour="nav-settings-billing"
           >
             <Sparkles className="size-4" />
           </Link>
@@ -65,12 +71,25 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
   return (
     <Link
       href="/settings/billing"
-      className="block px-4 py-2.5 mx-3 rounded-md hover:bg-sidebar-accent/50 transition-colors group"
+      className={cn(
+        "block px-3 py-2.5 rounded-md transition-colors group",
+        isActive
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "hover:bg-sidebar-accent/50",
+      )}
       aria-label={label}
+      data-tour="nav-settings-billing"
     >
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-          Tokens
+        <span
+          className={cn(
+            "text-xs font-medium transition-colors",
+            isActive
+              ? "text-sidebar-accent-foreground"
+              : "text-muted-foreground group-hover:text-foreground",
+          )}
+        >
+          AI Tokens
         </span>
         <span
           className={cn(

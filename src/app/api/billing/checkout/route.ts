@@ -66,7 +66,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error:
-          "Please accept the AI billing terms before purchasing credits.",
+          "Please accept the AI tokens terms before purchasing credits.",
         errorCode: "billing_terms_required",
       },
       { status: 403 },

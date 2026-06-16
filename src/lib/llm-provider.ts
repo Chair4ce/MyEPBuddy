@@ -12,6 +12,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createXai } from "@ai-sdk/xai";
 import type { LanguageModel } from "ai";
 import type { DecryptedApiKeys } from "@/app/actions/api-keys";
+import { remapRetiredModelId } from "@/lib/constants";
 import {
   wrapModelWithUsageTracking,
   type TokenTrackingContext,
@@ -123,7 +124,7 @@ export class MissingApiKeyError extends Error {
 /**
  * Creates a model provider instance for the given model ID using user or environment keys.
  *
- * @param modelId - The model identifier (e.g., "gpt-4o", "claude-sonnet-4-20250514")
+ * @param modelId - The model identifier (e.g., "gpt-4o", "claude-sonnet-4-6")
  * @param userKeys - Decrypted user API keys (null if not loaded)
  * @param tracking - Optional token-usage tracking context. When provided, the
  *   returned model captures input/output token usage for every call and records
@@ -136,6 +137,7 @@ export function getModelProvider(
   userKeys: Partial<DecryptedApiKeys> | null,
   tracking?: TokenTrackingContext | null,
 ): LanguageModel {
+  modelId = remapRetiredModelId(modelId);
   const provider = detectProvider(modelId);
   const apiKey = resolveApiKey(provider, userKeys);
 

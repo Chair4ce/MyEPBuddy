@@ -193,7 +193,7 @@ export function CreditsPromoButton() {
             </div>
 
             <Button variant="outline" asChild>
-              <Link href="/settings/billing">View billing &amp; history</Link>
+              <Link href="/settings/billing">View tokens &amp; history</Link>
             </Button>
           </div>
         ) : (
@@ -253,9 +253,8 @@ export function CreditsPromoButton() {
                 <Link
                   href="/billing-terms"
                   className="text-primary underline underline-offset-2"
-                  target="_blank"
                 >
-                  AI billing terms
+                  AI tokens terms
                 </Link>{" "}
                 and fee disclosure.
               </span>
@@ -280,7 +279,7 @@ export function CreditsPromoButton() {
               )}
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/settings/billing">View billing & history</Link>
+              <Link href="/settings/billing">View tokens & history</Link>
             </Button>
             {(balance ?? 0) === 0 && (
               <Button variant="ghost" onClick={() => openPurchaseDialog()}>

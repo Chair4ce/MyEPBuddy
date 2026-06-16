@@ -116,7 +116,7 @@ export default function BillingSettingsPage() {
     return (
       <div className="space-y-6 max-w-2xl pb-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Billing</h1>
+          <h1 className="text-2xl font-bold tracking-tight">AI Tokens</h1>
           <p className="text-muted-foreground">
             You&apos;re using your own API keys — unlimited AI usage. Manage keys
             in{" "}
@@ -267,9 +267,8 @@ export default function BillingSettingsPage() {
                 <Link
                   href="/billing-terms"
                   className="text-primary underline underline-offset-2"
-                  target="_blank"
                 >
-                  AI billing terms
+                  AI tokens terms
                 </Link>{" "}
                 including usage policies and fee disclosure.
               </span>
@@ -316,7 +315,7 @@ export default function BillingSettingsPage() {
         <ExternalLink className="size-3" />
         Questions about billing? See our{" "}
         <Link href="/billing-terms" className="text-primary underline">
-          AI billing terms
+          AI tokens terms
         </Link>
         .
       </p>

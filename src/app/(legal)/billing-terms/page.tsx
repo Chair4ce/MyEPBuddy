@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "AI Billing Terms | My EPBuddy",
+  title: "AI Tokens Terms | My EPBuddy",
   description:
-    "AI token billing terms, usage policies, and fee disclosure for My EPBuddy.",
+    "AI token terms, usage policies, and fee disclosure for My EPBuddy.",
   alternates: {
     canonical: "https://myepbuddy.com/billing-terms",
   },
@@ -15,7 +15,7 @@ const LAST_UPDATED = "June 6, 2026";
 export default function BillingTermsPage() {
   return (
     <article className="prose prose-neutral dark:prose-invert max-w-none">
-      <h1>AI Billing Terms & Fee Disclosure</h1>
+      <h1>AI Tokens Terms & Fee Disclosure</h1>
       <p className="text-muted-foreground">Last updated: {LAST_UPDATED}</p>
 
       <section className="mt-8">
@@ -129,7 +129,7 @@ export default function BillingTermsPage() {
         <h2>7. Acceptance</h2>
         <p>
           By checking the acceptance box and completing a purchase, you confirm
-          that you have read and agree to these AI Billing Terms and the fee
+          that you have read and agree to these AI Tokens Terms and the fee
           disclosure above.
         </p>
       </section>

@@ -1,4 +1,4 @@
-import { DEFAULT_APP_MODEL_ID, AI_MODELS, type ModelQuality } from "@/lib/constants";
+import { DEFAULT_APP_MODEL_ID, AI_MODELS, remapRetiredModelId, type ModelQuality } from "@/lib/constants";
 import type { KeyStatus } from "@/app/actions/api-keys";
 import {
   isModelAvailableForStatus,
@@ -144,9 +144,11 @@ export function getDefaultModelId(
     return DEFAULT_APP_MODEL_ID;
   }
 
-  const preferred =
+  const preferred = remapRetiredModelId(
     (context && preferences.defaults[context]) ||
-    preferences.defaults.global;
+      preferences.defaults.global ||
+      "",
+  );
 
   if (
     preferred &&
@@ -184,7 +186,7 @@ export function reconcileModelSelection(
   defaultModelId: string,
   keyStatus?: KeyStatus,
 ): string {
-  const id = requestedId?.trim();
+  const id = remapRetiredModelId(requestedId?.trim() ?? "");
   if (!id) return defaultModelId;
 
   if (models.some((model) => model.id === id && !model.isDeprecated)) {
@@ -203,11 +205,12 @@ export function isModelAllowed(
   models: AvailableModel[],
   keyStatus?: KeyStatus,
 ): boolean {
-  if (models.some((model) => model.id === modelId && !model.isDeprecated)) {
+  const id = remapRetiredModelId(modelId);
+  if (models.some((model) => model.id === id && !model.isDeprecated)) {
     return true;
   }
 
-  if (keyStatus && isModelAvailableForStatus(modelId, keyStatus)) {
+  if (keyStatus && isModelAvailableForStatus(id, keyStatus)) {
     return true;
   }
 

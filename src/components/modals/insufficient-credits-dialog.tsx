@@ -114,9 +114,8 @@ export function InsufficientCreditsDialog() {
                     <Link
                       href="/billing-terms"
                       className="text-primary underline underline-offset-2"
-                      target="_blank"
                     >
-                      AI billing terms
+                      AI tokens terms
                     </Link>{" "}
                     including usage policies and fee disclosure.
                   </span>

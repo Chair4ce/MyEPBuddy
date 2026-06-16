@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
+import { LegalHeaderActions } from "@/components/legal/legal-header-actions";
 
-export default function LegalLayout({
+export default async function LegalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -17,19 +23,14 @@ export default function LegalLayout({
             </div>
             <span>My EPBuddy</span>
           </Link>
-          
+
           {/* Unclassified Banner */}
           <span className="hidden sm:inline-block px-3 py-1 text-xs font-semibold tracking-wider rounded bg-green-600 text-white dark:bg-green-700 dark:text-green-50 select-none">
             UNCLASSIFIED
           </span>
-          
+
           <div className="flex items-center gap-4">
-            <Button variant="ghost" asChild>
-              <Link href="/login">Sign In</Link>
-            </Button>
-            <Button asChild>
-              <Link href="/signup">Get Started</Link>
-            </Button>
+            <LegalHeaderActions isAuthenticated={!!user} />
           </div>
         </div>
       </header>
@@ -57,7 +58,7 @@ export default function LegalLayout({
                 Terms of Service
               </Link>
               <Link href="/billing-terms" className="hover:text-foreground transition-colors">
-                AI Billing Terms
+                AI Tokens Terms
               </Link>
             </div>
             <p className="text-sm text-muted-foreground text-center">
@@ -69,4 +70,3 @@ export default function LegalLayout({
     </div>
   );
 }
-
