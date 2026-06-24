@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore, type SectionSlotState } from "@/stores/award-shell-store";
-import type { createClient } from "@/lib/supabase/client";
 import { Analytics } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -181,14 +180,16 @@ async function persistAwardShellSection(
         return { id: section.id, error: updateError };
       }
 
-      return { id: existing?.id ?? section.id, error: null };
+      const existingId = (existing as { id: string } | null)?.id;
+      return { id: existingId ?? section.id, error: null };
     }
 
     if (error) {
       return { id: section.id, error };
     }
 
-    return { id: data?.id ?? section.id, error: null };
+    const insertedId = (data as { id: string } | null)?.id;
+    return { id: insertedId ?? section.id, error: null };
   }
 
   if (section) {
