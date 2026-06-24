@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
-import { useAwardShellStore } from "@/stores/award-shell-store";
+import { useAwardShellStore, type SectionSlotState } from "@/stores/award-shell-store";
+import type { createClient } from "@/lib/supabase/client";
 import { Analytics } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -125,6 +126,83 @@ interface NomineeInfo {
   isManagedMember: boolean;
 }
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+async function persistAwardShellSection(
+  supabase: SupabaseClient,
+  {
+    shellId,
+    category,
+    slotIndex,
+    section,
+    slotState,
+    profileId,
+  }: {
+    shellId: string;
+    category: string;
+    slotIndex: number;
+    section: AwardShellSection | undefined;
+    slotState: SectionSlotState;
+    profileId: string;
+  }
+): Promise<{ id: string; error: Error | null }> {
+  const payload = {
+    statement_text: slotState.draftText,
+    source_type: slotState.sourceType,
+    custom_context: slotState.customContext,
+    selected_action_ids: slotState.selectedActionIds,
+    clarifying_answers: slotState.clarifyingAnswers || [],
+    last_edited_by: profileId,
+  };
+
+  if (section?.id?.startsWith("temp-")) {
+    const { data, error } = await supabase
+      .from("award_shell_sections")
+      .insert({
+        shell_id: shellId,
+        category,
+        slot_index: slotIndex,
+        ...payload,
+      } as never)
+      .select("id")
+      .single();
+
+    if (error?.code === "23505") {
+      const { data: existing, error: updateError } = await supabase
+        .from("award_shell_sections")
+        .update(payload as never)
+        .eq("shell_id", shellId)
+        .eq("category", category)
+        .eq("slot_index", slotIndex)
+        .select("id")
+        .single();
+
+      if (updateError) {
+        return { id: section.id, error: updateError };
+      }
+
+      return { id: existing?.id ?? section.id, error: null };
+    }
+
+    if (error) {
+      return { id: section.id, error };
+    }
+
+    return { id: data?.id ?? section.id, error: null };
+  }
+
+  if (section) {
+    const { error } = await supabase
+      .from("award_shell_sections")
+      .update(payload as never)
+      .eq("id", section.id);
+
+    return { id: section.id, error: error ?? null };
+  }
+
+  return { id: "", error: null };
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -146,6 +224,7 @@ export function AwardWorkspaceDialog({
     setSections,
     addSection,
     removeSection,
+    updateSection,
     slotStates,
     updateSlotState,
     collapsedCategories,
@@ -417,35 +496,27 @@ export function AwardWorkspaceDialog({
         const slotIndex = parseInt(slotIndexStr);
         const section = sections[key];
 
-        if (section?.id?.startsWith("temp-")) {
-          // Insert new section
-          await supabase
-            .from("award_shell_sections")
-            .insert({
-              shell_id: shellId,
-              category,
-              slot_index: slotIndex,
-              statement_text: slotState.draftText,
-              source_type: slotState.sourceType,
-              custom_context: slotState.customContext,
-              selected_action_ids: slotState.selectedActionIds,
-              clarifying_answers: slotState.clarifyingAnswers || [],
-              last_edited_by: profile.id,
-            } as never);
-        } else if (section) {
-          // Update existing section
-          await supabase
-            .from("award_shell_sections")
-            .update({
-              statement_text: slotState.draftText,
-              source_type: slotState.sourceType,
-              custom_context: slotState.customContext,
-              selected_action_ids: slotState.selectedActionIds,
-              clarifying_answers: slotState.clarifyingAnswers || [],
-              last_edited_by: profile.id,
-            } as never)
-            .eq("id", section.id);
+        const { id: persistedId, error: sectionError } = await persistAwardShellSection(
+          supabase,
+          {
+            shellId,
+            category,
+            slotIndex,
+            section,
+            slotState,
+            profileId: profile.id,
+          }
+        );
+
+        if (sectionError) {
+          throw sectionError;
         }
+
+        if (section?.id?.startsWith("temp-") && persistedId && !persistedId.startsWith("temp-")) {
+          updateSection(category, slotIndex, { id: persistedId });
+        }
+
+        updateSlotState(category, slotIndex, { isDirty: false });
       }
 
       Analytics.awardSaved("manual");
@@ -457,7 +528,7 @@ export function AwardWorkspaceDialog({
     } finally {
       setIsSaving(false);
     }
-  }, [nomineeInfo, profile, currentShell, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, onSaved]);
+  }, [nomineeInfo, profile, currentShell, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, onSaved, updateSection, updateSlotState]);
 
   // Delete complete handler - called after DeleteAwardDialog finishes
   const handleDeleteComplete = useCallback(() => {
@@ -651,45 +722,33 @@ export function AwardWorkspaceDialog({
         const slotIndex = parseInt(slotIndexStr);
         const section = sections[key];
 
-        if (section?.id?.startsWith("temp-")) {
-          // Insert new section
-          await supabase
-            .from("award_shell_sections")
-            .insert({
-              shell_id: shellId,
-              category,
-              slot_index: slotIndex,
-              statement_text: slotState.draftText,
-              source_type: slotState.sourceType,
-              custom_context: slotState.customContext,
-              selected_action_ids: slotState.selectedActionIds,
-              clarifying_answers: slotState.clarifyingAnswers || [],
-              last_edited_by: profile.id,
-            } as never);
-        } else if (section) {
-          // Update existing section
-          await supabase
-            .from("award_shell_sections")
-            .update({
-              statement_text: slotState.draftText,
-              source_type: slotState.sourceType,
-              custom_context: slotState.customContext,
-              selected_action_ids: slotState.selectedActionIds,
-              clarifying_answers: slotState.clarifyingAnswers || [],
-              last_edited_by: profile.id,
-            } as never)
-            .eq("id", section.id);
+        const { id: persistedId, error: sectionError } = await persistAwardShellSection(
+          supabase,
+          {
+            shellId,
+            category,
+            slotIndex,
+            section,
+            slotState,
+            profileId: profile.id,
+          }
+        );
+
+        if (sectionError) {
+          throw sectionError;
         }
 
-        // Mark slot as not dirty
-        const [cat, idx] = key.split(":");
-        updateSlotState(cat, parseInt(idx), { isDirty: false });
+        if (section?.id?.startsWith("temp-") && persistedId && !persistedId.startsWith("temp-")) {
+          updateSection(category, slotIndex, { id: persistedId });
+        }
+
+        updateSlotState(category, slotIndex, { isDirty: false });
       }
     } catch (error) {
       console.error("Autosave error:", error);
       // Silent fail - user can still manually save
     }
-  }, [nomineeInfo, profile, currentShell, isSaving, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, updateSlotState]);
+  }, [nomineeInfo, profile, currentShell, isSaving, awardLevel, awardCategory, sentencesPerStatement, awardTitle, periodStartDate, periodEndDate, slotStates, sections, supabase, updateSection, updateSlotState]);
 
   // Autosave effect - triggers 2 seconds after changes stop
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
