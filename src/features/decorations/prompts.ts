@@ -113,7 +113,7 @@ ${params.approvedAbbreviations ? `   - **USER-APPROVED ABBREVIATIONS** — You M
 The paragraph follows this structure:
 
 1. **OPENING SENTENCE** (use this verbatim): ${getOpeningTemplate(params)}
-2. **NARRATIVE** (2-4 concise sentences): Go DIRECTLY into the first accomplishment. Do NOT add filler or preamble such as "During this period," or "In this important assignment." Use short transitions: "Additionally," "Furthermore," "Finally," Each sentence: ACTION → SCOPE → IMPACT. Use rank-appropriate verbs: ${verbs.primary.join(", ")}, ${verbs.secondary.join(", ")}
+2. **NARRATIVE** (2-4 concise sentences): The FIRST narrative sentence MUST begin with "During this period," immediately followed by the short rank and first accomplishment (e.g., "During this period, ${shortRank} ${getLastName(params.fullName)} coordinated..."). Use short transitions for later sentences: "Additionally," "Furthermore," "Finally," Each sentence: ACTION → SCOPE → IMPACT. Use rank-appropriate verbs: ${verbs.primary.join(", ")}, ${verbs.secondary.join(", ")}
 3. **CLOSING SENTENCE** (use this verbatim): ${getClosingTemplate(params, config.closingIntensity)}
 
 ## ACCOMPLISHMENTS TO INCORPORATE
@@ -287,6 +287,32 @@ function formatReason(reason: DecorationReason): string {
     combat_valor: "Combat Valor",
   };
   return labels[reason] || reason;
+}
+
+const DURING_THIS_PERIOD_PREAMBLE = "During this period, ";
+
+/**
+ * Ensures the first narrative sentence begins with "During this period,"
+ * immediately after the opening sentence (e.g., after the period dates).
+ */
+export function ensureDuringThisPeriodPreamble(citation: string): string {
+  const trimmed = citation.trim();
+  if (!trimmed || /During this period,/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const boundary = trimmed.search(/\.\s+/);
+  if (boundary === -1) {
+    return trimmed;
+  }
+
+  const opening = trimmed.slice(0, boundary + 1);
+  const narrative = trimmed.slice(boundary + 1).trimStart();
+  if (!narrative) {
+    return trimmed;
+  }
+
+  return `${opening} ${DURING_THIS_PERIOD_PREAMBLE}${narrative}`;
 }
 
 // Post-processing function to expand any remaining abbreviations

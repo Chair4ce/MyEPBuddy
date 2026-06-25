@@ -12,7 +12,11 @@ import {
 } from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
 import { enforceUsageGate } from "@/lib/usage-gate";
-import { buildDecorationSystemPrompt, expandAbbreviations } from "@/lib/decoration-prompts";
+import {
+  buildDecorationSystemPrompt,
+  ensureDuringThisPeriodPreamble,
+  expandAbbreviations,
+} from "@/lib/decoration-prompts";
 import type { DecorationAwardType, DecorationReason } from "@/lib/decoration-constants";
 import { DECORATION_TYPES } from "@/lib/decoration-constants";
 import type { UserLLMSettings } from "@/types/database";
@@ -236,7 +240,7 @@ export async function POST(request: Request) {
 ## ACCOMPLISHMENTS TO INCORPORATE
 ${body.accomplishments.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 
-HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} characters (including spaces). FORMAT: Output the citation as ONE continuous paragraph — NO line breaks or newlines anywhere. Use numerals for numbers 10+ (23, 350, 1.4K). Do NOT spell out large numbers. Do NOT add filler phrases like "During this period" or "In this important assignment." Go directly into accomplishments after the opening sentence. The opening sentence MUST use the assignment chain exactly as provided (e.g., "...as ${body.dutyTitle || "member"}, ${assignmentLine}..."). Output ONLY the citation as a single paragraph, ready to paste directly onto ${decorationConfig.afForm}.`
+HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} characters (including spaces). FORMAT: Output the citation as ONE continuous paragraph — NO line breaks or newlines anywhere. Use numerals for numbers 10+ (23, 350, 1.4K). Do NOT spell out large numbers. The FIRST narrative sentence MUST begin with "During this period," followed immediately by the short rank and first accomplishment. The opening sentence MUST use the assignment chain exactly as provided (e.g., "...as ${body.dutyTitle || "member"}, ${assignmentLine}..."). Output ONLY the citation as a single paragraph, ready to paste directly onto ${decorationConfig.afForm}.`
       : "Generate the complete decoration citation based on the provided information and accomplishments.";
 
     // Generate citation
@@ -255,7 +259,7 @@ HARD LIMIT: The entire citation MUST be ≤ ${decorationConfig.maxCharacters} ch
       .replace(/\r/g, " ")
       .replace(/\s{2,}/g, " ")
       .trim();
-    const citation = expandAbbreviations(singleParagraph);
+    const citation = ensureDuringThisPeriodPreamble(expandAbbreviations(singleParagraph));
     
     // Character count check (MyDecs Reimagined uses 1350 char limit)
     const characterCount = citation.length;
