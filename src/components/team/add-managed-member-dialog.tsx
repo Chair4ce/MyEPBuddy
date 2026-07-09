@@ -216,7 +216,7 @@ export function AddManagedMemberDialog({
         .from("profiles")
         .select("id, email, full_name, rank")
         .eq("email", email.toLowerCase())
-        .single() as { data: { id: string; email: string | null; full_name: string | null; rank: string | null } | null };
+        .maybeSingle() as { data: { id: string; email: string | null; full_name: string | null; rank: string | null } | null };
 
       if (existingProfile) {
         const match: ExistingUserMatch = {

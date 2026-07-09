@@ -60,7 +60,7 @@ export async function getUserStyleContext(
         .from("user_style_profiles")
         .select("*")
         .eq("user_id", userId)
-        .single(),
+        .maybeSingle(),
       category
         ? supabase
             .from("user_style_examples")

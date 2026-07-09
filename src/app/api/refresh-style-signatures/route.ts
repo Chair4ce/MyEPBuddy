@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { refreshUserSignatures } from "@/lib/style-signatures";
 
@@ -19,11 +19,14 @@ export async function POST() {
     }
 
     // Manual refresh cooldown — style signatures do not consume AI call credits.
+    // api_usage inserts are service-role only (migration 170); use admin client.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const admin = createAdminClient() as any;
     const cooldownCutoff = new Date(
       Date.now() - COOLDOWN_MINUTES * 60 * 1000,
     ).toISOString();
 
-    const { count } = await supabase
+    const { count } = await admin
       .from("api_usage")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
@@ -42,8 +45,7 @@ export async function POST() {
     const { generated, quotaExhausted } = await refreshUserSignatures(user.id);
 
     // Record manual refresh for cooldown tracking only (not billable).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from("api_usage").insert({
+    await admin.from("api_usage").insert({
       user_id: user.id,
       action_type: "refresh_style_signatures",
       used_default_key: false,

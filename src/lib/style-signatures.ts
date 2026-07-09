@@ -385,24 +385,74 @@ export async function refreshUserSignatures(userId: string): Promise<{
   const userKeys = await getDecryptedApiKeys();
   let quotaExhausted = false;
 
-  // Get all unique rank + AFSC + MPA combinations from the user's statements
-  // We need to determine the ratee's rank from EPB shells
+  // Get all unique rank + AFSC combinations from the user's EPB shells.
+  // Rank/AFSC live on profiles (self) or team_members (managed) — not on epb_shells.
   const { data: shells } = await supabase
     .from("epb_shells")
-    .select("id, ratee_rank, ratee_afsc")
+    .select("id, user_id, team_member_id")
     .eq("user_id", userId);
 
   if (!shells || shells.length === 0) {
     return { generated: 0, quotaExhausted: false };
   }
 
+  type ShellRow = {
+    id: string;
+    user_id: string;
+    team_member_id: string | null;
+  };
+  const shellRows = shells as ShellRow[];
+
+  const teamMemberIds = [
+    ...new Set(
+      shellRows
+        .map((s) => s.team_member_id)
+        .filter((id): id is string => id != null),
+    ),
+  ];
+
+  const rankAfscByKey = new Map<string, { rank: string | null; afsc: string | null }>();
+
+  // Self shells: ratee is the profile owner
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, rank, afsc")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile) {
+    rankAfscByKey.set(`profile:${userId}`, {
+      rank: (profile as { rank: string | null; afsc: string | null }).rank,
+      afsc: (profile as { rank: string | null; afsc: string | null }).afsc,
+    });
+  }
+
+  if (teamMemberIds.length > 0) {
+    const { data: members } = await supabase
+      .from("team_members")
+      .select("id, rank, afsc")
+      .in("id", teamMemberIds);
+
+    for (const m of (members || []) as {
+      id: string;
+      rank: string | null;
+      afsc: string | null;
+    }[]) {
+      rankAfscByKey.set(`member:${m.id}`, { rank: m.rank, afsc: m.afsc });
+    }
+  }
+
   // Build a map of AFSC → rank for the user's ratees
   const afscRankPairs = new Set<string>();
-  (shells as { id: string; ratee_rank: string | null; ratee_afsc: string | null }[]).forEach(s => {
-    if (s.ratee_rank && s.ratee_afsc) {
-      afscRankPairs.add(`${s.ratee_rank}|${s.ratee_afsc}`);
+  for (const s of shellRows) {
+    const key = s.team_member_id
+      ? `member:${s.team_member_id}`
+      : `profile:${s.user_id}`;
+    const info = rankAfscByKey.get(key);
+    if (info?.rank && info?.afsc) {
+      afscRankPairs.add(`${info.rank}|${info.afsc}`);
     }
-  });
+  }
 
   let generated = 0;
 

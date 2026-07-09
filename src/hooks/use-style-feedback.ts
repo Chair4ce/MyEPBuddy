@@ -277,7 +277,7 @@ export function useStyleFeedback(options: UseStyleFeedbackOptions = {}) {
         .from("user_style_profiles")
         .select("*")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       return data as UserStyleProfile | null;
     } catch {

@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       .select("id")
       .eq("shell_id", shellId)
       .eq("shared_with_id", user.id)
-      .single();
+      .maybeSingle();
     
     const isShared = !!shareData;
 
