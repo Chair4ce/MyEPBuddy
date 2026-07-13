@@ -354,3 +354,24 @@
   }
 }
 
+/* Expand / collapse by animating real content height (0fr → 1fr). */
+.t-collapse-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.t-collapse-grid[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.t-collapse-grid > * {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-collapse-grid {
+    transition: none !important;
+  }
+}
+

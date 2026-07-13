@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { escapeHtml, stripHtml } from "@/lib/email/html-safe";
 
 const MAX_FEEDBACK_LENGTH = 2000;
 const MAX_SUBMISSIONS_PER_HOUR = 20;
@@ -11,19 +12,6 @@ type RateLimitRecord = {
 };
 
 const feedbackRateLimits = new Map<string, RateLimitRecord>();
-
-function stripHtml(input: string): string {
-  return input.replace(/<[^>]*>/g, "");
-}
-
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
 function checkRateLimit(userId: string): boolean {
   const now = Date.now();

@@ -59,6 +59,7 @@ interface TestUser {
   rank: string;
   afsc: string;
   unit: string;
+  role?: "user" | "admin";
 }
 
 // Fresh user for onboarding testing (no rank, no terms accepted)
@@ -86,6 +87,7 @@ const testUsers: TestUser[] = [
     rank: "MSgt",
     afsc: "3D0X2",
     unit: "42 CS/SCOO",
+    role: "admin",
   },
   // Section NCOICs
   {
@@ -285,6 +287,7 @@ async function createAuthUser(user: TestUser) {
         rank: user.rank,
         afsc: user.afsc,
         unit: user.unit,
+        role: user.role ?? "user",
         terms_accepted_at: onboardedAt,
         billing_terms_accepted_at: onboardedAt,
         trial_intro_seen_at: onboardedAt,

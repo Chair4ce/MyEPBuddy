@@ -1467,6 +1467,11 @@ export interface Database {
           feature: string;
           feedback: string;
           created_at: string;
+          status: "open" | "replied" | "archived";
+          admin_reply: string | null;
+          replied_at: string | null;
+          replied_by: string | null;
+          email_sent_at: string | null;
         };
         Insert: {
           id?: string;
@@ -1475,11 +1480,21 @@ export interface Database {
           feature: string;
           feedback: string;
           created_at?: string;
+          status?: "open" | "replied" | "archived";
+          admin_reply?: string | null;
+          replied_at?: string | null;
+          replied_by?: string | null;
+          email_sent_at?: string | null;
         };
         Update: {
           feature?: string;
           feedback?: string;
           user_email?: string | null;
+          status?: "open" | "replied" | "archived";
+          admin_reply?: string | null;
+          replied_at?: string | null;
+          replied_by?: string | null;
+          email_sent_at?: string | null;
         };
       };
       statement_history: {

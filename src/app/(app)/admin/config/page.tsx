@@ -16,8 +16,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
-import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2, Coins } from "lucide-react";
+import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2, Coins, MessageSquare } from "lucide-react";
 import { AdminTokenGrantPanel } from "@/components/admin/admin-token-grant-panel";
+import { AdminUserFeedbackPanel } from "@/components/admin/admin-user-feedback-panel";
 import type { EPBConfig } from "@/types/database";
 
 type FeatureFlagKey =
@@ -180,6 +181,21 @@ export default function AdminConfigPage() {
             When you write an EPB for someone else, the app uses their rank to determine the active cycle.
           </CardDescription>
         </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="size-5" />
+            User Feedback
+          </CardTitle>
+          <CardDescription>
+            Review in-app feedback, reply by email from your domain, or archive noise.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AdminUserFeedbackPanel />
+        </CardContent>
       </Card>
 
       <Card>

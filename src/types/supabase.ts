@@ -3133,30 +3133,52 @@ export type Database = {
       }
       user_feedback: {
         Row: {
+          admin_reply: string | null
           created_at: string | null
+          email_sent_at: string | null
           feature: string
           feedback: string
           id: string
+          replied_at: string | null
+          replied_by: string | null
+          status: string
           user_email: string | null
           user_id: string | null
         }
         Insert: {
+          admin_reply?: string | null
           created_at?: string | null
+          email_sent_at?: string | null
           feature: string
           feedback: string
           id?: string
+          replied_at?: string | null
+          replied_by?: string | null
+          status?: string
           user_email?: string | null
           user_id?: string | null
         }
         Update: {
+          admin_reply?: string | null
           created_at?: string | null
+          email_sent_at?: string | null
           feature?: string
           feedback?: string
           id?: string
+          replied_at?: string | null
+          replied_by?: string | null
+          status?: string
           user_email?: string | null
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "user_feedback_replied_by_fkey"
+            columns: ["replied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_feedback_user_id_fkey"
             columns: ["user_id"]
