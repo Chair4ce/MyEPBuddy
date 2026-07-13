@@ -284,27 +284,47 @@ export function AdminUserFeedbackPanel() {
                     )}
                   </div>
 
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    aria-expanded={isExpanded}
-                    aria-controls={`feedback-detail-${item.id}`}
-                    aria-label={isExpanded ? "Collapse feedback" : "Expand feedback"}
-                    onClick={() =>
-                      setExpandedId((current) =>
-                        current === item.id ? null : item.id,
-                      )
-                    }
-                    className="shrink-0 active:scale-[0.98] transition-transform duration-150"
-                  >
-                    {isExpanded ? (
-                      <ChevronUp className="size-4" aria-hidden />
-                    ) : (
-                      <ChevronDown className="size-4" aria-hidden />
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {item.status === "open" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleArchive(item)}
+                        disabled={isArchiving || isSending}
+                        aria-label="Archive without emailing"
+                        className="active:scale-[0.98] transition-transform duration-150"
+                      >
+                        {isArchiving ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                        ) : (
+                          <Archive className="size-4" aria-hidden />
+                        )}
+                        <span className="ml-2">Archive</span>
+                      </Button>
                     )}
-                    <span className="ml-1">{isExpanded ? "Hide" : "Open"}</span>
-                  </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-expanded={isExpanded}
+                      aria-controls={`feedback-detail-${item.id}`}
+                      aria-label={isExpanded ? "Collapse feedback" : "Expand feedback"}
+                      onClick={() =>
+                        setExpandedId((current) =>
+                          current === item.id ? null : item.id,
+                        )
+                      }
+                      className="active:scale-[0.98] transition-transform duration-150"
+                    >
+                      {isExpanded ? (
+                        <ChevronUp className="size-4" aria-hidden />
+                      ) : (
+                        <ChevronDown className="size-4" aria-hidden />
+                      )}
+                      <span className="ml-1">{isExpanded ? "Hide" : "Open"}</span>
+                    </Button>
+                  </div>
                 </div>
 
                 <div
@@ -372,25 +392,7 @@ export function AdminUserFeedbackPanel() {
                                 </span>
                               )}
                             </p>
-                            <div className="flex flex-wrap gap-2">
-                              {item.status === "open" && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => void handleArchive(item)}
-                                  disabled={isArchiving || isSending || !isExpanded}
-                                  aria-label="Archive without emailing"
-                                  className="active:scale-[0.98] transition-transform duration-150"
-                                >
-                                  {isArchiving ? (
-                                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                                  ) : (
-                                    <Archive className="size-4" aria-hidden />
-                                  )}
-                                  <span className="ml-2">Archive</span>
-                                </Button>
-                              )}
+                            <div className="flex flex-wrap gap-2 justify-end">
                               <Button
                                 type="button"
                                 size="sm"

@@ -367,6 +367,12 @@
 
 .t-collapse-grid > * {
   overflow: hidden;
+  min-height: 0;
+}
+
+.t-collapse-grid[data-open="true"] > * {
+  /* Keep interactive controls (buttons) clickable once expanded */
+  overflow: visible;
 }
 
 @media (prefers-reduced-motion: reduce) {

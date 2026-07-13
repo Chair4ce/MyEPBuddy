@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminApiUser } from "@/lib/auth/require-admin";
+import { createAdminClient } from "@/lib/supabase/server";
 import { escapeHtml, stripHtml } from "@/lib/email/html-safe";
 import type { AdminUserFeedbackItem } from "@/lib/admin/user-feedback";
 
@@ -210,7 +211,8 @@ export async function POST(request: NextRequest) {
     const nowIso = new Date().toISOString();
     const nextStatus = archive ? "archived" : "replied";
 
-    const { data: updated, error: updateError } = await auth.supabase
+    const admin = createAdminClient();
+    const { data: updated, error: updateError } = await admin
       .from("user_feedback")
       .update({
         admin_reply: reply,
@@ -218,7 +220,7 @@ export async function POST(request: NextRequest) {
         replied_at: nowIso,
         replied_by: auth.user.id,
         email_sent_at: nowIso,
-      } as never)
+      })
       .eq("id", feedbackId)
       .select(
         "id, user_id, user_email, feature, feedback, created_at, status, admin_reply, replied_at, replied_by, email_sent_at",
