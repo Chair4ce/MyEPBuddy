@@ -31,10 +31,16 @@ import {
 } from "@/app/actions/accomplishments";
 import { DEFAULT_ACTION_VERBS, ENTRY_MGAS, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import type { Rank } from "@/types/database";
-import { Loader2, Sparkles, Target, BarChart3 } from "lucide-react";
+import { Loader2, Sparkles, Target, BarChart3, ClipboardCopy } from "lucide-react";
 import { celebrateEntry } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import type { Accomplishment, AccomplishmentAssessmentScores } from "@/types/database";
+import {
+  getAssessmentChrome,
+  getAssessmentCoachingTips,
+  INDICATOR_WEAK_THRESHOLD,
+  type AssessmentViewerRole,
+} from "@/lib/assessment-coaching";
 import { ProjectSelector } from "@/components/entries/project-selector";
 import { createClient } from "@/lib/supabase/client";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
@@ -88,6 +94,16 @@ export function EntryFormDialog({
     }
     return (profile?.rank ?? null) as Rank | null;
   })();
+
+  const viewerRole: AssessmentViewerRole =
+    targetManagedMemberId || (targetUserId && targetUserId !== profile?.id)
+      ? "rater"
+      : "self";
+
+  const assessmentChrome = getAssessmentChrome(viewerRole);
+  const coachingTips = previewAssessment
+    ? getAssessmentCoachingTips(previewAssessment, form.mpa)
+    : [];
 
   const cycleYear = getActiveCycleYear(targetRateeRank);
 
@@ -150,6 +166,9 @@ export function EntryFormDialog({
           impact: form.impact || null,
           metrics: form.metrics || null,
           mpa: form.mpa,
+          rateeRank: targetRateeRank,
+          targetUserId: targetUserId ?? null,
+          targetManagedMemberId: targetManagedMemberId ?? null,
         }),
       });
 
@@ -169,6 +188,20 @@ export function EntryFormDialog({
       toast.error("Failed to assess accomplishment");
     } finally {
       setIsAssessing(false);
+    }
+  };
+
+  const handleCopyCoachingNotes = async () => {
+    if (coachingTips.length === 0) return;
+
+    const notes = coachingTips.map((tip) => `${tip.title}: ${tip.body}`).join("\n");
+
+    try {
+      await navigator.clipboard.writeText(notes);
+      toast.success("Feedback notes copied");
+    } catch (error) {
+      console.error("Failed to copy coaching notes:", error);
+      toast.error("Failed to copy notes");
     }
   };
 
@@ -349,7 +382,7 @@ export function EntryFormDialog({
           Analytics.accomplishmentEdited(form.mpa);
           toast.success("Entry updated");
           // Only trigger background assessment if not pre-assessed and user is enlisted
-          if (!hasPreAssessment && isEnlisted(profile?.rank as Rank)) {
+          if (!hasPreAssessment && isEnlisted(targetRateeRank)) {
             triggerAssessment(editEntry.id);
           }
           
@@ -407,7 +440,7 @@ export function EntryFormDialog({
           Analytics.accomplishmentCreated(form.mpa, !!form.metrics);
           
           // Only trigger background assessment if not pre-assessed and user is enlisted
-          if (!hasPreAssessment && isEnlisted(profile?.rank as Rank)) {
+          if (!hasPreAssessment && isEnlisted(targetRateeRank)) {
             triggerAssessment(result.data.id);
           }
           
@@ -579,13 +612,13 @@ export function EntryFormDialog({
             </p>
           </div>
 
-          {/* Rate My Accomplishment Section - Only for Enlisted (ACA rubric not available for Officers yet) */}
-          {isEnlisted(profile?.rank as Rank) && (
+          {/* AI Assessment — enlisted ratees only (ACA rubric not available for Officers yet) */}
+          {isEnlisted(targetRateeRank) && (
           <div className="pt-2 border-t">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <BarChart3 className="size-4 text-muted-foreground" />
-                <span className="text-sm font-medium">AI Assessment</span>
+                <span className="text-sm font-medium">{assessmentChrome.sectionLabel}</span>
               </div>
               <Button
                 type="button"
@@ -594,6 +627,7 @@ export function EntryFormDialog({
                 onClick={handleRateAccomplishment}
                 disabled={isAssessing || !form.action_verb || !form.details}
                 className="h-8 text-xs"
+                aria-label={previewAssessment ? assessmentChrome.ctaRelabel : assessmentChrome.ctaLabel}
               >
                 {isAssessing ? (
                   <>
@@ -601,9 +635,9 @@ export function EntryFormDialog({
                     Analyzing...
                   </>
                 ) : previewAssessment ? (
-                  "Re-analyze"
+                  assessmentChrome.ctaRelabel
                 ) : (
-                  "Rate My Accomplishment"
+                  assessmentChrome.ctaLabel
                 )}
                 <TokenCostBadge compact className="ml-1.5" />
               </Button>
@@ -676,42 +710,79 @@ export function EntryFormDialog({
                 <div className="space-y-1.5">
                   <span className="text-xs font-medium text-muted-foreground">Quality Breakdown</span>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Action Clarity</span>
-                      <span className={getScoreColor(previewAssessment.quality_indicators.action_clarity).split(" ")[0]}>
-                        {previewAssessment.quality_indicators.action_clarity}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Impact</span>
-                      <span className={getScoreColor(previewAssessment.quality_indicators.impact_significance).split(" ")[0]}>
-                        {previewAssessment.quality_indicators.impact_significance}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Metrics</span>
-                      <span className={getScoreColor(previewAssessment.quality_indicators.metrics_quality).split(" ")[0]}>
-                        {previewAssessment.quality_indicators.metrics_quality}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Scope</span>
-                      <span className={getScoreColor(previewAssessment.quality_indicators.scope_definition).split(" ")[0]}>
-                        {previewAssessment.quality_indicators.scope_definition}
-                      </span>
-                    </div>
+                    {(
+                      [
+                        ["Action Clarity", previewAssessment.quality_indicators.action_clarity],
+                        ["Impact", previewAssessment.quality_indicators.impact_significance],
+                        ["Metrics", previewAssessment.quality_indicators.metrics_quality],
+                        ["Scope", previewAssessment.quality_indicators.scope_definition],
+                      ] as const
+                    ).map(([label, score]) => (
+                      <div key={label} className="flex justify-between">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span
+                          className={cn(
+                            getScoreColor(score).split(" ")[0],
+                            score < INDICATOR_WEAK_THRESHOLD && "font-semibold"
+                          )}
+                        >
+                          {score}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                <p className="text-[10px] text-muted-foreground/70">
-                  Tip: Add more specific details, quantifiable metrics, and clear impact to improve your score.
-                </p>
+                {coachingTips.length > 0 && (
+                  <div className="space-y-2 pt-1 border-t border-border/60">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {assessmentChrome.tipsHeading}
+                      </span>
+                      {viewerRole === "rater" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCopyCoachingNotes}
+                          className="h-7 px-2 text-xs"
+                          aria-label="Copy feedback notes"
+                        >
+                          <ClipboardCopy className="size-3 mr-1" />
+                          Copy notes
+                        </Button>
+                      )}
+                    </div>
+                    <ul
+                      className="space-y-2"
+                      aria-label={assessmentChrome.tipsHeading}
+                    >
+                      {coachingTips.map((tip) => (
+                        <li
+                          key={tip.id}
+                          className={cn(
+                            "rounded-md px-2.5 py-2 text-xs",
+                            tip.severity === "weak" &&
+                              "bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-100",
+                            tip.severity === "info" &&
+                              "bg-background border border-border/60 text-muted-foreground",
+                            tip.severity === "strong" &&
+                              "bg-muted/60 border border-border/40 text-muted-foreground"
+                          )}
+                        >
+                          <span className="font-medium text-foreground">{tip.title}</span>
+                          <span className="text-muted-foreground"> — {tip.body}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 
             {!previewAssessment && !isAssessing && (
               <p className="text-xs text-muted-foreground">
-                Click &quot;Rate My Accomplishment&quot; to see how well this entry scores before saving.
+                {assessmentChrome.emptyHint}
               </p>
             )}
           </div>

@@ -40,6 +40,94 @@ interface AssessPreviewRequest {
   metrics: string | null;
   mpa: string;
   model?: string;
+  rateeRank?: string | null;
+  targetUserId?: string | null;
+  targetManagedMemberId?: string | null;
+}
+
+async function resolveRateeRank(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  callerId: string,
+  callerRank: string | null,
+  targetUserId?: string | null,
+  targetManagedMemberId?: string | null
+): Promise<{ rateeRank: string | null; error?: NextResponse }> {
+  if (targetManagedMemberId) {
+    const { data: managedMembers, error } = await supabase.rpc(
+      "get_visible_managed_members",
+      { viewer_uuid: callerId }
+    );
+
+    if (error) {
+      return {
+        rateeRank: null,
+        error: NextResponse.json(
+          { error: "Failed to verify managed member access" },
+          { status: 403 }
+        ),
+      };
+    }
+
+    const member = (managedMembers as { id: string; rank: string | null; member_status: string }[] | null)?.find(
+      (m) => m.id === targetManagedMemberId && m.member_status !== "archived"
+    );
+
+    if (!member) {
+      return {
+        rateeRank: null,
+        error: NextResponse.json(
+          { error: "Access denied to this managed member" },
+          { status: 403 }
+        ),
+      };
+    }
+
+    return { rateeRank: member.rank ?? null };
+  }
+
+  if (targetUserId) {
+    if (targetUserId === callerId) {
+      return { rateeRank: callerRank };
+    }
+
+    const { data: teamLink, error: teamError } = await supabase
+      .from("teams")
+      .select("subordinate_id")
+      .eq("supervisor_id", callerId)
+      .eq("subordinate_id", targetUserId)
+      .maybeSingle();
+
+    if (teamError || !teamLink) {
+      return {
+        rateeRank: null,
+        error: NextResponse.json(
+          { error: "Access denied to this subordinate" },
+          { status: 403 }
+        ),
+      };
+    }
+
+    const { data: targetProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("rank")
+      .eq("id", targetUserId)
+      .single();
+
+    if (profileError || !targetProfile) {
+      return {
+        rateeRank: null,
+        error: NextResponse.json(
+          { error: "Subordinate profile not found" },
+          { status: 403 }
+        ),
+      };
+    }
+
+    return { rateeRank: targetProfile.rank ?? null };
+  }
+
+  return { rateeRank: callerRank };
 }
 
 // Build the assessment prompt for an individual accomplishment using rank-appropriate ACA rubric
@@ -204,7 +292,16 @@ export async function POST(request: Request) {
     }
 
     const body: AssessPreviewRequest = await request.json();
-    const { action_verb, details, impact, metrics, mpa, model = DEFAULT_APP_MODEL_ID } = body;
+    const {
+      action_verb,
+      details,
+      impact,
+      metrics,
+      mpa,
+      model = DEFAULT_APP_MODEL_ID,
+      targetUserId,
+      targetManagedMemberId,
+    } = body;
     modelId = await resolveRequestedModel(model, "generate");
 
     if (!action_verb || !details) {
@@ -231,7 +328,20 @@ export async function POST(request: Request) {
       .eq("id", user.id)
       .single();
 
-    if (isCivilian(profile?.rank ?? null)) {
+    const { rateeRank: resolvedRateeRank, error: rateeError } =
+      await resolveRateeRank(
+        supabase,
+        user.id,
+        profile?.rank ?? null,
+        targetUserId,
+        targetManagedMemberId
+      );
+
+    if (rateeError) {
+      return rateeError;
+    }
+
+    if (isCivilian(resolvedRateeRank ?? null)) {
       return NextResponse.json(
         { error: "Civilian users do not have accomplishment assessments" },
         { status: 400 }
@@ -268,7 +378,7 @@ export async function POST(request: Request) {
     const assessmentPrompt = await appendUserRulesToPrompt(
       buildAccomplishmentAssessmentPrompt(
         { action_verb, details, impact, metrics, mpa },
-        profile?.rank || null
+        resolvedRateeRank
       ),
       user.id,
       "assessment",
@@ -309,7 +419,7 @@ export async function POST(request: Request) {
     }
 
     // Determine the rubric tier for the response
-    const rubricTier = getRubricTierForRank(profile?.rank as Rank);
+    const rubricTier = getRubricTierForRank(resolvedRateeRank as Rank);
     const formUsed = rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
 
     return cacheBillableJson(billableCtx, {
@@ -317,7 +427,7 @@ export async function POST(request: Request) {
       model,
       rubricTier,
       formUsed,
-      rateeRank: profile?.rank || null,
+      rateeRank: resolvedRateeRank || null,
     }, usageCheck);
   } catch (error) {
     if (billableCtx) {
