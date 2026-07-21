@@ -308,7 +308,8 @@ export default function PhoneLoginPage() {
                     Unable to verify phone
                   </p>
                   <p className="text-sm text-amber-800 dark:text-amber-200">
-                    If you have an existing account, you can:
+                    Phone sign-in needs an existing account. Create one with
+                    email/password or Google, then add your phone in Settings.
                   </p>
                   <div className="space-y-2">
                     <Button
@@ -335,7 +336,7 @@ export default function PhoneLoginPage() {
                           Create a new account
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Sign up with email or continue with phone
+                          Sign up with email or Google, then add phone in Settings
                         </p>
                       </div>
                     </Button>
