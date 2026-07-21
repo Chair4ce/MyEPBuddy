@@ -23,7 +23,9 @@ import {
   MPA_ABBREVIATIONS,
   RANK_TO_TIER,
   isOfficer,
+  isEnlisted,
 } from "@/lib/constants";
+import { buildCyclePortfolio, ACA_PORTFOLIO_MPA_KEYS } from "@/lib/cycle-portfolio";
 import type { Rank, Accomplishment } from "@/types/database";
 import {
   Clock,
@@ -43,6 +45,8 @@ interface EPBProgressCardProps {
   compact?: boolean;
   title?: string;
   defaultCollapsed?: boolean;
+  /** Who is looking: self reflecting vs rater curating. Default "self". */
+  viewerRole?: "self" | "rater";
 }
 
 // Recommended minimum entries per MPA for a complete EPB
@@ -56,12 +60,15 @@ export function EPBProgressCard({
   compact = false,
   title = "Performance Coverage & Progress",
   defaultCollapsed = true,
+  viewerRole = "self",
 }: EPBProgressCardProps) {
   const [isOpen, setIsOpen] = useState(!defaultCollapsed);
   const tier = rank ? RANK_TO_TIER[rank] : null;
   const closeout = getStaticCloseoutDate(rank);
   const daysUntil = getDaysUntilCloseout(rank);
   const milestones = getEPBMilestones(rank);
+  const showQualityInsights = isEnlisted(rank);
+  const portfolio = useMemo(() => buildCyclePortfolio(entries), [entries]);
 
   // Calculate MPA coverage
   const mpaStats = useMemo(() => {
@@ -256,6 +263,12 @@ export function EPBProgressCard({
                     <span>{readiness.totalEntries} entries</span>
                     <span>•</span>
                     <span>{readiness.coveredMPAs}/{readiness.mpaCount} MPAs</span>
+                    {showQualityInsights && portfolio.hasAnyAssessments && portfolio.fingerprint.avgOverall !== null && (
+                      <>
+                        <span>•</span>
+                        <span>avg quality {portfolio.fingerprint.avgOverall}</span>
+                      </>
+                    )}
                   </div>
                 )}
                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
@@ -353,6 +366,88 @@ export function EPBProgressCard({
                 {readiness.overallProgress === 100 ? "Ready!" : `${Math.round(readiness.overallProgress)}% progress`}
               </Badge>
             </div>
+
+            {showQualityInsights && (
+              <div className="space-y-3 pt-2 border-t">
+                <p className="text-sm font-medium">
+                  {viewerRole === "rater" ? "Package quality insights" : "Quality insights"}
+                </p>
+
+                {!portfolio.hasAnyAssessments ? (
+                  <p className="text-xs text-muted-foreground">
+                    {viewerRole === "rater"
+                      ? "Assess entries in this package to unlock cycle quality insights."
+                      : "Assess entries to unlock cycle quality insights."}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="rounded-lg border bg-card p-2">
+                        <p className="text-muted-foreground">Overall</p>
+                        <p className="font-medium tabular-nums">
+                          {portfolio.fingerprint.avgOverall ?? "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-card p-2">
+                        <p className="text-muted-foreground">Action</p>
+                        <p className="font-medium tabular-nums">
+                          {portfolio.fingerprint.avgActionClarity ?? "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-card p-2">
+                        <p className="text-muted-foreground">Impact</p>
+                        <p className="font-medium tabular-nums">
+                          {portfolio.fingerprint.avgImpact ?? "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-card p-2">
+                        <p className="text-muted-foreground">Metrics</p>
+                        <p className="font-medium tabular-nums">
+                          {portfolio.fingerprint.avgMetrics ?? "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {ACA_PORTFOLIO_MPA_KEYS.map((mpaKey) => {
+                        const stat = portfolio.mpaStats[mpaKey];
+                        const label = ENTRY_MGAS.find((mpa) => mpa.key === mpaKey)?.label ?? mpaKey;
+
+                        return (
+                          <div
+                            key={mpaKey}
+                            className="flex items-center justify-between rounded-lg border bg-card px-2 py-1.5 text-xs"
+                          >
+                            <span className="truncate pr-2">{MPA_ABBREVIATIONS[mpaKey]}</span>
+                            <span className="tabular-nums text-muted-foreground">
+                              {stat.avgOverall !== null ? stat.avgOverall : "—"}
+                            </span>
+                            <span className="sr-only">{label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {portfolio.coachingLines.length > 0 && (
+                      <ul className="space-y-1.5 text-xs text-muted-foreground">
+                        {portfolio.coachingLines.map((line) => (
+                          <li key={line} className="flex gap-2">
+                            <span className="text-primary shrink-0">•</span>
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {viewerRole === "rater" && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Use these notes when giving feedback or prioritizing what to gather next.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>

@@ -95,6 +95,16 @@ function EntriesContent() {
   const isManagedMember = selectedUser.startsWith("managed:");
   const managedMemberId = isManagedMember ? selectedUser.replace("managed:", "") : null;
 
+  const rateeRank = useMemo((): Rank | null => {
+    if (isManagedMember && managedMemberId) {
+      return (managedMembers.find((m) => m.id === managedMemberId)?.rank ?? null) as Rank | null;
+    }
+    if (selectedUser !== "self") {
+      return (subordinates.find((s) => s.id === selectedUser)?.rank ?? null) as Rank | null;
+    }
+    return (profile?.rank ?? null) as Rank | null;
+  }, [selectedUser, isManagedMember, managedMemberId, managedMembers, subordinates, profile?.rank]);
+
   // Load accomplishments
   useEffect(() => {
     async function loadAccomplishments() {
@@ -276,11 +286,12 @@ function EntriesContent() {
         </div>
       </div>
 
-      {/* Performance Coverage & Progress - Only for military enlisted */}
-      {profile?.rank !== "Civilian" && (
+      {/* Performance Coverage & Progress — keyed to ratee, not viewer */}
+      {rateeRank !== "Civilian" && (
         <EPBProgressCard
-          rank={profile?.rank as Rank | null}
+          rank={rateeRank}
           entries={accomplishments}
+          viewerRole={selectedUser === "self" ? "self" : "rater"}
         />
       )}
 
