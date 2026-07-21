@@ -9,6 +9,7 @@ export const BILLABLE_API_PATHS = [
   "/api/generate-decoration",
   "/api/generate-slot-statement",
   "/api/assess-epb",
+  "/api/generate-feedback-talking-points",
   "/api/assess-accomplishment",
   "/api/assess-accomplishment-preview",
   "/api/parse-bulk-statements",

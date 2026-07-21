@@ -42,7 +42,8 @@ import {
   MoreHorizontal,
   EyeOff,
   Eye,
-  ClipboardCheck
+  ClipboardCheck,
+  Sparkles,
 } from "lucide-react";
 import type { Rank, Profile, ManagedMember, SupervisorFeedback, FeedbackType } from "@/types/database";
 import {
@@ -51,7 +52,9 @@ import {
   unshareFeedback,
   deleteFeedback 
 } from "@/app/actions/supervisor-feedbacks";
+import { getExpectation } from "@/app/actions/supervisor-expectations";
 import { getActiveCycleYear, getActiveCycleRangeLabel, getFeedbackTypeLabel, getFeedbackTypeDescription } from "@/lib/constants";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { cn } from "@/lib/utils";
 
 interface FeedbackSessionDialogProps {
@@ -63,6 +66,22 @@ interface FeedbackSessionDialogProps {
   subordinate?: Profile | null;
   managedMember?: ManagedMember | null;
   onSuccess?: () => void;
+}
+
+const GENERATE_BUTTON_LABELS: Record<FeedbackType, string> = {
+  initial: "Draft from expectations",
+  midterm: "Generate midterm talking points",
+  final: "Generate final session notes",
+};
+
+const GENERATE_HELPER_TEXT: Record<FeedbackType, string> = {
+  initial: "Uses saved expectations and the ACA rubric for this rank.",
+  midterm: "Uses expectations, assessed accomplishments, and cycle quality signals. Edit before sharing.",
+  final: "Uses expectations, assessed accomplishments, and cycle quality signals. Edit before sharing.",
+};
+
+function getGenerateAriaLabel(feedbackType: FeedbackType, memberName: string): string {
+  return `${GENERATE_BUTTON_LABELS[feedbackType]} for ${memberName}`;
 }
 
 export function FeedbackSessionDialog({
@@ -80,8 +99,11 @@ export function FeedbackSessionDialog({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showShareConfirm, setShowShareConfirm] = useState(false);
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
   const [content, setContent] = useState("");
   const [feedback, setFeedback] = useState<SupervisorFeedback | null>(null);
+  const [reviewedAccomplishmentIds, setReviewedAccomplishmentIds] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -104,11 +126,13 @@ export function FeedbackSessionDialog({
         // Use the existing feedback passed in
         setFeedback(existingFeedback);
         setContent(existingFeedback.content);
+        setReviewedAccomplishmentIds(existingFeedback.reviewed_accomplishment_ids ?? []);
         setIsLoading(false);
       } else {
         // New feedback - reset state
         setFeedback(null);
         setContent("");
+        setReviewedAccomplishmentIds([]);
         setIsLoading(false);
       }
     }
@@ -121,8 +145,10 @@ export function FeedbackSessionDialog({
     if (!open) {
       setContent("");
       setFeedback(null);
+      setReviewedAccomplishmentIds([]);
       setShowDeleteConfirm(false);
       setShowShareConfirm(false);
+      setShowReplaceConfirm(false);
       setCopied(false);
     }
   }, [open]);
@@ -141,7 +167,9 @@ export function FeedbackSessionDialog({
       feedbackType,
       cycleYear,
       content.trim(),
-      feedback?.reviewed_accomplishment_ids || []
+      reviewedAccomplishmentIds.length > 0
+        ? reviewedAccomplishmentIds
+        : feedback?.reviewed_accomplishment_ids || []
     );
 
     if (result.error) {
@@ -158,13 +186,21 @@ export function FeedbackSessionDialog({
           feedback_type: feedbackType,
           cycle_year: cycleYear,
           content: content.trim(),
-          reviewed_accomplishment_ids: [],
+          reviewed_accomplishment_ids: reviewedAccomplishmentIds,
           status: "draft",
           shared_at: null,
           supervision_start_date: "",
           supervision_end_date: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+        });
+      } else if (feedback) {
+        setFeedback({
+          ...feedback,
+          content: content.trim(),
+          reviewed_accomplishment_ids: reviewedAccomplishmentIds.length > 0
+            ? reviewedAccomplishmentIds
+            : feedback.reviewed_accomplishment_ids,
         });
       }
       onSuccess?.();
@@ -283,8 +319,86 @@ Date: ${new Date().toLocaleDateString()}
 ${content}`;
   }
 
+  function handleGenerateClick() {
+    if (isShared || isGenerating) return;
+    if (!subordinateId && !teamMemberId) {
+      toast.error("Cannot generate talking points without a selected team member");
+      return;
+    }
+    if (content.trim()) {
+      setShowReplaceConfirm(true);
+      return;
+    }
+    void executeGenerate();
+  }
+
+  async function executeGenerate() {
+    if (!subordinateId && !teamMemberId) return;
+
+    setShowReplaceConfirm(false);
+    setIsGenerating(true);
+
+    try {
+      if (feedbackType === "initial") {
+        const { data: expectation } = await getExpectation(
+          subordinateId,
+          teamMemberId,
+          cycleYear
+        );
+        if (!expectation?.expectation_text?.trim()) {
+          toast.warning(
+            "No saved expectations yet — the draft will be rubric-generic. Set expectations first for a stronger session prep."
+          );
+        }
+      }
+
+      const response = await fetch("/api/generate-feedback-talking-points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          feedbackType,
+          subordinateId,
+          teamMemberId,
+          cycleYear,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorPayload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        toast.error(errorPayload.error || "Failed to generate talking points");
+        return;
+      }
+
+      const payload = await response.json();
+
+      setContent(payload.draftText);
+      setReviewedAccomplishmentIds(payload.reviewedAccomplishmentIds ?? []);
+
+      if (feedback) {
+        setFeedback({
+          ...feedback,
+          reviewed_accomplishment_ids: payload.reviewedAccomplishmentIds ?? [],
+        });
+      }
+
+      if (payload.warnings?.includes("epb_statements_unavailable")) {
+        toast.warning("EPB statements were unavailable — draft uses accomplishments only.");
+      }
+
+      toast.success("Talking points drafted — review and edit before sharing.");
+    } catch (error) {
+      console.error("Generate talking points failed:", error);
+      toast.error("Failed to generate talking points");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   const hasChanges = content.trim() !== (feedback?.content || "");
   const isShared = feedback?.status === "shared";
+  const canGenerate = !isShared && (!!subordinateId || !!teamMemberId);
 
   return (
     <>
@@ -347,10 +461,37 @@ ${content}`;
 
               {/* Feedback Content */}
               <div className="space-y-2" ref={printRef}>
-                <Label htmlFor="feedback-content" className="flex items-center gap-2">
-                  <FileText className="size-4" />
-                  Feedback Content
-                </Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <Label htmlFor="feedback-content" className="flex items-center gap-2">
+                    <FileText className="size-4" />
+                    Feedback Content
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateClick}
+                    disabled={!canGenerate || isGenerating}
+                    className="h-8 shrink-0 text-xs"
+                    aria-label={getGenerateAriaLabel(feedbackType, memberName)}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="size-3.5 mr-1.5" />
+                        {GENERATE_BUTTON_LABELS[feedbackType]}
+                      </>
+                    )}
+                    <TokenCostBadge compact className="ml-1.5" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {GENERATE_HELPER_TEXT[feedbackType]}
+                </p>
                 <Textarea
                   id="feedback-content"
                   value={content}
@@ -510,6 +651,34 @@ ${content}`;
                   <Share2 className="size-4 mr-2" />
                   Share Feedback
                 </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Replace Draft Confirmation */}
+      <AlertDialog open={showReplaceConfirm} onOpenChange={setShowReplaceConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace current draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Replace current draft with generated talking points? Undo is not available after replace.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isGenerating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void executeGenerate()}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  Generating...
+                </>
+              ) : (
+                "Replace draft"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
