@@ -64,11 +64,18 @@ export async function PATCH(request: Request) {
       kind: z.literal("earnTokensIntro"),
       earnTokensIntroSeen: z.literal(true),
     }),
+    z.object({
+      kind: z.literal("coachingFeaturesIntro"),
+      coachingFeaturesIntroSeen: z.literal(true),
+    }),
   ]);
 
   const legacyTrial = z.object({ trialIntroSeen: z.literal(true) }).safeParse(body);
   const legacyEarn = z
     .object({ earnTokensIntroSeen: z.literal(true) })
+    .safeParse(body);
+  const legacyCoaching = z
+    .object({ coachingFeaturesIntroSeen: z.literal(true) })
     .safeParse(body);
   const parsed = schema.safeParse(body);
 
@@ -100,6 +107,19 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ earnTokensIntroSeenAt: seenAt });
   }
 
+  if (legacyCoaching.success) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ coaching_features_intro_seen_at: seenAt } as never)
+      .eq("id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+
+    return NextResponse.json({ coachingFeaturesIntroSeenAt: seenAt });
+  }
+
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
@@ -117,14 +137,27 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ trialIntroSeenAt: seenAt });
   }
 
+  if (parsed.data.kind === "earnTokensIntro") {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ earn_tokens_intro_seen_at: seenAt } as never)
+      .eq("id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+
+    return NextResponse.json({ earnTokensIntroSeenAt: seenAt });
+  }
+
   const { error } = await supabase
     .from("profiles")
-    .update({ earn_tokens_intro_seen_at: seenAt } as never)
+    .update({ coaching_features_intro_seen_at: seenAt } as never)
     .eq("id", user.id);
 
   if (error) {
     return NextResponse.json({ error: "Failed to save" }, { status: 500 });
   }
 
-  return NextResponse.json({ earnTokensIntroSeenAt: seenAt });
+  return NextResponse.json({ coachingFeaturesIntroSeenAt: seenAt });
 }

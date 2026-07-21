@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { useCreditsStore } from "@/stores/credits-store";
 import { getGateProfile } from "@/lib/profile-gate";
@@ -8,7 +8,10 @@ import { UpdatePrompt } from "@/components/layout/update-prompt";
 import { OnboardingFlowModal } from "@/components/modals/onboarding-flow-modal";
 import { useOnboardingStep } from "@/lib/onboarding-flow";
 import { useClientReady } from "@/lib/client-ready";
+import { CoachingFeaturesIntroModal } from "@/components/modals/coaching-features-intro-modal";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
+import { shouldShowCoachingFeaturesIntro } from "@/lib/coaching-features-intro";
+import { toast } from "@/components/ui/sonner";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
 import { usePromptRulesMode } from "@/lib/feature-flags";
@@ -57,6 +60,8 @@ export function AppInitializer({
 
   const hasHydrated = useRef(false);
   const creditsInitialized = useRef(false);
+  const [coachingIntroSeenOptimistic, setCoachingIntroSeenOptimistic] =
+    useState(false);
 
   useEffect(() => {
     if (!hasHydrated.current) {
@@ -114,6 +119,35 @@ export function AppInitializer({
   const onboardingComplete =
     gateProfile !== null && onboardingStep === null;
 
+  const showCoachingIntro =
+    clientReady &&
+    !isSigningOut &&
+    shouldShowCoachingFeaturesIntro({
+      onboardingComplete,
+      seenAt: gateProfile?.coaching_features_intro_seen_at,
+      optimisticSeen: coachingIntroSeenOptimistic,
+    });
+
+  async function dismissCoachingIntro() {
+    setCoachingIntroSeenOptimistic(true);
+    try {
+      const response = await fetch("/api/billing/accept-terms", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "coachingFeaturesIntro",
+          coachingFeaturesIntroSeen: true,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to save coaching intro dismissal");
+      }
+    } catch {
+      setCoachingIntroSeenOptimistic(false);
+      toast.error("Failed to save. Please try again.");
+    }
+  }
+
   async function dismissTrialIntro() {
     setTrialIntroSeen(true);
     await fetch("/api/billing/accept-terms", {
@@ -145,6 +179,12 @@ export function AppInitializer({
           trackerEntries={earnRewardsSummary?.trackerEntries ?? []}
           onDismissTrialIntro={dismissTrialIntro}
           onDismissEarnTokensIntro={dismissEarnTokensIntro}
+        />
+      )}
+      {showCoachingIntro && gateProfile && (
+        <CoachingFeaturesIntroModal
+          open
+          onDismiss={dismissCoachingIntro}
         />
       )}
       {onboardingComplete && !usePromptRulesModeEnabled && (

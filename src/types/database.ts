@@ -46,6 +46,7 @@ export interface Profile {
   billing_terms_accepted_at: string | null;
   trial_intro_seen_at: string | null;
   earn_tokens_intro_seen_at: string | null;
+  coaching_features_intro_seen_at: string | null;
   created_at: string;
   updated_at: string;
 }
