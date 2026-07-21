@@ -4,6 +4,7 @@ import {
   buildTalkingPointsUserPrompt,
   FEEDBACK_TALKING_POINTS_GUARDRAILS,
   formatTalkingPointsDraft,
+  isFeedbackType,
   PROMPT_CHAR_BUDGET,
   truncatePromptText,
   type TalkingPointsDraft,
@@ -178,5 +179,16 @@ describe("guardrails", () => {
     }
     expect(FEEDBACK_TALKING_POINTS_GUARDRAILS).toContain("Do NOT predict");
     expect(FEEDBACK_TALKING_POINTS_GUARDRAILS).toContain("EFDP discussion prep");
+  });
+});
+
+describe("isFeedbackType", () => {
+  it("accepts initial, midterm, and final only", () => {
+    expect(isFeedbackType("initial")).toBe(true);
+    expect(isFeedbackType("midterm")).toBe(true);
+    expect(isFeedbackType("final")).toBe(true);
+    expect(isFeedbackType("efdp")).toBe(false);
+    expect(isFeedbackType("")).toBe(false);
+    expect(isFeedbackType(null)).toBe(false);
   });
 });

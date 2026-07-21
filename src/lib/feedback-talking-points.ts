@@ -17,6 +17,15 @@ export const TOP_ACCOMPLISHMENTS_PER_MPA = 3;
 export const LOWEST_SCORED_COUNT = 3;
 export const FULL_DETAIL_ENTRY_THRESHOLD = 12;
 
+const FEEDBACK_TYPES: FeedbackType[] = ["initial", "midterm", "final"];
+
+export function isFeedbackType(value: unknown): value is FeedbackType {
+  return (
+    typeof value === "string" &&
+    (FEEDBACK_TYPES as readonly string[]).includes(value)
+  );
+}
+
 export const FEEDBACK_TALKING_POINTS_GUARDRAILS = `You prepare supervisor-facing session notes — not messages to read verbatim to the Airman.
 - Tie every point to evidence; if evidence is thin, say so and recommend what to collect.
 - Fair, specific, professional tone. No protected-class commentary.
@@ -169,11 +178,20 @@ export function buildAccomplishmentsSummary(
       };
     });
 
-  const unassessed = acaEntries.filter((entry) => !entry.assessment_scores);
-  const unassessedThinMpaVerbs = unassessed
-    .filter((entry) => isThinMpa(portfolio, entry.mpa))
-    .map((entry) => entry.action_verb?.trim() || "Untitled entry")
-    .slice(0, 12);
+  const unassessed: Accomplishment[] = [];
+  const unassessedThinMpaVerbs: string[] = [];
+  for (const entry of acaEntries) {
+    if (entry.assessment_scores) continue;
+    unassessed.push(entry);
+    if (
+      unassessedThinMpaVerbs.length < 12 &&
+      isThinMpa(portfolio, entry.mpa)
+    ) {
+      unassessedThinMpaVerbs.push(
+        entry.action_verb?.trim() || "Untitled entry"
+      );
+    }
+  }
 
   const fullDetailEntries = includeFullDetail
     ? acaEntries.map((entry) => {

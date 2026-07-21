@@ -29,6 +29,7 @@ export type BillableAction =
   | "assess_epb"
   | "assess_accomplishment"
   | "assess_accomplishment_preview"
+  | "generate_feedback_talking_points"
   | "parse_bulk_statements"
   | "adapt_sentence"
   | "synonyms"

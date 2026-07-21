@@ -54,9 +54,14 @@ export function CoachingFeaturesIntroModal({
   const isFirstSlide = slideIndex === 0;
   const isLastSlide = slideIndex === SLIDES.length - 1;
 
+  function dismissAndReset() {
+    setSlideIndex(0);
+    onDismiss();
+  }
+
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
-      onDismiss();
+      dismissAndReset();
     }
   }
 
@@ -82,10 +87,7 @@ export function CoachingFeaturesIntroModal({
             </DialogDescription>
           </DialogHeader>
 
-          <div
-            key={slideIndex}
-            className="mt-5 space-y-3 animate-in fade-in-0 duration-200 motion-reduce:animate-none"
-          >
+          <div key={slideIndex} className="mt-5 space-y-3">
             <div className="flex items-start gap-3 rounded-lg border p-3">
               <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
                 <SlideIcon
@@ -134,7 +136,7 @@ export function CoachingFeaturesIntroModal({
               type="button"
               variant="ghost"
               className="order-3 w-full sm:order-1 sm:w-auto"
-              onClick={onDismiss}
+              onClick={dismissAndReset}
               aria-label="Skip coaching features introduction"
             >
               Skip
@@ -154,7 +156,7 @@ export function CoachingFeaturesIntroModal({
                 <Button
                   type="button"
                   className="w-full sm:min-w-[160px] sm:w-auto"
-                  onClick={onDismiss}
+                  onClick={dismissAndReset}
                   aria-label="Dismiss coaching features introduction"
                 >
                   Got it

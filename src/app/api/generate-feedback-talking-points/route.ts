@@ -23,7 +23,6 @@ import type { Accomplishment, FeedbackType, Rank } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import {
   checkAndTrackUsage,
-  type BillableAction,
 } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 import {
@@ -32,6 +31,7 @@ import {
   buildTalkingPointsUserPrompt,
   FEEDBACK_TALKING_POINTS_GUARDRAILS,
   formatTalkingPointsDraft,
+  isFeedbackType,
   parseTalkingPointsDraft,
   type EpbStatementSummary,
 } from "@/lib/feedback-talking-points";
@@ -188,13 +188,17 @@ async function loadAccomplishments(
   supabase: any,
   ratee: VerifiedRatee,
   cycleYear: number
-): Promise<Accomplishment[]> {
+): Promise<{ accomplishments?: Accomplishment[]; error?: NextResponse }> {
+  // Select only fields needed for portfolio + prompt evidence (avoid select *)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
     .from("accomplishments")
-    .select("*")
+    .select(
+      "id, date, action_verb, details, impact, metrics, mpa, assessment_scores, cycle_year, user_id, team_member_id"
+    )
     .eq("cycle_year", cycleYear)
-    .order("date", { ascending: false });
+    .order("date", { ascending: false })
+    .limit(200);
 
   if (ratee.teamMemberId) {
     query = query.eq("team_member_id", ratee.teamMemberId);
@@ -205,10 +209,15 @@ async function loadAccomplishments(
   const { data, error } = await query;
   if (error) {
     console.error("Load accomplishments error:", error);
-    return [];
+    return {
+      error: NextResponse.json(
+        { error: "Failed to load accomplishments for this ratee" },
+        { status: 500 }
+      ),
+    };
   }
 
-  return (data as Accomplishment[]) ?? [];
+  return { accomplishments: (data as Accomplishment[]) ?? [] };
 }
 
 async function loadEpbStatements(
@@ -250,16 +259,13 @@ async function loadEpbStatements(
   }
 
   const shell = data as EPBShellData;
-  const statements = (shell.sections ?? [])
-    .filter((section) => ENTRY_MGAS.some((mpa) => mpa.key === section.mpa))
-    .filter(
-      (section) =>
-        section.statement_text && section.statement_text.trim().length > 10
-    )
-    .map((section) => ({
-      mpa: section.mpa,
-      text: section.statement_text.trim(),
-    }));
+  const mpaKeys = new Set(ENTRY_MGAS.map((mpa) => mpa.key));
+  const statements: EpbStatementSummary[] = [];
+  for (const section of shell.sections ?? []) {
+    const text = section.statement_text?.trim() ?? "";
+    if (!mpaKeys.has(section.mpa) || text.length <= 10) continue;
+    statements.push({ mpa: section.mpa, text });
+  }
 
   return statements.length > 0 ? statements : null;
 }
@@ -287,9 +293,16 @@ export async function POST(request: Request) {
       model = DEFAULT_APP_MODEL_ID,
     } = body;
 
-    if (!feedbackType || !cycleYear) {
+    if (!isFeedbackType(feedbackType)) {
       return NextResponse.json(
-        { error: "Missing required fields: feedbackType and cycleYear" },
+        { error: "Invalid feedbackType. Expected initial, midterm, or final." },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isFinite(cycleYear) || cycleYear < 2000 || cycleYear > 2100) {
+      return NextResponse.json(
+        { error: "Invalid cycleYear" },
         { status: 400 }
       );
     }
@@ -320,10 +333,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const [expectations, accomplishments] = await Promise.all([
+    const [expectations, accomplishmentsResult] = await Promise.all([
       loadExpectations(supabase, user.id, ratee, cycleYear),
       loadAccomplishments(supabase, ratee, cycleYear),
     ]);
+    if (accomplishmentsResult.error || !accomplishmentsResult.accomplishments) {
+      return accomplishmentsResult.error!;
+    }
+    const accomplishments = accomplishmentsResult.accomplishments;
 
     const portfolio = buildPortfolioFromEntries(accomplishments);
     const accomplishmentsSummary = buildAccomplishmentsSummary(
@@ -360,7 +377,7 @@ export async function POST(request: Request) {
 
     const usageCheck = await checkAndTrackUsage(
       user.id,
-      "generate_feedback_talking_points" as BillableAction,
+      "generate_feedback_talking_points",
       modelId,
       userKeys,
       billableCtx.idempotencyKey

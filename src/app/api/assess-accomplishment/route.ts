@@ -29,6 +29,7 @@ import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
+import { resolveAccomplishmentRateeRank } from "@/lib/accomplishment-ratee-rank";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -259,15 +260,32 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get the profile of the accomplishment owner for rank context
+    // Resolve ratee rank: managed-member rows use team_member_id (not user_id/supervisor)
+    let managedMemberRank: string | null = null;
+    if (accomplishment.team_member_id) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: managedMember } = await (supabase as any)
+        .from("team_members")
+        .select("rank")
+        .eq("id", accomplishment.team_member_id)
+        .maybeSingle();
+      managedMemberRank = managedMember?.rank ?? null;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: profile } = await (supabase as any)
+    const { data: ownerProfile } = await (supabase as any)
       .from("profiles")
       .select("rank")
       .eq("id", accomplishment.user_id)
       .single();
 
-    if (isCivilian(profile?.rank ?? null)) {
+    const rateeRank = resolveAccomplishmentRateeRank({
+      teamMemberId: accomplishment.team_member_id,
+      managedMemberRank,
+      ownerProfileRank: ownerProfile?.rank ?? null,
+    });
+
+    if (isCivilian(rateeRank)) {
       return NextResponse.json(
         { error: "Civilian ratees do not have accomplishment assessments" },
         { status: 400 }
@@ -305,7 +323,7 @@ export async function POST(request: Request) {
           metrics: accomplishment.metrics,
           mpa: accomplishment.mpa,
         },
-        profile?.rank || null
+        rateeRank
       ),
       user.id,
       "assessment",

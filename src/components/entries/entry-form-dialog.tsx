@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useReducer } from "react";
 import { Analytics } from "@/lib/analytics";
 import { useUserStore } from "@/stores/user-store";
 import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
@@ -54,6 +54,54 @@ interface EntryFormDialogProps {
   targetManagedMemberId?: string | null;
 }
 
+type AssessmentPreviewState = {
+  scores: AccomplishmentAssessmentScores | null;
+  model: string | null;
+  formUsed: string | null;
+  rateeRank: string | null;
+};
+
+type AssessmentPreviewAction =
+  | { type: "reset"; scores?: AccomplishmentAssessmentScores | null; model?: string | null }
+  | {
+      type: "complete";
+      scores: AccomplishmentAssessmentScores;
+      model: string | null;
+      formUsed: string | null;
+      rateeRank: string | null;
+    };
+
+const emptyAssessmentPreview: AssessmentPreviewState = {
+  scores: null,
+  model: null,
+  formUsed: null,
+  rateeRank: null,
+};
+
+function assessmentPreviewReducer(
+  state: AssessmentPreviewState,
+  action: AssessmentPreviewAction
+): AssessmentPreviewState {
+  switch (action.type) {
+    case "reset":
+      return {
+        scores: action.scores ?? null,
+        model: action.model ?? null,
+        formUsed: null,
+        rateeRank: null,
+      };
+    case "complete":
+      return {
+        scores: action.scores,
+        model: action.model,
+        formUsed: action.formUsed,
+        rateeRank: action.rateeRank,
+      };
+    default:
+      return state;
+  }
+}
+
 export function EntryFormDialog({
   open,
   onOpenChange,
@@ -67,10 +115,14 @@ export function EntryFormDialog({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
-  const [previewAssessment, setPreviewAssessment] = useState<AccomplishmentAssessmentScores | null>(null);
-  const [assessmentModel, setAssessmentModel] = useState<string | null>(null);
-  const [assessmentFormUsed, setAssessmentFormUsed] = useState<string | null>(null);
-  const [assessmentRateeRank, setAssessmentRateeRank] = useState<string | null>(null);
+  const [assessmentPreview, dispatchAssessmentPreview] = useReducer(
+    assessmentPreviewReducer,
+    emptyAssessmentPreview
+  );
+  const previewAssessment = assessmentPreview.scores;
+  const assessmentModel = assessmentPreview.model;
+  const assessmentFormUsed = assessmentPreview.formUsed;
+  const assessmentRateeRank = assessmentPreview.rateeRank;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const supabase = createClient();
   const [form, setForm] = useState({
@@ -174,10 +226,13 @@ export function EntryFormDialog({
 
       if (response.ok) {
         const { assessment, model, formUsed, rateeRank } = await response.json();
-        setPreviewAssessment(assessment);
-        setAssessmentModel(model);
-        setAssessmentFormUsed(formUsed);
-        setAssessmentRateeRank(rateeRank);
+        dispatchAssessmentPreview({
+          type: "complete",
+          scores: assessment,
+          model: model ?? null,
+          formUsed: formUsed ?? null,
+          rateeRank: rateeRank ?? null,
+        });
         toast.success("Assessment complete!");
       } else {
         const { error } = await response.json();
@@ -234,10 +289,11 @@ export function EntryFormDialog({
         tags: Array.isArray(editEntry.tags) ? editEntry.tags.join(", ") : "",
       });
       // Load existing assessment if available
-      setPreviewAssessment(editEntry.assessment_scores || null);
-      setAssessmentModel(editEntry.assessment_model || null);
-      setAssessmentFormUsed(null);
-      setAssessmentRateeRank(null);
+      dispatchAssessmentPreview({
+        type: "reset",
+        scores: editEntry.assessment_scores || null,
+        model: editEntry.assessment_model || null,
+      });
       // Load existing project link
       loadExistingProjectLink(editEntry.id);
     } else {
@@ -251,10 +307,7 @@ export function EntryFormDialog({
         tags: "",
       });
       // Clear assessment preview
-      setPreviewAssessment(null);
-      setAssessmentModel(null);
-      setAssessmentFormUsed(null);
-      setAssessmentRateeRank(null);
+      dispatchAssessmentPreview({ type: "reset" });
       setSelectedProjectId(null);
     }
   }, [editEntry, open]);
@@ -770,8 +823,8 @@ export function EntryFormDialog({
                               "bg-muted/60 border border-border/40 text-muted-foreground"
                           )}
                         >
-                          <span className="font-medium text-foreground">{tip.title}</span>
-                          <span className="text-muted-foreground"> — {tip.body}</span>
+                          <p className="font-medium text-foreground">{tip.title}</p>
+                          <p className="mt-0.5 text-muted-foreground break-words">{tip.body}</p>
                         </li>
                       ))}
                     </ul>

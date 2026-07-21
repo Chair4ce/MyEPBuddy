@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -84,6 +84,15 @@ function getGenerateAriaLabel(feedbackType: FeedbackType, memberName: string): s
   return `${GENERATE_BUTTON_LABELS[feedbackType]} for ${memberName}`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function FeedbackSessionDialog({
   open,
   onOpenChange,
@@ -93,19 +102,48 @@ export function FeedbackSessionDialog({
   managedMember,
   onSuccess,
 }: FeedbackSessionDialogProps) {
-  const [isLoading, setIsLoading] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open ? (
+        <FeedbackSessionDialogInner
+          key={existingFeedback?.id ?? `new-${feedbackType}`}
+          onOpenChange={onOpenChange}
+          feedbackType={feedbackType}
+          existingFeedback={existingFeedback}
+          subordinate={subordinate}
+          managedMember={managedMember}
+          onSuccess={onSuccess}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function FeedbackSessionDialogInner({
+  onOpenChange,
+  feedbackType,
+  existingFeedback,
+  subordinate,
+  managedMember,
+  onSuccess,
+}: Omit<FeedbackSessionDialogProps, "open">) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showShareConfirm, setShowShareConfirm] = useState(false);
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
-  const [content, setContent] = useState("");
-  const [feedback, setFeedback] = useState<SupervisorFeedback | null>(null);
-  const [reviewedAccomplishmentIds, setReviewedAccomplishmentIds] = useState<string[]>([]);
+  const [content, setContent] = useState(existingFeedback?.content ?? "");
+  const [feedback, setFeedback] = useState<SupervisorFeedback | null>(
+    existingFeedback ?? null
+  );
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const reviewedAccomplishmentIdsRef = useRef<string[]>(
+    existingFeedback?.reviewed_accomplishment_ids ?? []
+  );
+  const generateRequestIdRef = useRef(0);
 
   // Get member info
   const memberName = subordinate?.full_name || managedMember?.full_name || "Unknown";
@@ -117,42 +155,6 @@ export function FeedbackSessionDialog({
   const cycleYear = getActiveCycleYear(memberRank as Rank);
   const cyclePeriodLabel = getActiveCycleRangeLabel(memberRank as Rank);
 
-  // Load existing feedback when dialog opens
-  useEffect(() => {
-    async function loadFeedback() {
-      if (!open) return;
-      
-      if (existingFeedback) {
-        // Use the existing feedback passed in
-        setFeedback(existingFeedback);
-        setContent(existingFeedback.content);
-        setReviewedAccomplishmentIds(existingFeedback.reviewed_accomplishment_ids ?? []);
-        setIsLoading(false);
-      } else {
-        // New feedback - reset state
-        setFeedback(null);
-        setContent("");
-        setReviewedAccomplishmentIds([]);
-        setIsLoading(false);
-      }
-    }
-
-    loadFeedback();
-  }, [open, existingFeedback]);
-
-  // Reset state when dialog closes
-  useEffect(() => {
-    if (!open) {
-      setContent("");
-      setFeedback(null);
-      setReviewedAccomplishmentIds([]);
-      setShowDeleteConfirm(false);
-      setShowShareConfirm(false);
-      setShowReplaceConfirm(false);
-      setCopied(false);
-    }
-  }, [open]);
-
   async function handleSave() {
     if (!content.trim()) {
       toast.error("Please enter your feedback");
@@ -161,15 +163,18 @@ export function FeedbackSessionDialog({
 
     setIsSaving(true);
 
+    const reviewedIds =
+      reviewedAccomplishmentIdsRef.current.length > 0
+        ? reviewedAccomplishmentIdsRef.current
+        : feedback?.reviewed_accomplishment_ids || [];
+
     const result = await saveFeedback(
       subordinateId,
       teamMemberId,
       feedbackType,
       cycleYear,
       content.trim(),
-      reviewedAccomplishmentIds.length > 0
-        ? reviewedAccomplishmentIds
-        : feedback?.reviewed_accomplishment_ids || []
+      reviewedIds
     );
 
     if (result.error) {
@@ -186,7 +191,7 @@ export function FeedbackSessionDialog({
           feedback_type: feedbackType,
           cycle_year: cycleYear,
           content: content.trim(),
-          reviewed_accomplishment_ids: reviewedAccomplishmentIds,
+          reviewed_accomplishment_ids: reviewedIds,
           status: "draft",
           shared_at: null,
           supervision_start_date: "",
@@ -198,9 +203,7 @@ export function FeedbackSessionDialog({
         setFeedback({
           ...feedback,
           content: content.trim(),
-          reviewed_accomplishment_ids: reviewedAccomplishmentIds.length > 0
-            ? reviewedAccomplishmentIds
-            : feedback.reviewed_accomplishment_ids,
+          reviewed_accomplishment_ids: reviewedIds,
         });
       }
       onSuccess?.();
@@ -300,8 +303,8 @@ export function FeedbackSessionDialog({
         <body>
           <h1>${getFeedbackTypeLabel(feedbackType)}</h1>
           <h2>${memberRank ? `${memberRank} ` : ""}${memberName}</h2>
-          <div class="meta">Evaluation Period: ${cyclePeriodLabel} | Date: ${new Date().toLocaleDateString()}</div>
-          <div class="content">${content.replace(/\n/g, "<br>")}</div>
+          <div class="meta">Evaluation Period: ${cyclePeriodLabel} | Date: ${new Date().toLocaleDateString("en-US", { timeZone: "UTC" })}</div>
+          <div class="content">${escapeHtml(content).replace(/\n/g, "<br>")}</div>
         </body>
         </html>
       `);
@@ -314,7 +317,7 @@ export function FeedbackSessionDialog({
     return `${getFeedbackTypeLabel(feedbackType)}
 ${memberRank ? `${memberRank} ` : ""}${memberName}
 Evaluation Period: ${cyclePeriodLabel}
-Date: ${new Date().toLocaleDateString()}
+Date: ${new Date().toLocaleDateString("en-US", { timeZone: "UTC" })}
 
 ${content}`;
   }
@@ -334,8 +337,10 @@ ${content}`;
 
   async function executeGenerate() {
     if (!subordinateId && !teamMemberId) return;
+    if (isGenerating) return;
 
     setShowReplaceConfirm(false);
+    const requestId = ++generateRequestIdRef.current;
     setIsGenerating(true);
 
     try {
@@ -345,6 +350,7 @@ ${content}`;
           teamMemberId,
           cycleYear
         );
+        if (requestId !== generateRequestIdRef.current) return;
         if (!expectation?.expectation_text?.trim()) {
           toast.warning(
             "No saved expectations yet — the draft will be rubric-generic. Set expectations first for a stronger session prep."
@@ -363,6 +369,8 @@ ${content}`;
         }),
       });
 
+      if (requestId !== generateRequestIdRef.current) return;
+
       if (!response.ok) {
         const errorPayload = (await response.json().catch(() => ({}))) as {
           error?: string;
@@ -372,14 +380,16 @@ ${content}`;
       }
 
       const payload = await response.json();
+      if (requestId !== generateRequestIdRef.current) return;
 
+      const reviewedIds = (payload.reviewedAccomplishmentIds ?? []) as string[];
       setContent(payload.draftText);
-      setReviewedAccomplishmentIds(payload.reviewedAccomplishmentIds ?? []);
+      reviewedAccomplishmentIdsRef.current = reviewedIds;
 
       if (feedback) {
         setFeedback({
           ...feedback,
-          reviewed_accomplishment_ids: payload.reviewedAccomplishmentIds ?? [],
+          reviewed_accomplishment_ids: reviewedIds,
         });
       }
 
@@ -389,10 +399,13 @@ ${content}`;
 
       toast.success("Talking points drafted — review and edit before sharing.");
     } catch (error) {
+      if (requestId !== generateRequestIdRef.current) return;
       console.error("Generate talking points failed:", error);
       toast.error("Failed to generate talking points");
     } finally {
-      setIsGenerating(false);
+      if (requestId === generateRequestIdRef.current) {
+        setIsGenerating(false);
+      }
     }
   }
 
@@ -402,7 +415,6 @@ ${content}`;
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -417,11 +429,6 @@ ${content}`;
             </DialogDescription>
           </DialogHeader>
 
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
             <div className="flex-1 overflow-y-auto space-y-4 py-2">
               {/* Status and Metadata */}
               <div className="flex flex-wrap items-center gap-2">
@@ -452,7 +459,7 @@ ${content}`;
                     </Badge>
                     {isShared && feedback.shared_at && (
                       <span className="text-xs text-muted-foreground">
-                        Shared {new Date(feedback.shared_at).toLocaleDateString()}
+                        Shared {new Date(feedback.shared_at).toLocaleDateString("en-US", { timeZone: "UTC" })}
                       </span>
                     )}
                   </>
@@ -461,8 +468,8 @@ ${content}`;
 
               {/* Feedback Content */}
               <div className="space-y-2" ref={printRef}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <Label htmlFor="feedback-content" className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <Label htmlFor="feedback-content" className="flex items-center gap-2 shrink-0">
                     <FileText className="size-4" />
                     Feedback Content
                   </Label>
@@ -472,21 +479,21 @@ ${content}`;
                     size="sm"
                     onClick={handleGenerateClick}
                     disabled={!canGenerate || isGenerating}
-                    className="h-8 shrink-0 text-xs"
+                    className="h-auto min-h-8 w-full sm:w-auto max-w-full whitespace-normal text-left text-xs py-1.5"
                     aria-label={getGenerateAriaLabel(feedbackType, memberName)}
                   >
                     {isGenerating ? (
                       <>
-                        <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                        <Loader2 className="size-3.5 animate-spin mr-1.5 shrink-0" />
                         Generating...
                       </>
                     ) : (
                       <>
-                        <Sparkles className="size-3.5 mr-1.5" />
-                        {GENERATE_BUTTON_LABELS[feedbackType]}
+                        <Sparkles className="size-3.5 mr-1.5 shrink-0" />
+                        <span className="min-w-0">{GENERATE_BUTTON_LABELS[feedbackType]}</span>
                       </>
                     )}
-                    <TokenCostBadge compact className="ml-1.5" />
+                    <TokenCostBadge compact className="ml-1.5 shrink-0" />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -508,7 +515,6 @@ ${content}`;
                 )}
               </div>
             </div>
-          )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2 pt-4 border-t">
             <div className="flex items-center gap-2 sm:mr-auto">
@@ -618,7 +624,6 @@ ${content}`;
             </div>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
 
       {/* Share Confirmation */}
       <AlertDialog open={showShareConfirm} onOpenChange={setShowShareConfirm}>

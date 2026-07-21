@@ -25,7 +25,11 @@ import {
   isOfficer,
   isEnlisted,
 } from "@/lib/constants";
-import { buildCyclePortfolio, ACA_PORTFOLIO_MPA_KEYS } from "@/lib/cycle-portfolio";
+import {
+  buildCyclePortfolio,
+  ACA_PORTFOLIO_MPA_KEYS,
+  PORTFOLIO_QUALITY_FLOOR,
+} from "@/lib/cycle-portfolio";
 import type { Rank, Accomplishment } from "@/types/database";
 import {
   Clock,
@@ -247,31 +251,31 @@ export function EPBProgressCard({
       <Card className={cn("border", className)}>
         <CollapsibleTrigger asChild>
           <CardHeader className="pb-3 cursor-pointer hover:bg-muted/50 transition-colors select-none">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Target className="size-4" />
-                {title}
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <CardTitle className="text-base flex items-center gap-2 min-w-0">
+                <Target className="size-4 shrink-0" />
+                <span className="truncate">{title}</span>
                 <ChevronDown className={cn(
-                  "size-4 text-muted-foreground transition-transform duration-200",
+                  "size-4 shrink-0 text-muted-foreground transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
                   isOpen && "rotate-180"
                 )} />
               </CardTitle>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
                 {/* Quick summary when collapsed */}
                 {!isOpen && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{readiness.totalEntries} entries</span>
-                    <span>•</span>
-                    <span>{readiness.coveredMPAs}/{readiness.mpaCount} MPAs</span>
+                  <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground truncate max-w-[14rem] lg:max-w-none">
+                    <span className="shrink-0">{readiness.totalEntries} entries</span>
+                    <span className="shrink-0">•</span>
+                    <span className="shrink-0">{readiness.coveredMPAs}/{readiness.mpaCount} MPAs</span>
                     {showQualityInsights && portfolio.hasAnyAssessments && portfolio.fingerprint.avgOverall !== null && (
                       <>
-                        <span>•</span>
-                        <span>avg quality {portfolio.fingerprint.avgOverall}</span>
+                        <span className="shrink-0">•</span>
+                        <span className="truncate">avg quality {portfolio.fingerprint.avgOverall}</span>
                       </>
                     )}
                   </div>
                 )}
-                <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <div className="flex items-center gap-1.5 text-sm font-medium text-foreground shrink-0 tabular-nums">
                   <Clock className="size-4" />
                   {daysUntil !== null ? (
                     daysUntil === 0 ? "Today!" :
@@ -381,51 +385,46 @@ export function EPBProgressCard({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                      <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Overall</p>
-                        <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgOverall ?? "—"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Metrics</p>
-                        <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgMetrics ?? "—"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Impact</p>
-                        <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgImpact ?? "—"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Clarity</p>
-                        <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgActionClarity ?? "—"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Scope</p>
-                        <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgScope ?? "—"}
-                        </p>
-                      </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
+                      {(
+                        [
+                          ["Overall", portfolio.fingerprint.avgOverall],
+                          ["Metrics", portfolio.fingerprint.avgMetrics],
+                          ["Impact", portfolio.fingerprint.avgImpact],
+                          ["Clarity", portfolio.fingerprint.avgActionClarity],
+                          ["Scope", portfolio.fingerprint.avgScope],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div key={label} className="rounded-lg border bg-card p-2 min-w-0">
+                          <p className="text-muted-foreground truncate">{label}</p>
+                          <p className="font-medium tabular-nums">
+                            {value ?? "—"}
+                          </p>
+                        </div>
+                      ))}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       {ACA_PORTFOLIO_MPA_KEYS.map((mpaKey) => {
                         const stat = portfolio.mpaStats[mpaKey];
                         const label = ENTRY_MGAS.find((mpa) => mpa.key === mpaKey)?.label ?? mpaKey;
+                        const belowFloor =
+                          stat.avgOverall !== null &&
+                          stat.avgOverall < PORTFOLIO_QUALITY_FLOOR;
 
                         return (
                           <div
                             key={mpaKey}
-                            className="flex items-center justify-between rounded-lg border bg-card px-2 py-1.5 text-xs"
+                            className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-xs min-w-0"
+                            title={label}
                           >
-                            <span className="truncate pr-2">{MPA_ABBREVIATIONS[mpaKey]}</span>
-                            <span className="tabular-nums text-muted-foreground">
+                            <span className="truncate min-w-0">{MPA_ABBREVIATIONS[mpaKey]}</span>
+                            <span
+                              className={cn(
+                                "ml-auto shrink-0 tabular-nums",
+                                belowFloor ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                              )}
+                            >
                               {stat.avgOverall !== null ? stat.avgOverall : "—"}
                             </span>
                             <span className="sr-only">{label}</span>
@@ -437,9 +436,9 @@ export function EPBProgressCard({
                     {portfolio.coachingLines.length > 0 && (
                       <ul className="space-y-1.5 text-xs text-muted-foreground">
                         {portfolio.coachingLines.map((line) => (
-                          <li key={line} className="flex gap-2">
+                          <li key={line} className="flex gap-2 min-w-0">
                             <span className="text-primary shrink-0">•</span>
-                            <span>{line}</span>
+                            <span className="min-w-0 break-words">{line}</span>
                           </li>
                         ))}
                       </ul>
