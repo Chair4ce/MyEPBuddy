@@ -381,7 +381,7 @@ export function EPBProgressCard({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                       <div className="rounded-lg border bg-card p-2">
                         <p className="text-muted-foreground">Overall</p>
                         <p className="font-medium tabular-nums">
@@ -389,9 +389,9 @@ export function EPBProgressCard({
                         </p>
                       </div>
                       <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Action</p>
+                        <p className="text-muted-foreground">Metrics</p>
                         <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgActionClarity ?? "—"}
+                          {portfolio.fingerprint.avgMetrics ?? "—"}
                         </p>
                       </div>
                       <div className="rounded-lg border bg-card p-2">
@@ -401,9 +401,15 @@ export function EPBProgressCard({
                         </p>
                       </div>
                       <div className="rounded-lg border bg-card p-2">
-                        <p className="text-muted-foreground">Metrics</p>
+                        <p className="text-muted-foreground">Clarity</p>
                         <p className="font-medium tabular-nums">
-                          {portfolio.fingerprint.avgMetrics ?? "—"}
+                          {portfolio.fingerprint.avgActionClarity ?? "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-card p-2">
+                        <p className="text-muted-foreground">Scope</p>
+                        <p className="font-medium tabular-nums">
+                          {portfolio.fingerprint.avgScope ?? "—"}
                         </p>
                       </div>
                     </div>

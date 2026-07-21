@@ -125,6 +125,32 @@ describe("buildCyclePortfolio", () => {
     assertRateeNeutralCopy(portfolio.coachingLines);
   });
 
+  it("does not mark high-overall low-metrics MPAs as quality-ready", () => {
+    const entries = ACA_PORTFOLIO_MPA_KEYS.map((mpa) =>
+      makeEntry({
+        mpa,
+        assessment_scores: makeScores({
+          primary_mpa: mpa,
+          overall_score: 90,
+          quality_indicators: {
+            action_clarity: 90,
+            impact_significance: 90,
+            metrics_quality: 40,
+            scope_definition: 90,
+          },
+        }),
+      })
+    );
+
+    const portfolio = buildCyclePortfolio(entries);
+
+    expect(portfolio.qualityReadyMpas).toBe(0);
+    for (const key of ACA_PORTFOLIO_MPA_KEYS) {
+      expect(portfolio.mpaStats[key].avgOverall).toBe(90);
+      expect(portfolio.mpaStats[key].avgMetrics).toBe(40);
+    }
+  });
+
   it("surfaces low cycle-wide metrics coaching line", () => {
     const entries = [
       makeEntry({

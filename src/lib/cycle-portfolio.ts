@@ -266,7 +266,9 @@ export function buildCyclePortfolio(entries: Accomplishment[]): CyclePortfolio {
     (key) =>
       mpaStats[key].assessedCount > 0 &&
       mpaStats[key].avgOverall !== null &&
-      mpaStats[key].avgOverall! >= PORTFOLIO_QUALITY_FLOOR
+      mpaStats[key].avgOverall! >= PORTFOLIO_QUALITY_FLOOR &&
+      mpaStats[key].avgMetrics !== null &&
+      mpaStats[key].avgMetrics! >= PORTFOLIO_METRICS_FLOOR
   ).length;
 
   const coachingLines = buildCoachingLines(
