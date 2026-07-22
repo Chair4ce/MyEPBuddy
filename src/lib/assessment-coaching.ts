@@ -1,8 +1,8 @@
 import { DEFAULT_MPA_DESCRIPTIONS, ENTRY_MGAS } from "@/lib/constants";
+import { PORTFOLIO_MISFILE_GAP } from "@/lib/cycle-portfolio";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 
 export const INDICATOR_WEAK_THRESHOLD = 60;
-export const MISFILE_RELEVANCY_GAP = 20;
 
 export type QualityIndicatorKey =
   | "action_clarity"
@@ -72,7 +72,7 @@ function isMisfiled(
     return false;
   }
 
-  return primaryScore - selectedScore >= MISFILE_RELEVANCY_GAP;
+  return primaryScore - selectedScore >= PORTFOLIO_MISFILE_GAP;
 }
 
 export function getAssessmentCoachingTips(

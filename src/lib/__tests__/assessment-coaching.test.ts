@@ -3,8 +3,8 @@ import {
   getAssessmentChrome,
   getAssessmentCoachingTips,
   INDICATOR_WEAK_THRESHOLD,
-  MISFILE_RELEVANCY_GAP,
 } from "../assessment-coaching";
+import { PORTFOLIO_MISFILE_GAP } from "../cycle-portfolio";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
 
 const SECOND_PERSON_PATTERN = /\b(you|your|my)\b/i;
@@ -89,7 +89,7 @@ describe("getAssessmentCoachingTips", () => {
       makeScores({
         mpa_relevancy: {
           executing_mission: 40,
-          leading_people: 40 + MISFILE_RELEVANCY_GAP,
+          leading_people: 40 + PORTFOLIO_MISFILE_GAP,
           managing_resources: 80,
           improving_unit: 80,
         },
@@ -122,7 +122,7 @@ describe("getAssessmentCoachingTips", () => {
       makeScores({
         mpa_relevancy: {
           executing_mission: 40,
-          leading_people: 40 + MISFILE_RELEVANCY_GAP - 1,
+          leading_people: 40 + PORTFOLIO_MISFILE_GAP - 1,
           managing_resources: 80,
           improving_unit: 80,
         },
@@ -139,7 +139,7 @@ describe("getAssessmentCoachingTips", () => {
       makeScores({
         mpa_relevancy: {
           executing_mission: 30,
-          leading_people: 30 + MISFILE_RELEVANCY_GAP,
+          leading_people: 30 + PORTFOLIO_MISFILE_GAP,
           managing_resources: 80,
           improving_unit: 80,
         },
