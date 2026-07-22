@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useReducer, useRef } from "react";
+import { useState, useEffect, useReducer } from "react";
 import { Analytics } from "@/lib/analytics";
 import { useUserStore } from "@/stores/user-store";
 import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
@@ -124,8 +124,6 @@ export function EntryFormDialog({
   const assessmentFormUsed = assessmentPreview.formUsed;
   const assessmentRateeRank = assessmentPreview.rateeRank;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const currentEditEntryIdRef = useRef<string | null>(editEntry?.id ?? null);
-  currentEditEntryIdRef.current = editEntry?.id ?? null;
   const supabase = createClient();
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -303,7 +301,7 @@ export function EntryFormDialog({
       // Clear stale project selection while loading the link for this entry
       setSelectedProjectId(null);
       void loadExistingProjectLink(accomplishmentId).then((projectId) => {
-        if (cancelled || currentEditEntryIdRef.current !== accomplishmentId) return;
+        if (cancelled) return;
         setSelectedProjectId(projectId);
       });
     } else {
