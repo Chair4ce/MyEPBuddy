@@ -158,6 +158,57 @@ describe("buildTalkingPointsUserPrompt", () => {
     expect(prompt).toContain("Accomplishment evidence");
     expect(prompt).toContain("Top entries per MPA");
   });
+
+  it("preserves expectations fences under char budget with huge expectations", () => {
+    const hugeExpectations = "Expect milestone ".repeat(3000);
+    const prompt = buildTalkingPointsUserPrompt({
+      feedbackType: "initial",
+      ratee: { rank: "SSgt", name: "Jane Doe" },
+      expectations: hugeExpectations,
+      portfolio,
+      accomplishmentsSummary,
+    });
+
+    expect(prompt).toContain("<<<EXPECTATIONS>>>");
+    expect(prompt).toContain("<<<END EXPECTATIONS>>>");
+    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_BUDGET);
+  });
+
+  it("preserves EPB fence pairs under char budget with many long statements", () => {
+    const manyEntries = Array.from({ length: 20 }, (_, index) =>
+      makeEntry({
+        mpa: ACA_PORTFOLIO_MPA_KEYS[index % 4],
+        action_verb: `Action ${index}`,
+        details: "Long detail ".repeat(80),
+        impact: "Long impact ".repeat(40),
+        metrics: "Long metrics ".repeat(20),
+        assessment_scores: makeScores({ overall_score: 70 + index }),
+      })
+    );
+    const largePortfolio = buildCyclePortfolio(manyEntries);
+    const largeSummary = buildAccomplishmentsSummary(manyEntries, largePortfolio);
+    const epbStatements = ACA_PORTFOLIO_MPA_KEYS.flatMap((mpa) =>
+      Array.from({ length: 3 }, () => ({
+        mpa,
+        text: "EPB narrative ".repeat(400),
+      }))
+    );
+
+    const prompt = buildTalkingPointsUserPrompt({
+      feedbackType: "final",
+      ratee: { rank: "TSgt", name: "John Smith" },
+      expectations: "Closeout expectations ".repeat(500),
+      portfolio: largePortfolio,
+      accomplishmentsSummary: largeSummary,
+      epbStatements,
+    });
+
+    const epbOpenCount = (prompt.match(/<<<EPB>>>/g) ?? []).length;
+    const epbCloseCount = (prompt.match(/<<<END EPB>>>/g) ?? []).length;
+
+    expect(epbOpenCount).toBe(epbCloseCount);
+    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_BUDGET);
+  });
 });
 
 describe("truncatePromptText", () => {
