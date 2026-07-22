@@ -5,6 +5,7 @@ import {
   FEEDBACK_TALKING_POINTS_GUARDRAILS,
   formatTalkingPointsDraft,
   isFeedbackType,
+  parseTalkingPointsDraft,
   PROMPT_CHAR_BUDGET,
   truncatePromptText,
   type TalkingPointsDraft,
@@ -190,5 +191,195 @@ describe("isFeedbackType", () => {
     expect(isFeedbackType("efdp")).toBe(false);
     expect(isFeedbackType("")).toBe(false);
     expect(isFeedbackType(null)).toBe(false);
+  });
+});
+
+describe("parseTalkingPointsDraft", () => {
+  it("parses JSON with headline, sections, asks, and refs", () => {
+    const raw = `\`\`\`json
+{
+  "headline": "Align on cycle expectations",
+  "sections": [
+    {
+      "title": "Strengths to recognize",
+      "bullets": ["Strong mission focus", 42, null]
+    }
+  ],
+  "suggestedAsks": ["Capture metrics for closeout", 99],
+  "evidenceRefs": ["EM: Led upgrade — overall 90", false]
+}
+\`\`\``;
+
+    const draft = parseTalkingPointsDraft(raw, "midterm");
+
+    expect(draft.headline).toBe("Align on cycle expectations");
+    expect(draft.feedbackType).toBe("midterm");
+    expect(draft.sections).toEqual([
+      {
+        title: "Strengths to recognize",
+        bullets: ["Strong mission focus"],
+      },
+    ]);
+    expect(draft.suggestedAsks).toEqual(["Capture metrics for closeout"]);
+    expect(draft.evidenceRefs).toEqual(["EM: Led upgrade — overall 90"]);
+  });
+
+  it("falls back to argument feedbackType when JSON omits it", () => {
+    const raw = JSON.stringify({
+      headline: "Closeout narrative",
+      sections: [],
+    });
+
+    expect(parseTalkingPointsDraft(raw, "final").feedbackType).toBe("final");
+  });
+
+  it("prefers JSON feedbackType when the model includes one", () => {
+    const raw = JSON.stringify({
+      feedbackType: "initial",
+      headline: "Set expectations",
+      sections: [],
+    });
+
+    expect(parseTalkingPointsDraft(raw, "midterm").feedbackType).toBe("initial");
+  });
+  it("strips non-string bullets and invalid section shapes", () => {
+    const raw = JSON.stringify({
+      headline: "Review progress",
+      sections: [
+        { title: "Gaps / risks", bullets: ["Thin metrics", 0, ""] },
+        { title: 123, bullets: ["ignored"] },
+        { bullets: ["no title"] },
+      ],
+      suggestedAsks: [null, "Add quantified wins"],
+      evidenceRefs: [undefined, "EM: Led project"],
+    });
+
+    const draft = parseTalkingPointsDraft(raw, "final");
+
+    expect(draft.sections).toEqual([
+      { title: "Gaps / risks", bullets: ["Thin metrics", ""] },
+    ]);
+    expect(draft.suggestedAsks).toEqual(["Add quantified wins"]);
+    expect(draft.evidenceRefs).toEqual(["EM: Led project"]);
+  });
+
+  it("throws when no JSON object is present", () => {
+    expect(() => parseTalkingPointsDraft("No structured output here.", "midterm")).toThrow(
+      "No JSON found in model response"
+    );
+  });
+
+  it("throws when headline is missing or empty", () => {
+    expect(() =>
+      parseTalkingPointsDraft(JSON.stringify({ sections: [] }), "midterm")
+    ).toThrow("Invalid talking points: missing headline");
+
+    expect(() =>
+      parseTalkingPointsDraft(JSON.stringify({ headline: "" }), "midterm")
+    ).toThrow("Invalid talking points: missing headline");
+  });
+});
+
+describe("buildAccomplishmentsSummary", () => {
+  it("topByMpa picks the higher overall_score for the same MPA", () => {
+    const lowerEm = makeEntry({
+      id: "em-low",
+      mpa: "executing_mission",
+      action_verb: "Supported",
+      assessment_scores: makeScores({ overall_score: 70 }),
+    });
+    const higherEm = makeEntry({
+      id: "em-high",
+      mpa: "executing_mission",
+      action_verb: "Led",
+      assessment_scores: makeScores({ overall_score: 92 }),
+    });
+    const entries = [lowerEm, higherEm];
+    const portfolio = buildCyclePortfolio(entries);
+    const summary = buildAccomplishmentsSummary(entries, portfolio);
+
+    expect(summary.topByMpa.executing_mission[0]?.id).toBe("em-high");
+    expect(summary.topByMpa.executing_mission[0]?.overallScore).toBe(92);
+    expect(summary.topByMpa.executing_mission.map((line) => line.id)).toEqual([
+      "em-high",
+      "em-low",
+    ]);
+  });
+
+  it("lowestScored includes clearly low-scoring assessed entries", () => {
+    const entries = [
+      makeEntry({
+        id: "score-95",
+        mpa: "executing_mission",
+        assessment_scores: makeScores({ overall_score: 95 }),
+      }),
+      makeEntry({
+        id: "score-88",
+        mpa: "leading_people",
+        assessment_scores: makeScores({ overall_score: 88 }),
+      }),
+      makeEntry({
+        id: "score-62",
+        mpa: "managing_resources",
+        action_verb: "Struggled",
+        assessment_scores: makeScores({ overall_score: 62 }),
+      }),
+      makeEntry({
+        id: "score-74",
+        mpa: "improving_unit",
+        assessment_scores: makeScores({ overall_score: 74 }),
+      }),
+    ];
+    const portfolio = buildCyclePortfolio(entries);
+    const summary = buildAccomplishmentsSummary(entries, portfolio);
+
+    expect(summary.lowestScored.map((line) => line.id)).toContain("score-62");
+    expect(summary.lowestScored[0]?.id).toBe("score-62");
+    expect(summary.lowestScored[0]?.overallScore).toBe(62);
+  });
+
+  it("counts unassessed entries and excludes them from top assessed lines", () => {
+    const unassessed = makeEntry({
+      id: "unassessed-1",
+      mpa: "executing_mission",
+      assessment_scores: null,
+    });
+    const assessed = makeEntry({
+      id: "assessed-1",
+      mpa: "executing_mission",
+      assessment_scores: makeScores({ overall_score: 85 }),
+    });
+    const entries = [unassessed, assessed];
+    const portfolio = buildCyclePortfolio(entries);
+    const summary = buildAccomplishmentsSummary(entries, portfolio);
+
+    expect(summary.unassessedCount).toBe(1);
+    expect(summary.topByMpa.executing_mission.map((line) => line.id)).toEqual([
+      "assessed-1",
+    ]);
+    expect(
+      summary.topByMpa.executing_mission.some((line) => line.id === "unassessed-1")
+    ).toBe(false);
+  });
+
+  it("reviewedAccomplishmentIds includes selected assessed entry ids", () => {
+    const entries = [
+      makeEntry({
+        id: "reviewed-em",
+        mpa: "executing_mission",
+        assessment_scores: makeScores({ overall_score: 90 }),
+      }),
+      makeEntry({
+        id: "reviewed-lp",
+        mpa: "leading_people",
+        assessment_scores: makeScores({ overall_score: 80 }),
+      }),
+    ];
+    const portfolio = buildCyclePortfolio(entries);
+    const summary = buildAccomplishmentsSummary(entries, portfolio);
+
+    expect(summary.reviewedAccomplishmentIds.length).toBeGreaterThan(0);
+    expect(summary.reviewedAccomplishmentIds).toContain("reviewed-em");
+    expect(summary.reviewedAccomplishmentIds).toContain("reviewed-lp");
   });
 });
