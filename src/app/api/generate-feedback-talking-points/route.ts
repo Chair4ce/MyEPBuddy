@@ -35,6 +35,10 @@ import {
   parseTalkingPointsDraft,
   type EpbStatementSummary,
 } from "@/lib/feedback-talking-points";
+import {
+  scanAccomplishmentsForLLM,
+  scanTextForLLM,
+} from "@/lib/sensitive-data-scanner";
 
 export const maxDuration = 60;
 
@@ -364,6 +368,41 @@ export async function POST(request: Request) {
       }
     }
 
+    const accScan = scanAccomplishmentsForLLM(accomplishments);
+    if (accScan.blocked) {
+      return NextResponse.json(
+        {
+          error:
+            "Entry contains sensitive data (PII, CUI, or classification markings) that cannot be sent to AI providers. Please remove it before generating.",
+        },
+        { status: 400 }
+      );
+    }
+    if (expectations) {
+      const expectationsScan = scanTextForLLM(expectations);
+      if (expectationsScan.blocked) {
+        return NextResponse.json(
+          {
+            error:
+              "Expectations contain sensitive data (PII, CUI, or classification markings) that cannot be sent to AI providers. Please remove it before generating.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+    if (epbStatements) {
+      const epbScan = scanTextForLLM(...epbStatements.map((s) => s.text));
+      if (epbScan.blocked) {
+        return NextResponse.json(
+          {
+            error:
+              "EPB statements contain sensitive data (PII, CUI, or classification markings) that cannot be sent to AI providers. Please remove it before generating.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const userKeys = await getDecryptedApiKeys();
     modelId = await resolveRequestedModel(model, "generate");
 
@@ -421,8 +460,12 @@ export async function POST(request: Request) {
     try {
       talkingPoints = parseTalkingPointsDraft(text, feedbackType);
     } catch (parseError) {
-      console.error("Failed to parse talking points:", parseError);
-      console.error("Raw response:", text);
+      console.error("Failed to parse talking points:", {
+        feedbackType,
+        responseChars: text.length,
+        parseError:
+          parseError instanceof Error ? parseError.message : String(parseError),
+      });
       return refundAndError(
         billableCtx,
         { error: "Failed to parse generated talking points. Please try again." },
