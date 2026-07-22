@@ -70,6 +70,7 @@ Out of product scope (rejected framing): promotion / stratification / forced-dis
 - **Background `/api/assess-accomplishment` managed-member rank**: fixed in review wrap-up via `resolveAccomplishmentRateeRank` + `team_members.rank` lookup.
 - Branch: `advisor/005-cycle-performance-portfolio` (not pushed). Migration `191_coaching_features_intro_seen` applied local + remote.
 - React Doctor on wrap-up: **81/100** (2 deferred warnings: giant `FeedbackSessionDialogInner`; pre-existing entry-form effect await race on project link load — not introduced by coaching wave).
+- Hardening wave **009–016** executed + reviewed (2026-07-21). Post-wave React Doctor: **82/100**, 0 errors, 1 warning (`FeedbackSessionDialogInner` still >300 lines after generate extract — further split deferred).
 
 ## Findings considered and rejected (assessment pass)
 
