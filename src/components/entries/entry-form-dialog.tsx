@@ -535,14 +535,21 @@ export function EntryFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-1rem)] max-w-2xl max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader className="pr-6">
+      <DialogContent
+        size="2xl"
+        className="flex max-h-[min(92dvh,900px)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full"
+      >
+        <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12 sm:px-6 sm:py-4">
           <DialogTitle className="text-base sm:text-lg">
             {editEntry ? "Edit Entry" : "Add Accomplishment"}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3 sm:space-y-4 sm:px-6 sm:py-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-1.5 sm:space-y-2">
               <Label htmlFor="date" className="text-sm">Date *</Label>
@@ -618,7 +625,7 @@ export function EntryFormDialog({
               value={form.details}
               onChange={(e) => setForm({ ...form, details: e.target.value })}
               required
-              className="min-h-[60px] sm:min-h-[80px] resize-y text-sm"
+              className="min-h-[72px] resize-y text-sm sm:min-h-[110px]"
               aria-label="Accomplishment details"
             />
           </div>
@@ -635,7 +642,7 @@ export function EntryFormDialog({
               placeholder="Describe the impact, results, or benefits..."
               value={form.impact}
               onChange={(e) => setForm({ ...form, impact: e.target.value })}
-              className="min-h-[60px] sm:min-h-[80px] resize-y text-sm"
+              className="min-h-[72px] resize-y text-sm sm:min-h-[110px]"
               aria-label="Impact or result"
             />
           </div>
@@ -852,21 +859,22 @@ export function EntryFormDialog({
             )}
           </div>
           )}
+          </div>
 
-          <DialogFooter className="pt-2 sm:pt-4 gap-4">
+          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:gap-3 sm:px-6 sm:py-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
-              className="w-full sm:w-auto h-9 sm:h-10 text-sm"
+              className="h-10 w-full text-sm sm:h-10 sm:w-auto active:scale-[0.98]"
             >
               Cancel
             </Button>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting} 
-              className="w-full sm:w-auto h-9 sm:h-10 text-sm group relative overflow-hidden"
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="group relative h-10 w-full overflow-hidden text-sm sm:h-10 sm:w-auto active:scale-[0.98]"
             >
               {isSubmitting ? (
                 <>

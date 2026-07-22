@@ -4,9 +4,13 @@ import {
   buildTalkingPointsUserPrompt,
   FEEDBACK_TALKING_POINTS_GUARDRAILS,
   formatTalkingPointsDraft,
+  getReviewedIdsForFeedbackType,
+  INITIAL_SPARSE_EVIDENCE_LIMIT,
   isFeedbackType,
   parseTalkingPointsDraft,
   PROMPT_CHAR_BUDGET,
+  selectInitialSparseEvidence,
+  STRENGTH_SCORE_FLOOR,
   truncatePromptText,
   type TalkingPointsDraft,
 } from "../feedback-talking-points";
@@ -132,6 +136,41 @@ describe("buildTalkingPointsUserPrompt", () => {
     expect(prompt).toContain("ACA rubric");
     expect(prompt).toContain("AF Form 931");
     expect(prompt).not.toContain("Cycle portfolio summary");
+    expect(prompt).toContain("Do NOT write a midcycle");
+    expect(prompt).toContain(`overall ≥ ${STRENGTH_SCORE_FLOOR}`);
+  });
+
+  it("keeps Initial evidence sparse even when the package is fully detailed", () => {
+    const manyEntries = Array.from({ length: 12 }, (_, index) =>
+      makeEntry({
+        mpa: ACA_PORTFOLIO_MPA_KEYS[index % 4],
+        action_verb: `Verb${index}`,
+        details: `Full detail body ${index} `.repeat(20),
+        assessment_scores: makeScores({ overall_score: 50 + index }),
+      })
+    );
+    const largePortfolio = buildCyclePortfolio(manyEntries);
+    const largeSummary = buildAccomplishmentsSummary(manyEntries, largePortfolio);
+
+    const prompt = buildTalkingPointsUserPrompt({
+      feedbackType: "initial",
+      ratee: { rank: "TSgt", name: "Sarah Jones" },
+      expectations: "Own section ops with measurable ticket aging.",
+      portfolio: largePortfolio,
+      accomplishmentsSummary: largeSummary,
+    });
+
+    expect(prompt).toContain("Optional early-cycle signals");
+    expect(prompt).not.toContain("Accomplishment evidence");
+    expect(prompt).not.toContain("All cycle entries");
+    expect(prompt).not.toContain("Top entries per MPA");
+    expect(prompt).not.toContain("Lowest-scoring assessed entries");
+
+    const signalLines = prompt
+      .split("\n")
+      .filter((line) => /^-\s*\[(EM|LP|MR|IU)\]/.test(line));
+    expect(signalLines.length).toBeLessThanOrEqual(INITIAL_SPARSE_EVIDENCE_LIMIT);
+    expect(signalLines.length).toBeGreaterThan(0);
   });
 
   it("includes portfolio and accomplishments for midterm feedback", () => {
@@ -231,6 +270,52 @@ describe("guardrails", () => {
     }
     expect(FEEDBACK_TALKING_POINTS_GUARDRAILS).toContain("Do NOT predict");
     expect(FEEDBACK_TALKING_POINTS_GUARDRAILS).toContain("EFDP discussion prep");
+    expect(FEEDBACK_TALKING_POINTS_GUARDRAILS).toContain("Ratee-neutral");
+    expect(FEEDBACK_TALKING_POINTS_GUARDRAILS).toContain("EM/LP/MR/IU");
+  });
+});
+
+describe("selectInitialSparseEvidence", () => {
+  it("returns at most three highest assessed entries", () => {
+    const entries = [
+      makeEntry({
+        mpa: "executing_mission",
+        action_verb: "Managed",
+        assessment_scores: makeScores({ overall_score: 86 }),
+      }),
+      makeEntry({
+        mpa: "leading_people",
+        action_verb: "Mentored",
+        assessment_scores: makeScores({ overall_score: 91 }),
+      }),
+      makeEntry({
+        mpa: "improving_unit",
+        action_verb: "Instituted",
+        assessment_scores: makeScores({ overall_score: 85 }),
+      }),
+      makeEntry({
+        mpa: "managing_resources",
+        action_verb: "Optimized",
+        assessment_scores: makeScores({ overall_score: 80 }),
+      }),
+      makeEntry({
+        mpa: "executing_mission",
+        action_verb: "Supported",
+        assessment_scores: makeScores({ overall_score: 44 }),
+      }),
+    ];
+    const portfolio = buildCyclePortfolio(entries);
+    const summary = buildAccomplishmentsSummary(entries, portfolio);
+    const sparse = selectInitialSparseEvidence(summary);
+
+    expect(sparse).toHaveLength(INITIAL_SPARSE_EVIDENCE_LIMIT);
+    expect(sparse.map((line) => line.overallScore)).toEqual([91, 86, 85]);
+    expect(getReviewedIdsForFeedbackType("initial", summary)).toEqual(
+      sparse.map((line) => line.id)
+    );
+    expect(getReviewedIdsForFeedbackType("midterm", summary).length).toBeGreaterThan(
+      INITIAL_SPARSE_EVIDENCE_LIMIT
+    );
   });
 });
 

@@ -2737,6 +2737,7 @@ export type Database = {
           feedback_type: string
           id: string
           reviewed_accomplishment_ids: string[] | null
+          session_settings: string
           shared_at: string | null
           status: string
           subordinate_id: string | null
@@ -2753,6 +2754,7 @@ export type Database = {
           feedback_type: string
           id?: string
           reviewed_accomplishment_ids?: string[] | null
+          session_settings?: string
           shared_at?: string | null
           status?: string
           subordinate_id?: string | null
@@ -2769,6 +2771,7 @@ export type Database = {
           feedback_type?: string
           id?: string
           reviewed_accomplishment_ids?: string[] | null
+          session_settings?: string
           shared_at?: string | null
           status?: string
           subordinate_id?: string | null

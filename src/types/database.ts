@@ -358,6 +358,8 @@ export interface SupervisorFeedback {
   feedback_type: FeedbackType;
   cycle_year: number;
   content: string;
+  /** Midterm/Final ACA form-prep checklist (private). */
+  session_settings: string;
   reviewed_accomplishment_ids: string[];
   status: FeedbackStatus;
   shared_at: string | null;

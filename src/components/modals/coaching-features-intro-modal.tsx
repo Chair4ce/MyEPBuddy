@@ -7,6 +7,7 @@ import {
   MessageSquareText,
   Sparkles,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,19 +29,30 @@ const SLIDES = [
     icon: BarChart3,
     title: "Cycle quality insights",
     body: "Track MPA coverage and quality signals (metrics, impact, miscategorization risk) across the evaluation period — not just entry counts.",
-    where: "Accomplishments → Performance Coverage card (self or selected ratee)",
+    howTo: [
+      "Open Accomplishments from the sidebar.",
+      "Find the Performance Coverage card for yourself or a selected ratee.",
+    ],
   },
   {
     icon: ClipboardCheck,
     title: "Assess entries & guidance notes",
     body: "Score an entry against the ACA rubric. Weak indicators become concrete improvement notes — useful for self-edits or feedback to a ratee.",
-    where: "Add/Edit entry → Assess entry (for enlisted ACA packages)",
+    howTo: [
+      "Open Accomplishments → Add Entry or edit an existing one.",
+      "Use Assess entry (enlisted ACA packages).",
+    ],
   },
   {
     icon: MessageSquareText,
-    title: "Feedback session talking points",
-    body: "For Initial, Midterm, or Final sessions: draft talking points from expectations plus assessed accomplishments. Edit, then share or print.",
-    where: "Team → member → Expectations / Feedback → Generate",
+    title: "Expectations & Feedback session guides",
+    body: "Private ACA prep for Initial, Midterm, and Final. Initial: format your session guide. Midterm: strengths & weaknesses → Generate. Final: EPB package → Generate. Share the guide only for in-app ratees — settings stay private.",
+    howTo: [
+      "Go to Team in the sidebar.",
+      "Open a direct report (⋯ menu on their card, or their detail actions).",
+      "Choose Expectations & Feedback (Beta).",
+      "Use the Initial → Midterm → EPB → Final steps across the top.",
+    ],
   },
 ] as const;
 
@@ -79,33 +91,50 @@ export function CoachingFeaturesIntroModal({
                 aria-hidden
               />
             </div>
-            <DialogTitle className="text-base md:text-lg">
-              New coaching tools for stronger EPBs
-            </DialogTitle>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <DialogTitle className="text-base md:text-lg">
+                Coaching tools for stronger EPBs
+              </DialogTitle>
+              <Badge
+                variant="secondary"
+                className="h-5 px-1.5 text-[10px] font-medium uppercase tracking-wide"
+              >
+                Beta
+              </Badge>
+            </div>
             <DialogDescription className="text-sm text-muted-foreground">
-              Whether you are building your own package or helping someone else
+              Early-access coaching features for building your own package or
+              helping a ratee. Paths below show exactly where to open each tool.
             </DialogDescription>
           </DialogHeader>
 
           <div key={slideIndex} className="mt-5 space-y-3">
-            <div className="flex items-start gap-3 rounded-lg border p-3">
-              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                <SlideIcon
-                  className="size-4 text-muted-foreground"
-                  aria-hidden
-                />
+            <div className="rounded-lg border p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_0.5px_rgba(0,0,0,0.08)]">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <SlideIcon
+                    className="size-4 text-muted-foreground"
+                    aria-hidden
+                  />
+                </div>
+                <div className="min-w-0 space-y-2 text-left">
+                  <h3 className="text-sm font-medium text-foreground">
+                    {slide.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {slide.body}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 space-y-2 text-left">
-                <h3 className="text-sm font-medium text-foreground">
-                  {slide.title}
-                </h3>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {slide.body}
+              <div className="mt-3 rounded-md bg-muted/50 px-3 py-2.5 text-left">
+                <p className="text-xs font-medium text-foreground">
+                  How to get there
                 </p>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  <span className="font-medium text-foreground">Where: </span>
-                  {slide.where}
-                </p>
+                <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground">
+                  {slide.howTo.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
               </div>
             </div>
           </div>
@@ -135,7 +164,7 @@ export function CoachingFeaturesIntroModal({
             <Button
               type="button"
               variant="ghost"
-              className="order-3 w-full sm:order-1 sm:w-auto"
+              className="order-3 w-full active:scale-[0.98] sm:order-1 sm:w-auto"
               onClick={dismissAndReset}
               aria-label="Skip coaching features introduction"
             >
@@ -146,7 +175,7 @@ export function CoachingFeaturesIntroModal({
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full sm:w-auto"
+                  className="w-full active:scale-[0.98] sm:w-auto"
                   onClick={() => setSlideIndex((current) => current - 1)}
                 >
                   Back
@@ -155,7 +184,7 @@ export function CoachingFeaturesIntroModal({
               {isLastSlide ? (
                 <Button
                   type="button"
-                  className="w-full sm:min-w-[160px] sm:w-auto"
+                  className="w-full active:scale-[0.98] sm:min-w-[160px] sm:w-auto"
                   onClick={dismissAndReset}
                   aria-label="Dismiss coaching features introduction"
                 >
@@ -164,7 +193,7 @@ export function CoachingFeaturesIntroModal({
               ) : (
                 <Button
                   type="button"
-                  className="w-full sm:min-w-[160px] sm:w-auto"
+                  className="w-full active:scale-[0.98] sm:min-w-[160px] sm:w-auto"
                   onClick={() => setSlideIndex((current) => current + 1)}
                 >
                   Next

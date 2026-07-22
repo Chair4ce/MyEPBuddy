@@ -30,6 +30,8 @@ export type BillableAction =
   | "assess_accomplishment"
   | "assess_accomplishment_preview"
   | "generate_feedback_talking_points"
+  | "generate_feedback_session_guide"
+  | "revise_feedback_session_guide"
   | "parse_bulk_statements"
   | "adapt_sentence"
   | "synonyms"

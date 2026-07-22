@@ -112,7 +112,7 @@ import { AddProjectAccomplishmentDialog } from "@/components/team/add-project-ac
 import { ProjectsInfoModal, useProjectsInfoModal } from "@/components/team/projects-info-modal";
 import { HierarchyTreeView } from "@/components/team/hierarchy-tree-view";
 import { MemberRankInsignia } from "@/components/rank/rank-insignia";
-import { SetExpectationsDialog } from "@/components/team/set-expectations-dialog";
+import { ExpectationsFeedbackDialog } from "@/components/team/expectations-feedback-dialog";
 import { AwardPackagesManager } from "@/components/team/award-packages-manager";
 import { useProjectsStore } from "@/stores/projects-store";
 import { toast } from "@/components/ui/sonner";
@@ -1758,7 +1758,7 @@ export default function TeamPage() {
                           Add Entry
                         </DropdownMenuItem>
                       )}
-                      {/* Set Expectations - only for direct subordinates (depth 1) */}
+                      {/* Expectations & Feedback - only for direct subordinates (depth 1) */}
                       {canSupervise(profile?.rank) && depth === 1 && (
                         <DropdownMenuItem onClick={() => {
                           if (isManagedMember) {
@@ -1771,7 +1771,15 @@ export default function TeamPage() {
                           setShowExpectationsDialog(true);
                         }}>
                           <Target className="size-4 mr-2" />
-                          Set Expectations
+                          <span className="flex flex-1 items-center gap-2">
+                            Expectations & Feedback
+                            <Badge
+                              variant="secondary"
+                              className="h-4 px-1 text-[9px] font-medium uppercase tracking-wide"
+                            >
+                              Beta
+                            </Badge>
+                          </span>
                         </DropdownMenuItem>
                       )}
                       {/* Edit option only available to the user who created the managed member */}
@@ -2088,13 +2096,16 @@ export default function TeamPage() {
           onSuccess={() => setEditManagedMember(null)}
         />
         
-        {/* Set Expectations Dialog */}
-        <SetExpectationsDialog
+        {/* Expectations & Feedback cycle dialog */}
+        <ExpectationsFeedbackDialog
           open={showExpectationsDialog}
-          onOpenChange={setShowExpectationsDialog}
+          onOpenChange={(open) => {
+            setShowExpectationsDialog(open);
+            // Keep target while open — clearing on save made the header show "Unknown"
+            if (!open) setExpectationsTarget(null);
+          }}
           subordinate={expectationsTarget?.subordinate}
           managedMember={expectationsTarget?.managedMember}
-          onSuccess={() => setExpectationsTarget(null)}
         />
 
         {/* Award Packages Manager */}
@@ -2391,7 +2402,7 @@ export default function TeamPage() {
                   Delete Member
                 </Button>
               )}
-              {/* Set Expectations button - only for direct subordinates */}
+              {/* Expectations & Feedback — only for direct subordinates */}
               {canSupervise(profile?.rank) && selectedSubordinate && (
                 // Check if this is a direct subordinate (in subordinates array or managed by current user)
                 (subordinates.some(s => s.id === selectedSubordinate.id) || 
@@ -2414,7 +2425,13 @@ export default function TeamPage() {
                   }}
                 >
                   <Target className="size-4" />
-                  Set Expectations
+                  Expectations & Feedback
+                  <Badge
+                    variant="secondary"
+                    className="h-4 px-1 text-[9px] font-medium uppercase tracking-wide"
+                  >
+                    Beta
+                  </Badge>
                 </Button>
               )}
               <Button variant="outline" onClick={() => setSelectedSubordinate(null)}>

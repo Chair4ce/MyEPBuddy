@@ -66,50 +66,14 @@ export async function getExpectation(
 }
 
 /**
- * Get all expectations set for the current user (as subordinate)
+ * Ratee-facing expectations fetch.
+ * Expectations are supervisor-private; ratees only see shared feedback session guides.
+ * Kept for call-site compatibility — always returns an empty list.
  */
 export async function getMyExpectations(
-  cycleYear?: number
+  _cycleYear?: number
 ): Promise<{ data: SupervisorExpectation[]; error: string | null }> {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { data: [], error: "Not authenticated" };
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query = (supabase as any)
-    .from("supervisor_expectations")
-    .select(`
-      *,
-      supervisor:profiles!supervisor_expectations_supervisor_id_fkey(full_name, rank)
-    `)
-    .eq("subordinate_id", user.id)
-    .order("cycle_year", { ascending: false });
-
-  if (cycleYear) {
-    query = query.eq("cycle_year", cycleYear);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("Get my expectations error:", error);
-    return { data: [], error: error.message };
-  }
-
-  // Transform the joined data
-  const expectations: SupervisorExpectation[] = (data || []).map((exp: Record<string, unknown>) => ({
-    ...exp,
-    supervisor_name: (exp.supervisor as Record<string, unknown>)?.full_name || null,
-    supervisor_rank: (exp.supervisor as Record<string, unknown>)?.rank || null,
-  }));
-
-  return { data: expectations, error: null };
+  return { data: [], error: null };
 }
 
 /**

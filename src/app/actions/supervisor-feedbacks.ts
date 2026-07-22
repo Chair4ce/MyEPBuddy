@@ -1,8 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ENTRY_MGAS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
-import type { SupervisorFeedback, FeedbackType } from "@/types/database";
+import type {
+  Accomplishment,
+  SupervisorFeedback,
+  FeedbackType,
+} from "@/types/database";
+
+export type FeedbackEvidenceItem = Pick<
+  Accomplishment,
+  | "id"
+  | "date"
+  | "action_verb"
+  | "details"
+  | "impact"
+  | "mpa"
+  | "assessment_scores"
+  | "cycle_year"
+>;
 
 /**
  * Get all feedbacks for a specific subordinate/team member
@@ -53,6 +70,7 @@ export async function getFeedbacksForMember(
   // Transform the joined data
   const feedbacks: SupervisorFeedback[] = (data || []).map((fb: Record<string, unknown>) => ({
     ...fb,
+    session_settings: typeof fb.session_settings === "string" ? fb.session_settings : "",
     supervisor_name: (fb.supervisor as Record<string, unknown>)?.full_name || null,
     supervisor_rank: (fb.supervisor as Record<string, unknown>)?.rank || null,
   }));
@@ -92,10 +110,15 @@ export async function getFeedback(
   }
 
   if (data) {
-     
     const { supervisor, ...rest } = data;
+    const isSupervisor = user.id === rest.supervisor_id;
     const feedback: SupervisorFeedback = {
       ...rest,
+      session_settings: isSupervisor
+        ? typeof rest.session_settings === "string"
+          ? rest.session_settings
+          : ""
+        : "",
       supervisor_name: supervisor?.full_name || null,
       supervisor_rank: supervisor?.rank || null,
     };
@@ -125,7 +148,20 @@ export async function getMyReceivedFeedbacks(
   let query = (supabase as any)
     .from("supervisor_feedbacks")
     .select(`
-      *,
+      id,
+      supervisor_id,
+      subordinate_id,
+      team_member_id,
+      feedback_type,
+      cycle_year,
+      content,
+      reviewed_accomplishment_ids,
+      status,
+      shared_at,
+      supervision_start_date,
+      supervision_end_date,
+      created_at,
+      updated_at,
       supervisor:profiles!supervisor_feedbacks_supervisor_id_fkey(full_name, rank)
     `)
     .eq("subordinate_id", user.id)
@@ -144,9 +180,10 @@ export async function getMyReceivedFeedbacks(
     return { data: [], error: error.message };
   }
 
-  // Transform the joined data
+  // Transform the joined data — session_settings is private rater prep; never expose to ratees
   const feedbacks: SupervisorFeedback[] = (data || []).map((fb: Record<string, unknown>) => ({
     ...fb,
+    session_settings: "",
     supervisor_name: (fb.supervisor as Record<string, unknown>)?.full_name || null,
     supervisor_rank: (fb.supervisor as Record<string, unknown>)?.rank || null,
   }));
@@ -163,7 +200,8 @@ export async function saveFeedback(
   feedbackType: FeedbackType,
   cycleYear: number,
   content: string,
-  reviewedAccomplishmentIds: string[] = []
+  reviewedAccomplishmentIds: string[] = [],
+  sessionSettings?: string | null
 ): Promise<{ data: { id: string } | null; error: string | null }> {
   const supabase = await createClient();
 
@@ -184,6 +222,7 @@ export async function saveFeedback(
     p_cycle_year: cycleYear,
     p_content: content,
     p_reviewed_accomplishment_ids: reviewedAccomplishmentIds,
+    p_session_settings: sessionSettings ?? null,
   });
 
   if (error) {
@@ -263,6 +302,212 @@ export async function unshareFeedback(
   revalidatePath("/team");
   revalidatePath("/entries");
   return { success: true, error: null };
+}
+
+export type FeedbackEpbStatementItem = {
+  mpa: string;
+  text: string;
+};
+
+/**
+ * Cycle accomplishments + assessments for Midterm evidence review.
+ * Access-checked: caller must supervise the ratee (profile or managed member).
+ */
+export async function getFeedbackEvidenceAccomplishments(
+  subordinateId: string | null,
+  teamMemberId: string | null,
+  cycleYear: number
+): Promise<{
+  data: FeedbackEvidenceItem[];
+  truncated: boolean;
+  error: string | null;
+}> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { data: [], truncated: false, error: "Not authenticated" };
+  }
+
+  if (!subordinateId && !teamMemberId) {
+    return {
+      data: [],
+      truncated: false,
+      error: "Either subordinateId or teamMemberId must be provided",
+    };
+  }
+
+  if (subordinateId && teamMemberId) {
+    return {
+      data: [],
+      truncated: false,
+      error: "Provide only one of subordinateId or teamMemberId",
+    };
+  }
+
+  if (teamMemberId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: managedMembers, error } = await (supabase as any).rpc(
+      "get_visible_managed_members",
+      { viewer_uuid: user.id }
+    );
+    if (error) {
+      return { data: [], truncated: false, error: "Failed to verify access" };
+    }
+    const member = (
+      managedMembers as { id: string; member_status: string }[] | null
+    )?.find((m) => m.id === teamMemberId && m.member_status !== "archived");
+    if (!member) {
+      return { data: [], truncated: false, error: "Access denied" };
+    }
+  } else if (subordinateId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: teamRow, error } = await (supabase as any)
+      .from("teams")
+      .select("id")
+      .eq("supervisor_id", user.id)
+      .eq("subordinate_id", subordinateId)
+      .maybeSingle();
+    if (error || !teamRow) {
+      return { data: [], truncated: false, error: "Access denied" };
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase as any)
+    .from("accomplishments")
+    .select(
+      "id, date, action_verb, details, impact, mpa, assessment_scores, cycle_year"
+    )
+    .eq("cycle_year", cycleYear)
+    .order("date", { ascending: false })
+    .limit(201);
+
+  if (teamMemberId) {
+    query = query.eq("team_member_id", teamMemberId);
+  } else {
+    query = query.eq("user_id", subordinateId).is("team_member_id", null);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("Get feedback evidence error:", error);
+    return { data: [], truncated: false, error: error.message };
+  }
+
+  const rows = (data as FeedbackEvidenceItem[]) ?? [];
+  const truncated = rows.length > 200;
+  return {
+    data: truncated ? rows.slice(0, 200) : rows,
+    truncated,
+    error: null,
+  };
+}
+
+/**
+ * Cycle EPB MPA statements for Final feedback guide grounding.
+ * Access-checked: caller must supervise the ratee (profile or managed member).
+ */
+export async function getFeedbackEpbPackage(
+  subordinateId: string | null,
+  teamMemberId: string | null,
+  cycleYear: number
+): Promise<{
+  data: FeedbackEpbStatementItem[];
+  error: string | null;
+}> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { data: [], error: "Not authenticated" };
+  }
+
+  if (!subordinateId && !teamMemberId) {
+    return {
+      data: [],
+      error: "Either subordinateId or teamMemberId must be provided",
+    };
+  }
+
+  if (subordinateId && teamMemberId) {
+    return {
+      data: [],
+      error: "Provide only one of subordinateId or teamMemberId",
+    };
+  }
+
+  if (teamMemberId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: managedMembers, error } = await (supabase as any).rpc(
+      "get_visible_managed_members",
+      { viewer_uuid: user.id }
+    );
+    if (error) {
+      return { data: [], error: "Failed to verify access" };
+    }
+    const member = (
+      managedMembers as { id: string; member_status: string }[] | null
+    )?.find((m) => m.id === teamMemberId && m.member_status !== "archived");
+    if (!member) {
+      return { data: [], error: "Access denied" };
+    }
+  } else if (subordinateId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: teamRow, error } = await (supabase as any)
+      .from("teams")
+      .select("id")
+      .eq("supervisor_id", user.id)
+      .eq("subordinate_id", subordinateId)
+      .maybeSingle();
+    if (error || !teamRow) {
+      return { data: [], error: "Access denied" };
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase as any)
+    .from("epb_shells")
+    .select(
+      `
+      id,
+      sections:epb_shell_sections(mpa, statement_text)
+    `
+    )
+    .eq("cycle_year", cycleYear)
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (teamMemberId) {
+    query = query.eq("team_member_id", teamMemberId);
+  } else {
+    query = query.eq("user_id", subordinateId).is("team_member_id", null);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    console.error("Get feedback EPB package error:", error);
+    return { data: [], error: error.message };
+  }
+  if (!data) {
+    return { data: [], error: null };
+  }
+
+  const mpaKeys = new Set(ENTRY_MGAS.map((mpa) => mpa.key));
+  const statements: FeedbackEpbStatementItem[] = [];
+  for (const section of data.sections ?? []) {
+    const text = section.statement_text?.trim() ?? "";
+    if (!text || !mpaKeys.has(section.mpa)) continue;
+    statements.push({ mpa: section.mpa, text });
+  }
+  return { data: statements, error: null };
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
   ENTRY_MGAS,
+  MPA_ABBREVIATIONS,
   getRubricTierForRank,
 } from "@/lib/constants";
 import {
@@ -16,6 +17,12 @@ export const PROMPT_CHAR_BUDGET = 24_000;
 export const TOP_ACCOMPLISHMENTS_PER_MPA = 3;
 export const LOWEST_SCORED_COUNT = 3;
 export const FULL_DETAIL_ENTRY_THRESHOLD = 12;
+/** Max optional early-cycle signals included in Initial prompts. */
+export const INITIAL_SPARSE_EVIDENCE_LIMIT = 3;
+/** Do not treat scores below this as Strengths material. */
+export const STRENGTH_SCORE_FLOOR = 60;
+/** Cap evidenceRefs suggested for Initial drafts. */
+export const INITIAL_EVIDENCE_REFS_LIMIT = 5;
 
 const FEEDBACK_TYPES: FeedbackType[] = ["initial", "midterm", "final"];
 
@@ -29,6 +36,9 @@ export function isFeedbackType(value: unknown): value is FeedbackType {
 export const FEEDBACK_TALKING_POINTS_GUARDRAILS = `You prepare supervisor-facing session notes — not messages to read verbatim to the Airman.
 - Tie every point to evidence; if evidence is thin, say so and recommend what to collect.
 - Fair, specific, professional tone. No protected-class commentary.
+- Ratee-neutral bullets in Strengths and Gaps (no you/your/my). Developmental asks may use supervisor action language ("Confirm…", "Schedule…").
+- evidenceRefs must be unique, use EM/LP/MR/IU only, format "EM: Verb — overall NN" (or "overall N/A" if unassessed). Never invent EXEC/LEAD/MGMT labels.
+- Never list overall scores below ${STRENGTH_SCORE_FLOOR} under "Strengths to recognize" — put weak scores only under Gaps / risks or omit.
 - Do NOT predict promotion outcomes, stratification, forced distribution, or board results.
 - EFDP discussion prep is allowed only as evidence-strength / package talking points — never outcome prediction.
 - Respond with valid JSON only matching the requested schema.`;
@@ -80,6 +90,65 @@ export interface BuildTalkingPointsUserPromptInput {
 function getMpaShortLabel(mpaKey: string): string {
   const label = ENTRY_MGAS.find((mpa) => mpa.key === mpaKey)?.label ?? mpaKey;
   return label.split(" ")[0] ?? mpaKey;
+}
+
+function getMpaEvidenceAbbrev(mpaKey: string): string {
+  return MPA_ABBREVIATIONS[mpaKey] ?? getMpaShortLabel(mpaKey);
+}
+
+/**
+ * Up to INITIAL_SPARSE_EVIDENCE_LIMIT strongest assessed entries for Initial
+ * prompts — never the full package dump.
+ */
+export function selectInitialSparseEvidence(
+  summary: AccomplishmentsSummary
+): AccomplishmentEvidenceLine[] {
+  const seen = new Set<string>();
+  const candidates: AccomplishmentEvidenceLine[] = [];
+
+  for (const mpaKey of ACA_PORTFOLIO_MPA_KEYS) {
+    for (const line of summary.topByMpa[mpaKey] ?? []) {
+      if (seen.has(line.id)) continue;
+      if (line.overallScore == null) continue;
+      seen.add(line.id);
+      candidates.push(line);
+    }
+  }
+
+  return candidates
+    .sort((a, b) => (b.overallScore ?? 0) - (a.overallScore ?? 0))
+    .slice(0, INITIAL_SPARSE_EVIDENCE_LIMIT);
+}
+
+export function getReviewedIdsForFeedbackType(
+  feedbackType: FeedbackType,
+  summary: AccomplishmentsSummary
+): string[] {
+  if (feedbackType === "initial") {
+    return selectInitialSparseEvidence(summary).map((line) => line.id);
+  }
+  return summary.reviewedAccomplishmentIds;
+}
+
+function serializeSparseInitialEvidence(
+  summary: AccomplishmentsSummary
+): string | null {
+  const sparse = selectInitialSparseEvidence(summary);
+  if (sparse.length === 0) return null;
+
+  const lines = sparse.map((entry) => {
+    const score =
+      entry.overallScore != null ? `overall ${entry.overallScore}` : "overall N/A";
+    // Verb-only line — strip any prior body from fullDetail summaries
+    const verb = entry.summary.split(":")[0]?.split(" — ")[0]?.trim() || "Entry";
+    return `- [${getMpaEvidenceAbbrev(entry.mpa)}] ${verb} — ${score}`;
+  });
+
+  return [
+    "Optional early-cycle signals (at most 3; NOT a performance review):",
+    "Use only to illustrate expectation alignment if helpful. Prefer expectations + metrics + cadence over these.",
+    ...lines,
+  ].join("\n");
 }
 
 function summarizeEntry(entry: Accomplishment, includeBody: boolean): string {
@@ -152,7 +221,7 @@ export function buildAccomplishmentsSummary(
       return {
         id: entry.id,
         mpa: mpaKey,
-        label: getMpaShortLabel(mpaKey),
+        label: getMpaEvidenceAbbrev(mpaKey),
         overallScore: entry.assessment_scores?.overall_score ?? null,
         summary: summarizeEntry(entry, includeFullDetail),
       };
@@ -172,7 +241,7 @@ export function buildAccomplishmentsSummary(
       return {
         id: entry.id,
         mpa: entry.mpa,
-        label: getMpaShortLabel(entry.mpa),
+        label: getMpaEvidenceAbbrev(entry.mpa),
         overallScore: entry.assessment_scores?.overall_score ?? null,
         summary: summarizeEntry(entry, includeFullDetail),
       };
@@ -199,7 +268,7 @@ export function buildAccomplishmentsSummary(
         return {
           id: entry.id,
           mpa: entry.mpa,
-          label: getMpaShortLabel(entry.mpa),
+          label: getMpaEvidenceAbbrev(entry.mpa),
           overallScore: entry.assessment_scores?.overall_score ?? null,
           summary: summarizeEntry(entry, true),
         };
@@ -220,14 +289,22 @@ function getPhaseIntent(feedbackType: FeedbackType): string {
   switch (feedbackType) {
     case "initial":
       return `Phase: INITIAL feedback session.
-Emphasize translating expectations into ACA-aligned standards, how success will be measured, and check-in cadence.
-Minimal performance grading — focus on clarity and alignment.`;
+Primary job: translate supervisor expectations into clear ACA-aligned standards, success metrics, and check-in cadence.
+Do NOT write a midcycle / performance review of the package.
+Strengths: at most 3 bullets total; omit the Strengths section bullets if there is no strong early signal (overall ≥ ${STRENGTH_SCORE_FLOOR}).
+Gaps / risks: forward-looking blockers to meeting expectations — not scored grading of past entries.
+suggestedAsks: 3–5 concrete next steps (cadence, metrics, milestones). A mid-cycle review may be ONE ask, not the theme.
+evidenceRefs: at most ${INITIAL_EVIDENCE_REFS_LIMIT}, unique, EM/LP/MR/IU format only.`;
     case "midterm":
       return `Phase: MIDTERM review.
-Emphasize progress vs expectations, MPA balance, quality fingerprint (especially metrics), and what to gather before closeout.`;
+Emphasize progress vs expectations, MPA balance, quality fingerprint (especially metrics), and what to gather before closeout.
+Strengths must not include overall scores below ${STRENGTH_SCORE_FLOOR}.
+evidenceRefs: unique; EM/LP/MR/IU format only.`;
     case "final":
       return `Phase: FINAL assessment session.
-Emphasize end-cycle narrative, what held for the package, remaining development, and EFDP discussion prep as evidence-strength talking points — never outcome prediction.`;
+Emphasize end-cycle narrative, what held for the package, remaining development, and EFDP discussion prep as evidence-strength talking points — never outcome prediction.
+Strengths must not include overall scores below ${STRENGTH_SCORE_FLOOR}.
+evidenceRefs: unique; EM/LP/MR/IU format only.`;
   }
 }
 
@@ -243,7 +320,7 @@ function buildRubricSummary(rateeRank: Rank | string | null): string {
   return `ACA rubric (${form}, ${rateeRank ?? "unknown rank"}):\n${categoryLines.join("\n")}`;
 }
 
-function serializePortfolio(portfolio: CyclePortfolio): string {
+export function serializePortfolio(portfolio: CyclePortfolio): string {
   const mpaLines = ACA_PORTFOLIO_MPA_KEYS.map((key) => {
     const stat = portfolio.mpaStats[key];
     return `- ${getMpaShortLabel(key)}: ${stat.entryCount} entries, ${stat.assessedCount} assessed, avg overall ${stat.avgOverall ?? "n/a"}, avg metrics ${stat.avgMetrics ?? "n/a"}, misfiled ${stat.misfiledCount}`;
@@ -273,7 +350,7 @@ export interface SerializeAccomplishmentsOptions {
   maxLinesPerMpa?: number;
 }
 
-function serializeAccomplishments(
+export function serializeAccomplishments(
   summary: AccomplishmentsSummary,
   options: SerializeAccomplishmentsOptions = {}
 ): string {
@@ -353,6 +430,23 @@ function buildEpbBlocks(
 }
 
 function buildJsonSchemaBlock(feedbackType: FeedbackType): string {
+  const initialExtra =
+    feedbackType === "initial"
+      ? `
+
+Initial output constraints:
+- headline must be about expectation alignment / success measures / cadence — not package grading.
+- "Strengths to recognize" bullets: 0–3 max; ratee-neutral; no scores < ${STRENGTH_SCORE_FLOOR}.
+- "Gaps / risks" bullets: forward-looking expectation risks; ratee-neutral.
+- suggestedAsks: 3–5; actionable for the supervisor.
+- evidenceRefs: ≤${INITIAL_EVIDENCE_REFS_LIMIT}, unique, "EM|LP|MR|IU: Verb — overall NN".`
+      : `
+
+Output constraints:
+- Ratee-neutral Strengths/Gaps (no you/your/my).
+- Do not put overall scores < ${STRENGTH_SCORE_FLOOR} in Strengths.
+- evidenceRefs unique; "EM|LP|MR|IU: Verb — overall NN" only.`;
+
   return `Return JSON only:
 {
   "feedbackType": "${feedbackType}",
@@ -362,8 +456,8 @@ function buildJsonSchemaBlock(feedbackType: FeedbackType): string {
     { "title": "Gaps / risks", "bullets": ["..."] }
   ],
   "suggestedAsks": ["concrete follow-ups"],
-  "evidenceRefs": ["short refs like EM: Led X — overall 82"]
-}`;
+  "evidenceRefs": ["EM: Led X — overall 82"]
+}${initialExtra}`;
 }
 
 interface PromptAssemblyConfig {
@@ -411,15 +505,11 @@ function assembleTalkingPointsPrompt(
 
   if (includeAccomplishments && feedbackType !== "initial") {
     blocks.push(serializeAccomplishments(accomplishmentsSummary, accomplishmentsOptions));
-  } else if (
-    includeSparseAccomplishments &&
-    feedbackType === "initial" &&
-    accomplishmentsSummary.reviewedAccomplishmentIds.length > 0
-  ) {
-    blocks.push(
-      "Sparse accomplishments available (optional context):\n" +
-        serializeAccomplishments(accomplishmentsSummary, accomplishmentsOptions)
-    );
+  } else if (includeSparseAccomplishments && feedbackType === "initial") {
+    const sparseBlock = serializeSparseInitialEvidence(accomplishmentsSummary);
+    if (sparseBlock) {
+      blocks.push(sparseBlock);
+    }
   }
 
   if (
