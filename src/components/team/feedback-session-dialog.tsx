@@ -397,6 +397,12 @@ ${content}`;
         toast.warning("EPB statements were unavailable — draft uses accomplishments only.");
       }
 
+      if (payload.warnings?.includes("accomplishments_truncated")) {
+        toast.warning(
+          "Draft used the 200 most recent accomplishments; older entries were omitted."
+        );
+      }
+
       toast.success("Talking points drafted — review and edit before sharing.");
     } catch (error) {
       if (requestId !== generateRequestIdRef.current) return;

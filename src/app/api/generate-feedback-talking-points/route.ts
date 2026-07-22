@@ -193,7 +193,11 @@ async function loadAccomplishments(
   supabase: any,
   ratee: VerifiedRatee,
   cycleYear: number
-): Promise<{ accomplishments?: Accomplishment[]; error?: NextResponse }> {
+): Promise<{
+  accomplishments?: Accomplishment[];
+  truncated?: boolean;
+  error?: NextResponse;
+}> {
   // Select only fields needed for portfolio + prompt evidence (avoid select *)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
@@ -203,7 +207,7 @@ async function loadAccomplishments(
     )
     .eq("cycle_year", cycleYear)
     .order("date", { ascending: false })
-    .limit(200);
+    .limit(201);
 
   if (ratee.teamMemberId) {
     query = query.eq("team_member_id", ratee.teamMemberId);
@@ -222,7 +226,11 @@ async function loadAccomplishments(
     };
   }
 
-  return { accomplishments: (data as Accomplishment[]) ?? [] };
+  const rows = (data as Accomplishment[]) ?? [];
+  const truncated = rows.length > 200;
+  const accomplishments = truncated ? rows.slice(0, 200) : rows;
+
+  return { accomplishments, truncated };
 }
 
 async function loadEpbStatements(
@@ -366,6 +374,7 @@ export async function POST(request: Request) {
       return accomplishmentsResult.error!;
     }
     const accomplishments = accomplishmentsResult.accomplishments;
+    const accomplishmentsTruncated = accomplishmentsResult.truncated ?? false;
 
     const portfolio = buildPortfolioFromEntries(accomplishments);
     const accomplishmentsSummary = buildAccomplishmentsSummary(
@@ -374,6 +383,9 @@ export async function POST(request: Request) {
     );
 
     const warnings: string[] = [];
+    if (accomplishmentsTruncated) {
+      warnings.push("accomplishments_truncated");
+    }
     let epbStatements: EpbStatementSummary[] | undefined;
 
     if (feedbackType === "final") {
