@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useReducer } from "react";
+import { useState, useEffect, useReducer, useRef } from "react";
 import { Analytics } from "@/lib/analytics";
 import { useUserStore } from "@/stores/user-store";
 import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
@@ -124,6 +124,8 @@ export function EntryFormDialog({
   const assessmentFormUsed = assessmentPreview.formUsed;
   const assessmentRateeRank = assessmentPreview.rateeRank;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const currentEditEntryIdRef = useRef<string | null>(editEntry?.id ?? null);
+  currentEditEntryIdRef.current = editEntry?.id ?? null;
   const supabase = createClient();
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -278,7 +280,11 @@ export function EntryFormDialog({
 
   // Reset form when dialog opens/closes or edit entry changes
   useEffect(() => {
+    let cancelled = false;
+
     if (editEntry) {
+      const accomplishmentId = editEntry.id;
+
       setForm({
         date: editEntry.date,
         action_verb: editEntry.action_verb,
@@ -294,8 +300,12 @@ export function EntryFormDialog({
         scores: editEntry.assessment_scores || null,
         model: editEntry.assessment_model || null,
       });
-      // Load existing project link
-      loadExistingProjectLink(editEntry.id);
+      // Clear stale project selection while loading the link for this entry
+      setSelectedProjectId(null);
+      void loadExistingProjectLink(accomplishmentId).then((projectId) => {
+        if (cancelled || currentEditEntryIdRef.current !== accomplishmentId) return;
+        setSelectedProjectId(projectId);
+      });
     } else {
       setForm({
         date: new Date().toISOString().split("T")[0],
@@ -310,18 +320,22 @@ export function EntryFormDialog({
       dispatchAssessmentPreview({ type: "reset" });
       setSelectedProjectId(null);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [editEntry, open]);
 
   // Load existing project link for an accomplishment
   // Type assertions needed due to Supabase type generation issue with new tables
-  async function loadExistingProjectLink(accomplishmentId: string) {
+  async function loadExistingProjectLink(accomplishmentId: string): Promise<string | null> {
     const { data } = await (supabase
       .from("accomplishment_projects") as any)
       .select("project_id")
       .eq("accomplishment_id", accomplishmentId)
       .maybeSingle() as { data: { project_id: string } | null };
-    
-    setSelectedProjectId(data?.project_id || null);
+
+    return data?.project_id || null;
   }
 
   // Update project link for an accomplishment
