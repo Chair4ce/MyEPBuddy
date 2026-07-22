@@ -18,6 +18,7 @@ import {
   ENTRY_MGAS, 
   getRubricTierForRank,
   isCivilian,
+  isEnlisted,
   ACA_RUBRIC_JUNIOR,
   ACA_RUBRIC_SENIOR,
   DEFAULT_APP_MODEL_ID,
@@ -344,6 +345,26 @@ export async function POST(request: Request) {
     if (isCivilian(resolvedRateeRank ?? null)) {
       return NextResponse.json(
         { error: "Civilian users do not have accomplishment assessments" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !resolvedRateeRank ||
+      (typeof resolvedRateeRank === "string" && !resolvedRateeRank.trim())
+    ) {
+      return NextResponse.json(
+        { error: "Ratee rank is required for accomplishment assessment" },
+        { status: 400 }
+      );
+    }
+
+    if (!isEnlisted(resolvedRateeRank)) {
+      return NextResponse.json(
+        {
+          error:
+            "Accomplishment assessment is only available for enlisted ratees",
+        },
         { status: 400 }
       );
     }

@@ -18,6 +18,7 @@ import {
   ENTRY_MGAS,
   getRubricTierForRank,
   isCivilian,
+  isEnlisted,
 } from "@/lib/constants";
 import type { Accomplishment, FeedbackType, Rank } from "@/types/database";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
@@ -323,9 +324,29 @@ export async function POST(request: Request) {
 
     const ratee = access.ratee;
 
+    if (
+      !ratee.rank ||
+      (typeof ratee.rank === "string" && !ratee.rank.trim())
+    ) {
+      return NextResponse.json(
+        { error: "Ratee rank is required for ACA feedback talking points" },
+        { status: 400 }
+      );
+    }
+
     if (isCivilian(ratee.rank)) {
       return NextResponse.json(
         { error: "Civilian ratees do not have ACA feedback talking points" },
+        { status: 400 }
+      );
+    }
+
+    if (!isEnlisted(ratee.rank as Rank)) {
+      return NextResponse.json(
+        {
+          error:
+            "ACA feedback talking points are only available for enlisted ratees",
+        },
         { status: 400 }
       );
     }
