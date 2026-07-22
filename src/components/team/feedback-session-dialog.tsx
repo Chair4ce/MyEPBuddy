@@ -52,10 +52,15 @@ import {
   unshareFeedback,
   deleteFeedback 
 } from "@/app/actions/supervisor-feedbacks";
-import { getExpectation } from "@/app/actions/supervisor-expectations";
 import { getActiveCycleYear, getActiveCycleRangeLabel, getFeedbackTypeLabel, getFeedbackTypeDescription } from "@/lib/constants";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { cn } from "@/lib/utils";
+import {
+  GENERATE_BUTTON_LABELS,
+  GENERATE_HELPER_TEXT,
+  getGenerateAriaLabel,
+} from "./feedback-session-generate";
+import { useFeedbackTalkingPointsGenerate } from "./use-feedback-talking-points-generate";
 
 interface FeedbackSessionDialogProps {
   open: boolean;
@@ -66,22 +71,6 @@ interface FeedbackSessionDialogProps {
   subordinate?: Profile | null;
   managedMember?: ManagedMember | null;
   onSuccess?: () => void;
-}
-
-const GENERATE_BUTTON_LABELS: Record<FeedbackType, string> = {
-  initial: "Draft from expectations",
-  midterm: "Generate midterm talking points",
-  final: "Generate final session notes",
-};
-
-const GENERATE_HELPER_TEXT: Record<FeedbackType, string> = {
-  initial: "Uses saved expectations and the ACA rubric for this rank.",
-  midterm: "Uses expectations, assessed accomplishments, and cycle quality signals. Edit before sharing.",
-  final: "Uses expectations, assessed accomplishments, and cycle quality signals. Edit before sharing.",
-};
-
-function getGenerateAriaLabel(feedbackType: FeedbackType, memberName: string): string {
-  return `${GENERATE_BUTTON_LABELS[feedbackType]} for ${memberName}`;
 }
 
 function escapeHtml(value: string): string {
@@ -137,13 +126,11 @@ function FeedbackSessionDialogInner({
   const [feedback, setFeedback] = useState<SupervisorFeedback | null>(
     existingFeedback ?? null
   );
-  const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const reviewedAccomplishmentIdsRef = useRef<string[]>(
     existingFeedback?.reviewed_accomplishment_ids ?? []
   );
-  const generateRequestIdRef = useRef(0);
 
   // Get member info
   const memberName = subordinate?.full_name || managedMember?.full_name || "Unknown";
@@ -154,6 +141,22 @@ function FeedbackSessionDialogInner({
   // Get current cycle year based on subordinate's rank
   const cycleYear = getActiveCycleYear(memberRank as Rank);
   const cyclePeriodLabel = getActiveCycleRangeLabel(memberRank as Rank);
+  const isShared = feedback?.status === "shared";
+
+  const { isGenerating, handleGenerateClick, executeGenerate } =
+    useFeedbackTalkingPointsGenerate({
+      feedbackType,
+      subordinateId,
+      teamMemberId,
+      cycleYear,
+      content,
+      isShared,
+      feedback,
+      setContent,
+      setFeedback,
+      reviewedAccomplishmentIdsRef,
+      setShowReplaceConfirm,
+    });
 
   async function handleSave() {
     if (!content.trim()) {
@@ -322,101 +325,7 @@ Date: ${new Date().toLocaleDateString("en-US", { timeZone: "UTC" })}
 ${content}`;
   }
 
-  function handleGenerateClick() {
-    if (isShared || isGenerating) return;
-    if (!subordinateId && !teamMemberId) {
-      toast.error("Cannot generate talking points without a selected team member");
-      return;
-    }
-    if (content.trim()) {
-      setShowReplaceConfirm(true);
-      return;
-    }
-    void executeGenerate();
-  }
-
-  async function executeGenerate() {
-    if (!subordinateId && !teamMemberId) return;
-    if (isGenerating) return;
-
-    setShowReplaceConfirm(false);
-    const requestId = ++generateRequestIdRef.current;
-    setIsGenerating(true);
-
-    try {
-      if (feedbackType === "initial") {
-        const { data: expectation } = await getExpectation(
-          subordinateId,
-          teamMemberId,
-          cycleYear
-        );
-        if (requestId !== generateRequestIdRef.current) return;
-        if (!expectation?.expectation_text?.trim()) {
-          toast.warning(
-            "No saved expectations yet — the draft will be rubric-generic. Set expectations first for a stronger session prep."
-          );
-        }
-      }
-
-      const response = await fetch("/api/generate-feedback-talking-points", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          feedbackType,
-          subordinateId,
-          teamMemberId,
-          cycleYear,
-        }),
-      });
-
-      if (requestId !== generateRequestIdRef.current) return;
-
-      if (!response.ok) {
-        const errorPayload = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        toast.error(errorPayload.error || "Failed to generate talking points");
-        return;
-      }
-
-      const payload = await response.json();
-      if (requestId !== generateRequestIdRef.current) return;
-
-      const reviewedIds = (payload.reviewedAccomplishmentIds ?? []) as string[];
-      setContent(payload.draftText);
-      reviewedAccomplishmentIdsRef.current = reviewedIds;
-
-      if (feedback) {
-        setFeedback({
-          ...feedback,
-          reviewed_accomplishment_ids: reviewedIds,
-        });
-      }
-
-      if (payload.warnings?.includes("epb_statements_unavailable")) {
-        toast.warning("EPB statements were unavailable — draft uses accomplishments only.");
-      }
-
-      if (payload.warnings?.includes("accomplishments_truncated")) {
-        toast.warning(
-          "Draft used the 200 most recent accomplishments; older entries were omitted."
-        );
-      }
-
-      toast.success("Talking points drafted — review and edit before sharing.");
-    } catch (error) {
-      if (requestId !== generateRequestIdRef.current) return;
-      console.error("Generate talking points failed:", error);
-      toast.error("Failed to generate talking points");
-    } finally {
-      if (requestId === generateRequestIdRef.current) {
-        setIsGenerating(false);
-      }
-    }
-  }
-
   const hasChanges = content.trim() !== (feedback?.content || "");
-  const isShared = feedback?.status === "shared";
   const canGenerate = !isShared && (!!subordinateId || !!teamMemberId);
 
   return (
