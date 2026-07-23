@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
+import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import { Loader2, UserCog, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer, isCivilian } from "@/lib/constants";
@@ -215,6 +216,25 @@ export function EditManagedMemberDialog({
         unit: formData.unit.trim() || null,
       });
 
+      let inviteSent = false;
+      if (emailChanged && newEmail) {
+        const invite = await requestManagedMemberInvite({
+          teamMemberId: member.id,
+          recipientEmail: newEmail,
+        });
+        inviteSent = invite.sent;
+        if (!invite.sent) {
+          console.error("Managed member invite email not sent:", invite.error);
+        }
+      }
+
+      const inviteDescription =
+        emailChanged && newEmail
+          ? inviteSent
+            ? `An invite email was sent to ${newEmail}.`
+            : `We couldn't send the invite email to ${newEmail}.`
+          : undefined;
+
       // If email changed and we should create a pending link
       if (emailChanged && newEmail && createLink && existingUser) {
         // Call the function to create a pending link
@@ -229,19 +249,25 @@ export function EditManagedMemberDialog({
         if (linkError) {
           console.error("Error creating pending link:", linkError);
           toast.warning(
-            `${formData.full_name} updated, but we couldn't create the account link. They may already have a pending link.`
+            `${formData.full_name} updated, but we couldn't create the account link. They may already have a pending link.`,
+            { description: inviteDescription }
           );
         } else {
           toast.success(
             `${formData.full_name} updated! A link request has been sent to ${existingUser.full_name || existingUser.email}.`,
             {
-              description: "They'll see a prompt to link their account on their dashboard.",
+              description: [
+                "They'll see a prompt to link their account on their dashboard.",
+                inviteDescription,
+              ]
+                .filter(Boolean)
+                .join(" "),
             }
           );
         }
       } else if (emailChanged && newEmail && !createLink) {
         toast.success(`${formData.full_name} updated!`, {
-          description: "If they sign up with this email later, they'll be prompted to link.",
+          description: inviteDescription,
         });
       } else {
         toast.success(`${formData.full_name} updated!`);

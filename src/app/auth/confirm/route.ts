@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import { safeAppNextPath } from "@/lib/managed-member-invite-params";
 
 /**
  * Token-hash based email verification route.
@@ -50,14 +51,16 @@ export async function GET(request: Request) {
   // Verification succeeded - redirect based on type
   const forwardedHost = request.headers.get("x-forwarded-host");
   const isLocalEnv = process.env.NODE_ENV === "development";
+  const safeNext = safeAppNextPath(next, origin);
 
   let redirectTo: string;
   if (type === "recovery") {
     redirectTo = "/reset-password";
   } else if (type === "magiclink" || type === "signup" || type === "email") {
-    redirectTo = "/dashboard";
+    // Honor invite / post-auth next when present; otherwise dashboard.
+    redirectTo = safeNext || "/dashboard";
   } else {
-    redirectTo = next;
+    redirectTo = safeNext;
   }
 
   if (isLocalEnv) {

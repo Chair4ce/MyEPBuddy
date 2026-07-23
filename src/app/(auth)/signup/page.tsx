@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,22 @@ import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
 import { ResizeContainer } from "@/components/ui/resize-container";
 import { useRestrictedBrowser } from "@/lib/restricted-browser";
+import {
+  buildManagedInviteDashboardPath,
+  buildManagedInviteLoginPath,
+  parseManagedInviteParams,
+  persistManagedInviteToken,
+} from "@/lib/managed-member-invite-params";
 
-export default function SignupPage() {
-  const [email, setEmail] = useState("");
+function SignupPageContent() {
+  const searchParams = useSearchParams();
+  const invite = parseManagedInviteParams(searchParams);
+  const [email, setEmail] = useState(() => {
+    if (invite.token) {
+      persistManagedInviteToken(invite.token);
+    }
+    return invite.email;
+  });
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -39,6 +52,9 @@ export default function SignupPage() {
   const restrictedBrowser = useRestrictedBrowser();
   const router = useRouter();
   const supabase = createClient();
+
+  const isInviteFlow = invite.isInvite;
+  const invitedBy = invite.supervisorName?.trim() || "Your supervisor";
 
   function validateNameFields(): boolean {
     if (!firstName.trim() || !lastName.trim()) {
@@ -52,19 +68,30 @@ export default function SignupPage() {
     e.preventDefault();
     if (!validateNameFields()) return;
 
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail.includes("@")) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+
+    if (invite.token) {
+      persistManagedInviteToken(invite.token);
+    }
+
     setIsLoading(true);
 
     try {
       const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
       const { error: signUpError } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?type=signup`,
+          emailRedirectTo: `${window.location.origin}/dashboard`,
           data: {
             full_name: fullName,
             first_name: firstName.trim(),
             last_name: lastName.trim(),
+            managed_invite: isInviteFlow,
           },
         },
       });
@@ -86,8 +113,21 @@ export default function SignupPage() {
       Analytics.signUp("email");
       toast.success("Account created! Check your email to verify before signing in.", {
         duration: 6000,
+        description: isInviteFlow
+          ? "After you verify, we'll connect you to your supervisor's team."
+          : undefined,
       });
-      router.push("/login?email_verified=pending");
+      router.push(
+        isInviteFlow
+          ? buildManagedInviteLoginPath({
+              email: normalizedEmail,
+              supervisorName: invite.supervisorName,
+              teamMemberId: invite.teamMemberId,
+              token: invite.token,
+              emailVerifiedPending: true,
+            })
+          : "/login?email_verified=pending"
+      );
     } catch {
       toast.error("An unexpected error occurred");
     } finally {
@@ -103,13 +143,27 @@ export default function SignupPage() {
       return;
     }
 
+    if (invite.token) {
+      persistManagedInviteToken(invite.token);
+    }
+
     setIsGoogleLoading(true);
 
     try {
+      const postAuthPath = isInviteFlow
+        ? buildManagedInviteDashboardPath()
+        : "/dashboard";
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(postAuthPath)}`,
+          queryParams: invite.email
+            ? {
+                login_hint: invite.email,
+                prompt: "select_account",
+              }
+            : { prompt: "select_account" },
         },
       });
 
@@ -138,6 +192,14 @@ export default function SignupPage() {
   }
 
   const anyLoading = isLoading || isGoogleLoading;
+  const loginHref = isInviteFlow
+    ? buildManagedInviteLoginPath({
+        email: email.trim().toLowerCase() || invite.email,
+        supervisorName: invite.supervisorName,
+        teamMemberId: invite.teamMemberId,
+        token: invite.token,
+      })
+    : "/login";
 
   return (
     <div className="animate-fade-in">
@@ -179,10 +241,21 @@ export default function SignupPage() {
 
         <Card className="overflow-hidden">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl">Create an account</CardTitle>
+            <CardTitle className="text-2xl">
+              {isInviteFlow ? "Accept your invitation" : "Create an account"}
+            </CardTitle>
             <CardDescription>
-              Sign up with Google or email and password. After that, you can sign
-              in with a magic link or phone anytime.
+              {isInviteFlow ? (
+                <>
+                  {invitedBy} invited you to MyEPBuddy. Confirmation emails often
+                  take a long time to reach{" "}
+                  <span className="font-medium text-foreground">.mil</span>{" "}
+                  addresses, so we recommend using a personal email (Gmail, etc.).
+                  Your invite link still connects you to their managed account.
+                </>
+              ) : (
+                "Sign up with Google or email and password. After that, you can sign in with a magic link or phone anytime."
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -229,19 +302,15 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">
-                Verify your email first
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Trial tokens start once you confirm your inbox.{" "}
-                <span className="font-semibold text-foreground">.mil</span>{" "}
-                addresses like{" "}
-                <span className="font-semibold text-foreground">us.af.mil</span>{" "}
-                won&apos;t get our emails yet. Those networks block us for now, so
-                use a personal email you can actually check.
-              </p>
-            </div>
+            {!isInviteFlow && (
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">
+                  Prefer a personal inbox —{" "}
+                  <span className="font-semibold text-foreground">.mil</span>{" "}
+                  networks often delay or block confirmation emails.
+                </p>
+              </div>
+            )}
 
             <form onSubmit={handleEmailSignup} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -283,8 +352,17 @@ export default function SignupPage() {
                   required
                   disabled={isLoading}
                   aria-label="Email address"
+                  aria-describedby={
+                    isInviteFlow ? "invite-email-hint" : undefined
+                  }
                   autoComplete="email"
                 />
+                {isInviteFlow && (
+                  <p id="invite-email-hint" className="text-xs text-muted-foreground">
+                    Suggested invite address: {invite.email || "the one your supervisor used"}.
+                    You can switch to a personal email — we&apos;ll still link your invite.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -307,6 +385,8 @@ export default function SignupPage() {
               <Button type="submit" className="w-full" disabled={anyLoading}>
                 {isLoading ? (
                   <Loader2 className="size-4 animate-spin" />
+                ) : isInviteFlow ? (
+                  "Accept invitation"
                 ) : (
                   "Create account"
                 )}
@@ -316,7 +396,7 @@ export default function SignupPage() {
           <CardFooter>
             <p className="text-sm text-muted-foreground w-full text-center">
               Already have an account?{" "}
-              <Link href="/login" className="text-primary hover:underline">
+              <Link href={loginHref} className="text-primary hover:underline">
                 Sign in
               </Link>
             </p>
@@ -324,5 +404,23 @@ export default function SignupPage() {
         </Card>
       </ResizeContainer>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="animate-fade-in">
+          <Card>
+            <CardContent className="flex items-center justify-center py-12">
+              <Loader2 className="size-8 animate-spin text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <SignupPageContent />
+    </Suspense>
   );
 }

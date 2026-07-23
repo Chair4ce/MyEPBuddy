@@ -56,6 +56,7 @@ import { toast } from "sonner";
 import { Analytics } from "@/lib/analytics";
 import type { Rank } from "@/types/database";
 import { MPA_ABBREVIATIONS } from "@/lib/constants";
+import { consumePersistedManagedInviteToken } from "@/lib/managed-member-invite-consume";
 
 interface PreviewEntry {
   id: string;
@@ -148,6 +149,22 @@ export function PendingLinksCard() {
       if (!profile?.id) return;
 
       setIsLoading(true);
+
+      const consumed = await consumePersistedManagedInviteToken();
+      if (consumed?.success) {
+        toast.success(
+          consumed.emailMismatch
+            ? "Invite connected — your supervisor can update the managed account email"
+            : "Invite connected to your supervisor's managed account",
+          {
+            description: consumed.memberName
+              ? `Linked invite for ${consumed.memberName}`
+              : undefined,
+          }
+        );
+      } else if (consumed && !consumed.success && consumed.error) {
+        console.error("Invite token consume:", consumed.error);
+      }
 
       // Query pending links with type cast
       // Filter out snoozed links (snoozed_until is null or in the past)
@@ -440,7 +457,10 @@ export function PendingLinksCard() {
 
   return (
     <TooltipProvider>
-      <Card className="border-amber-300 dark:border-amber-600/50 bg-amber-50/50 dark:bg-amber-900/10">
+      <Card
+        id="pending-account-links"
+        className="border-amber-300 dark:border-amber-600/50 bg-amber-50/50 dark:bg-amber-900/10 scroll-mt-24 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02),0_0_0_0.5px_rgba(245,158,11,0.35)]"
+      >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
             <LinkIcon className="size-5" />

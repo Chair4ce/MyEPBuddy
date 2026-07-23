@@ -24,6 +24,7 @@ import {
 import { SUPERVISOR_RANKS, getActiveCycleYear, isOfficer, isCivilian } from "@/lib/constants";
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import { PendingLinksCard } from "@/components/dashboard/pending-links-card";
+import { EmailMismatchInvitesCard } from "@/components/dashboard/email-mismatch-invites-card";
 import { PendingPriorDataCard } from "@/components/dashboard/pending-prior-data-card";
 import { TeamAccomplishmentsFeed } from "@/components/dashboard/team-accomplishments-feed";
 // TODO: Re-enable tutorial feature when ready
@@ -174,6 +175,9 @@ export default function DashboardPage() {
 
       {/* Pending Account Links */}
       <PendingLinksCard />
+
+      {/* Supervisor: invitee signed up with a different email */}
+      <EmailMismatchInvitesCard />
 
       {/* Pending Prior Data Reviews */}
       <PendingPriorDataCard />

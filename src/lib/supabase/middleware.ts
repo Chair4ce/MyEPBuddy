@@ -56,12 +56,15 @@ export async function updateSession(request: NextRequest) {
     "/terms",
     "/billing-terms",
     "/account-deleted",
+    "/email-preview/managed-invite",
   ];
   const isPublicPath = publicPaths.some(
     (path) =>
       request.nextUrl.pathname === path ||
       request.nextUrl.pathname.startsWith("/auth/") ||
-      request.nextUrl.pathname.startsWith("/review/")
+      request.nextUrl.pathname.startsWith("/review/") ||
+      request.nextUrl.pathname.startsWith("/email-preview/") ||
+      request.nextUrl.pathname.startsWith("/email-previews/")
   );
 
   // API routes enforce their own auth (webhooks, cron, etc.)

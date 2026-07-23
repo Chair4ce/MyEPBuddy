@@ -31,6 +31,12 @@ import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
 import { ResizeContainer } from "@/components/ui/resize-container";
 import { useRestrictedBrowser } from "@/lib/restricted-browser";
+import {
+  buildManagedInviteDashboardPath,
+  buildManagedInviteSignupPath,
+  parseManagedInviteParams,
+  persistManagedInviteToken,
+} from "@/lib/managed-member-invite-params";
 
 function getLastMagicLinkRequest(email: string): number | null {
   if (typeof window === "undefined") return null;
@@ -46,7 +52,14 @@ function setLastMagicLinkRequest(email: string): void {
 }
 
 function LoginPageContent() {
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const invite = parseManagedInviteParams(searchParams);
+  const [email, setEmail] = useState(() => {
+    if (invite.token) {
+      persistManagedInviteToken(invite.token);
+    }
+    return invite.email;
+  });
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isMagicLinkLoading, setIsMagicLinkLoading] = useState(false);
@@ -56,8 +69,18 @@ function LoginPageContent() {
   const [copied, setCopied] = useState(false);
   const restrictedBrowser = useRestrictedBrowser();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClient();
+  const postAuthPath = invite.isInvite
+    ? buildManagedInviteDashboardPath()
+    : "/dashboard";
+  const signupHref = invite.isInvite
+    ? buildManagedInviteSignupPath({
+        email: invite.email,
+        supervisorName: invite.supervisorName,
+        teamMemberId: invite.teamMemberId,
+        token: invite.token,
+      })
+    : "/signup";
 
   useEffect(() => {
     const emailVerified = searchParams.get("email_verified");
@@ -112,7 +135,7 @@ function LoginPageContent() {
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?type=magiclink`,
+          emailRedirectTo: `${window.location.origin}${postAuthPath}`,
           shouldCreateUser: false,
         },
       });
@@ -169,7 +192,7 @@ function LoginPageContent() {
 
       Analytics.login("email");
       toast.success("Welcome back!");
-      router.push("/dashboard");
+      router.push(postAuthPath);
       router.refresh();
     } catch {
       toast.error("An unexpected error occurred");
@@ -189,10 +212,20 @@ function LoginPageContent() {
     setIsGoogleLoading(true);
 
     try {
+      if (invite.token) {
+        persistManagedInviteToken(invite.token);
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(postAuthPath)}`,
+          queryParams: invite.email
+            ? {
+                login_hint: invite.email,
+                prompt: "select_account",
+              }
+            : undefined,
         },
       });
 
@@ -262,10 +295,13 @@ function LoginPageContent() {
 
         <Card className="overflow-hidden">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl">Sign in</CardTitle>
+            <CardTitle className="text-2xl">
+              {invite.isInvite ? "Accept your invitation" : "Sign in"}
+            </CardTitle>
             <CardDescription>
-              Sign in with your email and password, Google, or phone. Forgot your
-              password? Use an email link instead.
+              {invite.isInvite
+                ? `${invite.supervisorName?.trim() || "Your supervisor"} invited you. Sign in with any email you use for MyEPBuddy — including a personal inbox if .mil delivery is slow. Your invite link still connects the managed account.`
+                : "Sign in with your email and password, Google, or phone. Forgot your password? Use an email link instead."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -401,7 +437,7 @@ function LoginPageContent() {
                 >
                   <p className="text-sm text-muted-foreground">
                     New to MyEPBuddy?{" "}
-                    <Link href="/signup" className="text-primary font-medium hover:underline">
+                    <Link href={signupHref} className="text-primary font-medium hover:underline">
                       Create an account
                     </Link>
                   </p>
@@ -472,7 +508,7 @@ function LoginPageContent() {
           <CardFooter>
             <p className="text-sm text-muted-foreground w-full text-center">
               Don&apos;t have an account?{" "}
-              <Link href="/signup" className="text-primary hover:underline">
+              <Link href={signupHref} className="text-primary hover:underline">
                 Sign up
               </Link>
             </p>

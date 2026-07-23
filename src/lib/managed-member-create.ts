@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { isCivilian, isEnlisted, isOfficer } from "@/lib/constants";
+import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import type { ManagedMember, Rank } from "@/types/database";
 
 type BrowserSupabaseClient = ReturnType<typeof createClient>;
@@ -103,6 +104,32 @@ export async function createManagedTeamMember(
 
     if (requestError && requestError.code !== "23505") {
       console.error("Error sending team request:", requestError);
+    }
+  }
+
+  if (existingMatch) {
+    const { error: linkError } = await (
+      supabase.rpc as unknown as (
+        fn: string,
+        args: { p_team_member_id: string; p_user_id: string }
+      ) => Promise<{ error: { message?: string } | null }>
+    )("create_pending_link_for_existing_user", {
+      p_team_member_id: member.id,
+      p_user_id: existingMatch.id,
+    });
+
+    if (linkError) {
+      console.error("Error creating pending managed link:", linkError);
+    }
+  }
+
+  if (email) {
+    const invite = await requestManagedMemberInvite({
+      teamMemberId: member.id,
+      recipientEmail: email,
+    });
+    if (!invite.sent) {
+      console.error("Managed member invite email not sent:", invite.error);
     }
   }
 

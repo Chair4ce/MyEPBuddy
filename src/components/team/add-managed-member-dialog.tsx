@@ -29,6 +29,7 @@ import {
   earnRewardToastMessage,
   refreshCreditsAfterEarnAction,
 } from "@/lib/billing/refresh-earn-rewards";
+import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import { useCreditsStore } from "@/stores/credits-store";
 import { Loader2, UserPlus, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
@@ -328,13 +329,48 @@ export function AddManagedMemberDialog({
       }
 
       // Add to store
-      addManagedMember(data as unknown as ManagedMember);
+      const createdMember = data as unknown as ManagedMember;
+      addManagedMember(createdMember);
+
+      let inviteSent = false;
+      if (email) {
+        const invite = await requestManagedMemberInvite({
+          teamMemberId: createdMember.id,
+          recipientEmail: email,
+        });
+        inviteSent = invite.sent;
+        if (!invite.sent) {
+          console.error("Managed member invite email not sent:", invite.error);
+        }
+      }
+
+      const inviteDescription = email
+        ? inviteSent
+          ? `An invite email was sent to ${email}.`
+          : `We couldn't send the invite email to ${email}. They can still sign up with this address to link.`
+        : undefined;
 
       const subordinateIsCivilian = isCivilian(existingMatch?.rank ?? null);
       const supervisorIsMilitary =
         isOfficer(profile.rank) || isEnlisted(profile.rank);
       const skipAutoSupervise =
         existingMatch && subordinateIsCivilian && supervisorIsMilitary;
+
+      if (existingMatch) {
+        const { error: linkError } = await (
+          supabase.rpc as unknown as (
+            fn: string,
+            args: { p_team_member_id: string; p_user_id: string }
+          ) => Promise<{ error: { message?: string } | null }>
+        )("create_pending_link_for_existing_user", {
+          p_team_member_id: createdMember.id,
+          p_user_id: existingMatch.id,
+        });
+
+        if (linkError) {
+          console.error("Error creating pending managed link:", linkError);
+        }
+      }
 
       if (existingMatch && !skipAutoSupervise) {
         const { error: requestError } = await supabase.from("team_requests").insert({
@@ -348,24 +384,37 @@ export function AddManagedMemberDialog({
           // Check if request already exists
           if (requestError.code === "23505") {
             toast.success(`${formData.full_name} added as a pending team member`, {
-              description: `A supervisor request has already been sent to ${existingMatch.full_name || existingMatch.email}. They'll appear as linked once they accept.`,
+              description: [
+                `A supervisor request has already been sent to ${existingMatch.full_name || existingMatch.email}.`,
+                inviteDescription,
+              ]
+                .filter(Boolean)
+                .join(" "),
             });
           } else {
             console.error("Error sending team request:", requestError);
             toast.success(`${formData.full_name} added as a pending team member`, {
-              description: `Couldn't send a supervisor request automatically. You may need to send one manually.`,
+              description: [
+                "Couldn't send a supervisor request automatically. You may need to send one manually.",
+                inviteDescription,
+              ]
+                .filter(Boolean)
+                .join(" "),
             });
           }
         } else {
           toast.success(`${formData.full_name} added as a pending team member`, {
-            description: `A supervisor request was sent to ${existingMatch.full_name || existingMatch.email}. They'll appear as linked once they accept.`,
+            description: [
+              `A supervisor request was sent to ${existingMatch.full_name || existingMatch.email}.`,
+              inviteDescription,
+            ]
+              .filter(Boolean)
+              .join(" "),
           });
         }
       } else {
         toast.success(`${formData.full_name} added to your team`, {
-          description: email 
-            ? "If they sign up with this email, they'll be prompted to link their account."
-            : undefined,
+          description: inviteDescription,
         });
       }
 
