@@ -88,19 +88,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!checkRateLimit(user.id)) {
-      return NextResponse.json(
-        { error: "Rate limit exceeded. Maximum 20 invite emails per hour." },
-        { status: 429 }
-      );
-    }
-
     const body = await request.json();
     const teamMemberId =
       typeof body.teamMemberId === "string" ? body.teamMemberId.trim() : "";
     const rawEmail =
       typeof body.recipientEmail === "string" ? body.recipientEmail : "";
     const recipientEmail = stripHtml(rawEmail).trim().toLowerCase();
+    const sendEmail = body.sendEmail !== false;
+
+    // Email sends are rate-limited; copy-link (token only) is not.
+    if (sendEmail && !checkRateLimit(user.id)) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Maximum 20 invite emails per hour." },
+        { status: 429 }
+      );
+    }
 
     if (!teamMemberId || !recipientEmail) {
       return NextResponse.json(
@@ -200,11 +202,20 @@ export async function POST(request: NextRequest) {
       tokenResult.token
     );
 
+    // Token/link always succeed — email is best-effort (and optional for copy-link).
+    if (!sendEmail) {
+      return NextResponse.json({
+        success: true,
+        emailSent: false,
+        code: "link_only",
+        variant,
+        inviteUrl,
+      });
+    }
+
     const resendApiKey = getResendApiKey();
     const fromEmail = getTransactionalFromEmail();
 
-    // Token/link always succeed — email is best-effort. Missing/failed Resend
-    // must not fail add-member (clients treat invite as optional).
     if (!resendApiKey || !fromEmail) {
       console.warn(
         "Managed member invite link created but email not sent — missing RESEND_API_KEY or EMAIL_FROM/FEEDBACK_FROM_EMAIL."

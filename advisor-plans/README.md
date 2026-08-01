@@ -309,3 +309,13 @@ Performance, docs, dependency posture (`npm audit` not re-run), roadmap/directio
 | 024  | Migrate the remaining EPB surfaces to house motion + grow `ENFORCED_PATHS` | P2 | M | — | TODO |
 
 Recommended: **021 → 022 → 023 → 024**. 021 first because it restores the gate every other plan verifies against; 022 is a small independent correctness win; 023 is the only one touching the database (migration `204` — next free number) and should land on a green suite; 024 is visual-only and can run in parallel with any of them.
+
+---
+
+## Topic — One-pending supervisor request (post-impl improve, 2026-08-01)
+
+Migrations **207** / **208** + Sent Requests retract/resend/copy shipped. Remaining handoff:
+
+| Plan | Title | Priority | Effort | Status |
+|------|-------|----------|--------|--------|
+| 025  | Characterize ensure/retract team_request RPCs (SQL/integration) | P3 | S–M | TODO |

@@ -76,6 +76,8 @@ import {
   List,
   Network,
   Target,
+  Copy,
+  Mail,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -119,6 +121,19 @@ import { useProjectsStore } from "@/stores/projects-store";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { searchProfileByEmail } from "@/lib/profile-directory";
+import {
+  copyManagedMemberInviteLink,
+  resendManagedMemberInvite,
+} from "@/lib/managed-member-invite-actions";
+import {
+  coveredSupervisorIdsFromPendingLinks,
+  filterSuperviseRequestsCoveredByManagedLinks,
+} from "@/lib/team-request-dedupe";
+import {
+  ensurePendingTeamRequest,
+  pendingRequestToastMessage,
+  retractPendingTeamRequest,
+} from "@/lib/team-requests";
 import { 
   MPA_ABBREVIATIONS, 
   STANDARD_MGAS, 
@@ -234,6 +249,7 @@ export default function TeamPage() {
   const [pendingRequests, setPendingRequests] = useState<TeamRequest[]>([]);
   const [memberMetrics, setMemberMetrics] = useState<Record<string, MemberMetrics>>({});
   const [sentRequests, setSentRequests] = useState<TeamRequest[]>([]);
+  const [inviteActionKey, setInviteActionKey] = useState<string | null>(null);
   const [subordinateChain, setSubordinateChain] = useState<ChainMember[]>([]);
   
   // Tree visualization state (from chain page)
@@ -524,6 +540,14 @@ export default function TeamPage() {
           .eq("status", "pending")
           .abortSignal(controller.signal);
 
+        const { data: openManagedLinks } = await supabase
+          .from("pending_managed_links")
+          .select("team_member_id, supervisor_accepted, team_members!inner(supervisor_id)")
+          .eq("user_id", profile.id)
+          .eq("status", "pending")
+          .eq("supervisor_accepted", false)
+          .abortSignal(controller.signal);
+
         let nextSupervisors: Profile[] = [];
         if (supervisorTeams && supervisorTeams.length > 0) {
           const supervisorIds = (supervisorTeams as { supervisor_id: string }[]).map((t) => t.supervisor_id);
@@ -584,7 +608,16 @@ export default function TeamPage() {
         if (controller.signal.aborted) return;
 
         setSupervisors(nextSupervisors);
-        setPendingRequests((incoming as TeamRequest[]) || []);
+        setPendingRequests(
+          filterSuperviseRequestsCoveredByManagedLinks(
+            (incoming as TeamRequest[]) || [],
+            coveredSupervisorIdsFromPendingLinks(
+              openManagedLinks as Parameters<
+                typeof coveredSupervisorIdsFromPendingLinks
+              >[0]
+            )
+          )
+        );
         setSentRequests((outgoing as TeamRequest[]) || []);
 
         if (allProfilesLocal.length > 0) {
@@ -650,7 +683,9 @@ export default function TeamPage() {
         setSupervisors((supervisorProfiles as Profile[]) || []);
       }
 
-      // Load pending requests (where I'm the target)
+      // Load pending requests (where I'm the target).
+      // Hide supervise requests already covered by an open managed-account link
+      // so invitees don't see the same consent ask twice (Team + dashboard).
       const { data: incoming } = await supabase
         .from("team_requests")
         .select(`
@@ -662,7 +697,27 @@ export default function TeamPage() {
         .abortSignal(signal);
 
       if (signal.aborted) return;
-      setPendingRequests((incoming as TeamRequest[]) || []);
+
+      const { data: openManagedLinks } = await supabase
+        .from("pending_managed_links")
+        .select("team_member_id, supervisor_accepted, team_members!inner(supervisor_id)")
+        .eq("user_id", profile.id)
+        .eq("status", "pending")
+        .eq("supervisor_accepted", false)
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
+
+      setPendingRequests(
+        filterSuperviseRequestsCoveredByManagedLinks(
+          (incoming as TeamRequest[]) || [],
+          coveredSupervisorIdsFromPendingLinks(
+            openManagedLinks as Parameters<
+              typeof coveredSupervisorIdsFromPendingLinks
+            >[0]
+          )
+        )
+      );
 
       const { data: outgoing } = await supabase
         .from("team_requests")
@@ -1171,28 +1226,43 @@ export default function TeamPage() {
     setIsInviting(true);
 
     try {
-      const { error } = await supabase.from("team_requests").insert({
-        requester_id: profile.id,
-        target_id: searchedProfile.id,
-        request_type: inviteType,
+      const result = await ensurePendingTeamRequest(supabase, {
+        targetId: searchedProfile.id,
+        requestType: inviteType,
         message: inviteMessage || null,
-      } as never);
+      });
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("A pending request already exists");
-        } else {
-          throw error;
-        }
-      } else {
-        Analytics.supervisionRequested(inviteType === "supervise" ? "up" : "down");
-        toast.success("Request sent successfully!");
+      if (!result.success) {
+        throw new Error(result.error || "Failed to send request");
+      }
+
+      if (result.status === "already_pending") {
+        toast.message("Request still pending", {
+          description: pendingRequestToastMessage("already_pending"),
+        });
         setShowInviteDialog(false);
         setInviteEmail("");
         setInviteMessage("");
         setSearchedProfile(null);
         loadTeamData();
+        return;
       }
+
+      if (result.status === "already_linked") {
+        toast.message("Already linked", {
+          description: pendingRequestToastMessage("already_linked"),
+        });
+        setShowInviteDialog(false);
+        return;
+      }
+
+      Analytics.supervisionRequested(inviteType === "supervise" ? "up" : "down");
+      toast.success("Request sent successfully!");
+      setShowInviteDialog(false);
+      setInviteEmail("");
+      setInviteMessage("");
+      setSearchedProfile(null);
+      loadTeamData();
     } catch (error) {
       console.error("Error sending request:", error);
       toast.error("Failed to send request");
@@ -1250,16 +1320,99 @@ export default function TeamPage() {
 
   async function cancelRequest(requestId: string) {
     try {
-      await supabase
-        .from("team_requests")
-        .delete()
-        .eq("id", requestId);
-
-      toast.success("Request cancelled");
+      setInviteActionKey(`retract:${requestId}`);
+      const result = await retractPendingTeamRequest(supabase, requestId);
+      if (!result.success) {
+        toast.error(result.error || "Failed to retract request");
+        return;
+      }
+      toast.success("Request retracted");
       loadTeamData();
     } catch {
-      toast.error("Failed to cancel request");
+      toast.error("Failed to retract request");
+    } finally {
+      setInviteActionKey(null);
     }
+  }
+
+  function findManagedMemberForRequest(request: TeamRequest): ManagedMember | undefined {
+    const targetEmail = request.target?.email?.trim().toLowerCase();
+    if (!targetEmail) return undefined;
+    return managedMembers.find(
+      (m) =>
+        m.email?.trim().toLowerCase() === targetEmail &&
+        m.member_status !== "archived"
+    );
+  }
+
+  async function handleCopyInviteForMember(member: ManagedMember) {
+    const email = member.email?.trim().toLowerCase();
+    if (!email) {
+      toast.error("This team member has no email to invite");
+      return;
+    }
+    try {
+      setInviteActionKey(`copy:${member.id}`);
+      const result = await copyManagedMemberInviteLink({
+        teamMemberId: member.id,
+        recipientEmail: email,
+      });
+      if (result.ok) {
+        toast.success("Invite link copied", {
+          description: `Share this link with ${email} to accept and set up their account.`,
+        });
+      } else if (result.inviteUrl) {
+        toast.message("Invite link ready", {
+          description: result.inviteUrl,
+        });
+      } else {
+        toast.error(result.error || "Failed to create invite link");
+      }
+    } finally {
+      setInviteActionKey(null);
+    }
+  }
+
+  async function handleResendInviteForMember(member: ManagedMember) {
+    const email = member.email?.trim().toLowerCase();
+    if (!email) {
+      toast.error("This team member has no email to invite");
+      return;
+    }
+    try {
+      setInviteActionKey(`resend:${member.id}`);
+      const result = await resendManagedMemberInvite({
+        teamMemberId: member.id,
+        recipientEmail: email,
+      });
+      if (result.sent) {
+        toast.success(`Invite resent to ${email}`);
+      } else if (result.ok && result.inviteUrl) {
+        toast.message(result.error || "Invite link copied", {
+          description: "Email couldn't be delivered — share the copied link instead.",
+        });
+      } else {
+        toast.error(result.error || "Failed to resend invite");
+      }
+    } finally {
+      setInviteActionKey(null);
+    }
+  }
+
+  async function handleRetractRequestForMember(member: ManagedMember) {
+    const email = member.email?.trim().toLowerCase();
+    if (!email || !profile) return;
+
+    const matching = sentRequests.find(
+      (r) => r.target?.email?.trim().toLowerCase() === email
+    );
+    if (!matching) {
+      toast.message("No pending supervisor request", {
+        description: "There isn't a standing request to retract for this member.",
+      });
+      return;
+    }
+    await cancelRequest(matching.id);
   }
 
   async function removeTeamMember(memberId: string, isSupervisor: boolean) {
@@ -2072,19 +2225,74 @@ export default function TeamPage() {
                           </span>
                         </DropdownMenuItem>
                       )}
-                      {/* Edit option only available to the user who created the managed member */}
-                      {isManagedMember && !node.data.createdBy && (
-                        <DropdownMenuItem onClick={() => {
-                          // Find the full managed member data
-                          const member = managedMembers.find(m => m.id === node.data.id);
-                          if (member) {
-                            setEditManagedMember(member);
-                          }
-                        }}>
-                          <Pencil className="size-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                      )}
+                      {/* Edit / invite — only for managed members you own */}
+                      {isManagedMember && !node.data.createdBy && (() => {
+                        const member = managedMembers.find((m) => m.id === node.data.id);
+                        if (!member) return null;
+                        const canInvite =
+                          !!member.email?.includes("@") && !member.linked_user_id;
+                        const hasPendingRequest = sentRequests.some(
+                          (r) =>
+                            r.target?.email?.trim().toLowerCase() ===
+                            member.email?.trim().toLowerCase()
+                        );
+                        return (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => setEditManagedMember(member)}
+                            >
+                              <Pencil className="size-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            {/* Signup/login invite — available with or without a team_request */}
+                            {!member.linked_user_id && (
+                              <DropdownMenuItem
+                                disabled={inviteActionKey === `copy:${member.id}`}
+                                onClick={() => {
+                                  if (!canInvite) {
+                                    toast.error(
+                                      "Add an email on Edit before copying an invite link"
+                                    );
+                                    return;
+                                  }
+                                  handleCopyInviteForMember(member);
+                                }}
+                              >
+                                {inviteActionKey === `copy:${member.id}` ? (
+                                  <Loader2 className="size-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Copy className="size-4 mr-2" />
+                                )}
+                                Copy invite link
+                              </DropdownMenuItem>
+                            )}
+                            {canInvite && (
+                              <DropdownMenuItem
+                                disabled={inviteActionKey === `resend:${member.id}`}
+                                onClick={() => handleResendInviteForMember(member)}
+                              >
+                                {inviteActionKey === `resend:${member.id}` ? (
+                                  <Loader2 className="size-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Mail className="size-4 mr-2" />
+                                )}
+                                Resend invite email
+                              </DropdownMenuItem>
+                            )}
+                            {hasPendingRequest && (
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                disabled={!!inviteActionKey?.startsWith("retract:")}
+                                onClick={() => handleRetractRequestForMember(member)}
+                              >
+                                <X className="size-4 mr-2" />
+                                Retract request
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                          </>
+                        );
+                      })()}
                       {canSupervise(profile?.rank) && (
                         <DropdownMenuItem onClick={() => {
                           setAwardRecipient({
@@ -2692,6 +2900,35 @@ export default function TeamPage() {
                   Delete Member
                 </Button>
               )}
+              {/* Copy signup invite — works with or without a standing supervisor request */}
+              {selectedSubordinate?.isManagedMember &&
+                (() => {
+                  const member = managedMembers.find(
+                    (m) =>
+                      m.id === selectedSubordinate.id &&
+                      m.supervisor_id === profile?.id
+                  );
+                  if (!member || member.linked_user_id || !member.email?.includes("@")) {
+                    return null;
+                  }
+                  return (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto gap-2 active:scale-[0.98] transition-transform duration-150"
+                      disabled={inviteActionKey === `copy:${member.id}`}
+                      onClick={() => handleCopyInviteForMember(member)}
+                      aria-label={`Copy invite link for ${member.full_name || member.email}`}
+                    >
+                      {inviteActionKey === `copy:${member.id}` ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Copy className="size-4" />
+                      )}
+                      Copy invite link
+                    </Button>
+                  );
+                })()}
               {/* Expectations & Feedback — only for direct subordinates */}
               {canSupervise(profile?.rank) && selectedSubordinate && (
                 // Check if this is a direct subordinate (in subordinates array or managed by current user)
@@ -3422,7 +3659,7 @@ export default function TeamPage() {
             <CardHeader className="p-4 sm:p-6">
               <CardTitle className="text-base sm:text-lg">Sent Requests</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Requests you've sent that are pending response
+                One pending request per person. Resend, copy the invite link, or retract anytime.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
@@ -3432,10 +3669,13 @@ export default function TeamPage() {
                 </p>
               ) : (
                 <div className="space-y-2 sm:space-y-3">
-                  {sentRequests.map((request) => (
+                  {sentRequests.map((request) => {
+                    const managedMatch = findManagedMemberForRequest(request);
+                    const busy = inviteActionKey?.endsWith(`:${managedMatch?.id ?? request.id}`);
+                    return (
                     <div
                       key={request.id}
-                      className="flex flex-col gap-2 p-3 rounded-lg border sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-2 p-3 rounded-lg border sm:flex-row sm:items-center sm:justify-between shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02),0_0_0_0.5px_rgba(0,0,0,0.08)]"
                     >
                       <div className="flex items-start gap-2 sm:gap-3 min-w-0">
                         <Avatar className="size-8 sm:size-10 shrink-0">
@@ -3449,28 +3689,69 @@ export default function TeamPage() {
                           </p>
                           <p className="text-xs sm:text-sm text-muted-foreground">
                             {request.request_type === "supervise"
-                              ? "You want to supervise them"
-                              : "You want them to supervise you"}
+                              ? "Pending — you want to supervise them"
+                              : "Pending — you want them to supervise you"}
                           </p>
                           <p className="text-[10px] sm:text-xs text-muted-foreground">
                             Sent {new Date(request.created_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
                         <MemberRankInsignia rank={request.target?.rank} />
+                        {managedMatch?.email && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs sm:text-sm active:scale-[0.98] transition-transform duration-150"
+                              disabled={!!busy}
+                              onClick={() => handleCopyInviteForMember(managedMatch)}
+                              aria-label={`Copy invite link for ${managedMatch.full_name || managedMatch.email}`}
+                            >
+                              {inviteActionKey === `copy:${managedMatch.id}` ? (
+                                <Loader2 className="size-3 sm:size-4 mr-1 animate-spin" />
+                              ) : (
+                                <Copy className="size-3 sm:size-4 mr-1" />
+                              )}
+                              Copy link
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs sm:text-sm active:scale-[0.98] transition-transform duration-150"
+                              disabled={!!busy}
+                              onClick={() => handleResendInviteForMember(managedMatch)}
+                              aria-label={`Resend invite to ${managedMatch.email}`}
+                            >
+                              {inviteActionKey === `resend:${managedMatch.id}` ? (
+                                <Loader2 className="size-3 sm:size-4 mr-1 animate-spin" />
+                              ) : (
+                                <Mail className="size-3 sm:size-4 mr-1" />
+                              )}
+                              Resend
+                            </Button>
+                          </>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="w-full sm:w-auto text-destructive text-xs sm:text-sm shrink-0"
+                          className="text-destructive text-xs sm:text-sm shrink-0 active:scale-[0.98] transition-transform duration-150"
+                          disabled={inviteActionKey === `retract:${request.id}`}
                           onClick={() => cancelRequest(request.id)}
+                          aria-label="Retract pending request"
                         >
-                        <X className="size-3 sm:size-4 mr-1" />
-                        Cancel Request
-                      </Button>
+                          {inviteActionKey === `retract:${request.id}` ? (
+                            <Loader2 className="size-3 sm:size-4 mr-1 animate-spin" />
+                          ) : (
+                            <X className="size-3 sm:size-4 mr-1" />
+                          )}
+                          Retract
+                        </Button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

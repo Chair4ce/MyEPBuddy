@@ -31,6 +31,7 @@ import {
 } from "@/lib/billing/refresh-earn-rewards";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import { searchProfileByEmail } from "@/lib/profile-directory";
+import { ensurePendingTeamRequest } from "@/lib/team-requests";
 import { useCreditsStore } from "@/stores/credits-store";
 import { Loader2, UserPlus, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
@@ -383,35 +384,40 @@ export function AddManagedMemberDialog({
       }
 
       if (existingMatch && !skipAutoSupervise) {
-        const { error: requestError } = await supabase.from("team_requests").insert({
-          requester_id: profile.id,
-          target_id: existingMatch.id,
-          request_type: "supervise",
+        const ensureResult = await ensurePendingTeamRequest(supabase, {
+          targetId: existingMatch.id,
+          requestType: "supervise",
           message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
-        } as never);
+        });
 
-        if (requestError) {
-          // Check if request already exists
-          if (requestError.code === "23505") {
-            toast.success(`${formData.full_name} added as a pending team member`, {
-              description: [
-                `A supervisor request has already been sent to ${existingMatch.full_name || existingMatch.email}.`,
-                inviteDescription,
-              ]
-                .filter(Boolean)
-                .join(" "),
-            });
-          } else {
-            console.error("Error sending team request:", requestError);
-            toast.success(`${formData.full_name} added as a pending team member`, {
-              description: [
-                "Couldn't send a supervisor request automatically. You may need to send one manually.",
-                inviteDescription,
-              ]
-                .filter(Boolean)
-                .join(" "),
-            });
-          }
+        if (!ensureResult.success) {
+          console.error("Error ensuring team request:", ensureResult.error);
+          toast.success(`${formData.full_name} added as a pending team member`, {
+            description: [
+              "Couldn't send a supervisor request automatically. You may need to send one manually.",
+              inviteDescription,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          });
+        } else if (ensureResult.status === "already_pending") {
+          toast.success(`${formData.full_name} added as a pending team member`, {
+            description: [
+              `A supervisor request is still pending for ${existingMatch.full_name || existingMatch.email}. Resend or copy the invite from Sent Requests.`,
+              inviteDescription,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          });
+        } else if (ensureResult.status === "already_linked") {
+          toast.success(`${formData.full_name} added as a pending team member`, {
+            description: [
+              `You're already linked with ${existingMatch.full_name || existingMatch.email}.`,
+              inviteDescription,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          });
         } else {
           toast.success(`${formData.full_name} added as a pending team member`, {
             description: [

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isCivilian, isEnlisted, isOfficer } from "@/lib/constants";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import { searchProfileByEmail } from "@/lib/profile-directory";
+import { ensurePendingTeamRequest } from "@/lib/team-requests";
 import type { ManagedMember, Rank } from "@/types/database";
 
 type BrowserSupabaseClient = ReturnType<typeof createClient>;
@@ -85,15 +86,13 @@ export async function createManagedTeamMember(
     existingMatch && subordinateIsCivilian && supervisorIsMilitary;
 
   if (existingMatch && !skipAutoSupervise) {
-    const { error: requestError } = await supabase.from("team_requests").insert({
-      requester_id: input.supervisorId,
-      target_id: existingMatch.id,
-      request_type: "supervise",
+    const ensureResult = await ensurePendingTeamRequest(supabase, {
+      targetId: existingMatch.id,
+      requestType: "supervise",
       message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
-    } as never);
-
-    if (requestError && requestError.code !== "23505") {
-      console.error("Error sending team request:", requestError);
+    });
+    if (!ensureResult.success) {
+      console.error("Error ensuring team request:", ensureResult.error);
     }
   }
 

@@ -16,6 +16,8 @@ export type ManagedMemberInviteResult = {
 export async function requestManagedMemberInvite(params: {
   teamMemberId: string;
   recipientEmail: string;
+  /** When false, issue/return the invite URL without sending email. Default true. */
+  sendEmail?: boolean;
 }): Promise<ManagedMemberInviteResult> {
   const email = params.recipientEmail.trim().toLowerCase();
   if (!params.teamMemberId || !email || !email.includes("@")) {
@@ -29,6 +31,7 @@ export async function requestManagedMemberInvite(params: {
       body: JSON.stringify({
         teamMemberId: params.teamMemberId,
         recipientEmail: email,
+        sendEmail: params.sendEmail !== false,
       }),
     });
 

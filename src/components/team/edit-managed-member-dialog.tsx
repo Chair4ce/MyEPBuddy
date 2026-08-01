@@ -35,8 +35,13 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
+import {
+  copyManagedMemberInviteLink,
+  resendManagedMemberInvite,
+} from "@/lib/managed-member-invite-actions";
 import { searchProfileByEmail } from "@/lib/profile-directory";
-import { Loader2, UserCog, Link2, AlertCircle } from "lucide-react";
+import { ensurePendingTeamRequest } from "@/lib/team-requests";
+import { Loader2, UserCog, Link2, AlertCircle, Copy, Mail } from "lucide-react";
 import type { Rank, ManagedMember } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer, isCivilian } from "@/lib/constants";
 
@@ -74,6 +79,7 @@ export function EditManagedMemberDialog({
   const { profile, updateManagedMember } = useUserStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState<"copy" | "resend" | null>(null);
   const [existingUser, setExistingUser] = useState<ExistingUserMatch | null>(null);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   const [formData, setFormData] = useState({
@@ -254,11 +260,28 @@ export function EditManagedMemberDialog({
           }
         );
 
+        const ensureResult = await ensurePendingTeamRequest(supabase, {
+          targetId: existingUser.id,
+          requestType: "supervise",
+          message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
+        });
+
+        const pendingNote =
+          ensureResult.status === "already_pending"
+            ? "A supervisor request is still pending — resend or copy the invite link anytime."
+            : ensureResult.status === "already_linked"
+              ? "You're already linked with this person."
+              : ensureResult.success
+                ? "A supervisor request was sent."
+                : null;
+
         if (linkError) {
           console.error("Error creating pending link:", linkError);
           toast.warning(
             `${formData.full_name} updated, but we couldn't create the account link. They may already have a pending link.`,
-            { description: inviteDescription }
+            {
+              description: [pendingNote, inviteDescription].filter(Boolean).join(" "),
+            }
           );
         } else {
           toast.success(
@@ -266,6 +289,7 @@ export function EditManagedMemberDialog({
             {
               description: [
                 "They'll see a prompt to link their account on their dashboard.",
+                pendingNote,
                 inviteDescription,
               ]
                 .filter(Boolean)
@@ -452,6 +476,97 @@ export function EditManagedMemberDialog({
                 </p>
               )}
             </div>
+
+            {member?.email?.includes("@") && !member.linked_user_id && (
+              <div className="space-y-2 rounded-md bg-muted/40 p-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto active:scale-[0.98] transition-transform duration-150"
+                    disabled={
+                      !!inviteBusy ||
+                      isSubmitting ||
+                      formData.email.trim().toLowerCase() !==
+                        member.email.trim().toLowerCase()
+                    }
+                    onClick={async () => {
+                      setInviteBusy("copy");
+                      try {
+                        const result = await copyManagedMemberInviteLink({
+                          teamMemberId: member.id,
+                          recipientEmail: member.email!.trim().toLowerCase(),
+                        });
+                        if (result.ok) {
+                          toast.success("Invite link copied — share it anytime");
+                        } else if (result.inviteUrl) {
+                          toast.message("Invite link ready", {
+                            description: result.inviteUrl,
+                          });
+                        } else {
+                          toast.error(result.error || "Failed to create invite link");
+                        }
+                      } finally {
+                        setInviteBusy(null);
+                      }
+                    }}
+                    aria-label="Copy shareable invite link"
+                  >
+                    {inviteBusy === "copy" ? (
+                      <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <Copy className="size-3.5 mr-1.5" />
+                    )}
+                    Copy invite link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto active:scale-[0.98] transition-transform duration-150"
+                    disabled={
+                      !!inviteBusy ||
+                      isSubmitting ||
+                      formData.email.trim().toLowerCase() !==
+                        member.email.trim().toLowerCase()
+                    }
+                    onClick={async () => {
+                      setInviteBusy("resend");
+                      try {
+                        const result = await resendManagedMemberInvite({
+                          teamMemberId: member.id,
+                          recipientEmail: member.email!.trim().toLowerCase(),
+                        });
+                        if (result.sent) {
+                          toast.success(`Invite resent to ${member.email}`);
+                        } else if (result.ok) {
+                          toast.message(result.error || "Invite link copied instead");
+                        } else {
+                          toast.error(result.error || "Failed to resend invite");
+                        }
+                      } finally {
+                        setInviteBusy(null);
+                      }
+                    }}
+                    aria-label="Resend invite email"
+                  >
+                    {inviteBusy === "resend" ? (
+                      <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <Mail className="size-3.5 mr-1.5" />
+                    )}
+                    Resend invite
+                  </Button>
+                </div>
+                {formData.email.trim().toLowerCase() !==
+                  member.email.trim().toLowerCase() && (
+                  <p className="text-xs text-muted-foreground">
+                    Save the new email before copying or resending the invite.
+                  </p>
+                )}
+              </div>
+            )}
 
             <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
               <Button
