@@ -40,8 +40,8 @@ import {
 import {
   isSubstantialEpbStatement,
   majorityMpa,
+  toGenerateAccomplishmentPayload,
 } from "@/lib/fuse-to-epb";
-import { composeImpactString } from "@/lib/stewardship-impact";
 import { Analytics } from "@/lib/analytics";
 import type {
   Accomplishment,
@@ -365,14 +365,7 @@ export function FuseToEpbDialog({
 
     try {
       const cycleYear = getActiveCycleYear(ratee.rank as Rank | null);
-      const accPayload = accomplishments.map((a) => ({
-        id: a.id,
-        mpa: a.mpa,
-        action_verb: a.action_verb,
-        details: a.details,
-        impact: composeImpactString(a.stewardship_impact) || a.impact,
-        metrics: a.metrics,
-      }));
+      const accPayload = accomplishments.map(toGenerateAccomplishmentPayload);
 
       // Match /epb: pass fused customContext so statementCount (1|2) is honored.
       // Accomplishments-only path ignores statementCount and writes one sentence per entry.

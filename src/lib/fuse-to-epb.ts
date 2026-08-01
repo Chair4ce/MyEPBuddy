@@ -1,3 +1,6 @@
+import type { StewardshipImpact } from "@/types/database";
+import { composeImpactString } from "@/lib/stewardship-impact";
+
 /** Minimum length before existing MPA text counts as a real statement (not junk). */
 export const SUBSTANTIAL_STATEMENT_MIN_CHARS = 40;
 
@@ -33,4 +36,37 @@ export function majorityMpa(
     }
   }
   return best;
+}
+
+export type FuseGenerateAccomplishmentInput = {
+  id: string;
+  mpa: string;
+  action_verb: string;
+  details: string;
+  impact: string | null;
+  metrics: string | null;
+  stewardship_impact?: StewardshipImpact | null;
+};
+
+export type FuseGenerateAccomplishmentPayload = {
+  id: string;
+  mpa: string;
+  action_verb: string;
+  details: string;
+  impact: string | null;
+  metrics: string | null;
+};
+
+/** Shape an accomplishment for /api/generate — prefer composed stewardship impact. */
+export function toGenerateAccomplishmentPayload(
+  a: FuseGenerateAccomplishmentInput
+): FuseGenerateAccomplishmentPayload {
+  return {
+    id: a.id,
+    mpa: a.mpa,
+    action_verb: a.action_verb,
+    details: a.details,
+    impact: composeImpactString(a.stewardship_impact) || a.impact,
+    metrics: a.metrics,
+  };
 }
