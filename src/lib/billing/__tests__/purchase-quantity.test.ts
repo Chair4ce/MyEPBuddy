@@ -86,5 +86,42 @@ describe("creditsFromPaidAmount", () => {
         amountSubtotalCents: null,
       }),
     ).toBeNull();
+    expect(
+      creditsFromPaidAmount({
+        lineItemQuantity: MIN_PURCHASE_PACKS - 1,
+        amountSubtotalCents: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("accepts MAX pack boundary via quantity and subtotal", () => {
+    expect(
+      creditsFromPaidAmount({
+        lineItemQuantity: MAX_PURCHASE_PACKS,
+        amountSubtotalCents: null,
+      }),
+    ).toBe(MAX_PURCHASE_PACKS * PURCHASE_CREDITS);
+
+    expect(
+      creditsFromPaidAmount({
+        lineItemQuantity: null,
+        amountSubtotalCents: MAX_PURCHASE_PACKS * PURCHASE_PRICE_CENTS,
+      }),
+    ).toBe(MAX_PURCHASE_PACKS * PURCHASE_CREDITS);
+  });
+
+  it("returns null when all inputs are invalid", () => {
+    expect(
+      creditsFromPaidAmount({
+        lineItemQuantity: undefined,
+        amountSubtotalCents: undefined,
+      }),
+    ).toBeNull();
+    expect(
+      creditsFromPaidAmount({
+        lineItemQuantity: 1.5,
+        amountSubtotalCents: 50,
+      }),
+    ).toBeNull();
   });
 });

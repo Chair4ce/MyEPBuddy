@@ -40,8 +40,8 @@ Search anchors to avoid (do not “clean up” while in the file): `SentenceDrop
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001  | Harden webhook credit derivation for adjustable quantity | P1 | S | — | TODO |
-| 002  | Expand purchase-quantity edge-case tests | P1 | S | 001 soft (write tests against final helper API) | TODO |
+| 001  | Harden webhook credit derivation for adjustable quantity | P1 | S | — | DONE (already in tree; verified) |
+| 002  | Expand purchase-quantity edge-case tests | P1 | S | 001 soft (write tests against final helper API) | DONE |
 
 Recommended: **001 → 002**.
 
@@ -157,7 +157,7 @@ Implemented 2026-07-31: multi-select on `/entries`, sticky **Fuse to EPB** bar, 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 009  | Extract shared EPB shell create helper | P2 | M | — | TODO |
-| 010  | Unit-test fuse majority MPA + payload helpers | P2 | S | soft: nicer after extracting pure helpers | TODO |
+| 010  | Unit-test fuse majority MPA + payload helpers | P2 | S | soft: nicer after extracting pure helpers | DONE |
 
 Recommended: **010** can land immediately (extract pure helpers in the same PR); **009** when touching shell create again.
 
