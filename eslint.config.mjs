@@ -1,5 +1,6 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
+import reactRefresh from "eslint-plugin-react-refresh";
 import unusedImports from "eslint-plugin-unused-imports";
 
 const eslintConfig = [
@@ -19,8 +20,12 @@ const eslintConfig = [
   {
     plugins: {
       "unused-imports": unusedImports,
+      "react-refresh": reactRefresh,
     },
     rules: {
+      // Register the rule so file-level eslint-disable comments resolve.
+      // Keep off by default; Next Fast Refresh guidance is opt-in per file.
+      "react-refresh/only-export-components": "off",
       // Migration baseline: report legacy issues without blocking builds.
       // Tighten back to "error" incrementally as the codebase is cleaned up.
       "@typescript-eslint/no-explicit-any": "warn",
