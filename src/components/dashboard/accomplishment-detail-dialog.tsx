@@ -36,9 +36,17 @@ import {
 import { toast } from "@/components/ui/sonner";
 import {
   STEWARDSHIP_LABELS,
+  composeImpactString,
   hasStewardshipImpactContent,
+  hydrateStewardshipImpact,
   normalizeStewardshipImpact,
 } from "@/lib/stewardship-impact";
+import {
+  emptyStewardshipFormValue,
+  StewardshipImpactFields,
+  stewardshipFormFromImpact,
+  stewardshipImpactFromForm,
+} from "@/components/entries/stewardship-impact-fields";
 import {
   Calendar,
   Briefcase,
@@ -116,6 +124,7 @@ export function AccomplishmentDetailDialog({
     action_verb: "",
     details: "",
     impact: "",
+    stewardship: emptyStewardshipFormValue(),
     metrics: "",
     mpa: "",
     tags: "",
@@ -128,6 +137,9 @@ export function AccomplishmentDetailDialog({
   const hasUnsavedChanges = () => {
     if (!accomplishment || !isEditing) return false;
     const originalTags = Array.isArray(accomplishment.tags) ? accomplishment.tags.join(", ") : "";
+    const originalStewardship = stewardshipFormFromImpact(
+      hydrateStewardshipImpact(accomplishment.stewardship_impact, accomplishment.impact)
+    );
     return (
       editForm.date !== accomplishment.date ||
       editForm.action_verb !== accomplishment.action_verb ||
@@ -135,7 +147,8 @@ export function AccomplishmentDetailDialog({
       editForm.impact !== (accomplishment.impact || "") ||
       editForm.metrics !== (accomplishment.metrics || "") ||
       editForm.mpa !== accomplishment.mpa ||
-      editForm.tags !== originalTags
+      editForm.tags !== originalTags ||
+      JSON.stringify(editForm.stewardship) !== JSON.stringify(originalStewardship)
     );
   };
 
@@ -157,11 +170,16 @@ export function AccomplishmentDetailDialog({
     setIsEditing(false);
     // Reset form to original values
     if (accomplishment) {
+      const stewardship = hydrateStewardshipImpact(
+        accomplishment.stewardship_impact,
+        accomplishment.impact
+      );
       setEditForm({
         date: accomplishment.date,
         action_verb: accomplishment.action_verb,
         details: accomplishment.details,
         impact: accomplishment.impact || "",
+        stewardship: stewardshipFormFromImpact(stewardship),
         metrics: accomplishment.metrics || "",
         mpa: accomplishment.mpa,
         tags: Array.isArray(accomplishment.tags) ? accomplishment.tags.join(", ") : "",
@@ -217,11 +235,16 @@ export function AccomplishmentDetailDialog({
   // Reset edit state when accomplishment changes
   useEffect(() => {
     if (accomplishment) {
+      const stewardship = hydrateStewardshipImpact(
+        accomplishment.stewardship_impact,
+        accomplishment.impact
+      );
       setEditForm({
         date: accomplishment.date,
         action_verb: accomplishment.action_verb,
         details: accomplishment.details,
         impact: accomplishment.impact || "",
+        stewardship: stewardshipFormFromImpact(stewardship),
         metrics: accomplishment.metrics || "",
         mpa: accomplishment.mpa,
         tags: Array.isArray(accomplishment.tags) ? accomplishment.tags.join(", ") : "",
@@ -259,11 +282,19 @@ export function AccomplishmentDetailDialog({
   async function handleSubmitEdit() {
     if (!accomplishment) return;
 
+    const stewardshipImpact = stewardshipImpactFromForm(editForm.stewardship);
+    const composed = composeImpactString(stewardshipImpact);
+    const impactToSend = composed ?? editForm.impact;
+
     // Scan for PII, CUI, and classification markings — hard block if found
     const sensitiveMatches = scanForSensitiveData({
       details: editForm.details,
-      impact: editForm.impact,
+      impact: impactToSend,
       metrics: editForm.metrics,
+      stewardship_time: editForm.stewardship.time,
+      stewardship_money: editForm.stewardship.money,
+      stewardship_resources: editForm.stewardship.resources,
+      stewardship_outcome: editForm.stewardship.outcome,
     });
     if (sensitiveMatches.length > 0) {
       toast.error(getScanSummary(sensitiveMatches), { duration: 10000 });
@@ -281,7 +312,8 @@ export function AccomplishmentDetailDialog({
         date: editForm.date,
         action_verb: editForm.action_verb,
         details: editForm.details,
-        impact: editForm.impact,
+        impact: impactToSend,
+        stewardship_impact: stewardshipImpact,
         metrics: editForm.metrics || null,
         mpa: editForm.mpa,
         tags,
@@ -294,6 +326,8 @@ export function AccomplishmentDetailDialog({
         setIsEditing(false);
         onAccomplishmentUpdated?.(accomplishment.id, {
           ...editForm,
+          impact: impactToSend,
+          stewardship_impact: stewardshipImpact,
           metrics: editForm.metrics || null,
           tags,
         });
@@ -559,6 +593,13 @@ export function AccomplishmentDetailDialog({
                     placeholder="What was the result or impact..."
                   />
                 </div>
+
+                <StewardshipImpactFields
+                  value={editForm.stewardship}
+                  onChange={(stewardship) => setEditForm({ ...editForm, stewardship })}
+                  disabled={isSubmitting}
+                  idPrefix="detail-edit-stewardship"
+                />
 
                 {/* Row 5: Metrics & Tags */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
