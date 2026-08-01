@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { getAdminApiUser } from "@/lib/auth/require-admin";
 import { AdminUsageDashboard } from "@/components/admin/admin-usage-dashboard";
 import type {
   AdminUsagePageData,
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
 const ALLOWED_DAYS = [7, 30, 90, 365] as const;
 const DEFAULT_DAYS = 30;
 
+type RpcError = { message?: string; code?: string } | null;
+
 function resolveDays(raw: string | string[] | undefined): number {
   const value = Array.isArray(raw) ? raw[0] : raw;
   const parsed = Number(value);
@@ -19,28 +22,59 @@ function resolveDays(raw: string | string[] | undefined): number {
     : DEFAULT_DAYS;
 }
 
+function isSessionAuthError(error: RpcError): boolean {
+  const message = (error?.message ?? "").toLowerCase();
+  const code = (error?.code ?? "").toUpperCase();
+  return (
+    code === "42501" ||
+    code === "PGRST301" ||
+    message.includes("permission denied") ||
+    message.includes("jwt") ||
+    message.includes("not authenticated") ||
+    message.includes("unauthorized")
+  );
+}
+
 export default async function AdminUsagePage({
   searchParams,
 }: {
   searchParams: Promise<{ days?: string }>;
 }) {
-  const supabase = await createClient();
+  // Authenticate in the page itself — layout gates can race with page data
+  // fetches in the App Router, which produced anon 401/42501 RPC noise when
+  // Safari's refresh_token had already failed.
+  const admin = await getAdminApiUser();
+  if (!admin.ok) {
+    redirect(admin.status === 401 ? "/login" : "/dashboard");
+  }
+
+  const { supabase } = admin;
   const days = resolveDays((await searchParams).days);
 
+  type AdminRpc = (
+    fn: "admin_default_key_token_usage" | "admin_user_credit_analytics",
+    args: { p_days: number }
+  ) => Promise<{ data: unknown; error: RpcError }>;
+
+  const rpc = supabase.rpc as unknown as AdminRpc;
+
   const [defaultKeyResult, creditsResult] = await Promise.all([
-    (supabase.rpc as Function)("admin_default_key_token_usage", {
-      p_days: days,
-    }) as Promise<{
+    rpc("admin_default_key_token_usage", { p_days: days }) as Promise<{
       data: DefaultKeyUsageData | null;
-      error: { message: string } | null;
+      error: RpcError;
     }>,
-    (supabase.rpc as Function)("admin_user_credit_analytics", {
-      p_days: days,
-    }) as Promise<{
+    rpc("admin_user_credit_analytics", { p_days: days }) as Promise<{
       data: UserCreditAnalyticsData | null;
-      error: { message: string } | null;
+      error: RpcError;
     }>,
   ]);
+
+  if (
+    isSessionAuthError(defaultKeyResult.error) ||
+    isSessionAuthError(creditsResult.error)
+  ) {
+    redirect("/login");
+  }
 
   if (defaultKeyResult.error || creditsResult.error || !defaultKeyResult.data || !creditsResult.data) {
     const message =
