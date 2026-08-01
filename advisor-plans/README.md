@@ -209,8 +209,8 @@ React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” mi
 | 2 | EPB/Fuse raw `fetch` skips Idempotency-Key | 012 | P1 | S | DONE |
 | 3 | `consume_credit` RPC errors mislabeled as insufficient credits | 013 | P1 | S | DONE |
 | 8 | No generate billing contract tests (1 credit / refund empty) | 017 | P1 | M | DONE |
-| 9 | Managed-member history FK silent fail | 019 | P2 | M | PINNED (careful walkthrough) |
-| 10 | Impure `setState` in revision history | 020 | P2 | S | PINNED (touches mpa-section-card) |
+| 9 | Managed-member history FK silent fail | 019 | P2 | M | DONE |
+| 10 | Impure `setState` in revision history | 020 | P2 | S | DONE (already pure; verified) |
 
 ### Execution order
 
@@ -249,13 +249,18 @@ Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` betw
 | 017 | DONE | `generate-billing-contract` helper + characterization tests |
 | 018 | **PINNED** | Large motion port — walk carefully |
 | 015 | DONE | Migration `202` + admin-client analytics insert |
-| 019 | **PINNED** | Managed-member history FK |
-| 020 | **PINNED** | Impure revision `setState` in `mpa-section-card` (sacred surface) |
+| 019 | DONE | Managed generate → `team_member_id` + supervisor `ratee_id`; insert errors logged |
+| 020 | DONE | Already pure outside updater (mpa + duty-description); no DnD touch |
 | 001 | DONE | Already in tree (`amountSubtotalCents`); verified |
 | 002 | DONE | Edge tests expanded |
+| 004 | DONE | Formatting violation badges in generate UI |
+| 006 | DONE | Impact Booster draft flush |
+| 007 | DONE | Stewardship in background redaction |
+| 008 | DONE | Detail-dialog stewardship edit |
+| 009 | DONE | Shared EPB shell create helper |
 | 010 | DONE | Payload helper extracted + tested |
 
-**Still TODO / pin next walkthrough:** 016, 018, 019, 020, then MPA-adjacent 004 (and optional 007–009). Do not touch EPB split view or sentence DnD unless explicitly approved.
+**Still TODO / pin next walkthrough:** 016, 018. Do not touch EPB split view or sentence DnD unless explicitly approved.
 
 ### Considered and rejected (F–H)
 

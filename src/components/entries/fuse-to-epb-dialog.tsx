@@ -325,6 +325,7 @@ export function FuseToEpbDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rateeId: ratee.id,
+          isManagedMember: Boolean(ratee.isManagedMember),
           rateeRank: ratee.rank,
           rateeAfsc: ratee.afsc,
           cycleYear,

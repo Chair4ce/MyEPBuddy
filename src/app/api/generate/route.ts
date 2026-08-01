@@ -59,6 +59,7 @@ import {
 import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
 import { TIME_COMPRESSION_WRITING_GUIDANCE } from "@/lib/stewardship-impact";
 import { clampGenerateVersionCount } from "@/lib/generate-version-count";
+import { statementHistoryRateeFields } from "@/lib/statement-history-ratee";
 
 // Allow up to 90s for multi-version generation (parallel LLM + optional QC)
 export const maxDuration = 90;
@@ -83,6 +84,8 @@ interface CustomContextOptions {
 
 interface GenerateRequest {
   rateeId: string;
+  /** When true, `rateeId` is a `team_members.id` (not a profiles.id). */
+  isManagedMember?: boolean;
   rateeRank: Rank;
   rateeAfsc: string;
   cycleYear: number;
@@ -421,7 +424,7 @@ export async function POST(request: Request) {
     const body: GenerateRequest = await request.json();
     requestModel = body.model;
     const { 
-      rateeId, rateeRank, rateeAfsc, cycleYear, model, writingStyle, 
+      rateeId, isManagedMember = false, rateeRank, rateeAfsc, cycleYear, model, writingStyle, 
       communityMpaFilter, communityAfscFilter, accomplishments, selectedMPAs, 
       customContext, customContextOptions, generatePerAccomplishment, dutyDescription, 
       epbStatements, fillToMax = true, enforceCharacterLimits: shouldEnforceCharLimits = true,
@@ -431,6 +434,11 @@ export async function POST(request: Request) {
       versionCount: rawVersionCount,
     } = body;
     const versionCount = clampGenerateVersionCount(rawVersionCount);
+    const historyRateeFields = statementHistoryRateeFields(
+      user.id,
+      rateeId,
+      Boolean(isManagedMember)
+    );
 
     // Either accomplishments, customContext, or epbStatements must be provided
     const hasAccomplishments = accomplishments && accomplishments.length > 0;
@@ -1273,11 +1281,11 @@ Output ONLY the statement text, no quotes or JSON.`;
               
               // Save to history
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const { data: historyData } = await (supabase as any)
+              const { data: historyData, error: historyError } = await (supabase as any)
                 .from("statement_history")
                 .insert({
                   user_id: user.id,
-                  ratee_id: rateeId,
+                  ...historyRateeFields,
                   mpa: mpa.key,
                   afsc: rateeAfsc || "UNKNOWN",
                   rank: rateeRank,
@@ -1288,8 +1296,10 @@ Output ONLY the statement text, no quotes or JSON.`;
                 })
                 .select("id")
                 .single();
-              
-              if (historyData) {
+
+              if (historyError) {
+                console.error("statement_history insert failed (per-accomplishment):", historyError);
+              } else if (historyData) {
                 allHistoryIds.push(historyData.id);
               }
             }
@@ -1679,11 +1689,11 @@ Rules:
 
           for (const versionStatements of statementVersions) {
             for (const statement of versionStatements) {
-              const { data: historyData } = await supabase
+              const { data: historyData, error: historyError } = await supabase
                 .from("statement_history")
                 .insert({
                   user_id: user.id,
-                  ratee_id: rateeId,
+                  ...historyRateeFields,
                   mpa: mpa.key,
                   afsc: rateeAfsc || "UNKNOWN",
                   rank: rateeRank,
@@ -1694,7 +1704,9 @@ Rules:
                 .select("id")
                 .single();
 
-              if (historyData) {
+              if (historyError) {
+                console.error("statement_history insert failed:", historyError);
+              } else if (historyData) {
                 historyIds.push((historyData as { id: string }).id);
               }
             }

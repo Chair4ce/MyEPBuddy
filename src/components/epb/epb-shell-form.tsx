@@ -1560,6 +1560,7 @@ export function EPBShellForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rateeId: selectedRatee.id,
+          isManagedMember: Boolean(selectedRatee.isManagedMember),
           rateeRank: selectedRatee.rank,
           rateeAfsc: selectedRatee.afsc,
           cycleYear: currentShell?.cycle_year ?? workspaceCycleYear,
