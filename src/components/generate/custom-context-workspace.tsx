@@ -45,6 +45,8 @@ import {
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { ClarifyingQuestionsModal, ClarifyingQuestionsIndicator } from "./clarifying-questions-modal";
+import { FormattingViolationNote } from "./formatting-violation-note";
+import type { FormattingViolationFlag } from "@/lib/formatting-violation-note";
 
 // Types
 export type ImpactFocus = "none" | "time" | "cost" | "resources" | "custom";
@@ -68,6 +70,7 @@ interface MPAWorkspaceData {
     text2?: string;
   };
   relevancyScore?: number; // 0-100 score of how well the accomplishment fits this MPA
+  formattingViolations?: FormattingViolationFlag[];
   isSaved?: boolean;
   isExpanded?: boolean;
 }
@@ -628,6 +631,8 @@ function MPAWorkspaceCard({
               </div>
             )}
 
+            <FormattingViolationNote flags={data.formattingViolations} />
+
             <StatementEditor
               value={text1}
               onChange={(v) => onDataChange({ ...data, edited: { ...data.edited, text1: v, text2: data.edited?.text2 ?? text2 } })}
@@ -780,6 +785,7 @@ export function CustomContextWorkspace({
       generated: undefined,
       edited: undefined,
       relevancyScore: undefined,
+      formattingViolations: undefined,
       isSaved: false,
       isExpanded: true,
     });
@@ -828,6 +834,9 @@ export function CustomContextWorkspace({
       const statements = mpaResult?.statements || [];
       const relevancyScore = mpaResult?.relevancyScore;
       const clarifyingQuestions = mpaResult?.clarifyingQuestions || [];
+      const formattingViolations = mpaResult?.formattingViolations as
+        | FormattingViolationFlag[]
+        | undefined;
 
       // Store clarifying questions if any were returned
       if (clarifyingQuestions.length > 0) {
@@ -877,6 +886,7 @@ export function CustomContextWorkspace({
           text2: data.statementCount === 2 ? statements[1] : undefined,
         },
         relevancyScore,
+        ...(formattingViolations?.length ? { formattingViolations } : {}),
         isExpanded: true, // Keep expanded after generation to show results
       });
 
@@ -940,6 +950,9 @@ export function CustomContextWorkspace({
       const mpaResult = result.statements?.[0];
       const statements = mpaResult?.statements || [];
       const relevancyScore = mpaResult?.relevancyScore;
+      const formattingViolations = mpaResult?.formattingViolations as
+        | FormattingViolationFlag[]
+        | undefined;
 
       // Extract and track verbs
       const newVerbs: string[] = [];
@@ -962,6 +975,7 @@ export function CustomContextWorkspace({
           text2: data.statementCount === 2 ? statements[1] : undefined,
         },
         relevancyScore,
+        ...(formattingViolations?.length ? { formattingViolations } : {}),
         isExpanded: true,
       });
 

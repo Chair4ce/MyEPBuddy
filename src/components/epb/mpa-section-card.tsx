@@ -65,7 +65,10 @@ import { WordReplacementSlider } from "./word-replacement-slider";
 import {
   DEFAULT_IMPACT_BOOSTER_PROMPTS,
   buildImpactBoosterContext,
+  buildImpactBoosterFromDrafts,
   hasImpactBoosterContent,
+  seedImpactBoosterDraftFields,
+  type ImpactBoosterDraftFields,
 } from "@/lib/impact-booster";
 import { parseStatement } from "@/lib/sentence-utils";
 import { MpaDescriptionToggleButton, scrollMpaDescriptionPanelTo } from "./mpa-description-editor";
@@ -81,6 +84,11 @@ import {
   EPB_SPLIT_INNER_CLOSE_MS,
 } from "./epb-resize-transition";
 import { formatDateTime } from "@/lib/format";
+import type {
+  FormattingViolationFlag,
+  StatementGenerationResult,
+} from "@/lib/formatting-violation-note";
+import { FormattingViolationNote } from "@/components/generate/formatting-violation-note";
 interface MPASectionCardProps {
   section: EPBShellSection;
   /** Ratee ID for clarifying questions feature */
@@ -93,8 +101,8 @@ interface MPASectionCardProps {
   /** Clear Impact Booster for this MPA */
   onClearImpactBooster?: () => Promise<void>;
   onCreateSnapshot: (text: string) => Promise<void>;
-  onGenerateStatement: (options: GenerateOptions) => Promise<string[]>;
-  onReviseStatement: (text: string, context?: string, versionCount?: number, aggressiveness?: number) => Promise<string[]>;
+  onGenerateStatement: (options: GenerateOptions) => Promise<StatementGenerationResult>;
+  onReviseStatement: (text: string, context?: string, versionCount?: number, aggressiveness?: number) => Promise<StatementGenerationResult>;
   snapshots: EPBShellSnapshot[];
   accomplishments: Accomplishment[]; // All available accomplishments
   enableAutosave?: boolean;
@@ -395,6 +403,9 @@ export function MPASectionCard({
   const [reviseContext, setReviseContext] = useState("");
   const [reviseAggressiveness, setReviseAggressiveness] = useState(50);
   const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
+  const [revisionFormattingViolations, setRevisionFormattingViolations] = useState<
+    FormattingViolationFlag[] | undefined
+  >(undefined);
   const [isRevising, setIsRevising] = useState(false);
   // Short-term, in-session history of generated revision sets so users can
   // revisit previous results for free instead of spending another token.
@@ -403,10 +414,15 @@ export function MPASectionCard({
   
   // AI Generate panel state — always request 3 alternatives (1 credit)
   const [generatedStatements, setGeneratedStatements] = useState<string[]>([]);
+  const [statementFormattingViolations, setStatementFormattingViolations] = useState<
+    FormattingViolationFlag[] | undefined
+  >(undefined);
 
-  // Impact Booster — drafts feed Generate / Revise when include is on (no separate Enhance)
+  // Impact Booster — shared draft fields keep pre/post panels in sync; flush on Generate / Revise
   const [includeImpactBooster, setIncludeImpactBooster] = useState(true);
-  const [impactBoosterDraft, setImpactBoosterDraft] = useState<ImpactBoosterState | null>(null);
+  const [impactBoosterDraftFields, setImpactBoosterDraftFields] = useState<ImpactBoosterDraftFields>(
+    () => seedImpactBoosterDraftFields(section.impact_booster)
+  );
   
   // Saved examples panel — auto-open when Entries staged a new example here
   const examplesFocus = useEPBShellStore((s) => s.examplesFocus);
@@ -950,17 +966,21 @@ export function MPASectionCard({
   /** Persist draft (if any) and return injectable context when Include is on. */
   const prepareImpactBoosterForRun = async (): Promise<string | undefined> => {
     if (!includeImpactBooster) return undefined;
-    const source =
-      impactBoosterDraft && hasImpactBoosterContent(impactBoosterDraft)
-        ? impactBoosterDraft
-        : section.impact_booster;
+    const dual = !!impactBoosterSentencePreviews;
+    const mergedDraft = buildImpactBoosterFromDrafts(
+      section.impact_booster,
+      impactBoosterPrompts,
+      impactBoosterDraftFields,
+      dual
+    );
+    const source = hasImpactBoosterContent(mergedDraft)
+      ? mergedDraft
+      : section.impact_booster;
     if (!hasImpactBoosterContent(source)) return undefined;
-    if (
-      impactBoosterDraft &&
-      hasImpactBoosterContent(impactBoosterDraft) &&
-      onSaveImpactBooster
-    ) {
-      await onSaveImpactBooster(impactBoosterDraft);
+    if (hasImpactBoosterContent(mergedDraft) && onSaveImpactBooster) {
+      await onSaveImpactBooster(mergedDraft);
+      const seeded = seedImpactBoosterDraftFields(mergedDraft);
+      setImpactBoosterDraftFields(seeded);
     }
     return buildImpactBoosterContext(source) || undefined;
   };
@@ -968,6 +988,7 @@ export function MPASectionCard({
   const handleGenerate = async () => {
     updateSectionState(section.mpa, { isGenerating: true });
     setGeneratedStatements([]);
+    setStatementFormattingViolations(undefined);
     try {
       // Combine action IDs from both statements
       const allActionIds = state.usesTwoStatements
@@ -983,7 +1004,7 @@ export function MPASectionCard({
       // when the user unchecked Include.
       const clarifyingContext = (await prepareImpactBoosterForRun()) ?? "";
 
-      const results = await onGenerateStatement({
+      const { statements: results, formattingViolations } = await onGenerateStatement({
         useAccomplishments: state.sourceType === "actions" && allActionIds.length > 0,
         accomplishmentIds: allActionIds,
         customContext: state.sourceType === "custom" ? state.statement1Context : undefined,
@@ -997,6 +1018,7 @@ export function MPASectionCard({
         clarifyingContext,
       });
       if (results.length > 0) {
+        setStatementFormattingViolations(formattingViolations);
         resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
       } else {
         toast.error("No statements generated");
@@ -1079,9 +1101,13 @@ export function MPASectionCard({
     disabled: isLockedByOther,
     includeInRun: includeImpactBooster,
     onIncludeInRunChange: setIncludeImpactBooster,
-    onDraftChange: setImpactBoosterDraft,
+    draftFields: impactBoosterDraftFields,
+    onDraftFieldsChange: setImpactBoosterDraftFields,
     onSave: onSaveImpactBooster!,
-    onClearAll: onClearImpactBooster!,
+    onClearAll: async () => {
+      await onClearImpactBooster!();
+      setImpactBoosterDraftFields(seedImpactBoosterDraftFields(null));
+    },
     sentencePreviews: impactBoosterSentencePreviews,
     onExpandedChange: handleImpactBoosterExpanded,
   };
@@ -1095,12 +1121,13 @@ export function MPASectionCard({
     Analytics.statementRevisionStarted(section.mpa);
     setIsRevising(true);
     setGeneratedRevisions([]);
+    setRevisionFormattingViolations(undefined);
     try {
       const boosterCtx = await prepareImpactBoosterForRun();
       const mergedReviseContext = [reviseContext?.trim(), boosterCtx]
         .filter((p): p is string => !!p && p.length > 0)
         .join("\n\n");
-      const revisions = await onReviseStatement(
+      const { statements: revisions, formattingViolations } = await onReviseStatement(
         localText,
         mergedReviseContext || undefined,
         3,
@@ -1118,6 +1145,7 @@ export function MPASectionCard({
         const nextHistory = [...revisionHistory, batch].slice(-MAX_REVISION_HISTORY);
         setRevisionHistory(nextHistory);
         setActiveRevisionIndex(nextHistory.length - 1);
+        setRevisionFormattingViolations(formattingViolations);
         resizeCardBody(() => setGeneratedRevisions(revisions), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
@@ -1944,7 +1972,7 @@ export function MPASectionCard({
                     ref={generatedRevisionsResultsRef}
                     className="space-y-4 pt-4 border-t animate-in fade-in-0 duration-300"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                       <h5 className="text-xs font-medium text-muted-foreground">
                         Generated Revisions ({generatedRevisions.length})
                       </h5>
@@ -1955,6 +1983,7 @@ export function MPASectionCard({
                         </span>
                       )}
                     </div>
+                    <FormattingViolationNote flags={revisionFormattingViolations} />
 
                     {/* Short-term history navigator — revisit earlier sets for
                         free instead of regenerating (which spends a token). */}
@@ -2379,7 +2408,7 @@ export function MPASectionCard({
                       isStatementsResultsClosing && "pointer-events-none"
                     )}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         <h5 className="text-xs font-medium text-muted-foreground">
                           Generated Statements ({generatedStatements.length})
@@ -2392,6 +2421,7 @@ export function MPASectionCard({
                         </span>
                       )}
                     </div>
+                    <FormattingViolationNote flags={statementFormattingViolations} />
                     {generatedStatements.map((statement, index) => (
                       <div
                         key={`stmt-${statement.slice(0, 48)}-${statement.length}`}
