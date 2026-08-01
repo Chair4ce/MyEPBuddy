@@ -65,7 +65,7 @@ Post-implementation improve pass after adding `src/lib/banned-formatting.ts` and
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 003  | Wire banned-formatting repair into revise-selection | P1 | S | — (needs `banned-formatting.ts` present) | DONE (wired in same session) |
-| 004  | Surface EPB formatting violation flags in generate UI | P2 | S | — | TODO |
+| 004  | Surface EPB formatting violation flags in generate UI | P2 | S | — | DONE |
 
 Recommended: **003** first (closes the reintroduce hole), then **004** if you want visible flags.
 
@@ -96,7 +96,7 @@ UX update (same day): collapsed-by-default Impact Booster above every Generate/R
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 005  | Dedupe Impact Booster enhance handler | P3 | S | — | DONE |
-| 006  | Flush Impact Booster drafts on Generate / Revise (+ sync dual panels) | P2 | S | — | TODO |
+| 006  | Flush Impact Booster drafts on Generate / Revise (+ sync dual panels) | P2 | S | — | DONE |
 
 ### Findings considered and rejected (C)
 
@@ -124,8 +124,8 @@ Implemented 2026-07-31: `accomplishments.stewardship_impact` (migration 198, loc
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 007  | Cover `stewardship_impact` in background redaction safety net | P1 | M | — | TODO |
-| 008  | Add stewardship fields to Accomplishment Detail edit form | P2 | S | — | TODO |
+| 007  | Cover `stewardship_impact` in background redaction safety net | P1 | M | — | DONE |
+| 008  | Add stewardship fields to Accomplishment Detail edit form | P2 | S | — | DONE |
 
 Recommended: **007** first (security safety-net gap), then **008** (independent, can land in either order).
 
@@ -156,7 +156,7 @@ Implemented 2026-07-31: multi-select on `/entries`, sticky **Fuse to EPB** bar, 
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 009  | Extract shared EPB shell create helper | P2 | M | — | TODO |
+| 009  | Extract shared EPB shell create helper | P2 | M | — | DONE |
 | 010  | Unit-test fuse majority MPA + payload helpers | P2 | S | soft: nicer after extracting pure helpers | DONE |
 
 Recommended: **010** can land immediately (extract pure helpers in the same PR); **009** when touching shell create again.
@@ -176,7 +176,7 @@ Recommended: **010** can land immediately (extract pure helpers in the same PR);
 
 - Topic A: 002 should assert the post-001 contract if 001 lands first.
 - Topic B: 003 and 004 are independent of Topic A; 004 does not depend on 003.
-- Topic C: 005 DONE; next is **006** (draft flush + dual-panel sync).
+- Topic C: 005 DONE; **006 DONE** (draft flush + dual-panel sync).
 - Topic D: shipped with migration 198. **007** (background redaction coverage) and **008** (detail-dialog stewardship parity) are independent of each other and of Topics A–C — either order is fine. Optional follow-up beyond this pass: team bulk-add stewardship UI (rejected this round, see Topic D).
 - Topic E: Fuse to EPB shipped on Entries. **010** (unit tests) is the cheap next step; **009** (shared shell create) before a third create call site appears.
 - Topic F–H (2026-08-01 whole-app improve + React Doctor 26/100): see below. Coordinate migration numbers across **011 / 014 / 015 / 016** (next free after `198_*` is `199_*`).
@@ -233,7 +233,7 @@ Press scale for MyEPBuddy remains **0.98** (product rule), not PeriDocs 0.99. Sk
 1. **Security:** 011, 014, 016  
 2. **Credits:** 013, 012, 017  
 3. **Motion:** 018 (can parallelize with wave 1–2 after rules/CSS land)  
-4. **Polish:** 015, 019, 020 + leftover Topic A–E TODOs (001, 002, 004, 006–010)
+4. **Polish:** 015, 019, 020 + leftover Topic A–E TODOs (001, 002, 004, 007–010)
 
 ### Execution log (2026-07-31 / 2026-08-01)
 
@@ -255,7 +255,7 @@ Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` betw
 | 002 | DONE | Edge tests expanded |
 | 010 | DONE | Payload helper extracted + tested |
 
-**Still TODO / pin next walkthrough:** 016, 018, 019, 020, then MPA-adjacent 004/006 (and optional 007–009). Do not touch EPB split view or sentence DnD unless explicitly approved.
+**Still TODO / pin next walkthrough:** 016, 018, 019, 020, then MPA-adjacent 004 (and optional 007–009). Do not touch EPB split view or sentence DnD unless explicitly approved.
 
 ### Considered and rejected (F–H)
 

@@ -4,6 +4,7 @@ import {
   scanForSensitiveData,
   redactSensitiveData,
 } from "@/lib/sensitive-data-scanner";
+import { normalizeStewardshipImpact } from "@/lib/stewardship-impact";
 
 /**
  * POST /api/scan-entry
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: entry, error: fetchError } = await (supabase as any)
       .from("accomplishments")
-      .select("id, user_id, details, impact, metrics")
+      .select("id, user_id, details, impact, metrics, stewardship_impact")
       .eq("id", accomplishmentId)
       .single();
 
@@ -52,11 +53,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Scan text fields
+    const stewardship = normalizeStewardshipImpact(entry.stewardship_impact);
+
+    // Scan text fields (legacy columns + stewardship source-of-truth)
     const matches = scanForSensitiveData({
       details: entry.details,
       impact: entry.impact ?? undefined,
       metrics: entry.metrics ?? undefined,
+      stewardship_time: stewardship.time,
+      stewardship_money: stewardship.money,
+      stewardship_resources: stewardship.resources,
+      stewardship_outcome: stewardship.outcome,
     });
 
     // Use service client for audit log + sensitive_data columns (RLS restricted)
@@ -83,13 +90,33 @@ export async function POST(request: Request) {
           ? redactSensitiveData(entry.metrics, metricsMatches)
           : entry.metrics;
 
-      // Save original snippets for incident response (audit only)
+      const stewardshipFieldMap = {
+        stewardship_time: "time",
+        stewardship_money: "money",
+        stewardship_resources: "resources",
+        stewardship_outcome: "outcome",
+      } as const;
+
+      const redactedStewardship = { ...stewardship };
       const originalSnippets: Record<string, string> = {};
       if (detailMatches.length > 0) originalSnippets.details = entry.details;
       if (impactMatches.length > 0 && entry.impact)
         originalSnippets.impact = entry.impact;
       if (metricsMatches.length > 0 && entry.metrics)
         originalSnippets.metrics = entry.metrics;
+
+      const stewardshipFieldsTouched: string[] = [];
+      for (const [field, key] of Object.entries(stewardshipFieldMap)) {
+        const fieldMatches = matches.filter((m) => m.field === field);
+        const original = stewardship[key];
+        if (fieldMatches.length > 0 && original) {
+          redactedStewardship[key] = redactSensitiveData(original, fieldMatches);
+          originalSnippets[field] = original;
+          stewardshipFieldsTouched.push(field);
+        }
+      }
+
+      const stewardshipChanged = stewardshipFieldsTouched.length > 0;
 
       // Update the entry with redacted text + scan metadata
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,6 +126,9 @@ export async function POST(request: Request) {
           details: redactedDetails,
           impact: redactedImpact,
           metrics: redactedMetrics,
+          ...(stewardshipChanged
+            ? { stewardship_impact: redactedStewardship }
+            : {}),
           sensitive_data_scanned_at: new Date().toISOString(),
           sensitive_data_flags: matches.map((m) => ({
             type: m.type,
@@ -133,6 +163,7 @@ export async function POST(request: Request) {
           ...(detailMatches.length > 0 ? ["details"] : []),
           ...(impactMatches.length > 0 ? ["impact"] : []),
           ...(metricsMatches.length > 0 ? ["metrics"] : []),
+          ...stewardshipFieldsTouched,
         ],
       });
     }

@@ -366,6 +366,17 @@ function deduplicateMatches(matches: SensitiveMatch[]): SensitiveMatch[] {
 // Redaction
 // ---------------------------------------------------------------------------
 
+/** Field names `redactSensitiveData` will rewrite (legacy + stewardship keys). */
+export const REDACTABLE_FIELDS = new Set([
+  "details",
+  "impact",
+  "metrics",
+  "stewardship_time",
+  "stewardship_money",
+  "stewardship_resources",
+  "stewardship_outcome",
+]);
+
 /**
  * Replace sensitive matches with typed redaction tags.
  * Example: "SSN 123-45-6789" → "SSN [REDACTED-SSN]"
@@ -378,7 +389,7 @@ export function redactSensitiveData(
 
   // Sort matches by index descending so replacements don't shift positions
   const sorted = [...matches]
-    .filter((m) => m.field === "details" || m.field === "impact" || m.field === "metrics")
+    .filter((m) => REDACTABLE_FIELDS.has(m.field))
     .sort((a, b) => b.index - a.index);
 
   let result = text;

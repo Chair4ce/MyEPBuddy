@@ -600,6 +600,14 @@ describe("Redaction", () => {
     expect(redacted).not.toContain("john.doe@example.com");
   });
 
+  it("redacts matches in stewardship subfields", () => {
+    const text = "Saved 40 man-hrs, contact john.doe@example.com for details";
+    const matches = scanForSensitiveData({ stewardship_time: text });
+    const redacted = redactSensitiveData(text, matches);
+    expect(redacted).toContain("[REDACTED-EMAIL]");
+    expect(redacted).not.toContain("john.doe@example.com");
+  });
+
   it("redacts multiple matches in order", () => {
     const text = "SSN: 234-56-7890, email: test@test.com";
     const matches = scan(text);
