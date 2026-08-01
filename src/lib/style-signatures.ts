@@ -14,10 +14,7 @@
 
 import { getDecryptedApiKeys, type DecryptedApiKeys } from "@/app/actions/api-keys";
 import { createClient } from "@/lib/supabase/server";
-import {
-  STYLE_SIGNATURE_DAILY_APP_LIMIT,
-  STYLE_SIGNATURE_MODEL,
-} from "@/lib/style-signatures/constants";
+import { STYLE_SIGNATURE_MODEL } from "@/lib/style-signatures/constants";
 import { getModelProvider, isUsingDefaultKey, MissingApiKeyError } from "@/lib/llm-provider";
 import { generateText } from "ai";
 import { createHash } from "crypto";
@@ -159,7 +156,6 @@ async function reserveStyleSignatureAppKeyCall(userId: string): Promise<boolean>
     "try_record_style_signature_app_call",
     {
       p_user_id: userId,
-      p_daily_limit: STYLE_SIGNATURE_DAILY_APP_LIMIT,
     },
   ) as { data: boolean | null; error: { message: string } | null };
 

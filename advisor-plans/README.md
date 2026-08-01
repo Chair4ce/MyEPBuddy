@@ -192,7 +192,7 @@ React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” mi
 | # | Finding | Plan | Priority | Effort | Status |
 |---|---------|------|----------|--------|--------|
 | 1 | `profiles.role` self-escalation via own-row UPDATE | 011 | P1 | M | DONE |
-| 4 | Caller-controlled `p_burst_limit` on `consume_credit` | 014 | P1 | S | TODO |
+| 4 | Caller-controlled `p_burst_limit` on `consume_credit` | 014 | P1 | S | DONE |
 | 5 | `analytics_events` INSERT `WITH CHECK (true)` | 015 | P2 | S | TODO |
 | 6–7 | World-readable profiles SELECT + unsupervised teams INSERT | 016 | P1 | M | TODO |
 
