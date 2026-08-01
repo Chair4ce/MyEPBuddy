@@ -25,13 +25,14 @@ function resolveDays(raw: string | string[] | undefined): number {
 function isSessionAuthError(error: RpcError): boolean {
   const message = (error?.message ?? "").toLowerCase();
   const code = (error?.code ?? "").toUpperCase();
+  // Do not treat Postgres 42501 (missing EXECUTE) as session expiry once
+  // getAdminApiUser already succeeded — that is a grant/config problem.
   return (
-    code === "42501" ||
     code === "PGRST301" ||
-    message.includes("permission denied") ||
     message.includes("jwt") ||
     message.includes("not authenticated") ||
-    message.includes("unauthorized")
+    message.includes("unauthorized") ||
+    message.includes("invalid claim")
   );
 }
 
@@ -41,8 +42,7 @@ export default async function AdminUsagePage({
   searchParams: Promise<{ days?: string }>;
 }) {
   // Authenticate in the page itself — layout gates can race with page data
-  // fetches in the App Router, which produced anon 401/42501 RPC noise when
-  // Safari's refresh_token had already failed.
+  // fetches in the App Router when the browser session is already dead.
   const admin = await getAdminApiUser();
   if (!admin.ok) {
     redirect(admin.status === 401 ? "/login" : "/dashboard");
@@ -51,23 +51,48 @@ export default async function AdminUsagePage({
   const { supabase } = admin;
   const days = resolveDays((await searchParams).days);
 
-  type AdminRpc = (
-    fn: "admin_default_key_token_usage" | "admin_user_credit_analytics",
-    args: { p_days: number }
-  ) => Promise<{ data: unknown; error: RpcError }>;
+  let defaultKeyResult: {
+    data: DefaultKeyUsageData | null;
+    error: RpcError;
+  };
+  let creditsResult: {
+    data: UserCreditAnalyticsData | null;
+    error: RpcError;
+  };
 
-  const rpc = supabase.rpc as unknown as AdminRpc;
+  try {
+    // Keep the call as a member expression so `this` stays bound.
+    const [defaultKey, credits] = await Promise.all([
+      supabase.rpc(
+        "admin_default_key_token_usage" as never,
+        { p_days: days } as never
+      ),
+      supabase.rpc(
+        "admin_user_credit_analytics" as never,
+        { p_days: days } as never
+      ),
+    ]);
 
-  const [defaultKeyResult, creditsResult] = await Promise.all([
-    rpc("admin_default_key_token_usage", { p_days: days }) as Promise<{
-      data: DefaultKeyUsageData | null;
-      error: RpcError;
-    }>,
-    rpc("admin_user_credit_analytics", { p_days: days }) as Promise<{
-      data: UserCreditAnalyticsData | null;
-      error: RpcError;
-    }>,
-  ]);
+    defaultKeyResult = {
+      data: (defaultKey.data as DefaultKeyUsageData | null) ?? null,
+      error: (defaultKey.error as RpcError) ?? null,
+    };
+    creditsResult = {
+      data: (credits.data as UserCreditAnalyticsData | null) ?? null,
+      error: (credits.error as RpcError) ?? null,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to load usage data.";
+    return (
+      <div className="space-y-2">
+        <h1 className="text-2xl font-bold tracking-tight">Usage Analytics</h1>
+        <p className="text-sm text-destructive" role="alert">
+          {message}
+        </p>
+      </div>
+    );
+  }
 
   if (
     isSessionAuthError(defaultKeyResult.error) ||
@@ -76,7 +101,12 @@ export default async function AdminUsagePage({
     redirect("/login");
   }
 
-  if (defaultKeyResult.error || creditsResult.error || !defaultKeyResult.data || !creditsResult.data) {
+  if (
+    defaultKeyResult.error ||
+    creditsResult.error ||
+    !defaultKeyResult.data ||
+    !creditsResult.data
+  ) {
     const message =
       defaultKeyResult.error?.message ??
       creditsResult.error?.message ??

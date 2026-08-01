@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import {
   Card,
@@ -17,7 +19,7 @@ import {
   buildDailyBurnSeries,
   buildWeeklyBurnSeries,
   buildWeeklyUsersSeries,
-  useWeeklyBurnGranularity,
+  prefersWeeklyBurnGranularity,
 } from "@/lib/admin/usage-chart-data";
 import {
   RANGE_OPTIONS,
@@ -63,7 +65,7 @@ export function AdminUsageDashboard({ data }: { data: AdminUsagePageData }) {
     days,
   );
 
-  const weeklyBurn = useWeeklyBurnGranularity(days);
+  const weeklyBurn = prefersWeeklyBurnGranularity(days);
   const burnSeries = weeklyBurn
     ? buildWeeklyBurnSeries(credits.trial_burn.by_week, defaultKey.by_day)
     : buildDailyBurnSeries(

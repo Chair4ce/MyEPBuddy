@@ -54,7 +54,8 @@ function weekStartKey(day: string): string {
   return toDateKey(date);
 }
 
-export function useWeeklyBurnGranularity(totalDays: number): boolean {
+/** Prefer weekly bars when the selected window is longer than a month. */
+export function prefersWeeklyBurnGranularity(totalDays: number): boolean {
   return totalDays > 30;
 }
 
