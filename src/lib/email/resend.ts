@@ -10,6 +10,31 @@ export type SendResendEmailParams = {
   replyTo?: string | null;
 };
 
+export class ResendSendError extends Error {
+  readonly status: number;
+  readonly detail: string;
+
+  constructor(status: number, detail: string) {
+    super(`Email send failed: ${status} ${detail}`);
+    this.name = "ResendSendError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+/** Strip wrapping quotes Vercel/dashboard env UIs sometimes persist. */
+export function normalizeEnvSecret(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim() || null;
+  }
+  return trimmed || null;
+}
+
 export async function sendResendEmail(
   params: SendResendEmailParams
 ): Promise<void> {
@@ -36,14 +61,22 @@ export async function sendResendEmail(
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Email send failed: ${response.status} ${detail}`);
+    throw new ResendSendError(response.status, detail);
   }
 }
 
+/**
+ * From address for transactional mail.
+ * Must be on a domain verified in Resend (403 if not).
+ */
 export function getTransactionalFromEmail(): string | null {
   return (
-    process.env.EMAIL_FROM ||
-    process.env.FEEDBACK_FROM_EMAIL ||
+    normalizeEnvSecret(process.env.EMAIL_FROM) ||
+    normalizeEnvSecret(process.env.FEEDBACK_FROM_EMAIL) ||
     null
   );
+}
+
+export function getResendApiKey(): string | null {
+  return normalizeEnvSecret(process.env.RESEND_API_KEY);
 }

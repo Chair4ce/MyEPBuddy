@@ -8,7 +8,9 @@ import {
   type ManagedMemberInviteVariant,
 } from "@/lib/email/managed-member-invite";
 import {
+  getResendApiKey,
   getTransactionalFromEmail,
+  ResendSendError,
   sendResendEmail,
 } from "@/lib/email/resend";
 
@@ -198,10 +200,10 @@ export async function POST(request: NextRequest) {
       tokenResult.token
     );
 
-    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendApiKey = getResendApiKey();
     const fromEmail = getTransactionalFromEmail();
 
-    // Token/link always succeed — email is best-effort. Missing Resend config
+    // Token/link always succeed — email is best-effort. Missing/failed Resend
     // must not fail add-member (clients treat invite as optional).
     if (!resendApiKey || !fromEmail) {
       console.warn(
@@ -236,17 +238,38 @@ export async function POST(request: NextRequest) {
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text,
-        replyTo: supervisor?.email || user.email || null,
+        // Only pass reply-to when it looks like an email; bad reply-to can 4xx.
+        replyTo: (() => {
+          const candidate = (supervisor?.email || user.email || "").trim();
+          return candidate.includes("@") ? candidate : null;
+        })(),
       });
     } catch (sendError) {
-      console.error("Managed member invite Resend error:", sendError);
+      const resendDetail =
+        sendError instanceof ResendSendError
+          ? { status: sendError.status, body: sendError.detail.slice(0, 500) }
+          : { message: sendError instanceof Error ? sendError.message : "unknown" };
+      console.error("Managed member invite Resend error:", {
+        from: fromEmail,
+        to: recipientEmail,
+        ...resendDetail,
+      });
       return NextResponse.json({
         success: true,
         emailSent: false,
-        code: "email_send_failed",
+        code:
+          sendError instanceof ResendSendError && sendError.status === 403
+            ? "email_forbidden"
+            : "email_send_failed",
         variant,
         inviteUrl,
-        error: "Invite link created, but the email provider failed to send.",
+        error:
+          sendError instanceof ResendSendError && sendError.status === 403
+            ? "Invite link created, but Resend rejected the send (403). Verify EMAIL_FROM is on a domain verified in Resend, and RESEND_API_KEY is valid."
+            : "Invite link created, but the email provider failed to send.",
+        // Safe for ops debugging in Network tab — no secrets
+        resendStatus:
+          sendError instanceof ResendSendError ? sendError.status : null,
       });
     }
 
