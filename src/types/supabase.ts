@@ -4023,6 +4023,19 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      insert_analytics_event: {
+        Args: {
+          p_event_name: string
+          p_session_id: string
+          p_properties?: Json
+          p_page_path?: string | null
+          p_referrer?: string | null
+          p_user_agent?: string | null
+          p_screen_width?: number | null
+          p_screen_height?: number | null
+        }
+        Returns: string
+      }
       is_enlisted_rank: {
         Args: { rank_value: Database["public"]["Enums"]["user_rank"] }
         Returns: boolean

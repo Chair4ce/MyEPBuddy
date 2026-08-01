@@ -65,16 +65,30 @@ export async function createServiceClient() {
 /**
  * Cookie-free service-role client for cached/server-only reads.
  * Safe inside unstable_cache — never call cookies() or other dynamic APIs.
+ *
+ * Requires a real service-role credential (JWT `service_role` or `sb_secret_…`).
+ * A missing or anon/publishable key does not bypass RLS (Postgres 42501).
  */
 export function createAdminClient() {
-  return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      "createAdminClient requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
+    );
+  }
+
+  if (key.startsWith("sb_publishable_")) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is set to the publishable/anon key; use the service_role JWT or sb_secret_…"
+    );
+  }
+
+  return createSupabaseClient<Database>(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
     },
-  );
+  });
 }
