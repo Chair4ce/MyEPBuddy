@@ -152,6 +152,116 @@ export function impactBoosterDraftKey(
   return `${sentenceNumber ?? 0}::${question}`;
 }
 
+export interface ImpactBoosterDraftFields {
+  draftAnswers: Record<string, string>;
+  freeform: string;
+  sentenceNotes: Record<"1" | "2", string>;
+}
+
+/** Seed textarea maps from persisted booster (shared by pre + post panels). */
+export function seedImpactBoosterDraftFields(
+  booster: ImpactBoosterState | null | undefined
+): ImpactBoosterDraftFields {
+  const persisted = normalizeImpactBooster(booster ?? {});
+  const draftAnswers: Record<string, string> = {};
+  for (const qa of persisted.answers) {
+    draftAnswers[impactBoosterDraftKey(qa.question, qa.sentenceNumber)] = qa.answer;
+  }
+  return {
+    draftAnswers,
+    freeform: persisted.freeform ?? "",
+    sentenceNotes: {
+      "1": persisted.sentenceFreeform?.["1"] ?? "",
+      "2": persisted.sentenceFreeform?.["2"] ?? "",
+    },
+  };
+}
+
+type ImpactBoosterPromptInput = {
+  question: string;
+  category: string;
+  hint?: string;
+  lever?: ImpactLever;
+  sentenceNumber?: 1 | 2;
+};
+
+/**
+ * Merge persisted booster with in-progress textarea drafts (panel Save / Generate flush).
+ * Keeps orphan drafts whose prompts disappeared.
+ */
+export function buildImpactBoosterFromDrafts(
+  persistedRaw: ImpactBoosterState | null | undefined,
+  prompts: ImpactBoosterPromptInput[],
+  fields: ImpactBoosterDraftFields,
+  dual: boolean
+): ImpactBoosterState {
+  const persisted = normalizeImpactBooster(persistedRaw ?? {});
+  const { draftAnswers, freeform, sentenceNotes } = fields;
+
+  let next = normalizeImpactBooster({
+    ...persisted,
+    answers: [],
+    freeform: undefined,
+    sentenceFreeform: undefined,
+  });
+
+  const sentenceTargets: Array<1 | 2 | undefined> = dual ? [1, 2] : [undefined];
+  for (const sentenceNumber of sentenceTargets) {
+    const list = promptsForSentence(prompts, sentenceNumber, dual);
+    for (const prompt of list) {
+      const key = impactBoosterDraftKey(prompt.question, sentenceNumber);
+      const answer = (draftAnswers[key] ?? "").trim();
+      if (!answer) continue;
+      next = upsertImpactBoosterAnswer(next, {
+        question: prompt.question,
+        category: prompt.category || "impact",
+        answer,
+        hint: prompt.hint,
+        lever: prompt.lever,
+        ...(sentenceNumber ? { sentenceNumber } : {}),
+      });
+    }
+  }
+
+  for (const [key, answer] of Object.entries(draftAnswers)) {
+    const trimmed = answer.trim();
+    if (!trimmed) continue;
+    const sep = key.indexOf("::");
+    if (sep < 0) continue;
+    const snRaw = key.slice(0, sep);
+    const question = key.slice(sep + 2);
+    const sentenceNumber =
+      snRaw === "1" ? 1 : snRaw === "2" ? 2 : undefined;
+    const already = next.answers.some(
+      (a) =>
+        a.question === question &&
+        (a.sentenceNumber ?? null) === (sentenceNumber ?? null)
+    );
+    if (already) continue;
+    const prior = persisted.answers.find(
+      (a) =>
+        a.question === question &&
+        (a.sentenceNumber ?? null) === (sentenceNumber ?? null)
+    );
+    next = upsertImpactBoosterAnswer(next, {
+      question,
+      category: prior?.category || "impact",
+      answer: trimmed,
+      hint: prior?.hint,
+      lever: prior?.lever,
+      ...(sentenceNumber ? { sentenceNumber } : {}),
+    });
+  }
+
+  if (dual) {
+    next = setImpactBoosterSentenceFreeform(next, 1, sentenceNotes["1"]);
+    next = setImpactBoosterSentenceFreeform(next, 2, sentenceNotes["2"]);
+  } else {
+    next = setImpactBoosterFreeform(next, freeform);
+  }
+  return next;
+}
+
 /** Normalize DB/API JSON into a safe ImpactBoosterState. */
 export function normalizeImpactBooster(raw: unknown): ImpactBoosterState {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {

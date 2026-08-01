@@ -4,6 +4,7 @@ import {
   DEFAULT_IMPACT_BOOSTER_PROMPTS,
   EMPTY_IMPACT_BOOSTER,
   buildImpactBoosterContext,
+  buildImpactBoosterFromDrafts,
   clearedImpactBooster,
   hasImpactBoosterContent,
   impactStrengthBand,
@@ -12,6 +13,7 @@ import {
   normalizeImpactBooster,
   parseImpactAssessment,
   removeImpactBoosterAnswer,
+  seedImpactBoosterDraftFields,
   setImpactBoosterFreeform,
   upsertImpactBoosterAnswer,
 } from "@/lib/impact-booster";
@@ -226,6 +228,44 @@ describe("AF stewardship defaults", () => {
       "resources",
       "time",
     ]);
+  });
+});
+
+describe("buildImpactBoosterFromDrafts / seedImpactBoosterDraftFields", () => {
+  it("builds injectable state from textarea drafts without explicit Save", () => {
+    const timePrompt = DEFAULT_IMPACT_BOOSTER_PROMPTS.find((p) => p.lever === "time")!;
+    const fields = seedImpactBoosterDraftFields({ answers: [] });
+    fields.draftAnswers[`0::${timePrompt.question}`] = "  40 man-hrs  ";
+    fields.freeform = " Wing-wide cascade ";
+
+    const built = buildImpactBoosterFromDrafts(
+      { answers: [] },
+      DEFAULT_IMPACT_BOOSTER_PROMPTS,
+      fields,
+      false
+    );
+
+    expect(built.answers).toHaveLength(1);
+    expect(built.answers[0].answer).toBe("40 man-hrs");
+    expect(built.freeform).toBe("Wing-wide cascade");
+    expect(buildImpactBoosterContext(built)).toContain("40 man-hrs");
+  });
+
+  it("seeds draft maps from persisted answers for dual-panel sync", () => {
+    const seeded = seedImpactBoosterDraftFields({
+      answers: [
+        {
+          question: "Man-hours?",
+          category: "impact",
+          answer: "12 hrs",
+          lever: "time",
+          sentenceNumber: 1,
+        },
+      ],
+      sentenceFreeform: { "2": "ATO saved" },
+    });
+    expect(seeded.draftAnswers["1::Man-hours?"]).toBe("12 hrs");
+    expect(seeded.sentenceNotes["2"]).toBe("ATO saved");
   });
 });
 

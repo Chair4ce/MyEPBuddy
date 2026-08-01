@@ -17,10 +17,9 @@ import {
   impactStrengthLabel,
   normalizeImpactBooster,
   promptsForSentence,
-  setImpactBoosterFreeform,
-  setImpactBoosterSentenceFreeform,
-  upsertImpactBoosterAnswer,
   IMPACT_BOOSTER_FREEFORM_MAX,
+  buildImpactBoosterFromDrafts,
+  type ImpactBoosterDraftFields,
 } from "@/lib/impact-booster";
 import {
   STEWARDSHIP_HINTS,
@@ -111,7 +110,8 @@ export interface ImpactBoosterPanelProps {
   showIntroHighlight?: boolean;
   includeInRun: boolean;
   onIncludeInRunChange: (include: boolean) => void;
-  onDraftChange: (next: ImpactBoosterState) => void;
+  draftFields: ImpactBoosterDraftFields;
+  onDraftFieldsChange: (fields: ImpactBoosterDraftFields) => void;
   onSave: (next: ImpactBoosterState) => Promise<void> | void;
   onClearAll: () => Promise<void> | void;
   includeLabel?: string;
@@ -133,7 +133,8 @@ export function ImpactBoosterPanel({
   showIntroHighlight = true,
   includeInRun,
   onIncludeInRunChange,
-  onDraftChange,
+  draftFields,
+  onDraftFieldsChange,
   onSave,
   onClearAll,
   includeLabel = "Include on Generate / Revise",
@@ -152,18 +153,7 @@ export function ImpactBoosterPanel({
   );
   const [activeSentence, setActiveSentence] = useState<1 | 2>(1);
 
-  const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>(() => {
-    const seed: Record<string, string> = {};
-    for (const qa of persisted.answers) {
-      seed[impactBoosterDraftKey(qa.question, qa.sentenceNumber)] = qa.answer;
-    }
-    return seed;
-  });
-  const [freeform, setFreeform] = useState(persisted.freeform ?? "");
-  const [sentenceNotes, setSentenceNotes] = useState<Record<"1" | "2", string>>({
-    "1": persisted.sentenceFreeform?.["1"] ?? "",
-    "2": persisted.sentenceFreeform?.["2"] ?? "",
-  });
+  const { draftAnswers, freeform, sentenceNotes } = draftFields;
   const [isSaving, setIsSaving] = useState(false);
 
   const activePrompts = promptsForSentence(
@@ -188,78 +178,24 @@ export function ImpactBoosterPanel({
     answersMap: Record<string, string> = draftAnswers,
     notes: string = freeform,
     sNotes: Record<"1" | "2", string> = sentenceNotes
-  ): ImpactBoosterState => {
-    let next = normalizeImpactBooster({
-      ...persisted,
-      answers: [],
-      freeform: undefined,
-      sentenceFreeform: undefined,
-    });
-
-    const sentenceTargets: Array<1 | 2 | undefined> = dual ? [1, 2] : [undefined];
-    for (const sentenceNumber of sentenceTargets) {
-      const list = promptsForSentence(prompts, sentenceNumber, dual);
-      for (const prompt of list) {
-        const key = impactBoosterDraftKey(prompt.question, sentenceNumber);
-        const answer = (answersMap[key] ?? "").trim();
-        if (!answer) continue;
-        next = upsertImpactBoosterAnswer(next, {
-          question: prompt.question,
-          category: prompt.category || "impact",
-          answer,
-          hint: prompt.hint,
-          lever: prompt.lever,
-          ...(sentenceNumber ? { sentenceNumber } : {}),
-        });
-      }
-    }
-
-    // Keep orphan drafts (saved answers whose prompts are gone)
-    for (const [key, answer] of Object.entries(answersMap)) {
-      const trimmed = answer.trim();
-      if (!trimmed) continue;
-      const sep = key.indexOf("::");
-      if (sep < 0) continue;
-      const snRaw = key.slice(0, sep);
-      const question = key.slice(sep + 2);
-      const sentenceNumber =
-        snRaw === "1" ? 1 : snRaw === "2" ? 2 : undefined;
-      const already = next.answers.some(
-        (a) =>
-          a.question === question &&
-          (a.sentenceNumber ?? null) === (sentenceNumber ?? null)
-      );
-      if (already) continue;
-      const prior = persisted.answers.find(
-        (a) =>
-          a.question === question &&
-          (a.sentenceNumber ?? null) === (sentenceNumber ?? null)
-      );
-      next = upsertImpactBoosterAnswer(next, {
-        question,
-        category: prior?.category || "impact",
-        answer: trimmed,
-        hint: prior?.hint,
-        lever: prior?.lever,
-        ...(sentenceNumber ? { sentenceNumber } : {}),
-      });
-    }
-
-    if (dual) {
-      next = setImpactBoosterSentenceFreeform(next, 1, sNotes["1"]);
-      next = setImpactBoosterSentenceFreeform(next, 2, sNotes["2"]);
-    } else {
-      next = setImpactBoosterFreeform(next, notes);
-    }
-    return next;
-  };
+  ): ImpactBoosterState =>
+    buildImpactBoosterFromDrafts(persisted, prompts, {
+      draftAnswers: answersMap,
+      freeform: notes,
+      sentenceNotes: sNotes,
+    }, dual);
 
   const publishDraft = (
     answersMap: Record<string, string>,
     notes: string,
     sNotes: Record<"1" | "2", string>
   ) => {
-    onDraftChange(buildNextState(answersMap, notes, sNotes));
+    const fields: ImpactBoosterDraftFields = {
+      draftAnswers: answersMap,
+      freeform: notes,
+      sentenceNotes: sNotes,
+    };
+    onDraftFieldsChange(fields);
   };
 
   const handleSave = async () => {
@@ -268,16 +204,18 @@ export function ImpactBoosterPanel({
     try {
       const next = buildNextState();
       await onSave(next);
-      onDraftChange(next);
-      const seed: Record<string, string> = {};
-      for (const qa of next.answers) {
-        seed[impactBoosterDraftKey(qa.question, qa.sentenceNumber)] = qa.answer;
-      }
-      setDraftAnswers(seed);
-      setFreeform(next.freeform ?? "");
-      setSentenceNotes({
-        "1": next.sentenceFreeform?.["1"] ?? "",
-        "2": next.sentenceFreeform?.["2"] ?? "",
+      onDraftFieldsChange({
+        draftAnswers: Object.fromEntries(
+          next.answers.map((qa) => [
+            impactBoosterDraftKey(qa.question, qa.sentenceNumber),
+            qa.answer,
+          ])
+        ),
+        freeform: next.freeform ?? "",
+        sentenceNotes: {
+          "1": next.sentenceFreeform?.["1"] ?? "",
+          "2": next.sentenceFreeform?.["2"] ?? "",
+        },
       });
     } finally {
       setIsSaving(false);
@@ -382,7 +320,6 @@ export function ImpactBoosterPanel({
                   ...draftAnswers,
                   [draftKey]: e.target.value,
                 };
-                setDraftAnswers(nextAnswers);
                 publishDraft(nextAnswers, freeform, sentenceNotes);
               }}
               placeholder={meta?.placeholder || "e.g. stewardship detail"}
@@ -417,10 +354,8 @@ export function ImpactBoosterPanel({
             const nextNotes = e.target.value.slice(0, IMPACT_BOOSTER_FREEFORM_MAX);
             if (dual && activeKey) {
               const nextSNotes = { ...sentenceNotes, [activeKey]: nextNotes };
-              setSentenceNotes(nextSNotes);
               publishDraft(draftAnswers, freeform, nextSNotes);
             } else {
-              setFreeform(nextNotes);
               publishDraft(draftAnswers, nextNotes, sentenceNotes);
             }
           }}
