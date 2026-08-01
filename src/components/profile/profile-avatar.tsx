@@ -46,7 +46,11 @@ export function ProfileAvatar({
           )}
           aria-label={`${profile?.rank} rank insignia profile photo`}
         >
-          <RankInsignia rank={profile?.rank} size="avatar" />
+          <RankInsignia
+            rank={profile?.rank}
+            size="avatar"
+            className="text-primary"
+          />
         </AvatarFallback>
       ) : (
         <>

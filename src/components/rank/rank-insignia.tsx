@@ -1,6 +1,7 @@
 import { getRankInsigniaLabel, getRankInsigniaPath, hasRankInsignia } from "@/lib/rank-insignia";
 import { cn } from "@/lib/utils";
 import type { Rank } from "@/types/database";
+import type { CSSProperties } from "react";
 
 const SIZE_CONFIG = {
   xs: {
@@ -33,6 +34,19 @@ interface RankInsigniaProps {
   className?: string;
 }
 
+function insigniaMaskStyle(src: string): CSSProperties {
+  return {
+    WebkitMaskImage: `url("${src}")`,
+    maskImage: `url("${src}")`,
+    WebkitMaskSize: "contain",
+    maskSize: "contain",
+    WebkitMaskRepeat: "no-repeat",
+    maskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskPosition: "center",
+  };
+}
+
 export function MemberRankInsignia({
   rank,
   className,
@@ -60,22 +74,24 @@ export function RankInsignia({
   return (
     <div
       className={cn(
-        "relative flex shrink-0 items-center justify-center",
+        "relative flex shrink-0 items-center justify-center text-foreground",
         config.canvas,
         className
       )}
       role="img"
       aria-label={getRankInsigniaLabel(rank)}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
-        draggable={false}
+      {/*
+        White/silver stripe assets are masked and filled with currentColor so
+        they stay visible in light mode and inherit theme accents (e.g. avatar).
+      */}
+      <span
+        aria-hidden
         className={cn(
-          "h-auto w-full max-h-full object-contain object-center",
+          "block h-full max-h-full bg-current",
           config.insignia
         )}
+        style={insigniaMaskStyle(src)}
       />
     </div>
   );
