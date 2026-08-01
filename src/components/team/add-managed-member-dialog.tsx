@@ -79,16 +79,19 @@ export function AddManagedMemberDialog({
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [existingUser, setExistingUser] = useState<ExistingUserMatch | null>(null);
   const [chainProfiles, setChainProfiles] = useState<ParentOption[]>([]);
+  const defaultParentId = profile ? `profile:${profile.id}` : "";
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
     rank: "" as Rank | "",
     afsc: "",
     unit: "",
-    parentId: "", // Combined ID for the parent (could be profile or managed member)
+    parentId: "", // Combined ID; empty means use defaultParentId (me)
   });
 
   const supabase = createClient();
+  /** Resolved supervisor for insert — never block on async chain load. */
+  const resolvedParentId = formData.parentId || defaultParentId;
 
   // Build parent options from profiles + managed members
   const parentOptions = useMemo(() => {
@@ -195,9 +198,6 @@ export function AddManagedMemberDialog({
       if (cancelled) return;
 
       setChainProfiles(profiles);
-      if (!formData.parentId && profile) {
-        setFormData((prev) => ({ ...prev, parentId: `profile:${profile.id}` }));
-      }
     })();
 
     return () => {
@@ -268,7 +268,7 @@ export function AddManagedMemberDialog({
       return;
     }
 
-    if (!formData.parentId) {
+    if (!resolvedParentId) {
       toast.error("Please select who this member reports to");
       return;
     }
@@ -278,10 +278,10 @@ export function AddManagedMemberDialog({
 
     try {
       // Parse the parent ID to determine if it's a profile or managed member
-      const [parentType, parentId] = formData.parentId.split(":");
+      const [parentType, parentId] = resolvedParentId.split(":");
       const email = formData.email.trim().toLowerCase() || null;
       
-      // Check for existing user if email provided
+      // Check for existing user if email provided (do not gate the submit button on this)
       let existingMatch = existingUser;
       if (email && !existingUser) {
         existingMatch = await checkEmailForExistingUser(email);
@@ -469,7 +469,7 @@ export function AddManagedMemberDialog({
               Reports To <span className="text-destructive">*</span>
             </Label>
             <Select
-              value={formData.parentId}
+              value={resolvedParentId || undefined}
               onValueChange={(v) =>
                 setFormData({ ...formData, parentId: v })
               }
@@ -531,7 +531,7 @@ export function AddManagedMemberDialog({
                 const availableRanks = getAvailableSubordinateRanks(profile?.rank);
                 return (
                   <Select
-                    value={formData.rank}
+                    value={formData.rank || undefined}
                     onValueChange={(v) =>
                       setFormData({ ...formData, rank: v as Rank })
                     }
@@ -659,7 +659,7 @@ export function AddManagedMemberDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || isCheckingEmail}
+              disabled={isSubmitting}
               className="w-full sm:w-auto"
               data-tour="submit-member-btn"
             >

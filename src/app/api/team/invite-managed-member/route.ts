@@ -181,7 +181,10 @@ export async function POST(request: NextRequest) {
     if (tokenError || !tokenResult?.token) {
       console.error("Failed to issue managed invite token:", tokenError, tokenResult);
       return NextResponse.json(
-        { error: "Failed to create invite link" },
+        {
+          error: "Failed to create invite link",
+          detail: tokenError?.message || tokenResult?.error || null,
+        },
         { status: 500 }
       );
     }
