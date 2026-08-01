@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import {
+  PROFILE_SEARCH_MIN_QUERY_LENGTH,
+  searchProfilesDirectory,
+} from "@/lib/profile-directory";
 import { isAbortError } from "@/lib/supabase/abort";
 import { shareDecorationShellWithUser } from "@/app/actions/shell-shares";
 import {
@@ -217,22 +221,18 @@ export function DecorationShellShareDialog({
   // Search for users
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
-    if (query.length < 2) {
+    if (query.trim().length < PROFILE_SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
       return;
     }
 
     setIsSearching(true);
     try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, rank, afsc, email")
-        .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
-        .limit(10);
+      const data = await searchProfilesDirectory(supabase, query);
 
       // Filter out users who already have access
       const existingIds = accessList.map((u) => u.id);
-      const typedData = (data || []) as unknown as Profile[];
+      const typedData = data as unknown as Profile[];
       const filteredResults = typedData.filter((p) => !existingIds.includes(p.id));
       setSearchResults(filteredResults);
     } catch (error) {
@@ -334,7 +334,7 @@ export function DecorationShellShareDialog({
               <Input
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Search by name or email..."
+                placeholder="Search by name or email (3+ characters)..."
                 className="pl-8 h-9"
               />
               {isSearching && (

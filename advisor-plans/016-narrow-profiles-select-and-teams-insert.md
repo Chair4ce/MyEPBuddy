@@ -55,10 +55,26 @@ Point invite/search UI at the RPC. Typecheck + smoke invite flow.
 
 ## Done criteria
 
-- [ ] No world-readable profiles SELECT
-- [ ] No unsupervised teams INSERT
-- [ ] Invite/search still works
-- [ ] README 016 → DONE
+- [x] No world-readable profiles SELECT
+- [x] No unsupervised teams INSERT
+- [x] Invite/search still works
+- [x] README 016 → DONE
+
+## Outcome (migration `203_narrow_profiles_select_and_teams_insert.sql`, local + remote)
+
+- `can_view_profile(uuid)` SECURITY DEFINER predicate enumerates every existing
+  relationship (chain both directions, co-supervisors, prior supervision,
+  invitations, managed links, the five share tables, authored content, shells,
+  feedback, award requests, projects, live collaboration, admin). `profiles`
+  SELECT is `id = auth.uid() OR can_view_profile(id)`.
+- `search_profile_by_email` (exact, 1 row) and `search_profiles_directory`
+  (min 3 chars, max 10 rows, directory columns) replace the client-side scans.
+  This also removes the interpolated PostgREST `or=` filters in the share
+  dialogs, which were a filter-injection vector.
+- `respond_to_team_request(uuid, boolean)` makes accept/decline atomic and
+  target-only; `teams` INSERT now requires an accepted `team_requests` row for
+  the exact pair. `accept_supervisor_from_link` (migration 028) is unaffected.
+- Verified with `scripts/verify-016-rls.sql` (13 checks, all passing).
 
 ## STOP conditions
 

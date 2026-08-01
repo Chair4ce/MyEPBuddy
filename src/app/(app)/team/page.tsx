@@ -118,6 +118,7 @@ import { AwardPackagesManager } from "@/components/team/award-packages-manager";
 import { useProjectsStore } from "@/stores/projects-store";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import { searchProfileByEmail } from "@/lib/profile-directory";
 import { 
   MPA_ABBREVIATIONS, 
   STANDARD_MGAS, 
@@ -1139,16 +1140,12 @@ export default function TeamPage() {
     setSearchedProfile(null);
 
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("email", inviteEmail.trim().toLowerCase())
-        .single();
+      const match = await searchProfileByEmail(supabase, inviteEmail);
 
-      if (error || !data) {
+      if (!match) {
         toast.error("No user found with that email");
       } else {
-        setSearchedProfile(data as Profile);
+        setSearchedProfile(match as unknown as Profile);
       }
     } catch {
       toast.error("Error searching for user");
@@ -1213,49 +1210,27 @@ export default function TeamPage() {
       const request = pendingRequests.find((r) => r.id === requestId);
       if (!request || !profile) return;
 
-      // Update request status first
-      const { error: updateError } = await supabase
-        .from("team_requests")
-        .update({
-          status: accept ? "accepted" : "declined",
-          responded_at: new Date().toISOString(),
-        } as never)
-        .eq("id", requestId);
+      // Status flip + teams row happen in one transaction server-side; a direct
+      // client insert into `teams` is rejected without an accepted request.
+      const { error: respondError } = await (
+        supabase.rpc as unknown as (
+          fn: string,
+          args: { p_request_id: string; p_accept: boolean }
+        ) => Promise<{ error: { message?: string } | null }>
+      )("respond_to_team_request", {
+        p_request_id: requestId,
+        p_accept: accept,
+      });
 
-      if (updateError) {
-        console.error("Request update error:", updateError);
-        toast.error("Failed to update request: " + updateError.message);
+      if (respondError) {
+        console.error("Request response error:", respondError);
+        toast.error(
+          `Failed to ${accept ? "accept" : "decline"} request: ${respondError.message ?? "unknown error"}`
+        );
         return;
       }
 
-      // If accepted, create the team relationship
       if (accept) {
-        const supervisorId = request.request_type === "supervise" 
-          ? request.requester_id  // Requester wants to supervise me
-          : profile.id;          // Requester wants me to supervise them
-        const subordinateId = request.request_type === "supervise"
-          ? profile.id           // I become the subordinate
-          : request.requester_id; // Requester becomes the subordinate
-
-        // Use upsert with conflict handling to avoid duplicate key errors
-        // If the relationship already exists, this will simply succeed without error
-        const { error: teamError } = await supabase.from("teams").upsert(
-          {
-            supervisor_id: supervisorId,
-            subordinate_id: subordinateId,
-          } as never,
-          { 
-            onConflict: 'supervisor_id,subordinate_id',
-            ignoreDuplicates: true 
-          }
-        );
-
-        if (teamError) {
-          console.error("Team upsert error:", teamError);
-          toast.error("Failed to create team relationship: " + teamError.message);
-          return;
-        }
-
         Analytics.supervisionRequestAccepted();
         toast.success("Request accepted! Team relationship created.");
       } else {

@@ -194,7 +194,7 @@ React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” mi
 | 1 | `profiles.role` self-escalation via own-row UPDATE | 011 | P1 | M | DONE |
 | 4 | Caller-controlled `p_burst_limit` on `consume_credit` | 014 | P1 | S | DONE |
 | 5 | `analytics_events` INSERT `WITH CHECK (true)` | 015 | P2 | S | DONE |
-| 6–7 | World-readable profiles SELECT + unsupervised teams INSERT | 016 | P1 | M | PINNED (careful walkthrough) |
+| 6–7 | World-readable profiles SELECT + unsupervised teams INSERT | 016 | P1 | M | DONE |
 
 ### Execution order
 
@@ -243,7 +243,7 @@ Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` betw
 |------|--------|-------|
 | 011 | DONE | Migrations `199` + `200` (SECURITY DEFINER `current_user` bug fixed) — local + remote |
 | 014 | DONE | Migration `201` — burst/daily caps pinned; app call sites updated |
-| 016 | **PINNED** | High-risk profiles SELECT + teams INSERT RLS — walk carefully |
+| 016 | DONE | Migration `203` — local + remote. `profiles` SELECT is now own-row + `can_view_profile()`; `teams` INSERT requires an accepted `team_requests` row; new `search_profile_by_email` / `search_profiles_directory` / `respond_to_team_request` RPCs; 9 client files moved off direct `profiles` scans. Regression harness: `scripts/verify-016-rls.sql` |
 | 013 | DONE | `consume_credit` RPC errors → `serviceError` |
 | 012 | DONE | EPB/Fuse/`adapt-sentence`/`assess-epb` → `billableFetch` (DnD logic untouched) |
 | 017 | DONE | `generate-billing-contract` helper + characterization tests |
@@ -260,7 +260,7 @@ Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` betw
 | 009 | DONE | Shared EPB shell create helper |
 | 010 | DONE | Payload helper extracted + tested |
 
-**Still TODO / pin next walkthrough:** 016, 018. Do not touch EPB split view or sentence DnD unless explicitly approved.
+**Still TODO / pin next walkthrough:** 018. Do not touch EPB split view or sentence DnD unless explicitly approved.
 
 ### Considered and rejected (F–H)
 

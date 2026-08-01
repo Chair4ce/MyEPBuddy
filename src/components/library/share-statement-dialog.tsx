@@ -18,6 +18,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import {
+  PROFILE_SEARCH_MIN_QUERY_LENGTH,
+  searchProfilesDirectory,
+} from "@/lib/profile-directory";
 import { cn } from "@/lib/utils";
 import {
   Users,
@@ -120,21 +124,16 @@ export function ShareStatementDialog({
   }, [statement?.id, open, profile?.id, supabase]);
 
   async function searchUsers(query: string) {
-    if (query.length < 2) {
+    if (query.trim().length < PROFILE_SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
       return;
     }
 
     setIsSearching(true);
     try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
-        .neq("id", profile?.id || "")
-        .limit(10);
+      const data = await searchProfilesDirectory(supabase, query);
 
-      setSearchResults((data || []) as Profile[]);
+      setSearchResults(data as unknown as Profile[]);
     } catch (error) {
       console.error("Search error:", error);
     } finally {
@@ -369,7 +368,7 @@ export function ShareStatementDialog({
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by name or email..."
+                    placeholder="Search by name or email (3+ characters)..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"

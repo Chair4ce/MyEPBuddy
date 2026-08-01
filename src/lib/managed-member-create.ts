@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isCivilian, isEnlisted, isOfficer } from "@/lib/constants";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
+import { searchProfileByEmail } from "@/lib/profile-directory";
 import type { ManagedMember, Rank } from "@/types/database";
 
 type BrowserSupabaseClient = ReturnType<typeof createClient>;
@@ -26,25 +27,14 @@ export async function lookupProfileByEmail(
   supabase: BrowserSupabaseClient,
   email: string
 ): Promise<ExistingUserMatch | null> {
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail || !normalizedEmail.includes("@")) {
-    return null;
-  }
-
-  const { data: existingProfile } = await supabase
-    .from("profiles")
-    .select("id, email, full_name, rank")
-    .eq("email", normalizedEmail)
-    .maybeSingle();
-
-  const profile = existingProfile as ExistingUserMatch | null;
+  const profile = await searchProfileByEmail(supabase, email);
   if (!profile) {
     return null;
   }
 
   return {
     id: profile.id,
-    email: profile.email || normalizedEmail,
+    email: profile.email,
     full_name: profile.full_name,
     rank: profile.rank,
   };

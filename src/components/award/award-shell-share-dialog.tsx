@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import {
+  PROFILE_SEARCH_MIN_QUERY_LENGTH,
+  searchProfilesDirectory,
+} from "@/lib/profile-directory";
 import { isAbortError } from "@/lib/supabase/abort";
 import { shareAwardShellWithUser } from "@/app/actions/shell-shares";
 import { cn } from "@/lib/utils";
@@ -208,21 +212,15 @@ export function AwardShellShareDialog({
 
   // Search for users
   const handleSearch = async () => {
-    if (searchQuery.length < 2) return;
-    
+    if (searchQuery.trim().length < PROFILE_SEARCH_MIN_QUERY_LENGTH) return;
+
     setIsSearching(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, rank, afsc, email")
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .limit(10);
+      const data = await searchProfilesDirectory(supabase, searchQuery);
 
-      if (error) throw error;
-      
       // Filter out users who already have access
       const existingIds = accessList.map((a) => a.id);
-      setSearchResults(((data || []) as Profile[]).filter((p) => !existingIds.includes(p.id)));
+      setSearchResults((data as unknown as Profile[]).filter((p) => !existingIds.includes(p.id)));
     } catch (error) {
       console.error("Search failed:", error);
       toast.error("Search failed");
@@ -297,7 +295,7 @@ export function AwardShellShareDialog({
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name or email..."
+                  placeholder="Search by name or email (3+ characters)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
+import { searchProfileByEmail } from "@/lib/profile-directory";
 import { Loader2, UserCog, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer, isCivilian } from "@/lib/constants";
@@ -116,11 +117,7 @@ export function EditManagedMemberDialog({
 
     try {
       // Check if a profile exists with this email
-      const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, rank")
-        .eq("email", email.toLowerCase())
-        .single() as { data: { id: string; email: string | null; full_name: string | null; rank: string | null } | null };
+      const existingProfile = await searchProfileByEmail(supabase, email);
 
       if (existingProfile) {
         const match: ExistingUserMatch = {

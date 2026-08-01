@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { stripHtml } from "@/lib/email/html-safe";
+import { searchProfileByEmail } from "@/lib/profile-directory";
 import {
   buildManagedMemberInviteEmail,
   type ManagedMemberInviteVariant,
@@ -168,11 +169,7 @@ export async function POST(request: NextRequest) {
     const supervisor = supervisorProfile as ProfileRow | null;
     const supervisorDisplayName = formatSupervisorDisplayName(supervisor);
 
-    const { data: existingProfile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", recipientEmail)
-      .maybeSingle();
+    const existingProfile = await searchProfileByEmail(supabase, recipientEmail);
 
     const variant: ManagedMemberInviteVariant = existingProfile
       ? "existing_user"

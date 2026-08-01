@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import {
+  PROFILE_SEARCH_MIN_QUERY_LENGTH,
+  searchProfilesDirectory,
+} from "@/lib/profile-directory";
 import { isAbortError } from "@/lib/supabase/abort";
 import { shareEpbShellWithUser } from "@/app/actions/shell-shares";
 import { cn } from "@/lib/utils";
@@ -211,24 +215,18 @@ export function EPBShellShareDialog({
 
   // Search for users
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+    if (searchQuery.trim().length < PROFILE_SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
       return;
     }
 
     setIsSearching(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, rank, afsc, email")
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .limit(10);
-
-      if (error) throw error;
+      const data = await searchProfilesDirectory(supabase, searchQuery);
 
       // Filter out users who already have access
       const accessIds = new Set(accessList.map((a) => a.id));
-      setSearchResults((data as Profile[]).filter((p) => !accessIds.has(p.id)));
+      setSearchResults((data as unknown as Profile[]).filter((p) => !accessIds.has(p.id)));
     } catch (error) {
       console.error("Search failed:", error);
       toast.error("Failed to search users");
@@ -375,11 +373,18 @@ export function EPBShellShareDialog({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  placeholder="Search by name or email..."
+                  placeholder="Search by name or email (3+ characters)..."
                   className="pl-9"
                 />
               </div>
-              <Button onClick={handleSearch} disabled={isSearching} size="sm">
+              <Button
+                onClick={handleSearch}
+                disabled={
+                  isSearching ||
+                  searchQuery.trim().length < PROFILE_SEARCH_MIN_QUERY_LENGTH
+                }
+                size="sm"
+              >
                 {isSearching ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (

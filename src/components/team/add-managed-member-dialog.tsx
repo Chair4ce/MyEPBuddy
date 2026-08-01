@@ -30,6 +30,7 @@ import {
   refreshCreditsAfterEarnAction,
 } from "@/lib/billing/refresh-earn-rewards";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
+import { searchProfileByEmail } from "@/lib/profile-directory";
 import { useCreditsStore } from "@/stores/credits-store";
 import { Loader2, UserPlus, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
@@ -215,11 +216,7 @@ export function AddManagedMemberDialog({
 
     try {
       // Check if a profile exists with this email
-      const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, rank")
-        .eq("email", email.toLowerCase())
-        .maybeSingle() as { data: { id: string; email: string | null; full_name: string | null; rank: string | null } | null };
+      const existingProfile = await searchProfileByEmail(supabase, email);
 
       if (existingProfile) {
         const match: ExistingUserMatch = {
