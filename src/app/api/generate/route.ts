@@ -18,6 +18,7 @@ import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { shouldRefundGenerateForEmptyResults } from "@/lib/generate-billing-contract";
 import {
   cacheBillableJson,
   createBillableRequestContext,
@@ -1723,7 +1724,7 @@ Rules:
     }
 
     // Never keep a credit when the model produced nothing usable
-    if (results.length === 0) {
+    if (shouldRefundGenerateForEmptyResults(results.length)) {
       return refundAndError(
         billableCtx,
         { error: "Failed to generate statements. Please try again." },
