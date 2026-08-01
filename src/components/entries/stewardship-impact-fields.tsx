@@ -9,6 +9,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { motionChip } from "@/lib/motion/classes";
 import {
   STEWARDSHIP_FIELD_MAX,
   STEWARDSHIP_HINTS,
@@ -116,7 +118,10 @@ export function StewardshipImpactFields({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex size-4 items-center justify-center justify-self-end rounded-sm text-muted-foreground/80 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-[0.98]"
+                    className={cn(
+                      "inline-flex size-4 items-center justify-center justify-self-end rounded-sm text-muted-foreground/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      motionChip
+                    )}
                     aria-label={`${field.label} guidance`}
                     aria-describedby={hintId}
                   >

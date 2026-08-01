@@ -1,0 +1,37 @@
+---
+description: House easing curves + motion/design tokens — never use default ease or one-off values
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+# Motion & Design Tokens (use these, never one-offs)
+
+The browser defaults (`ease`, `ease-in-out`, `linear` for movement) read as "AI slop." Never use them for UI motion. Pull every curve/duration/radius from the house set or an existing token. A curve 0.02 off feels subtly wrong — don't invent numbers.
+
+## House easing curves (canonical set in `src/app/globals.css`)
+
+| Name | Curve | Use for |
+|------|-------|---------|
+| smooth | `cubic-bezier(0.22, 1, 0.36, 1)` | default for almost everything |
+| out | `cubic-bezier(0.16, 1, 0.3, 1)` | decorative entrances / reveals |
+| out-strong | `cubic-bezier(0.23, 1, 0.32, 1)` | chevrons / snappy UI feedback |
+| spring | `cubic-bezier(0.34, 1.45, 0.64, 1)` | badges, number pops, light overshoot |
+| in-out close | `cubic-bezier(0.4, 0, 0.2, 1)` | symmetric / closing moves |
+
+Durations: fast `150ms`, normal `200ms`, slow `280ms`. List enter `240ms`. Chevron `160ms`. Radius: use the `@theme` vars `--radius-sm/md/lg/xl`.
+
+Frequent UI stays **under 300ms**.
+
+## Rules
+
+- Choose the tokens BEFORE building the component; reuse the same curve/duration across every state, hover, and dark variant.
+- No one-off `0.3s` timings or `13px` radii. Reuse existing `:root`/`@theme` vars in `src/app/globals.css` (`--ease-*`, `--duration-*`, `--reveal-*`, `--list-enter-*`, `--resize-*`, `--epb-resize-*`) and the `t-*` utility classes before adding new motion.
+- Apply curves via Tailwind arbitrary values or `@/lib/motion/classes` helpers.
+
+```tsx
+// ❌ BAD — generic default, one-off duration
+<div className="transition-all duration-300 ease-in-out" />
+
+// ✅ GOOD — house smooth curve, token duration, only animated props
+<div className="transition-transform duration-[var(--duration-normal)] ease-[var(--ease-smooth)]" />
+```

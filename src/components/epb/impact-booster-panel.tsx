@@ -11,6 +11,14 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
+  motionChevronOpen,
+  motionChip,
+  motionCollapseGrid,
+  motionListRow,
+  motionPressOnly,
+  motionSurfaceCard,
+} from "@/lib/motion/classes";
+import {
   hasImpactBoosterContent,
   impactBoosterDraftKey,
   impactStrengthBand,
@@ -260,9 +268,10 @@ export function ImpactBoosterPanel({
                 disabled={busy}
                 onClick={() => setActiveSentence(n)}
                 className={cn(
-                  "flex-1 h-7 px-2 rounded text-[11px] font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
+                  "flex-1 h-7 px-2 rounded text-[11px] font-medium",
+                  motionChip,
                   activeSentence === n
-                    ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_0.5px_rgba(0,0,0,0.08)]"
+                    ? cn("bg-background text-foreground", motionSurfaceCard)
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -403,7 +412,7 @@ export function ImpactBoosterPanel({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 text-xs px-2.5 active:scale-[0.98] transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            className={cn("h-7 text-xs px-2.5", motionPressOnly)}
             disabled={busy || !hasDraftInput}
             onClick={() => void handleSave()}
           >
@@ -504,9 +513,9 @@ export function ImpactBoosterPanel({
     <div
       className={cn(
         "rounded-lg border bg-background overflow-hidden",
-        "shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_0.5px_rgba(0,0,0,0.06)]",
-        showNewBadge &&
-          "border-primary/40 shadow-[0_1px_2px_color-mix(in_oklab,var(--primary)_10%,transparent),0_0_0_0.5px_color-mix(in_oklab,var(--primary)_40%,transparent)]"
+        showNewBadge
+          ? "border-primary/40 shadow-[0_1px_2px_color-mix(in_oklab,var(--primary)_10%,transparent),0_0_0_0.5px_color-mix(in_oklab,var(--primary)_40%,transparent)]"
+          : motionSurfaceCard
       )}
       data-epb-impact-booster
     >
@@ -517,8 +526,8 @@ export function ImpactBoosterPanel({
         aria-expanded={open}
         aria-controls={`${fieldPrefix}-impact-booster-body`}
         className={cn(
-          "w-full flex items-center gap-2 px-3 py-2 text-left",
-          "hover:bg-muted/40 active:scale-[0.99] transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          "w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/40",
+          motionListRow,
           "disabled:opacity-50 disabled:pointer-events-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         )}
@@ -526,7 +535,8 @@ export function ImpactBoosterPanel({
         {headerBits}
         <ChevronDown
           className={cn(
-            "ml-auto size-4 text-muted-foreground shrink-0 transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            "ml-auto size-4 text-muted-foreground shrink-0",
+            motionChevronOpen,
             open && "rotate-180"
           )}
           aria-hidden="true"
@@ -535,7 +545,7 @@ export function ImpactBoosterPanel({
 
       <div
         id={`${fieldPrefix}-impact-booster-body`}
-        className="t-collapse-grid"
+        className={motionCollapseGrid}
         data-open={open ? "true" : "false"}
       >
         <div>{body}</div>

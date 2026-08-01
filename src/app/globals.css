@@ -358,7 +358,7 @@
 .t-collapse-grid {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-rows var(--duration-normal) var(--ease-smooth);
 }
 
 .t-collapse-grid[data-open="true"] {
@@ -378,6 +378,168 @@
 @media (prefers-reduced-motion: reduce) {
   .t-collapse-grid {
     transition: none !important;
+  }
+}
+
+/* ── House motion tokens — canonical set (see src/lib/motion/tokens.ts) ──── */
+:root {
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Strong ease-out for chevrons / snappy UI feedback */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --ease-close: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 280ms;
+
+  /* List / tab panel entrances — UI stays under 300ms */
+  --list-enter-dur: 240ms;
+  --list-enter-stagger: 40ms;
+
+  /* Chevron / caret rotation */
+  --chevron-dur: 160ms;
+  --chevron-ease: var(--ease-out-strong);
+
+  /* Blur + rise entrance */
+  --reveal-dur: var(--duration-slow);
+  --reveal-rise: 6px;
+  --reveal-blur: 2px;
+
+  /* Press feedback — MyEPBuddy product scale (not PeriDocs 0.99) */
+  --press-scale: 0.98;
+
+  --shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.02),
+    0 0 0 0.5px rgba(0, 0, 0, 0.08);
+
+  /* Menus/popovers sit on cards — need real lift plus a clearer hairline
+     than --shadow-card, or they read as flat chrome. */
+  --shadow-elevated:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 4px 8px rgba(0, 0, 0, 0.06),
+    0 12px 28px rgba(0, 0, 0, 0.10),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 0 0 0.5px rgba(0, 0, 0, 0.14);
+}
+
+.dark {
+  --shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06);
+
+  --shadow-elevated:
+    0 4px 8px rgba(0, 0, 0, 0.18),
+    0 8px 12px rgba(0, 0, 0, 0.14),
+    0 2px 4px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 0 0 0.5px rgba(255, 255, 255, 0.08);
+}
+
+/*
+ * ── Press ────────────────────────────────────────────────────────────────
+ * Owns the active transform only. Timing comes from the Tailwind
+ * `transition-*` utilities inside `motionPressable` / `motionChip` /
+ * `motionListRow`, so composing this with another transition utility never
+ * silently drops the caller's transition-property.
+ */
+.t-press:active:not(:disabled):not([data-disabled]) {
+  transform: scale(var(--press-scale));
+}
+
+/* ── Layered-light surfaces ─────────────────────────────────────────────── */
+.t-shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.t-shadow-elevated {
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ── Content entrances (blur + rise — replaces tw animate-in) ───────────── */
+@keyframes t-enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--t-enter-y, var(--reveal-rise)))
+      translateX(var(--t-enter-x, 0))
+      scale(var(--t-enter-scale, 1));
+    filter: blur(var(--reveal-blur));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes t-enter-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.t-enter,
+.t-enter-from-top,
+.t-enter-from-right,
+.t-enter-from-left,
+.t-enter-from-bottom,
+.t-enter-zoom,
+.t-enter-zoom-sm {
+  animation: t-enter-rise var(--reveal-dur) var(--ease-out) both;
+}
+
+.t-enter-fade {
+  animation: t-enter-fade var(--duration-normal) var(--ease-smooth) both;
+}
+
+.t-enter-from-top { --t-enter-y: -0.5rem; }
+.t-enter-from-right { --t-enter-x: 0.5rem; }
+.t-enter-from-left { --t-enter-x: -0.5rem; }
+.t-enter-from-bottom { --t-enter-y: 0.5rem; }
+.t-enter-zoom { --t-enter-scale: 0.95; animation-timing-function: var(--ease-spring); }
+.t-enter-zoom-sm { --t-enter-scale: 0.5; animation-timing-function: var(--ease-spring); }
+
+.t-enter-dur-fast { animation-duration: var(--duration-fast); }
+.t-enter-dur-normal { animation-duration: var(--duration-normal); }
+.t-enter-dur-slow { animation-duration: var(--duration-slow); }
+.t-enter-dur-list { animation-duration: var(--list-enter-dur); }
+
+/*
+ * Mobile / coarse pointers: list entrances stay snappy without paying blur
+ * paint cost across long rows. Desktop fine pointers keep blur + rise.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .t-enter.t-enter-dur-list,
+  .t-enter-from-top.t-enter-dur-list,
+  .t-enter-from-bottom.t-enter-dur-list {
+    animation-name: t-enter-fade;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-press:active:not(:disabled):not([data-disabled]) {
+    transform: none;
+  }
+
+  .t-enter,
+  .t-enter-fade,
+  .t-enter-from-top,
+  .t-enter-from-right,
+  .t-enter-from-left,
+  .t-enter-from-bottom,
+  .t-enter-zoom,
+  .t-enter-zoom-sm {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
 }
 

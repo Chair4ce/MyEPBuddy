@@ -28,6 +28,14 @@ import { toast } from "@/components/ui/sonner";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { cn } from "@/lib/utils";
 import {
+  motionChip,
+  motionEnter,
+  motionEnterDurList,
+  motionListEnterStagger,
+  motionPressOnly,
+  motionSurfaceCard,
+} from "@/lib/motion/classes";
+import {
   ENTRY_MGAS,
   getActiveCycleYear,
   getCycleRangeLabelForYear,
@@ -542,7 +550,10 @@ export function FuseToEpbDialog({
                     {accomplishments.map((a) => (
                       <li
                         key={a.id}
-                        className="rounded-lg border bg-background px-3.5 py-3 shadow-[0_0_0_0.5px_rgba(0,0,0,0.06)]"
+                        className={cn(
+                          "rounded-lg border bg-background px-3.5 py-3",
+                          motionSurfaceCard
+                        )}
                       >
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
                           <p className="text-sm font-semibold leading-none">
@@ -614,9 +625,10 @@ export function FuseToEpbDialog({
                             key={num}
                             type="button"
                             onClick={() => setSentenceCount(num)}
+                            aria-pressed={sentenceCount === num}
                             className={cn(
-                              "h-11 rounded-lg border text-sm font-medium transition-colors active:scale-[0.98]",
-                              "duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                              "h-11 rounded-lg border text-sm font-medium",
+                              motionChip,
                               sentenceCount === num
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : "bg-muted/40 hover:bg-muted"
@@ -642,7 +654,7 @@ export function FuseToEpbDialog({
               </Button>
               <Button
                 onClick={handleGenerate}
-                className="h-10 px-5 active:scale-[0.98]"
+                className={cn("h-10 px-5", motionPressOnly)}
               >
                 <Sparkles className="size-4 mr-2" />
                 Generate {VERSION_COUNT} versions
@@ -691,7 +703,13 @@ export function FuseToEpbDialog({
                   return (
                     <div
                       key={`fuse-${statement.slice(0, 48)}-${statement.length}`}
-                      className="space-y-3 rounded-xl border bg-background p-5 shadow-[0_0_0_0.5px_rgba(0,0,0,0.06)]"
+                      className={cn(
+                        "space-y-3 rounded-xl border bg-background p-5",
+                        motionSurfaceCard,
+                        motionEnter,
+                        motionEnterDurList
+                      )}
+                      style={motionListEnterStagger(index)}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <Badge variant="secondary" className="text-xs">
@@ -713,7 +731,7 @@ export function FuseToEpbDialog({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-9 px-3 active:scale-[0.98]"
+                            className={cn("h-9 px-3", motionPressOnly)}
                             disabled={saving || isSending}
                             onClick={() => handleSaveAsExample(statement)}
                           >
@@ -726,7 +744,7 @@ export function FuseToEpbDialog({
                           </Button>
                           <Button
                             size="sm"
-                            className="h-9 px-3 active:scale-[0.98]"
+                            className={cn("h-9 px-3", motionPressOnly)}
                             disabled={isSending || saving}
                             onClick={() => handleUseOnMpa(statement)}
                           >
@@ -808,7 +826,7 @@ export function FuseToEpbDialog({
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
-                  className="h-10 px-5 active:scale-[0.98]"
+                  className={cn("h-10 px-5", motionPressOnly)}
                   disabled={isSending}
                   onClick={() => handleSaveAsExample(pendingStatement)}
                 >
@@ -816,7 +834,7 @@ export function FuseToEpbDialog({
                   Save as example instead
                 </Button>
                 <Button
-                  className="h-10 px-5 active:scale-[0.98]"
+                  className={cn("h-10 px-5", motionPressOnly)}
                   disabled={isSending}
                   onClick={() => replaceMpaWithStatement(pendingStatement)}
                 >
@@ -875,7 +893,7 @@ export function FuseToEpbDialog({
               <Button
                 onClick={handleCreateShellAndContinue}
                 disabled={isCreatingShell}
-                className="h-10 px-5 active:scale-[0.98]"
+                className={cn("h-10 px-5", motionPressOnly)}
               >
                 {isCreatingShell ? (
                   <Loader2 className="size-4 animate-spin mr-2" />

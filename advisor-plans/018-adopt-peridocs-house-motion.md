@@ -10,6 +10,7 @@
 
 ## Status
 
+- **State**: DONE (2026-08-01) — Phase A + B + C shipped
 - **Priority**: P1
 - **Effort**: L (phased — Phase A+B must ship; Phase C optional in same PR)
 - **Risk**: MED
@@ -177,12 +178,20 @@ Manual: `/entries` Fuse dialog open/close + Generate button press feel; `/epb` I
 
 ## Done criteria
 
-- [ ] 7 motion rules in `.cursor/rules/`
-- [ ] CSS vars + `t-press` / enter / shadow utilities present with reduced-motion guards
-- [ ] `@/lib/motion/classes` imported by pilot components
-- [ ] `scripts/check-house-motion.mjs` exists; pilot paths clean
-- [ ] `tsc` + new unit tests pass
-- [ ] README 018 → DONE
+- [x] 7 motion rules in `.cursor/rules/`
+- [x] CSS vars + `t-press` / enter / shadow utilities present with reduced-motion guards
+- [x] `@/lib/motion/classes` imported by pilot components
+- [x] `scripts/check-house-motion.mjs` exists; pilot paths clean
+- [x] `tsc` + new unit tests pass
+- [x] README 018 → DONE
+
+## Execution notes (2026-08-01)
+
+- **Press scale is 0.98**, driven by `--press-scale` in `src/app/globals.css`; `motion-tokens.test.ts` asserts it never drifts back to PeriDocs' 0.99.
+- **Cascade fix vs. the PeriDocs original**: MyEPBuddy's `t-*` utilities are unlayered (matching the existing `t-collapse-grid` / `t-resize` convention), so a shorthand `transition` on `.t-press` would have silently overridden any Tailwind `transition-*` on the same element. `.t-press` therefore declares only the `:active` transform; timing lives in the `motionPressable` class string. `motionPressOnly` exists for shadcn `<Button>`, whose base variant already carries `transition-all` — composing the full helper there would let `cn()` drop the button's hover transition.
+- **Checker is incremental**: `ENFORCED_PATHS` (exit 1) currently holds only the four Phase B pilots; everything else reports as advisory backlog and exits 0. `--strict` fails on any hit. `src/components/ui/`, `mpa-section-card.tsx`, and `sentence-drop-overlay.tsx` are ignored outright.
+- **Sacred surfaces untouched**: no edit to `mpa-section-card.tsx`, `SentenceDropOverlay`, DnD sensors, split-view layout, or the `animate-elevator-*` / `epb-t-resize` timings.
+- Phase C migrated only the revise-panel subtree of `duty-description-card.tsx`; the card's own `transition-all duration-300 ease-in-out` was left alone because tailwind-merge already lets the zen-mode `transition-[filter,opacity]` class win, and swapping it risks the zen blur.
 
 ## STOP conditions
 

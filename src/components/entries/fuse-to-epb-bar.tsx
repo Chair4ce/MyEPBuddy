@@ -5,6 +5,12 @@ import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  motionEnter,
+  motionEnterDurNormal,
+  motionPressOnly,
+  motionSurfaceElevated,
+} from "@/lib/motion/classes";
 import { Sparkles, X } from "lucide-react";
 
 const emptySubscribe = () => () => {};
@@ -39,7 +45,9 @@ export function FuseToEpbBar({
       <div
         className={cn(
           "flex items-center gap-3 rounded-xl bg-background/95 px-3 py-2.5 backdrop-blur-sm",
-          "shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_24px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.08)]"
+          motionSurfaceElevated,
+          motionEnter,
+          motionEnterDurNormal
         )}
       >
         <Badge variant="secondary" className="tabular-nums shrink-0">
@@ -49,7 +57,7 @@ export function FuseToEpbBar({
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 active:scale-[0.98]"
+          className={cn("h-8", motionPressOnly)}
           onClick={onClear}
           aria-label="Clear selection"
         >
@@ -58,7 +66,7 @@ export function FuseToEpbBar({
         </Button>
         <Button
           size="sm"
-          className="h-8 active:scale-[0.98]"
+          className={cn("h-8", motionPressOnly)}
           disabled={!canFuse}
           onClick={onFuse}
           aria-label="Generate EPB statement from selected accomplishments"

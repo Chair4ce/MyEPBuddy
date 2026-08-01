@@ -1,0 +1,29 @@
+---
+description: Draggable UI uses real physics (velocity, momentum, soft bounds) and magnetic snap points
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+# Physics & Snap Points for Draggable UI
+
+A timed fade/slide on a drag handle feels dead. Anything draggable (sliders, sheets, handles, reorderable rows) gets real physics so it feels like a physical object, not a web input:
+
+1. **Velocity tracking** — smooth pointer speed over time so a flick carries weight.
+2. **Momentum on release** — keep gliding and decelerate to rest, like sliding something across a table. Don't stop dead on pointer-up.
+3. **Soft boundaries** — at the edge, stretch a little and spring back; never hard-stop. This is the difference between "web slider" and "iOS."
+
+For values that can't use a fixed duration (counters, live numbers, drag-follow position), use a **spring** (tune stiffness / damping / mass), not `transition: x 200ms`.
+
+## Magnetic snap points (free haptics)
+
+As the handle nears a meaningful value (preset, boundary), magnetize to it using a **two-zone** system:
+
+- a **tight pull-in zone** to snap in
+- a **larger release zone** to break free — you have to mean it to leave
+- pulse/flash the label when it catches for a micro-flash of feedback
+
+Drive drag position with `transform` only (see `motion-a11y-perf`), and collapse momentum/snap to instant under `prefers-reduced-motion`.
+
+## Sacred surface
+
+EPB **sentence drag-and-drop** and the MPA **split view** in `src/components/epb/mpa-section-card.tsx` are locked. Do not retrofit physics, snap zones, or new transitions onto those sensors, drop overlays, or the split-view layout without explicit approval.

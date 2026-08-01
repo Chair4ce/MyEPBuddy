@@ -1,0 +1,26 @@
+---
+description: Depth is layered light — stacked low-opacity shadows + a hairline ring, never one drop shadow or a 1px border
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+# Shadows = Layered Light
+
+One flat single-blur drop shadow is an instant "sticker" tell. Physical objects cast several shadows at once, so real depth is the sum of many faint layers plus a hairline ring instead of a border.
+
+Rules:
+
+- **Hairline ring, not a border.** Define the edge with light (`0 0 0 0.5px rgba(0,0,0,0.08)`), not a 1px stroke. This is the single biggest hand-made-UI tell.
+- **Tiny opacities (~2–8%).** Heavy/dark shadows look cheap.
+- **Stack several blurs** at different sizes: a tight contact shadow + a wide soft ambient.
+- Animate the whole stack on hover — but cheaply, and never across long lists (see `motion-a11y-perf`).
+
+```css
+/* everyday card */
+box-shadow:
+  0 1px 2px rgba(0, 0, 0, 0.05),   /* contact */
+  0 2px 4px rgba(0, 0, 0, 0.02),   /* soft spread */
+  0 0 0 0.5px rgba(0, 0, 0, 0.08); /* hairline ring */
+```
+
+Use the shared tokens in `src/app/globals.css` — `--shadow-card` / `--shadow-elevated` (both have dark-mode overrides) — via `motionSurfaceCard` / `motionSurfaceElevated` from `@/lib/motion/classes` rather than pasting a new `shadow-[...]` stack. Prefer a shared token + ring over `border` for elevated cards, modals, and popovers.

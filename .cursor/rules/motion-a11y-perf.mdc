@@ -1,0 +1,32 @@
+---
+description: Every animation honors prefers-reduced-motion; animate transform/opacity (not heavy props) on large surfaces
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+# Motion Accessibility & Performance
+
+Polish includes the people who prefer less motion — and 60fps. It is not optional.
+
+## Honor reduced motion everywhere
+
+Every animation/transition you add must collapse to instant under reduced motion, and decorative loops must stop entirely:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .your-anim { animation: none !important; transition: none !important; }
+}
+```
+
+Every keyframe block in `src/app/globals.css` pairs with a reduced-motion guard — match that pattern for anything new. In TSX, `motion-reduce:animate-none` / `motion-reduce:transition-none` is the Tailwind equivalent; the `motionEnter*` helpers in `@/lib/motion/classes` already include it.
+
+## Favor cheap properties
+
+For anything on long lists or large surfaces, animate only `transform` and `opacity`. Heavy effects — shadow stacks, height reveals, blur, `filter` — are worth it in small, deliberate moments, but never animate them across many rows or full-bleed surfaces. Use `will-change` only on the specific elements that actually move, and remove it when idle.
+
+## Density-aware (Mobile / Tablet / Desktop)
+
+- **Coarse + no-hover (phones):** `.t-enter-dur-list` drops to opacity-only (`t-enter-fade`) — see `src/app/globals.css`. Keep stagger ≤40ms; skip re-entrance on filter-only updates.
+- **Tablet:** same tokens; light blur OK on single-panel entrances.
+- **Desktop fine pointers:** full blur+rise kit; gate decorative `:hover` scale under `@media (hover: hover) and (pointer: fine)`.
+- Also honor `shouldEnableRichMotion()` from `@/lib/motion/should-enable-rich-motion` for continuous/decorative motion.

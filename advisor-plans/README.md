@@ -224,7 +224,7 @@ Port PeriDocs motion rules, CSS tokens, `@/lib/motion/classes`, and `check-house
 
 | Plan | Title | Priority | Effort | Status |
 |------|-------|----------|--------|--------|
-| 018  | Adopt PeriDocs house motion into MyEPBuddy | P1 | L | PINNED (careful walkthrough) |
+| 018  | Adopt PeriDocs house motion into MyEPBuddy | P1 | L | DONE |
 
 Press scale for MyEPBuddy remains **0.98** (product rule), not PeriDocs 0.99. Skip PeriDocs marketing/Figma modules.
 
@@ -247,7 +247,7 @@ Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` betw
 | 013 | DONE | `consume_credit` RPC errors → `serviceError` |
 | 012 | DONE | EPB/Fuse/`adapt-sentence`/`assess-epb` → `billableFetch` (DnD logic untouched) |
 | 017 | DONE | `generate-billing-contract` helper + characterization tests |
-| 018 | **PINNED** | Large motion port — walk carefully |
+| 018 | DONE | Phase A: 7 `.cursor/rules/motion-*.mdc`, house tokens + `t-press`/`t-enter*`/`t-shadow-*` in `globals.css`, `src/lib/motion/{tokens,classes,should-enable-rich-motion}.ts`, `scripts/check-house-motion.mjs` (`npm run motion:check`). Phase B pilots: Fuse bar/dialog, stewardship fields, Impact Booster panel. Phase C: duty-description revise panel entrances. Press scale **0.98**; `mpa-section-card` split view + sentence DnD untouched |
 | 015 | DONE | Migration `202` + admin-client analytics insert |
 | 019 | DONE | Managed generate → `team_member_id` + supervisor `ratee_id`; insert errors logged |
 | 020 | DONE | Already pure outside updater (mpa + duty-description); no DnD touch |
@@ -260,7 +260,7 @@ Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` betw
 | 009 | DONE | Shared EPB shell create helper |
 | 010 | DONE | Payload helper extracted + tested |
 
-**Still TODO / pin next walkthrough:** 018. Do not touch EPB split view or sentence DnD unless explicitly approved.
+**Still TODO / pin next walkthrough:** none — all plans 001–020 are DONE. Follow-up (new plan needed): clear the ~60 advisory hits `npm run motion:check` still reports across award / decoration / team / onboarding surfaces, then add each migrated file to `ENFORCED_PATHS` in `scripts/check-house-motion.mjs`. Do not touch EPB split view or sentence DnD unless explicitly approved.
 
 ### Considered and rejected (F–H)
 

@@ -14,6 +14,14 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
+import {
+  motionChip,
+  motionEnter,
+  motionEnterDurList,
+  motionEnterDurSlow,
+  motionEnterFade,
+  motionListEnterStagger,
+} from "@/lib/motion/classes";
 import { MAX_DUTY_DESCRIPTION_CHARACTERS } from "@/lib/constants";
 import {
   Copy,
@@ -1010,7 +1018,9 @@ export function DutyDescriptionCard({
               <div
                 ref={revisePanelRef}
                 className={cn(
-                  "rounded-lg border bg-muted/30 p-4 sm:p-5 space-y-4 sm:space-y-5 animate-in fade-in-0 duration-300",
+                  "rounded-lg border bg-muted/30 p-4 sm:p-5 space-y-4 sm:space-y-5",
+                  motionEnterFade,
+                  motionEnterDurSlow,
                   isUseThisClosing && "pointer-events-none"
                 )}
               >
@@ -1053,7 +1063,10 @@ export function DutyDescriptionCard({
                 <button type="button"
                   onClick={handleRevise}
                   disabled={isRevising || !localText.trim()}
-                  className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
+                  className={cn(
+                    "flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none",
+                    motionChip
+                  )}
                 >
                   {isRevising ? (
                     <Loader2 className="size-4 animate-spin mr-2" />
@@ -1073,7 +1086,11 @@ export function DutyDescriptionCard({
               >
                 <div
                   ref={generatedRevisionsResultsRef}
-                  className="space-y-4 pt-4 border-t animate-in fade-in-0 duration-300"
+                  className={cn(
+                    "space-y-4 pt-4 border-t",
+                    motionEnterFade,
+                    motionEnterDurSlow
+                  )}
                 >
                   <h5 className="text-xs font-medium text-muted-foreground">
                     Revisions ({generatedRevisions.length})
@@ -1116,8 +1133,12 @@ export function DutyDescriptionCard({
                     <div
                       key={`rev-${version.slice(0, 48)}-${version.length}`}
                       data-epb-revision-item
-                      className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
-                      style={{ animationDelay: `${index * 100}ms` }}
+                      className={cn(
+                        "p-4 rounded-lg border bg-background space-y-2.5",
+                        motionEnter,
+                        motionEnterDurList
+                      )}
+                      style={motionListEnterStagger(index)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">

@@ -1,0 +1,32 @@
+---
+description: Entrances blur in (never a plain fade); every interactive element is tactile on press
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+# Entrances & Tactile Feedback
+
+## Entrances = fade + rise + a blur that clears
+
+A plain opacity fade is the least premium entrance. Combine three things on the smooth curve so content focuses into place instead of flicking on:
+
+- opacity `0 → 1`
+- translateY `6px → 0`
+- filter `blur(2px) → blur(0)`
+- ~280ms on `cubic-bezier(0.22, 1, 0.36, 1)`
+
+Reuse the existing tokens/patterns rather than reinventing: `--reveal-blur` (`2px`), `--reveal-rise`, `--reveal-dur`, and the `t-enter*` utilities in `src/app/globals.css`. In TSX prefer `cn(motionEnter, motionEnterDurNormal)` from `@/lib/motion/classes` over `animate-in fade-in-0 slide-in-from-*`.
+
+## Press should be felt
+
+Every clickable element (buttons, chips, tabs, footer rows) scales down slightly when pressed — firm, not a collapse. **MyEPBuddy press scale is `0.98`.**
+
+```css
+.button:active { transform: scale(0.98); } /* 0.98, never 0.90 */
+```
+
+Use `motionPressable` (`t-press`) instead of hand-writing `active:scale-[0.98] transition-transform duration-150`. `t-press` already skips `:disabled` / `[data-disabled]` and collapses under reduced motion.
+
+Tooltips/popovers **fade + lift 4px + clear a 2px blur** — never an instant pop-in. Leave Radix Dialog/Popover chrome in `src/components/ui/` alone unless you are intentionally migrating the primitive.
+
+Always pair new motion with a `prefers-reduced-motion` guard (see `motion-a11y-perf`).

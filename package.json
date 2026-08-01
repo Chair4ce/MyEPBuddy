@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "motion:check": "node scripts/check-house-motion.mjs",
     "version:generate": "node scripts/generate-version.js",
     "db:push:local": "supabase db push --local",
     "db:push:remote": "supabase db push",

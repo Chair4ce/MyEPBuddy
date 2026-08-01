@@ -1,0 +1,29 @@
+---
+description: Animate expand/collapse with grid-template-rows 0fr→1fr (no max-height hacks); use FLIP for cross-layout moves
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+# Reveal Height & Cross-Layout Moves
+
+## Expand / collapse
+
+Never animate `max-height: 9999px` — it's jittery and times wrong. Animate CSS grid rows so it resolves to the content's real height:
+
+```css
+.reveal { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-normal) var(--ease-smooth); }
+.reveal[data-open="true"] { grid-template-rows: 1fr; }
+.reveal > * { overflow: hidden; }
+```
+
+The `t-collapse-grid` utility in `src/app/globals.css` already does exactly this (with reduced-motion handling and an `overflow: visible` escape once open so nested buttons stay clickable) — reuse it via `motionCollapseGrid` from `@/lib/motion/classes` instead of writing a new one.
+
+MyEPBuddy's `t-collapse-grid` is driven by **`data-open="true" | "false"`**, not Radix `data-state`. Impact Booster (`src/components/epb/impact-booster-panel.tsx`) is the reference call site.
+
+## Elements that move between containers
+
+Use **FLIP** (First → Last → Invert → Play): measure where it starts, measure where it ends, jump it back to the start visually with a `transform`, then animate the transform to zero. Two position measurements, impossibly smooth. Drive the motion with `transform` only.
+
+## Sacred surfaces
+
+Do **not** re-motion the EPB MPA split view or sentence drag-and-drop in `src/components/epb/mpa-section-card.tsx` (elevator animations, `SentenceDropOverlay`, DnD sensors). Those keep their bespoke `epb-t-resize` / `animate-elevator-*` timings.

@@ -1,0 +1,57 @@
+---
+description: House motion tokens — use @/lib/motion/classes helpers in feature code
+alwaysApply: true
+---
+
+# Motion consistency
+
+Use shared helpers from `@/lib/motion/classes` instead of one-off Tailwind motion classes in feature code (`src/components/`, `src/app/`).
+
+## Do
+
+- Import the right helper: `motionPressable`, `motionTransitionInteractive`, `motionTransitionColors`, `motionListRow`, `motionChip`, `motionChevronOpen`, `motionCollapseGrid`, `motionSurfaceCard`, `motionSurfaceElevated`, `motionInputFocus`, `motionProgressIndicator`, `motionLinkHover`
+- Compose with `cn()` alongside layout/state classes
+- Run `npm run motion:check` (`node scripts/check-house-motion.mjs`) before shipping UI changes
+
+## Entrances
+
+Use `motionEnter*` helpers — **not** `animate-in` / tw-animate-css entrance utilities.
+
+| Pattern | Helper |
+|---------|--------|
+| Default blur + rise | `cn(motionEnter, motionEnterDurNormal)` |
+| Opacity-only (status text) | `motionEnterFade` |
+| From top / right / left / bottom | `motionEnterFromTop`, `motionEnterFromRight`, `motionEnterFromLeft`, `motionEnterFromBottom` |
+| Zoom pop (checkmarks) | `cn(motionEnterZoom, motionEnterDurNormal)` |
+| Small zoom (icons) | `cn(motionEnterZoomSm, motionEnterDurSlow)` |
+
+Compose duration modifiers: `motionEnterDurFast`, `motionEnterDurNormal`, `motionEnterDurSlow`, `motionEnterDurList` (240ms).
+
+List row stagger: `style={motionListEnterStagger(index)}` — only on first paint / newly added rows.
+
+Expand/collapse: `motionCollapseGrid` (`t-collapse-grid`) with `data-open="true" | "false"`.
+
+## Press
+
+MyEPBuddy press scale is **0.98** (`t-press`). Do not hand-write `active:scale-[0.98]` or copy PeriDocs' `0.99`.
+
+## Keep (MyEPBuddy-specific — do not replace with PeriDocs equivalents)
+
+- `t-collapse-grid` (`data-open` driven), `t-resize`, `epb-t-resize`
+- `animate-elevator-*` split-view transitions and `animate-pulse-highlight`
+- Any bespoke motion inside `src/components/epb/mpa-section-card.tsx`
+
+## Don't
+
+- `animate-in fade-in slide-in-*` — use `motionEnter*` helpers above
+- `active:scale-95` / `active:scale-100` / hand-written `active:scale-[0.98]` — use `motionPressable`
+- `transition-all duration-150|200|300` on interactive surfaces — use `motionTransitionInteractive` or a domain helper
+- `duration-300 ease-in-out` — use `--duration-*` + `--ease-*` tokens
+- Invent new easing curves or durations outside `src/app/globals.css` tokens
+- Port PeriDocs marketing / WebGL / Figma-inspector motion into this repo
+
+## Sacred surfaces (STOP)
+
+Never restyle, re-time, or refactor the EPB **MPA split view** or **sentence drag-and-drop** in `src/components/epb/mpa-section-card.tsx` (including `SentenceDropOverlay` and DnD sensors) as part of a motion migration. Skip the file.
+
+Radix primitives in `src/components/ui/` keep their built-in `data-[state]` animations — migrate them deliberately, not as a side effect of a feature change.
