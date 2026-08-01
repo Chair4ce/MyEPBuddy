@@ -81,5 +81,31 @@ describe("checkAndTrackUsage", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.insufficientCredits).toBe(true);
+    expect(result.serviceError).toBeFalsy();
+  });
+
+  it("fail-closes as serviceError when consume_credit RPC errors", async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: "connection timeout" },
+    });
+
+    const result = await checkAndTrackUsage(
+      "user-1",
+      "generate",
+      "gemini-2.5-flash-lite",
+      null,
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.serviceError).toBe(true);
+    expect(result.insufficientCredits).toBeFalsy();
+    expect(mockRpc).toHaveBeenCalledWith(
+      "consume_credit",
+      expect.objectContaining({
+        p_user_id: "user-1",
+        p_action_type: "generate",
+      }),
+    );
   });
 });

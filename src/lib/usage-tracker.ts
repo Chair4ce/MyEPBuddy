@@ -132,8 +132,7 @@ export async function checkAndTrackUsage(
       allowed: false,
       usingDefaultKey: true,
       effectiveModel,
-      insufficientCredits: true,
-      creditsRemaining: 0,
+      serviceError: true,
     };
   }
 

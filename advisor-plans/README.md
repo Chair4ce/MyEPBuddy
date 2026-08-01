@@ -207,7 +207,7 @@ React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” mi
 | # | Finding | Plan | Priority | Effort | Status |
 |---|---------|------|----------|--------|--------|
 | 2 | EPB/Fuse raw `fetch` skips Idempotency-Key | 012 | P1 | S | TODO |
-| 3 | `consume_credit` RPC errors mislabeled as insufficient credits | 013 | P1 | S | TODO |
+| 3 | `consume_credit` RPC errors mislabeled as insufficient credits | 013 | P1 | S | DONE |
 | 8 | No generate billing contract tests (1 credit / refund empty) | 017 | P1 | M | TODO |
 | 9 | Managed-member history FK silent fail | 019 | P2 | M | TODO |
 | 10 | Impure `setState` in revision history | 020 | P2 | S | TODO |
