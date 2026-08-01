@@ -193,8 +193,8 @@ React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” mi
 |---|---------|------|----------|--------|--------|
 | 1 | `profiles.role` self-escalation via own-row UPDATE | 011 | P1 | M | DONE |
 | 4 | Caller-controlled `p_burst_limit` on `consume_credit` | 014 | P1 | S | DONE |
-| 5 | `analytics_events` INSERT `WITH CHECK (true)` | 015 | P2 | S | TODO |
-| 6–7 | World-readable profiles SELECT + unsupervised teams INSERT | 016 | P1 | M | TODO |
+| 5 | `analytics_events` INSERT `WITH CHECK (true)` | 015 | P2 | S | DONE |
+| 6–7 | World-readable profiles SELECT + unsupervised teams INSERT | 016 | P1 | M | PINNED (careful walkthrough) |
 
 ### Execution order
 
@@ -209,8 +209,8 @@ React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” mi
 | 2 | EPB/Fuse raw `fetch` skips Idempotency-Key | 012 | P1 | S | DONE |
 | 3 | `consume_credit` RPC errors mislabeled as insufficient credits | 013 | P1 | S | DONE |
 | 8 | No generate billing contract tests (1 credit / refund empty) | 017 | P1 | M | DONE |
-| 9 | Managed-member history FK silent fail | 019 | P2 | M | TODO |
-| 10 | Impure `setState` in revision history | 020 | P2 | S | TODO |
+| 9 | Managed-member history FK silent fail | 019 | P2 | M | PINNED (careful walkthrough) |
+| 10 | Impure `setState` in revision history | 020 | P2 | S | PINNED (touches mpa-section-card) |
 
 ### Execution order
 
@@ -224,7 +224,7 @@ Port PeriDocs motion rules, CSS tokens, `@/lib/motion/classes`, and `check-house
 
 | Plan | Title | Priority | Effort | Status |
 |------|-------|----------|--------|--------|
-| 018  | Adopt PeriDocs house motion into MyEPBuddy | P1 | L | TODO |
+| 018  | Adopt PeriDocs house motion into MyEPBuddy | P1 | L | PINNED (careful walkthrough) |
 
 Press scale for MyEPBuddy remains **0.98** (product rule), not PeriDocs 0.99. Skip PeriDocs marketing/Figma modules.
 

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 interface AnalyticsEvent {
@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
     // Sanitize properties - remove any potentially sensitive data patterns
     const sanitizedProperties = sanitizeProperties(body.properties || {});
     
-    // Insert event
-    // Note: Type assertion needed until migration is run and types regenerated
-    const { error } = await supabase.from("analytics_events" as never).insert({
+    // Insert via service role — authenticated INSERT RLS is revoked (migration 202)
+    const admin = createAdminClient();
+    const { error } = await admin.from("analytics_events" as never).insert({
       user_id: user?.id || null,
       session_id: body.session_id,
       event_name: body.event_name,
