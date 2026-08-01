@@ -43,8 +43,9 @@ export default function BillingTermsPage() {
             subscription.
           </li>
           <li>
-            <strong>Purchased tokens</strong> — available in packages starting
-            at $1 for 100 tokens. Purchased tokens never expire.
+            <strong>Purchased tokens</strong> — sold in increments of 100
+            tokens for $1 each (buy any multiple). Purchased tokens never
+            expire.
           </li>
         </ul>
         <p>
@@ -58,8 +59,8 @@ export default function BillingTermsPage() {
         <h2>3. Fee Disclosure</h2>
         <div className="bg-muted/50 border rounded-lg p-4 not-prose text-sm space-y-2">
           <p>
-            <strong>Current starter package:</strong> $1.00 USD for 100 AI tokens
-            (one-time payment).
+            <strong>Current pricing:</strong> $1.00 USD per 100 AI tokens
+            (one-time payment; purchase any multiple of 100).
           </p>
           <p>
             Prices include My EPBuddy&apos;s cost to operate the default AI

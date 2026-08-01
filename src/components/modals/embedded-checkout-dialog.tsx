@@ -30,9 +30,11 @@ export function EmbeddedCheckoutDialog() {
     embeddedCheckoutError,
     closeEmbeddedCheckout,
     openEmbeddedCheckout,
+    purchasePacks,
   } = useCreditsStore();
 
   const [completed, setCompleted] = useState(false);
+  const purchasedTokens = purchasePacks * PURCHASE_CREDITS;
 
   function handleOpenChange(open: boolean) {
     if (!open) {
@@ -55,9 +57,12 @@ export function EmbeddedCheckoutDialog() {
       >
         {/* Title/description are screen-reader only — the drawer already
             explains the package; this modal is just the payment surface. */}
-        <DialogTitle className="sr-only">Buy {PURCHASE_CREDITS} AI calls</DialogTitle>
+        <DialogTitle className="sr-only">
+          Buy {purchasedTokens.toLocaleString()} AI tokens
+        </DialogTitle>
         <DialogDescription className="sr-only">
-          Secure Stripe checkout for purchasing AI calls.
+          Secure Stripe checkout for purchasing AI tokens. You can also adjust
+          quantity inside Stripe checkout.
         </DialogDescription>
 
         {completed ? (
@@ -66,8 +71,8 @@ export function EmbeddedCheckoutDialog() {
             <div className="space-y-1">
               <p className="font-medium">Thanks for your purchase!</p>
               <p className="text-sm text-muted-foreground">
-                Your {PURCHASE_CREDITS} AI calls are on the way and will appear
-                in your balance momentarily.
+                Your tokens are on the way and will appear in your balance
+                momentarily.
               </p>
             </div>
             <Button className="mt-2" onClick={() => handleOpenChange(false)}>
@@ -98,7 +103,7 @@ export function EmbeddedCheckoutDialog() {
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => void openEmbeddedCheckout()}>
+              <Button onClick={() => void openEmbeddedCheckout(purchasePacks)}>
                 Try again
               </Button>
             </div>

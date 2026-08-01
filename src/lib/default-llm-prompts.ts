@@ -3,8 +3,10 @@
  * Users may customize via user_llm_settings; generation always prefers their saved values when non-empty.
  */
 
+import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
+
 /** Bump when DEFAULT_EPB_SYSTEM_PROMPT changes materially — triggers one-time update flow per user. */
-export const EPB_SYSTEM_PROMPT_REVISION = 1;
+export const EPB_SYSTEM_PROMPT_REVISION = 4;
 
 const LEGACY_EPB_PROMPT_MARKERS = [
   "Minimum 340 characters",
@@ -102,6 +104,8 @@ BANNED FORMATTING (NEVER USE):
 - Em-dashes: -- (use commas to separate clauses)
 - Semicolons: ;
 - "w/ " - Not standard for EPBs, always write "with"
+
+${PERSONNEL_REFERENCE_GUIDANCE}
 
 VERB VARIETY (CRITICAL - MUST FOLLOW):
 When generating multiple statement versions:

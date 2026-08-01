@@ -164,6 +164,7 @@ CRITICAL RULES:
 9. Do NOT use bullet points or numbered lists
 10. Do NOT end with a period (system adds one when combining)
 11. Output ONLY the statement text, no quotes or explanation
+12. BANNED FORMATTING: NEVER use "w/", "w/o", "b/c", "--", or ";" — write "with"/"without"/"because" and use commas
 
 CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})`,
       user.id,
@@ -186,7 +187,33 @@ CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${tar
       statement = statement.slice(0, -1);
     }
 
-    return cacheBillableJson(billableCtx, { statement }, usageCheck);
+    // Flag + hard-capped repair for banned formatting (w/, ;, etc.) the EPB prompt forbids
+    const { repairBannedFormatting } = await import("@/lib/banned-formatting");
+    const formattingRepair = await repairBannedFormatting(statement, {
+      model: modelProvider,
+      maxAttempts: 2,
+    });
+    if (formattingRepair.wasFlagged) {
+      console.warn(
+        `[GenerateSlot] Banned-formatting flagged (${formattingRepair.violationsFound.join(", ")}), method=${formattingRepair.method}, attempts=${formattingRepair.attempts}`
+      );
+      statement = formattingRepair.statement;
+      if (statement.endsWith(".")) {
+        statement = statement.slice(0, -1);
+      }
+    }
+
+    return cacheBillableJson(
+      billableCtx,
+      {
+        statement,
+        ...(formattingRepair.wasFlagged && {
+          formattingViolations: formattingRepair.violationsFound,
+          formattingRemaining: formattingRepair.remainingViolations,
+        }),
+      },
+      usageCheck
+    );
   } catch (error) {
     if (billableCtx) {
       return handleBillableLLMError(error, "POST /api/generate-slot-statement", modelId, billableCtx);

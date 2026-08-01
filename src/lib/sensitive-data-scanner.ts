@@ -310,11 +310,9 @@ const PATTERNS: PatternDef[] = [
  *
  * @returns Array of matches (empty = clean).
  */
-export function scanForSensitiveData(fields: {
-  details?: string;
-  impact?: string;
-  metrics?: string;
-}): SensitiveMatch[] {
+export function scanForSensitiveData(
+  fields: Record<string, string | null | undefined>
+): SensitiveMatch[] {
   const matches: SensitiveMatch[] = [];
 
   for (const [fieldName, text] of Object.entries(fields)) {
@@ -478,20 +476,27 @@ export function hasSensitiveData(fields: {
  */
 export function scanAccomplishmentsForLLM(
   items: Array<{
-    details?: string;
+    details?: string | null;
     impact?: string | null;
     metrics?: string | null;
+    stewardship_time?: string | null;
+    stewardship_money?: string | null;
+    stewardship_resources?: string | null;
+    stewardship_outcome?: string | null;
   }>
 ): { blocked: boolean; matches: SensitiveMatch[] } {
   const allMatches: SensitiveMatch[] = [];
 
   for (const item of items) {
-    const fields: { details?: string; impact?: string; metrics?: string } = {};
-    if (item.details) fields.details = item.details;
-    if (item.impact) fields.impact = item.impact;
-    if (item.metrics) fields.metrics = item.metrics;
-
-    const matches = scanForSensitiveData(fields);
+    const matches = scanForSensitiveData({
+      details: item.details,
+      impact: item.impact,
+      metrics: item.metrics,
+      stewardship_time: item.stewardship_time,
+      stewardship_money: item.stewardship_money,
+      stewardship_resources: item.stewardship_resources,
+      stewardship_outcome: item.stewardship_outcome,
+    });
     allMatches.push(...matches);
   }
 

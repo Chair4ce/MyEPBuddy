@@ -71,8 +71,14 @@ import { useEPBCollaboration } from "@/hooks/use-epb-collaboration";
 import { useSectionLocks } from "@/hooks/use-section-locks";
 import { useShellFieldLocks } from "@/hooks/use-shell-field-locks";
 import { useIdleDetection } from "@/hooks/use-idle-detection";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate, WritingStyle, AwardSelection } from "@/types/database";
-import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
+import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, DutyDescriptionSnapshot, DutyDescriptionExample, DutyDescriptionTemplate, WritingStyle, AwardSelection, ImpactBoosterState } from "@/types/database";
+import {
+  buildImpactBoosterContext,
+  mergeImpactAssessment,
+  normalizeImpactBooster,
+  clearedImpactBooster,
+} from "@/lib/impact-booster";
+import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 
 // Map raw award records to simplified selection format for statement integration
 interface RawAwardRecord {
@@ -1207,7 +1213,7 @@ export function EPBShellForm({
     await handleCreateShell(nextYear);
   };
 
-  // Save a section's statement
+  // Save a section's statement (statement_text only — never copies Impact Booster)
   const handleSaveSection = async (mpa: string, text: string) => {
     const section = sections[mpa];
     if (!section || !profile) return;
@@ -1236,6 +1242,45 @@ export function EPBShellForm({
       last_edited_by: profile.id,
       updated_at: new Date().toISOString(),
     });
+  };
+
+  /** Persist Impact Booster for this MPA only (clearable; never travels with statement moves). */
+  const handleSaveImpactBooster = async (mpa: string, booster: ImpactBoosterState) => {
+    const section = sections[mpa];
+    if (!section || !profile) return;
+
+    const normalized = normalizeImpactBooster(booster);
+    const contextForScan = buildImpactBoosterContext(normalized);
+    if (contextForScan) {
+      const scan = scanTextForLLM(contextForScan);
+      if (scan.blocked) {
+        toast.error(getScanSummary(scan.matches), { duration: 10000 });
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("epb_shell_sections")
+      .update({
+        impact_booster: normalized,
+        last_edited_by: profile.id,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", section.id);
+
+    if (error) throw error;
+
+    updateSection(mpa, {
+      impact_booster: normalized,
+      last_edited_by: profile.id,
+      updated_at: new Date().toISOString(),
+    });
+  };
+
+  const handleClearImpactBooster = async (mpa: string) => {
+    await handleSaveImpactBooster(mpa, clearedImpactBooster());
+    useEPBShellStore.getState().updateSectionState(mpa, { impactBoosterPrompts: [] });
+    toast.success("Impact Booster cleared for this MPA");
   };
 
   // Save duty description
@@ -1512,7 +1557,7 @@ export function EPBShellForm({
       dismissDutyDescriptionTip();
     }
 
-    const versionCount = options.versionCount || 1;
+    const versionCount = options.versionCount ?? 3;
     const generateStartTime = Date.now();
     
     // Track generation start
@@ -1548,101 +1593,115 @@ export function EPBShellForm({
         }));
     }
 
+    // Explicit clarifyingContext from the card (including "") wins — empty means
+    // the user opted out of Impact Booster for this run. Only fall back to
+    // persisted booster when the caller omitted the field entirely.
+    const mergedClarifyingContext =
+      typeof options.clarifyingContext === "string"
+        ? options.clarifyingContext.trim()
+        : buildImpactBoosterContext(sections[mpa]?.impact_booster);
+
+    if (mergedClarifyingContext) {
+      const scan = scanTextForLLM(mergedClarifyingContext);
+      if (scan.blocked) {
+        toast.error(getScanSummary(scan.matches), { duration: 10000 });
+        return [];
+      }
+    }
+
     try {
-      // Generate multiple versions in parallel
-      const generateOne = async (): Promise<string | null> => {
-        const response = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rateeId: selectedRatee.id,
-            rateeRank: selectedRatee.rank,
-            rateeAfsc: selectedRatee.afsc,
-            cycleYear: currentShell?.cycle_year ?? workspaceCycleYear,
-            model,
-            writingStyle,
-            selectedMPAs: [mpa],
-            customContext: context,
-            customContextOptions: {
-              statementCount: options.usesTwoStatements ? 2 : 1,
-            },
-            accomplishments: selectedAccs.map((a) => ({
-              action_verb: a.action_verb,
-              details: a.details,
-              impact: a.impact,
-              metrics: a.metrics,
-            })),
-            dutyDescription: currentShell?.duty_description || "",
-            // HLR-specific: pass all EPB statements for holistic assessment
-            epbStatements: options.useEPBStatements ? epbStatements : undefined,
-            // Pass selected awards to integrate into statement
-            selectedAwards: options.selectedAwards,
-            // Clarifying context from user answers (for regeneration)
-            clarifyingContext: options.clarifyingContext,
-            // Don't request more clarifying questions when regenerating with answers
-            requestClarifyingQuestions: !options.clarifyingContext,
-          }),
+      // One billable request returns up to versionCount alternatives (1 credit total)
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateeId: selectedRatee.id,
+          rateeRank: selectedRatee.rank,
+          rateeAfsc: selectedRatee.afsc,
+          cycleYear: currentShell?.cycle_year ?? workspaceCycleYear,
+          model,
+          writingStyle,
+          selectedMPAs: [mpa],
+          customContext: context,
+          customContextOptions: {
+            statementCount: options.usesTwoStatements ? 2 : 1,
+          },
+          accomplishments: selectedAccs.map((a) => ({
+            action_verb: a.action_verb,
+            details: a.details,
+            impact: a.impact,
+            metrics: a.metrics,
+          })),
+          dutyDescription: currentShell?.duty_description || "",
+          epbStatements: options.useEPBStatements ? epbStatements : undefined,
+          selectedAwards: options.selectedAwards,
+          clarifyingContext: mergedClarifyingContext || undefined,
+          requestClarifyingQuestions: !mergedClarifyingContext,
+          versionCount,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return [];
+        throw new Error(errorData.error || "Generation failed");
+      }
+
+      const result = await response.json();
+      const mpaResult = result.statements?.[0];
+      const versionArrays: string[][] =
+        Array.isArray(mpaResult?.statementVersions) &&
+        mpaResult.statementVersions.length > 0
+          ? mpaResult.statementVersions
+          : mpaResult?.statements?.length
+            ? [mpaResult.statements]
+            : [];
+
+      if (mpaResult?.impactAssessment) {
+        const current = sections[mpa]?.impact_booster;
+        const merged = mergeImpactAssessment(current, mpaResult.impactAssessment);
+        updateSection(mpa, { impact_booster: merged });
+        void handleSaveImpactBooster(mpa, merged).catch((err) => {
+          console.error("[ImpactBooster] Failed to persist assessment:", err);
         });
+      }
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          if (handleUsageLimitResponse(errorData)) return null;
-          throw new Error(errorData.error || "Generation failed");
-        }
-
-        const result = await response.json();
-        const mpaResult = result.statements?.[0];
-        const statements = mpaResult?.statements || [];
-        
-        // Store clarifying questions if returned
-        if (mpaResult?.clarifyingQuestions?.length > 0 && selectedRatee?.id) {
-          const { addQuestionSet } = useClarifyingQuestionsStore.getState();
-          const mpaLabel = STANDARD_MGAS.find(m => m.key === mpa)?.label || mpa;
-          addQuestionSet({
-            mpaKey: mpa,
-            rateeId: selectedRatee.id,
-            originalContext: context,
-            sourceContext: {
-              statement1Input: options.usesTwoStatements 
-                ? options.statement1Context 
-                : (options.customContext || options.statement1Context),
-              statement2Input: options.usesTwoStatements ? options.statement2Context : undefined,
-              statement1Generated: statements[0],
-              statement2Generated: options.usesTwoStatements ? statements[1] : undefined,
-              mpaLabel,
-            },
-            questions: mpaResult.clarifyingQuestions.map((q: { question: string; category?: string; hint?: string; sentenceNumber?: 1 | 2 }) => ({
-              id: `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      if (Array.isArray(mpaResult?.clarifyingQuestions) && mpaResult.clarifyingQuestions.length > 0) {
+        useEPBShellStore.getState().updateSectionState(mpa, {
+          impactBoosterPrompts: mpaResult.clarifyingQuestions.map(
+            (q: {
+              question: string;
+              category?: string;
+              hint?: string;
+              sentenceNumber?: 1 | 2;
+              lever?: "time" | "money" | "resources";
+            }) => ({
               question: q.question,
               category: q.category || "general",
               hint: q.hint,
               sentenceNumber: q.sentenceNumber,
-              answer: "",
-            })),
-          });
-        }
-        
-        if (statements.length === 0) return null;
+              lever: q.lever,
+            })
+          ),
+        });
+      } else if (!mergedClarifyingContext) {
+        useEPBShellStore.getState().updateSectionState(mpa, {
+          impactBoosterPrompts: [],
+        });
+      }
 
-        // Combine statements if multiple - don't add extra period if first statement ends with one
+      const combine = (statements: string[]): string | null => {
+        if (!statements.length) return null;
         const separator = statements[0]?.trim().endsWith(".") ? " " : ". ";
-        const combined = statements.length > 1
+        return statements.length > 1
           ? `${statements[0]}${separator}${statements[1]}`
           : statements[0];
-
-        // Return combined statement (don't slice - let QC handle character enforcement)
-        return combined;
       };
 
-      // Generate requested number of versions in parallel
-      const results = await Promise.all(
-        Array.from({ length: versionCount }, () => generateOne())
-      );
-      
-      // Filter out nulls and return
-      const validResults = results.filter((r): r is string => r !== null);
-      
-      // Track generation success
+      const validResults = versionArrays
+        .map(combine)
+        .filter((r): r is string => r !== null);
+
       Analytics.generateCompleted(model, Date.now() - generateStartTime, validResults.length);
       return validResults;
     } catch (error) {
@@ -2144,6 +2203,8 @@ export function EPBShellForm({
                 isCollapsed={collapsedSections[mpa.key] ?? false}
                 onToggleCollapse={() => toggleSectionCollapsed(mpa.key)}
                 onSave={(text) => handleSaveSection(mpa.key, text)}
+                onSaveImpactBooster={(booster) => handleSaveImpactBooster(mpa.key, booster)}
+                onClearImpactBooster={() => handleClearImpactBooster(mpa.key)}
                 onCreateSnapshot={(text) => handleCreateSnapshot(mpa.key, text)}
                 onGenerateStatement={(opts) => handleGenerateStatement(mpa.key, opts)}
                 onReviseStatement={(text, ctx, count, aggr) => handleReviseStatement(mpa.key, text, ctx, count, aggr)}

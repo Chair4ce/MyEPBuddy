@@ -35,6 +35,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
 import {
+  STEWARDSHIP_LABELS,
+  hasStewardshipImpactContent,
+  normalizeStewardshipImpact,
+} from "@/lib/stewardship-impact";
+import {
   Calendar,
   Briefcase,
   Building,
@@ -592,18 +597,56 @@ export function AccomplishmentDetailDialog({
                   </p>
                 </div>
 
-                {/* Impact */}
-                {accomplishment.impact && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium flex items-center gap-2">
-                      <BarChart3 className="size-4 text-emerald-500 shrink-0" />
-                      Impact & Results
-                    </h4>
-                    <p className="text-sm leading-relaxed break-words text-muted-foreground">
-                      {accomplishment.impact}
-                    </p>
-                  </div>
-                )}
+                {/* Impact — prefer structured stewardship when present */}
+                {(() => {
+                  const stewardship = normalizeStewardshipImpact(
+                    accomplishment.stewardship_impact
+                  );
+                  if (hasStewardshipImpactContent(stewardship)) {
+                    const rows = (
+                      [
+                        ["time", STEWARDSHIP_LABELS.time],
+                        ["money", STEWARDSHIP_LABELS.money],
+                        ["resources", STEWARDSHIP_LABELS.resources],
+                        ["outcome", STEWARDSHIP_LABELS.outcome],
+                      ] as const
+                    ).filter(([key]) => stewardship[key]);
+                    return (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium flex items-center gap-2">
+                          <BarChart3 className="size-4 text-emerald-500 shrink-0" />
+                          Impact & Results
+                        </h4>
+                        <div className="space-y-1.5">
+                          {rows.map(([key, label]) => (
+                            <div key={key} className="flex gap-2 text-sm">
+                              <span className="w-[6.5rem] shrink-0 text-muted-foreground">
+                                {label}
+                              </span>
+                              <span className="text-muted-foreground break-words">
+                                {stewardship[key]}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (accomplishment.impact) {
+                    return (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium flex items-center gap-2">
+                          <BarChart3 className="size-4 text-emerald-500 shrink-0" />
+                          Impact & Results
+                        </h4>
+                        <p className="text-sm leading-relaxed break-words text-muted-foreground">
+                          {accomplishment.impact}
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Metrics and Tags row */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

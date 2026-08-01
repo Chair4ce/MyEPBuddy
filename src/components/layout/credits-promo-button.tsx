@@ -21,6 +21,7 @@ import {
   PURCHASE_PACKAGE_LABEL,
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
+import { TokenPackQuantityPicker } from "@/components/billing/token-pack-quantity-picker";
 
 export function CreditsPromoButton() {
   const {
@@ -35,10 +36,14 @@ export function CreditsPromoButton() {
     setIsCheckoutLoading,
     openPurchaseDialog,
     openEmbeddedCheckout,
+    purchasePacks,
+    setPurchasePacks,
   } = useCreditsStore();
 
   const [open, setOpen] = useState(false);
   const [termsChecked, setTermsChecked] = useState(false);
+  const tokens = purchasePacks * PURCHASE_CREDITS;
+  const priceUsd = purchasePacks * PURCHASE_PRICE_USD;
 
   const remaining = balance ?? 0;
   // BYOK users only see the button while they still have free calls to manage.
@@ -68,7 +73,7 @@ export function CreditsPromoButton() {
 
       // Close the drawer and open in-app checkout so the user stays put.
       setOpen(false);
-      await openEmbeddedCheckout();
+      await openEmbeddedCheckout(purchasePacks);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Checkout failed. Try again.",
@@ -230,11 +235,19 @@ export function CreditsPromoButton() {
             </ul>
           </div>
 
-          <div className="rounded-lg border p-4 space-y-2">
-            <p className="text-sm font-medium">{PURCHASE_PACKAGE_LABEL}</p>
-            <p className="text-xs text-muted-foreground">
-              One-time payment · {PURCHASE_CREDITS} tokens · never expire
-            </p>
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{PURCHASE_PACKAGE_LABEL}</p>
+              <p className="text-xs text-muted-foreground">
+                One-time · any multiple of {PURCHASE_CREDITS} · never expire
+              </p>
+            </div>
+            <TokenPackQuantityPicker
+              id="promo-token-packs"
+              packs={purchasePacks}
+              onPacksChange={setPurchasePacks}
+              disabled={isCheckoutLoading}
+            />
           </div>
 
           {!billingTermsAccepted && (
@@ -267,7 +280,7 @@ export function CreditsPromoButton() {
               disabled={
                 isCheckoutLoading || (!billingTermsAccepted && !termsChecked)
               }
-              aria-label={`Purchase ${PURCHASE_CREDITS} tokens for ${PURCHASE_PRICE_USD} dollars`}
+              aria-label={`Purchase ${tokens} tokens for ${priceUsd} dollars`}
             >
               {isCheckoutLoading ? (
                 <>
@@ -275,7 +288,7 @@ export function CreditsPromoButton() {
                   Opening checkout...
                 </>
               ) : (
-                `Buy ${PURCHASE_CREDITS} tokens — $${PURCHASE_PRICE_USD}`
+                `Buy ${tokens.toLocaleString()} tokens — $${priceUsd.toLocaleString()}`
               )}
             </Button>
             <Button variant="outline" asChild>

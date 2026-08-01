@@ -2,7 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getUsageStats } from "@/lib/usage-tracker";
 import { getKeyStatus } from "@/app/actions/api-keys";
-import { PURCHASE_CREDITS, PURCHASE_PRICE_USD } from "@/lib/billing/constants";
+import {
+  MAX_PURCHASE_PACKS,
+  MIN_PURCHASE_PACKS,
+  PURCHASE_CREDITS,
+  PURCHASE_PRICE_USD,
+} from "@/lib/billing/constants";
 
 export async function GET() {
   const supabase = await createClient();
@@ -58,6 +63,9 @@ export async function GET() {
     purchasePackage: {
       credits: PURCHASE_CREDITS,
       priceUsd: PURCHASE_PRICE_USD,
+      minPacks: MIN_PURCHASE_PACKS,
+      maxPacks: MAX_PURCHASE_PACKS,
+      incrementCredits: PURCHASE_CREDITS,
     },
   });
 }

@@ -24,6 +24,7 @@ import {
   PURCHASE_PACKAGE_LABEL,
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
+import { TokenPackQuantityPicker } from "@/components/billing/token-pack-quantity-picker";
 
 export default function BillingSettingsPage() {
   const searchParams = useSearchParams();
@@ -41,6 +42,8 @@ export default function BillingSettingsPage() {
     setBillingTermsAccepted,
     setPreferCreditsFirst,
     openEmbeddedCheckout,
+    purchasePacks,
+    setPurchasePacks,
     ledgerRefreshNonce,
     fetchCredits,
     earnRewardsEligible,
@@ -83,7 +86,7 @@ export default function BillingSettingsPage() {
       }
 
       // Open in-app embedded checkout instead of redirecting to Stripe.
-      await openEmbeddedCheckout();
+      await openEmbeddedCheckout(purchasePacks);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Checkout failed.",
@@ -94,6 +97,7 @@ export default function BillingSettingsPage() {
   }, [
     billingTermsAccepted,
     termsChecked,
+    purchasePacks,
     setBillingTermsAccepted,
     setIsCheckoutLoading,
     openEmbeddedCheckout,
@@ -260,10 +264,18 @@ export default function BillingSettingsPage() {
         <CardHeader>
           <CardTitle>Purchase More Tokens</CardTitle>
           <CardDescription>
-            {PURCHASE_PACKAGE_LABEL} · one-time · never expire · no subscription
+            {PURCHASE_PACKAGE_LABEL} · buy any multiple · never expire · no
+            subscription
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <TokenPackQuantityPicker
+            id="billing-token-packs"
+            packs={purchasePacks}
+            onPacksChange={setPurchasePacks}
+            disabled={isCheckoutLoading}
+          />
+
           {!billingTermsAccepted && (
             <label
               htmlFor="billing-page-terms"
@@ -295,7 +307,7 @@ export default function BillingSettingsPage() {
                 isCheckoutLoading ||
                 (!billingTermsAccepted && !termsChecked)
               }
-              aria-label={`Purchase ${PURCHASE_CREDITS} tokens`}
+              aria-label={`Purchase ${purchasePacks * PURCHASE_CREDITS} tokens for ${purchasePacks * PURCHASE_PRICE_USD} dollars`}
             >
               {isCheckoutLoading ? (
                 <>
@@ -303,7 +315,7 @@ export default function BillingSettingsPage() {
                   Opening checkout...
                 </>
               ) : (
-                `Buy ${PURCHASE_CREDITS} tokens — $${PURCHASE_PRICE_USD}`
+                `Buy ${(purchasePacks * PURCHASE_CREDITS).toLocaleString()} tokens — $${(purchasePacks * PURCHASE_PRICE_USD).toLocaleString()}`
               )}
             </Button>
             <Button variant="outline" onClick={openPortal}>

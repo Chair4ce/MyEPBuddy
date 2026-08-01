@@ -33,6 +33,8 @@ import {
   buildEpbVerbVarietyPromptSection,
   fetchOtherMpaStatements,
 } from "@/lib/epb-verb-variety";
+import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
+import { TIME_COMPRESSION_WRITING_GUIDANCE } from "@/lib/stewardship-impact";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -225,7 +227,7 @@ CRITICAL RULES:
 1. PRESENT TENSE ONLY - "drives", "supports", "coordinates" - NOT "led", "drove", "supported"
 2. NO performance adjectives - NO "expertly", "skillfully", "seamlessly"
 3. NO accomplishment results or impact beyond describing the role's scope
-4. Each of your ${versionCount} alternatives MUST use DIFFERENT opening structures
+4. Each of your ${versionCount} alternatives MUST use DIFFERENT opening structures AND avoid recycling distinctive words from the original unless no suitable synonym remains
 5. Output ONLY the revised text - no quotes, no explanation
 6. Maintain grammatical coherence with surrounding text
 7. NEVER use em-dashes (--) - use COMMAS instead
@@ -278,6 +280,10 @@ ${availableVerbs.slice(0, 20).join(", ")}
 
 **USE ONLY:** Commas (,) to connect clauses
 
+${PERSONNEL_REFERENCE_GUIDANCE}
+
+${TIME_COMPRESSION_WRITING_GUIDANCE}
+
 **PRESERVE THESE EXACTLY (never change):**
 - All numbers and metrics (e.g., "36", "24/7", "$14B", "909K", "1.2M")
 - Percentages (e.g., "99%", "15%")
@@ -302,17 +308,18 @@ GOOD ENDING: "...saving $50K annually, sustaining network access for 58K users."
 CRITICAL RULES:
 1. NEVER use any verb from the BANNED list - these are overused Air Force clichés
 2. NEVER end with generic filler closers from the BANNED FILLER list - endings must reference SPECIFIC impacts
-3. Each of your ${versionCount} alternatives MUST use DIFFERENT opening verbs from each other
-4. Output ONLY the revised text for the selected portion - no quotes, no explanation
-5. Maintain the same general meaning but with appropriately varied phrasing based on aggressiveness level
-6. Maintain grammatical coherence with surrounding text
-7. NEVER use em-dashes (--) - use COMMAS instead to connect clauses
-8. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix
-9. READABILITY: Revised text should flow naturally when read aloud
-10. PARALLELISM: Use consistent verb tense throughout (all past tense OR all present participles)
-11. AVOID creating run-on laundry lists of 5+ actions - keep it focused
-12. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope)
-13. CONSISTENCY: Use either "&" OR "and" throughout - NEVER mix them. Prefer "&" when saving space.`;
+3. Each of your ${versionCount} alternatives MUST use DIFFERENT opening verbs from each other AND from the original selection (unless no unused suitable verb remains)
+4. Do NOT recycle distinctive non-metric words from the original selection when a synonym exists — reuse original wording only as a last resort
+5. Output ONLY the revised text for the selected portion - no quotes, no explanation
+6. Maintain the same general meaning but with appropriately varied phrasing based on aggressiveness level
+7. Maintain grammatical coherence with surrounding text
+8. NEVER use em-dashes (--) - use COMMAS instead to connect clauses
+9. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix
+10. READABILITY: Revised text should flow naturally when read aloud
+11. PARALLELISM: Use consistent verb tense throughout (all past tense OR all present participles)
+12. AVOID creating run-on laundry lists of 5+ actions - keep it focused
+13. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope)
+14. CONSISTENCY: Use either "&" OR "and" throughout - NEVER mix them. Prefer "&" when saving space.`;
 }
 
 export async function POST(request: Request) {
@@ -381,42 +388,46 @@ export async function POST(request: Request) {
     
     // Calculate aggressiveness instructions
     const getAggressivenessInstructions = (level: number): string => {
+      const noReuseRule = `**VOCABULARY RULE (HARD):** Do NOT reuse action verbs or distinctive wording from the ORIGINAL selected text unless there is genuinely no remaining suitable synonym or AF-appropriate alternative. Prefer a fresh verb/word first; only fall back to an original word as a last resort. Each alternative version must also use DIFFERENT verbs from the other versions.`;
+
       if (level <= 20) {
         return `**WORD REPLACEMENT LEVEL: MINIMAL (${level}%)**
 - Make VERY FEW changes - only fix obvious issues
-- Keep the overall structure and most words intact
-- Only replace words that are clearly weak or redundant
-- Preserve the author's voice and style as much as possible
-- Focus on 1-2 small improvements per version`;
+- Keep the overall structure intact
+- When you do change a weak verb/word, pick a NEW one — do not echo the original verb
+- Preserve the author's voice as much as possible
+- Focus on 1-2 small improvements per version
+${noReuseRule}`;
       } else if (level <= 40) {
         return `**WORD REPLACEMENT LEVEL: CONSERVATIVE (${level}%)**
-- Make LIMITED changes - keep most of the original phrasing
-- Replace only the weakest words and phrases
+- Make LIMITED changes - keep most of the original structure
+- Replace weak words and especially opening/action verbs with NEW choices
 - Maintain the general sentence structure
-- Focus on enhancing key action verbs and impact phrases
-- Preserve numerical data and metrics exactly as-is`;
+- Preserve numerical data and metrics exactly as-is
+${noReuseRule}`;
       } else if (level <= 60) {
         return `**WORD REPLACEMENT LEVEL: MODERATE (${level}%)**
 - Make BALANCED changes - refresh phrasing while keeping core meaning
-- Replace verbs and descriptive words freely
+- Replace verbs and descriptive words freely with NEW vocabulary
 - Restructure phrases for better flow
 - Keep the same factual content and metrics
-- Aim for noticeable improvement without complete rewrite`;
+- Aim for noticeable improvement without inventing facts
+${noReuseRule}`;
       } else if (level <= 80) {
         return `**WORD REPLACEMENT LEVEL: AGGRESSIVE (${level}%)**
 - Make SIGNIFICANT changes - substantially rewrite for impact
 - Replace most words except core metrics and data
-- Feel free to restructure sentences completely
-- Use fresh vocabulary and phrasing throughout
-- Only preserve specific numbers, percentages, and proper nouns`;
+- Restructure sentences; use fresh vocabulary throughout
+- Only preserve specific numbers, percentages, and proper nouns
+${noReuseRule}`;
       } else {
         return `**WORD REPLACEMENT LEVEL: MAXIMUM (${level}%)**
-- COMPLETELY REWRITE the text with fresh perspective
+- COMPLETELY REWRITE the text with a fresh perspective
 - Replace virtually all words except facts present in the source
 - Use entirely new sentence structure and approach
 - Only preserve facts from source: numbers, percentages, dollar amounts, proper nouns, organizations, scope elements
 - NEVER invent new metrics, personnel counts, or impact outcomes to fill space
-- Create a completely fresh take while maintaining factual accuracy`;
+${noReuseRule}`;
       }
     };
     
@@ -603,14 +614,41 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       revisions = revisions.slice(0, versionCount);
     }
 
+    // Flag + hard-capped repair for banned formatting the EPB prompt forbids
+    // (w/, w/o, b/c, --, ;). Deterministic first; at most 2 LLM revision tries.
+    const { repairBannedFormattingBatch } = await import("@/lib/banned-formatting");
+    const formattingRepair = await repairBannedFormattingBatch(revisions, {
+      model: modelProvider,
+      maxAttempts: 2,
+    });
+    if (formattingRepair.flaggedCount > 0) {
+      console.warn(
+        `[revise-selection] Banned-formatting flagged ${formattingRepair.flaggedCount} revision(s): ${formattingRepair.results
+          .filter((r) => r.wasFlagged)
+          .map((r) => r.violationsFound.join("/"))
+          .join("; ")}`
+      );
+      revisions = formattingRepair.statements;
+    }
+
     // Trigger async style processing (fire-and-forget) — skip for default-key users
     if (!usageCheck.usingDefaultKey) {
       triggerStyleProcessing(user.id);
     }
 
+    const formattingFlags = formattingRepair.results
+      .filter((r) => r.wasFlagged)
+      .map((r) => ({
+        violations: r.violationsFound,
+        remaining: r.remainingViolations,
+        method: r.method,
+        attempts: r.attempts,
+      }));
+
     return cacheBillableJson(billableCtx, {
       revisions,
       original: selectedText,
+      ...(formattingFlags.length > 0 && { formattingViolations: formattingFlags }),
     }, usageCheck);
   } catch (error) {
     if (billableCtx) {

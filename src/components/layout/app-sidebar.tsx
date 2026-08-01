@@ -63,7 +63,7 @@ const navItems = [
     tourId: "nav-dashboard",
   },
   {
-    title: "My Performance",
+    title: "Accomplishments",
     href: "/entries",
     icon: FileText,
     roles: ["member", "admin"],

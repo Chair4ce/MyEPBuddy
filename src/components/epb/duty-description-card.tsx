@@ -47,6 +47,7 @@ import {
   EPB_PANEL_CLOSE_MS,
 } from "./epb-animated-collapse";
 import { animateEpbShellResize } from "./epb-resize-transition";
+import { WordReplacementSlider } from "./word-replacement-slider";
 
 /** A single generated batch of revisions kept in short-term session history. */
 interface RevisionBatch {
@@ -136,9 +137,9 @@ export function DutyDescriptionCard({
   // Initialize from prop (source of truth), not from store
   const [localText, setLocalText] = useState(currentDutyDescription || "");
   const [isEditing, setIsEditing] = useState(false);
+  // Revise panel — always request 3 alternatives (1 credit)
   const [showRevisePanel, setShowRevisePanel] = useState(false);
   const [reviseContext, setReviseContext] = useState("");
-  const [reviseVersionCount, setReviseVersionCount] = useState(3);
   const [reviseAggressiveness, setReviseAggressiveness] = useState(50);
   const [isRevising, setIsRevising] = useState(false);
   const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
@@ -452,7 +453,7 @@ export function DutyDescriptionCard({
     setIsRevising(true);
     setGeneratedRevisions([]);
     try {
-      const results = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
+      const results = await onReviseStatement(localText, reviseContext || undefined, 3, reviseAggressiveness);
       if (results.length > 0) {
         // Record this set in short-term history so the user can return to it
         // for free instead of spending another token to regenerate.
@@ -1022,96 +1023,38 @@ export function DutyDescriptionCard({
 
               {/* Options */}
               <div className="space-y-3">
-                {/* Top row: Versions and Context */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  {/* Version count selector */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Versions:</span>
-                    <div className="flex items-center border rounded-md">
-                      {[1, 2, 3].map((num) => (
-                        <button
-                          key={num}
-                          onClick={() => setReviseVersionCount(num)}
-                          className={cn(
-                            "px-2.5 py-1 text-xs transition-colors",
-                            num === 1 && "rounded-l-md",
-                            num === 3 && "rounded-r-md",
-                            reviseVersionCount === num
-                              ? "bg-primary text-primary-foreground"
-                              : "hover:bg-muted"
-                          )}
-                        >
-                          {num}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                <input
+                  type="text"
+                  value={reviseContext}
+                  onChange={(e) => setReviseContext(e.target.value)}
+                  placeholder="Optional: How should it sound? (e.g., more concise, more impactful...)"
+                  className="w-full h-7 px-2.5 text-xs rounded-md border border-input bg-transparent placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  aria-label="Revision direction"
+                />
 
-                  {/* Context input */}
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      value={reviseContext}
-                      onChange={(e) => setReviseContext(e.target.value)}
-                      placeholder="Optional: How should it sound? (e.g., more concise, more impactful...)"
-                      className="w-full h-7 px-2.5 text-xs rounded-md border border-input bg-transparent placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                {/* Aggressiveness slider */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Word Replacement:</span>
-                    <span className="text-xs font-medium tabular-nums">
-                      {reviseAggressiveness <= 20 ? "Minimal" : reviseAggressiveness <= 40 ? "Conservative" : reviseAggressiveness <= 60 ? "Moderate" : reviseAggressiveness <= 80 ? "Aggressive" : "Maximum"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-muted-foreground shrink-0">Keep Most</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="10"
-                      value={reviseAggressiveness}
-                      onChange={(e) => {
-                        const value = Number(e.target.value);
-                        setReviseAggressiveness(value);
-                        styleFeedback.trackSliderUsed(value);
-                      }}
-                      className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                    />
-                    <span className="text-[10px] text-muted-foreground shrink-0">Replace All</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {reviseAggressiveness <= 20 
-                      ? "Only fix obvious issues, preserve your voice" 
-                      : reviseAggressiveness <= 40 
-                        ? "Light touch, replace only weak words" 
-                        : reviseAggressiveness <= 60 
-                          ? "Balanced refresh with new phrasing" 
-                          : reviseAggressiveness <= 80 
-                            ? "Substantial rewrite, keep only metrics" 
-                            : "Complete rewrite, preserve only data"}
-                  </p>
-                </div>
-
+                <WordReplacementSlider
+                  id="word-replacement-duty-description"
+                  value={reviseAggressiveness}
+                  disabled={isRevising}
+                  onChange={(value) => {
+                    setReviseAggressiveness(value);
+                    styleFeedback.trackSliderUsed(value);
+                  }}
+                />
               </div>
 
-              {/* Generate button */}
               <div className="flex gap-2">
                 <button
                   onClick={handleRevise}
                   disabled={isRevising || !localText.trim()}
-                  className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
                 >
                   {isRevising ? (
                     <Loader2 className="size-4 animate-spin mr-2" />
                   ) : (
                     <Wand2 className="size-4 mr-2" />
                   )}
-                  Generate {reviseVersionCount} Revision{reviseVersionCount > 1 ? "s" : ""}
+                  Generate 3 Revisions
                   <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                 </button>
               </div>

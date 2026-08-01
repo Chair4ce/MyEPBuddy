@@ -99,6 +99,14 @@ export interface AccomplishmentAssessmentScores {
   secondary_mpa: string | null; // Second best match if close
 }
 
+/** AF stewardship levers captured on accomplishment intake */
+export interface StewardshipImpact {
+  time?: string;
+  money?: string;
+  resources?: string;
+  outcome?: string;
+}
+
 export interface Accomplishment {
   id: string;
   user_id: string;
@@ -107,8 +115,10 @@ export interface Accomplishment {
   date: string;
   action_verb: string;
   details: string;
-  impact: string | null; // Optional impact/result
+  impact: string | null; // Optional impact/result (composed from stewardship when present)
   metrics: string | null;
+  /** Structured AF stewardship impact (man-hours / funds / resources / outcome) */
+  stewardship_impact?: StewardshipImpact;
   mpa: string;
   tags: string[];
   cycle_year: number;
@@ -690,12 +700,39 @@ export interface EPBShell {
   creator_profile?: Profile;
 }
 
+/** Impact levers the Impact Booster assesses / prompts for */
+export type ImpactLever = "time" | "money" | "resources";
+
+export interface ImpactBoosterAnswer {
+  question: string;
+  category: string;
+  answer: string;
+  hint?: string;
+  lever?: ImpactLever;
+  /** Which accomplishment/sentence these details apply to (two-statement EPBs). */
+  sentenceNumber?: 1 | 2;
+}
+
+/** Persisted per MPA section — never copied with statement text between MPAs */
+export interface ImpactBoosterState {
+  strength?: number;
+  missingLevers?: ImpactLever[];
+  summary?: string;
+  answers: ImpactBoosterAnswer[];
+  /** Notes for the whole statement (single-accomplishment or legacy). */
+  freeform?: string;
+  /** Notes scoped to each accomplishment when two sentences share one MPA. */
+  sentenceFreeform?: Partial<Record<"1" | "2", string>>;
+}
+
 export interface EPBShellSection {
   id: string;
   shell_id: string;
   mpa: string;
   statement_text: string;
   is_complete: boolean;
+  /** Impact Booster Q&A + last assessment for this MPA only */
+  impact_booster: ImpactBoosterState;
   last_edited_by: string | null;
   created_at: string;
   updated_at: string;

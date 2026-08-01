@@ -42,9 +42,19 @@ import {
   type AssessmentViewerRole,
 } from "@/lib/assessment-coaching";
 import { ProjectSelector } from "@/components/entries/project-selector";
+import {
+  emptyStewardshipFormValue,
+  StewardshipImpactFields,
+  stewardshipFormFromImpact,
+  stewardshipImpactFromForm,
+} from "@/components/entries/stewardship-impact-fields";
 import { createClient } from "@/lib/supabase/client";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
 import { handleStaleDeploymentError } from "@/lib/stale-deployment";
+import {
+  composeImpactString,
+  hydrateStewardshipImpact,
+} from "@/lib/stewardship-impact";
 
 interface EntryFormDialogProps {
   open: boolean;
@@ -129,7 +139,7 @@ export function EntryFormDialog({
     date: new Date().toISOString().split("T")[0],
     action_verb: "",
     details: "",
-    impact: "",
+    stewardship: emptyStewardshipFormValue(),
     metrics: "",
     mpa: "",
     tags: "",
@@ -215,8 +225,9 @@ export function EntryFormDialog({
         body: JSON.stringify({
           action_verb: form.action_verb,
           details: form.details,
-          impact: form.impact || null,
+          impact: composeImpactString(stewardshipImpactFromForm(form.stewardship)),
           metrics: form.metrics || null,
+          stewardship_impact: stewardshipImpactFromForm(form.stewardship),
           mpa: form.mpa,
           rateeRank: targetRateeRank,
           targetUserId: targetUserId ?? null,
@@ -282,12 +293,16 @@ export function EntryFormDialog({
 
     if (editEntry) {
       const accomplishmentId = editEntry.id;
+      const stewardship = hydrateStewardshipImpact(
+        editEntry.stewardship_impact,
+        editEntry.impact
+      );
 
       setForm({
         date: editEntry.date,
         action_verb: editEntry.action_verb,
         details: editEntry.details,
-        impact: editEntry.impact || "",
+        stewardship: stewardshipFormFromImpact(stewardship),
         metrics: editEntry.metrics || "",
         mpa: editEntry.mpa || "miscellaneous", // Default to Miscellaneous if null
         tags: Array.isArray(editEntry.tags) ? editEntry.tags.join(", ") : "",
@@ -309,7 +324,7 @@ export function EntryFormDialog({
         date: new Date().toISOString().split("T")[0],
         action_verb: "",
         details: "",
-        impact: "",
+        stewardship: emptyStewardshipFormValue(),
         metrics: "",
         mpa: "executing_mission", // Default to Executing the Mission
         tags: "",
@@ -377,11 +392,18 @@ export function EntryFormDialog({
       return;
     }
 
+    const stewardshipImpact = stewardshipImpactFromForm(form.stewardship);
+    const composedImpact = composeImpactString(stewardshipImpact);
+
     // Scan for PII, CUI, and classification markings — hard block if found
     const sensitiveMatches = scanForSensitiveData({
       details: form.details,
-      impact: form.impact,
+      impact: composedImpact,
       metrics: form.metrics,
+      stewardship_time: form.stewardship.time,
+      stewardship_money: form.stewardship.money,
+      stewardship_resources: form.stewardship.resources,
+      stewardship_outcome: form.stewardship.outcome,
     });
     if (sensitiveMatches.length > 0) {
       toast.error(getScanSummary(sensitiveMatches), { duration: 10000 });
@@ -412,7 +434,8 @@ export function EntryFormDialog({
           date: form.date,
           action_verb: form.action_verb,
           details: form.details,
-          impact: form.impact || null,
+          impact: composedImpact,
+          stewardship_impact: stewardshipImpact,
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
@@ -465,7 +488,8 @@ export function EntryFormDialog({
           date: form.date,
           action_verb: form.action_verb,
           details: form.details,
-          impact: form.impact || null,
+          impact: composedImpact,
+          stewardship_impact: stewardshipImpact,
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
@@ -630,22 +654,11 @@ export function EntryFormDialog({
             />
           </div>
 
-          <div className="space-y-1.5 sm:space-y-2">
-            <Label htmlFor="impact" className="text-sm">
-              Impact/Result
-              <span className="text-muted-foreground font-normal ml-1 sm:ml-2 text-xs sm:text-sm">
-                (optional) What was the outcome?
-              </span>
-            </Label>
-            <Textarea
-              id="impact"
-              placeholder="Describe the impact, results, or benefits..."
-              value={form.impact}
-              onChange={(e) => setForm({ ...form, impact: e.target.value })}
-              className="min-h-[72px] resize-y text-sm sm:min-h-[110px]"
-              aria-label="Impact or result"
-            />
-          </div>
+          <StewardshipImpactFields
+            value={form.stewardship}
+            onChange={(stewardship) => setForm({ ...form, stewardship })}
+            disabled={isSubmitting || isAssessing}
+          />
 
           <div className="space-y-1.5 sm:space-y-2">
             <Label htmlFor="metrics" className="text-sm">
@@ -656,7 +669,7 @@ export function EntryFormDialog({
             </Label>
             <Input
               id="metrics"
-              placeholder="e.g., 15% increase, 200 hours saved"
+              placeholder="e.g. 3 mos early, cut cycle 45%, 120 man-hrs/mo, $12K cost avoidance"
               value={form.metrics}
               onChange={(e) => setForm({ ...form, metrics: e.target.value })}
               aria-label="Quantifiable metrics"

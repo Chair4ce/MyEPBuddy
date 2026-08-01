@@ -13,6 +13,7 @@
  */
 
 import { generateText, type LanguageModel } from "ai";
+import { applyDeterministicBannedFormattingFixes } from "./banned-formatting";
 
 // ============================================================================
 // SAFETY CONSTANTS - These are hard caps that cannot be overridden
@@ -394,6 +395,9 @@ function sanitizeStatementText(statement: string): string {
       return replacement;
     });
   }
+
+  // Strip banned formatting the EPB prompt forbids (w/, ;, --, etc.)
+  cleaned = applyDeterministicBannedFormattingFixes(cleaned).text;
   
   // Fix double periods first (the ".." pattern that indicates truncation)
   cleaned = cleaned.replace(/\.{2,}\s*/g, ". ");

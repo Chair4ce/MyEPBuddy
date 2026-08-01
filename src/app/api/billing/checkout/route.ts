@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createCreditsCheckoutSession } from "@/lib/stripe/server";
+import { parsePurchasePacks } from "@/lib/billing/purchase-quantity";
+import { MIN_PURCHASE_PACKS } from "@/lib/billing/constants";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const MAX_CHECKOUT_ATTEMPTS = 5;
@@ -28,7 +30,7 @@ function checkRateLimit(userId: string): boolean {
   return true;
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,6 +45,18 @@ export async function POST() {
       { error: "Too many checkout attempts. Please wait a moment." },
       { status: 429 },
     );
+  }
+
+  let packs = MIN_PURCHASE_PACKS;
+  try {
+    const body = (await request.json()) as { packs?: unknown };
+    const parsed = parsePurchasePacks(body.packs ?? MIN_PURCHASE_PACKS);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    packs = parsed.packs;
+  } catch {
+    packs = MIN_PURCHASE_PACKS;
   }
 
   const { data: profile, error: profileError } = await (supabase as unknown as {
@@ -77,9 +91,10 @@ export async function POST() {
     const url = await createCreditsCheckoutSession({
       userId: user.id,
       email: user.email,
+      packs,
     });
 
-    return NextResponse.json({ url });
+    return NextResponse.json({ url, packs });
   } catch (error) {
     console.error("[billing/checkout]", error);
     return NextResponse.json(

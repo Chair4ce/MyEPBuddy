@@ -34,16 +34,25 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
+import { FuseToEpbBar } from "@/components/entries/fuse-to-epb-bar";
+import { FuseToEpbDialog } from "@/components/entries/fuse-to-epb-dialog";
 import { TagFilterPopover } from "@/components/entries/tag-filter-popover";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
+import {
+  STEWARDSHIP_LABELS,
+  hasStewardshipImpactContent,
+  normalizeStewardshipImpact,
+} from "@/lib/stewardship-impact";
 import { Plus, Pencil, Trash2, Filter, FileText, LayoutList, CalendarDays } from "lucide-react";
 import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import { EPBProgressCard } from "@/components/epb/epb-progress-card";
 import { SupervisorFeedbackPanel } from "@/components/entries/supervisor-feedback-panel";
 import type { Rank } from "@/types/database";
+import type { SelectedRatee } from "@/stores/epb-shell-store";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { Accomplishment, AwardQuarter } from "@/types/database";
@@ -77,12 +86,30 @@ function EntriesContent() {
   const [viewMode, setViewMode] = useState<"list" | "quarterly">("list");
   const [useFiscalYear, setUseFiscalYear] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [fuseDialogOpen, setFuseDialogOpen] = useState(false);
   
   const supabase = createClient();
   // Cycle year is computed from the user's rank and SCOD
   const cycleYear = getActiveCycleYear(profile?.rank as Rank | null);
   // Use entry MPAs (excludes HLR which is Commander's assessment)
   const mgas = ENTRY_MGAS;
+
+  const handleSelectedUserChange = (value: string) => {
+    setSelectedUser(value);
+    setSelectedEntryIds(new Set());
+  };
+
+  const toggleEntrySelected = (id: string, checked: boolean) => {
+    setSelectedEntryIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   // Open dialog if ?new=true
   useEffect(() => {
@@ -231,6 +258,56 @@ function EntriesContent() {
     return groups;
   }, [filteredAccomplishments, useFiscalYear, cycleYear]);
 
+  const selectedAccomplishments = useMemo(
+    () => filteredAccomplishments.filter((e) => selectedEntryIds.has(e.id)),
+    [filteredAccomplishments, selectedEntryIds]
+  );
+
+  const fuseRatee = useMemo((): SelectedRatee | null => {
+    if (!profile) return null;
+    if (isManagedMember && managedMemberId) {
+      const member = managedMembers.find((m) => m.id === managedMemberId);
+      if (!member) return null;
+      return {
+        id: member.id,
+        fullName: member.full_name,
+        rank: (member.rank as Rank | null) ?? null,
+        afsc: member.afsc ?? null,
+        isManagedMember: true,
+      };
+    }
+    if (selectedUser !== "self") {
+      const sub = subordinates.find((s) => s.id === selectedUser);
+      if (!sub) return null;
+      return {
+        id: sub.id,
+        fullName: sub.full_name,
+        rank: (sub.rank as Rank | null) ?? null,
+        afsc: sub.afsc ?? null,
+        isManagedMember: false,
+      };
+    }
+    return {
+      id: profile.id,
+      fullName: profile.full_name,
+      rank: (profile.rank as Rank | null) ?? null,
+      afsc: profile.afsc ?? null,
+      isManagedMember: false,
+    };
+  }, [
+    profile,
+    selectedUser,
+    isManagedMember,
+    managedMemberId,
+    managedMembers,
+    subordinates,
+  ]);
+
+  const canFuseToEpb =
+    !!fuseRatee &&
+    isEnlisted(fuseRatee.rank) &&
+    selectedAccomplishments.length > 0;
+
   // Helper to get score color for display
   const getScoreColor = (score: number) => {
     if (score >= 80) return "text-green-600 bg-green-500/10 border-green-500/30";
@@ -272,7 +349,10 @@ function EntriesContent() {
   }
 
   return (
-    <div className="space-y-6 w-full max-w-7xl">
+    <div className={cn(
+      "space-y-6 w-full max-w-7xl pb-10",
+      selectedEntryIds.size > 0 && isEnlisted(fuseRatee?.rank ?? null) && "pb-28"
+    )}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Accomplishments</h1>
@@ -298,7 +378,7 @@ function EntriesContent() {
       {/* Filters & View Controls - Local to entries list */}
       <div className="flex flex-wrap items-center gap-3">
         {canManageTeam && hasSubordinates && (
-          <Select value={selectedUser} onValueChange={setSelectedUser}>
+          <Select value={selectedUser} onValueChange={handleSelectedUserChange}>
             <SelectTrigger className="w-[180px] h-9">
               <SelectValue placeholder="Viewing for" />
             </SelectTrigger>
@@ -354,33 +434,33 @@ function EntriesContent() {
           onSelectedTagsChange={setSelectedTags}
         />
 
-        <div className="flex-1" />
+        <div className="ml-auto flex items-center gap-3">
+          {/* Fiscal Year Toggle - only show in quarterly view; sits left of List/Quarterly so the tabs stay pinned */}
+          {viewMode === "quarterly" && (
+            <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-background">
+              <span className={cn("text-sm", !useFiscalYear && "font-medium")}>Calendar</span>
+              <Switch
+                checked={useFiscalYear}
+                onCheckedChange={setUseFiscalYear}
+                aria-label="Toggle fiscal year"
+              />
+              <span className={cn("text-sm", useFiscalYear && "font-medium")}>Fiscal</span>
+            </div>
+          )}
 
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "quarterly")}>
-          <TabsList className="h-9">
-            <TabsTrigger value="list" className="gap-1.5 px-3">
-              <LayoutList className="size-4" />
-              <span className="hidden sm:inline">List</span>
-            </TabsTrigger>
-            <TabsTrigger value="quarterly" className="gap-1.5 px-3">
-              <CalendarDays className="size-4" />
-              <span className="hidden sm:inline">Quarterly</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {/* Fiscal Year Toggle - only show in quarterly view */}
-        {viewMode === "quarterly" && (
-          <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-background">
-            <span className={cn("text-sm", !useFiscalYear && "font-medium")}>Calendar</span>
-            <Switch
-              checked={useFiscalYear}
-              onCheckedChange={setUseFiscalYear}
-              aria-label="Toggle fiscal year"
-            />
-            <span className={cn("text-sm", useFiscalYear && "font-medium")}>Fiscal</span>
-          </div>
-        )}
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "quarterly")}>
+            <TabsList className="h-9">
+              <TabsTrigger value="list" className="gap-1.5 px-3">
+                <LayoutList className="size-4" />
+                <span className="hidden sm:inline">List</span>
+              </TabsTrigger>
+              <TabsTrigger value="quarterly" className="gap-1.5 px-3">
+                <CalendarDays className="size-4" />
+                <span className="hidden sm:inline">Quarterly</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       {/* Entries List or Quarterly View */}
@@ -451,13 +531,29 @@ function EntriesContent() {
                       const hasScore = entry.assessment_scores?.overall_score != null;
                       const overallScore = entry.assessment_scores?.overall_score || 0;
                       
+                      const isSelected = selectedEntryIds.has(entry.id);
+                      const showSelect = isEnlisted(fuseRatee?.rank ?? null);
                       return (
                       <div 
                         key={entry.id} 
-                        className="group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                        className={cn(
+                          "group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors",
+                          isSelected && "ring-1 ring-primary/40 bg-primary/5"
+                        )}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            {showSelect && (
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) =>
+                                  toggleEntrySelected(entry.id, checked === true)
+                                }
+                                aria-label={`Select ${entry.action_verb}`}
+                                className="mt-1"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <Badge variant="outline" className="text-xs">
                                 {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
@@ -492,6 +588,7 @@ function EntriesContent() {
                             </div>
                             <p className="font-medium text-sm">{entry.action_verb}</p>
                             <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{entry.details}</p>
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
@@ -556,12 +653,31 @@ function EntriesContent() {
           {filteredAccomplishments.map((entry) => {
             const hasScore = entry.assessment_scores?.overall_score != null;
             const overallScore = entry.assessment_scores?.overall_score || 0;
+            const isSelected = selectedEntryIds.has(entry.id);
+            const showSelect = isEnlisted(fuseRatee?.rank ?? null);
             
             return (
-            <Card key={entry.id} className="group">
+            <Card
+              key={entry.id}
+              className={cn(
+                "group",
+                isSelected && "ring-1 ring-primary/40 bg-primary/5"
+              )}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    {showSelect && (
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) =>
+                          toggleEntrySelected(entry.id, checked === true)
+                        }
+                        aria-label={`Select ${entry.action_verb}`}
+                        className="mt-1"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge variant="outline">
                         {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
@@ -593,6 +709,7 @@ function EntriesContent() {
                     <CardTitle className="text-lg leading-tight">
                       {entry.action_verb}
                     </CardTitle>
+                    </div>
                   </div>
                   
                   {/* Score Display - Prominent on the right (Enlisted only) */}
@@ -685,14 +802,63 @@ function EntriesContent() {
                   </p>
                   <p className="text-sm">{entry.details}</p>
                 </div>
-                {entry.impact && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Impact
-                    </p>
-                    <p className="text-sm">{entry.impact}</p>
-                  </div>
-                )}
+                {(() => {
+                  const stewardship = normalizeStewardshipImpact(
+                    entry.stewardship_impact
+                  );
+                  if (hasStewardshipImpactContent(stewardship)) {
+                    const rows: Array<{ label: string; value: string }> = [];
+                    if (stewardship.time) {
+                      rows.push({ label: STEWARDSHIP_LABELS.time, value: stewardship.time });
+                    }
+                    if (stewardship.money) {
+                      rows.push({ label: STEWARDSHIP_LABELS.money, value: stewardship.money });
+                    }
+                    if (stewardship.resources) {
+                      rows.push({
+                        label: STEWARDSHIP_LABELS.resources,
+                        value: stewardship.resources,
+                      });
+                    }
+                    if (stewardship.outcome) {
+                      rows.push({
+                        label: STEWARDSHIP_LABELS.outcome,
+                        value: stewardship.outcome,
+                      });
+                    }
+                    return (
+                      <div className="space-y-1.5">
+                        <p className="text-sm font-medium text-muted-foreground">
+                          Impact
+                        </p>
+                        <div className="space-y-1">
+                          {rows.map((row) => (
+                            <div
+                              key={row.label}
+                              className="flex gap-2 text-sm"
+                            >
+                              <span className="w-[6.5rem] shrink-0 text-muted-foreground">
+                                {row.label}
+                              </span>
+                              <span>{row.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (entry.impact) {
+                    return (
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">
+                          Impact
+                        </p>
+                        <p className="text-sm">{entry.impact}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {entry.metrics && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">
@@ -724,6 +890,25 @@ function EntriesContent() {
         targetUserId={selectedUser === "self" ? profile?.id : (isManagedMember ? null : selectedUser)}
         targetManagedMemberId={isManagedMember ? managedMemberId : null}
       />
+
+      {fuseRatee && isEnlisted(fuseRatee.rank) && (
+        <FuseToEpbBar
+          selectedCount={selectedAccomplishments.length}
+          canFuse={canFuseToEpb}
+          onClear={() => setSelectedEntryIds(new Set())}
+          onFuse={() => setFuseDialogOpen(true)}
+        />
+      )}
+
+      {fuseDialogOpen && fuseRatee && selectedAccomplishments.length > 0 && (
+        <FuseToEpbDialog
+          key={selectedAccomplishments.map((a) => a.id).join(",")}
+          open={fuseDialogOpen}
+          onOpenChange={setFuseDialogOpen}
+          accomplishments={selectedAccomplishments}
+          ratee={fuseRatee}
+        />
+      )}
     </div>
   );
 }

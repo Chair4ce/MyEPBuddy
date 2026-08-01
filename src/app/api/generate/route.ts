@@ -23,6 +23,7 @@ import {
   createBillableRequestContext,
   getReplayedBillableResponse,
   handleBillableLLMError,
+  refundAndError,
   type BillableRequestContext,
 } from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
@@ -49,9 +50,17 @@ import {
   filterOtherMpaStatements,
   type OtherMpaStatement,
 } from "@/lib/epb-verb-variety";
+import {
+  AF_STEWARDSHIP_IMPACT_BRIEF,
+  parseImpactAssessment,
+  type ImpactAssessmentResponse,
+} from "@/lib/impact-booster";
+import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
+import { TIME_COMPRESSION_WRITING_GUIDANCE } from "@/lib/stewardship-impact";
+import { clampGenerateVersionCount } from "@/lib/generate-version-count";
 
-// Allow up to 60s for LLM calls (initial generation + quality control)
-export const maxDuration = 60;
+// Allow up to 90s for multi-version generation (parallel LLM + optional QC)
+export const maxDuration = 90;
 
 interface AccomplishmentData {
   id?: string; // Optional - used for fetching project context
@@ -116,6 +125,11 @@ interface GenerateRequest {
   }[];
   /** When "opb", OPB user rules are applied instead of EPB rules. */
   statementType?: "epb" | "opb";
+  /**
+   * Number of alternative statement versions to generate (1–3).
+   * One billable credit for the whole request — matches "one click = one token".
+   */
+  versionCount?: number;
 }
 
 // Type for clarifying questions returned by LLM
@@ -125,48 +139,45 @@ interface ClarifyingQuestionResponse {
   hint?: string;
   /** Which sentence this question relates to (1, 2, or undefined for general/both) */
   sentenceNumber?: 1 | 2;
+  /** Impact Booster lever this question targets */
+  lever?: "time" | "money" | "resources";
 }
 
-// Clarifying question guidance for the LLM (encouraged but non-blocking)
+// Clarifying question + Impact Booster guidance (encouraged but non-blocking)
 const CLARIFYING_QUESTION_GUIDANCE = `
-=== CLARIFYING QUESTIONS (PLEASE INCLUDE 1-3) ===
-ALWAYS look for opportunities to ask clarifying questions that would enhance statement quality. Most accomplishment inputs are missing key details. Ask 1-3 questions about what's NOT mentioned.
+=== IMPACT BOOSTER + CLARIFYING QUESTIONS (PLEASE INCLUDE) ===
+Assess how strongly the DRAFT statements quantify Air Force stewardship payoff
+(time / funds / equipment·manpower·facilities → mission or readiness outcome).
+Most inputs are missing the board-readable "so what." Ask 1-3 questions ONLY about what's NOT already quantified.
+
+${AF_STEWARDSHIP_IMPACT_BRIEF}
+
+**IMPACT ASSESSMENT (REQUIRED)**
+Include an "impactAssessment" object:
+- strength: 0-100 (how well the draft shows stewardship payoff + mission cascade)
+- missingLevers: subset of ["time","money","resources"] that are weak or absent — omit levers already well quantified
+  - "time" = man-hours/cycle-time/schedule/downtime
+  - "money" = funds saved or cost avoidance
+  - "resources" = equipment, manpower, facilities, cross-org capacity
+- summary: one short sentence on what's weak, in AF terms (do NOT invent metrics)
+
+**QUESTION RULES**
+- Write questions in AF vernacular (man-hours, cost avoidance, readiness, FMC, sortie, inspection, flight/sq/wg) — NOT civilian "office efficiency" wording
+- Prefer questions that fill missingLevers; each question should invite a number AND a mission/readiness cascade when possible
+- Do NOT ask about a lever already clearly quantified in the draft
+- Do NOT invent dollars, man-hours, or savings — leave unknowns empty and ask the user
+- Cap at 1-3 questions; set "lever" to "time" | "money" | "resources"
+
+Optional secondary categories only if stewardship levers are already covered:
+- scope, leadership, recognition, metrics (non-impact)
 
 **CRITICAL: SENTENCE NUMBER**
-When generating 2 sentences from 2 different inputs, you MUST specify which sentence (1 or 2) each question relates to using the "sentenceNumber" field. This helps the user know which accomplishment/topic the question is about.
-- sentenceNumber: 1 = question is about the FIRST sentence/accomplishment input
-- sentenceNumber: 2 = question is about the SECOND sentence/accomplishment input
-- Omit sentenceNumber only if the question applies to BOTH sentences equally
+When generating 2 sentences from 2 different inputs, specify which sentence (1 or 2) each question relates to via "sentenceNumber".
+- sentenceNumber: 1 = FIRST sentence/accomplishment
+- sentenceNumber: 2 = SECOND sentence/accomplishment
+- Omit only if the question applies to BOTH equally
 
-**IMPACT Questions (category: "impact")**
-- Did this save time, money, or resources? How much?
-- What's the "so what?" - why did this matter and to whom?
-- What would have happened if this wasn't done?
-
-**SCOPE Questions (category: "scope")**
-- Did this affect just the unit, or higher levels (Group, Wing, Base, MAJCOM, HAF)?
-- How many people/units/missions were impacted?
-- Was this outside their normal assigned duties?
-
-**LEADERSHIP Questions (category: "leadership")**
-- Did they lead a team? How many people?
-- Was the team larger than their duty description indicates?
-- Did they mentor or develop others?
-
-**RECOGNITION Questions (category: "recognition")**
-- Were they hand-selected? By whom and why?
-- Was this a competitive selection?
-- Did they receive awards for this?
-
-**METRICS Questions (category: "metrics")**
-- Can results be quantified (%, $, time, people)?
-- What's the comparison point ("50% faster" or "first ever")?
-
-ALWAYS include 1-3 questions in a "clarifyingQuestions" field. Even if the input seems complete, there's usually room to ask about:
-- Specific metrics/numbers not mentioned
-- Team size or leadership scope  
-- Recognition or selection details
-- Time/money saved
+ALWAYS include 1-3 questions in "clarifyingQuestions" focused on missing stewardship levers when possible.
 `;
 
 interface ExampleStatement {
@@ -416,7 +427,9 @@ export async function POST(request: Request) {
       clarifyingContext, requestClarifyingQuestions = true,
       projectContext, usedVerbs: sessionUsedVerbs = [],
       statementType = "epb",
+      versionCount: rawVersionCount,
     } = body;
+    const versionCount = clampGenerateVersionCount(rawVersionCount);
 
     // Either accomplishments, customContext, or epbStatements must be provided
     const hasAccomplishments = accomplishments && accomplishments.length > 0;
@@ -633,7 +646,23 @@ export async function POST(request: Request) {
     const maxChars = MAX_STATEMENT_CHARACTERS; // 350 for regular MPAs
     const maxHlrChars = MAX_HLR_CHARACTERS; // 250 for HLR Assessment
     const mpaDescriptions: MPADescriptions = (settings as { mpa_descriptions?: MPADescriptions }).mpa_descriptions || DEFAULT_MPA_DESCRIPTIONS;
-    const results: { mpa: string; statements: string[]; historyIds: string[]; relevancyScore?: number }[] = [];
+    const results: {
+      mpa: string;
+      statements: string[];
+      /** Alternative versions when versionCount > 1 (includes primary as [0]). */
+      statementVersions?: string[][];
+      historyIds: string[];
+      relevancyScore?: number;
+      qcFeedback?: string;
+      clarifyingQuestions?: ClarifyingQuestionResponse[];
+      impactAssessment?: ImpactAssessmentResponse;
+      formattingViolations?: {
+        violations: string[];
+        remaining: string[];
+        method: string;
+        attempts: number;
+      }[];
+    }[] = [];
 
     // Determine which MPAs to generate for
     const mpasToGenerate = selectedMPAs && selectedMPAs.length > 0 
@@ -1371,175 +1400,231 @@ ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 {"statements": ["Statement for accomplishment 1 (~${perStatementTarget} chars)", "Statement for accomplishment 2 (~${perStatementTarget} chars)"], "relevancy_score": 85}`;
       }
 
-      // Inject clarifying context from previous generation (if user provided answers)
-      let finalPrompt = userPrompt;
+      // Inject clarifying / Impact Booster context from previous answers
+      let basePrompt = userPrompt;
       if (verbVarietyBlock) {
-        finalPrompt = `${finalPrompt}${verbVarietyBlock}`;
+        basePrompt = `${basePrompt}${verbVarietyBlock}`;
+      }
+      // Enforce even when the user has a customized system prompt
+      if (!isHLR) {
+        basePrompt = `${basePrompt}
+
+${PERSONNEL_REFERENCE_GUIDANCE}
+
+${TIME_COMPRESSION_WRITING_GUIDANCE}`;
       }
       if (clarifyingContext && clarifyingContext.trim().length > 0) {
-        finalPrompt = `${userPrompt}
+        basePrompt = `${basePrompt}
 
 ${clarifyingContext}
 
-Use the clarifying information above to enhance your statements with more specific impacts, scope, and metrics.`;
+Use the IMPACT BOOSTER / stewardship details above to enhance statements with quantified AF impact (man-hours, funds/cost avoidance, equipment or manpower) cascading to readiness or mission outcomes. Do NOT invent numbers that are not in the user-provided details.`;
       }
       
-      // Add clarifying questions guidance (optional, non-blocking)
+      // Add Impact Booster + clarifying questions guidance (skip when regenerating with answers)
+      // Only the first version requests meta — multi-version stays one billable click.
       const shouldRequestQuestions = requestClarifyingQuestions && !clarifyingContext;
+      let metaPrompt = basePrompt;
       if (shouldRequestQuestions) {
-        // Only request questions on first generation, not on regeneration with answers
-        finalPrompt = `${finalPrompt}
+        metaPrompt = `${basePrompt}
 
 ${CLARIFYING_QUESTION_GUIDANCE}
 
-**IMPORTANT: OUTPUT FORMAT WHEN CLARIFYING QUESTIONS APPLY**
+**IMPORTANT: OUTPUT FORMAT**
 You MUST respond with a JSON OBJECT (not array) in this format:
 {
   "statements": ["Statement 1", "Statement 2", "Statement 3"],
+  "impactAssessment": {
+    "strength": 55,
+    "missingLevers": ["time", "money"],
+    "summary": "Shows operators trained and qual timeline cut, but not man-hours recovered or cost avoidance."
+  },
   "clarifyingQuestions": [
-    {"question": "Did this save time or money? How much?", "category": "impact", "hint": "Quantify savings if possible", "sentenceNumber": 1},
-    {"question": "How many people were on the team they led?", "category": "leadership", "hint": "Specific numbers help", "sentenceNumber": 2}
+    {"question": "How many man-hours or man-days did cutting qual from 6 mos to 3 wks free for the flight/sq — and what mission work did that capacity fund?", "category": "impact", "hint": "Man-hours recovered + readiness/task enabled", "sentenceNumber": 1, "lever": "time"},
+    {"question": "Was there a hard dollar save or cost avoidance (contract, TDY, overtime, new buy never spent)? About how much — and what readiness did that buy back?", "category": "impact", "hint": "Leave blank if unknown — do not invent $", "sentenceNumber": 1, "lever": "money"}
   ]
 }
 
-**sentenceNumber is REQUIRED when there are 2 sentences** - it tells the user which accomplishment the question relates to:
-- sentenceNumber: 1 = question about first input/accomplishment  
-- sentenceNumber: 2 = question about second input/accomplishment
-- Omit only if question applies to BOTH equally
-
-Include 1-3 clarifying questions if the input lacks:
-- Specific metrics (time saved, money saved, people impacted)
-- Scope clarity (unit level vs wing level vs AF-wide)
-- Leadership details (team size, people developed)
-- Recognition context (why selected, competition level)
-
-ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about what's NOT in the input (metrics, team size, selection process, savings).`;
+Rules:
+- Ask ONLY about missingLevers using AF stewardship vernacular
+- Cap at 1-3 questions; omit levers already well quantified in the draft
+- Never invent dollars, man-hours, or savings in the statements
+- sentenceNumber required when there are 2 sentences`;
       }
 
       try {
-        const { text } = await generateText({
-          model: modelProvider,
-          system: systemPrompt,
-          prompt: finalPrompt,
-          temperature: 0.75, // Slightly higher for creative expansion
-          maxOutputTokens: 2500, // Increased to allow room for clarifying questions JSON
-        });
+        type VersionOut = {
+          statements: string[];
+          relevancyScore?: number;
+          clarifyingQuestions: ClarifyingQuestionResponse[];
+          impactAssessment: ImpactAssessmentResponse | null;
+          qcFeedback?: string;
+          formattingFlags: {
+            violations: string[];
+            remaining: string[];
+            method: string;
+            attempts: number;
+          }[];
+        };
 
-        let statements: string[] = [];
-        let relevancyScore: number | undefined;
-        let clarifyingQuestions: ClarifyingQuestionResponse[] = [];
-        
-        // Log raw response for debugging (first 500 chars)
-        console.log(`[Generate] Raw LLM response for ${mpa.key}:`, text.substring(0, 500));
-        
-        try {
-          // Try to parse as JSON object with statements, relevancy_score, and clarifyingQuestions
-          const jsonObjMatch = text.match(/\{[\s\S]*"statements"[\s\S]*\}/);
-          if (jsonObjMatch) {
-            const parsed = JSON.parse(jsonObjMatch[0]);
-            statements = parsed.statements || [];
-            relevancyScore = typeof parsed.relevancy_score === "number" ? parsed.relevancy_score : undefined;
-            // Extract clarifying questions if present
-            if (Array.isArray(parsed.clarifyingQuestions)) {
-              // Filter for valid questions with actual question text
-              clarifyingQuestions = parsed.clarifyingQuestions.filter(
-                (q: unknown) => typeof q === "object" && q !== null && "question" in q && 
-                  typeof (q as { question: string }).question === "string" && 
-                  (q as { question: string }).question.length > 10 // Must have actual question text
-              );
-              if (clarifyingQuestions.length > 0) {
-                console.log(`[Generate] Found ${clarifyingQuestions.length} clarifying questions for ${mpa.key}:`);
-                clarifyingQuestions.forEach((q, i) => {
-                  const typedQ = q as { question: string; category?: string };
-                  console.log(`  [${i + 1}] (${typedQ.category || "general"}): "${typedQ.question.substring(0, 80)}..."`);
-                });
-              } else {
-                console.log(`[Generate] clarifyingQuestions array was empty or malformed for ${mpa.key}`);
-              }
-            } else if (shouldRequestQuestions) {
-              console.log(`[Generate] No clarifyingQuestions array in response for ${mpa.key}`);
-            }
-          } else {
-            // Fallback: try to parse as array
-            const jsonArrayMatch = text.match(/\[[\s\S]*\]/);
-            if (jsonArrayMatch) {
-              statements = JSON.parse(jsonArrayMatch[0]);
-            } else {
-              statements = text
-                .split("\n")
-                .filter((line) => line.trim().length > 50)
-                .slice(0, 3);
-            }
-          }
-        } catch {
-          // Final fallback: extract lines
-          statements = text
-            .split("\n")
-            .filter((line) => line.trim().length > 50)
-            .slice(0, 3);
-        }
+        const generateVersion = async (versionIndex: number): Promise<VersionOut | null> => {
+          const includeMeta = versionIndex === 0 && shouldRequestQuestions;
+          const prompt = includeMeta ? metaPrompt : basePrompt;
 
-        if (statements.length > 0) {
-          // Log the raw statements BEFORE any processing
-          console.log(`[Generate] === RAW STATEMENTS (before sanitization) for ${mpa.key} ===`);
-          statements.forEach((s, i) => {
-            console.log(`  [${i + 1}] (${s.length} chars): "${s.substring(0, 150)}..."`);
+          const { text } = await generateText({
+            model: modelProvider,
+            system: systemPrompt,
+            prompt,
+            temperature: 0.75,
+            maxOutputTokens: 2500,
           });
-          
-          // IMMEDIATE SANITIZATION: Clean up any garbage from initial generation
-          // Also applies abbreviations and acronyms from user settings
+
+          let statements: string[] = [];
+          let relevancyScore: number | undefined;
+          let clarifyingQuestions: ClarifyingQuestionResponse[] = [];
+          let impactAssessment: ImpactAssessmentResponse | null = null;
+
+          console.log(
+            `[Generate] Raw LLM response for ${mpa.key} v${versionIndex + 1}:`,
+            text.substring(0, 500)
+          );
+
+          try {
+            const jsonObjMatch = text.match(/\{[\s\S]*"statements"[\s\S]*\}/);
+            if (jsonObjMatch) {
+              const parsed = JSON.parse(jsonObjMatch[0]);
+              statements = parsed.statements || [];
+              relevancyScore =
+                typeof parsed.relevancy_score === "number"
+                  ? parsed.relevancy_score
+                  : undefined;
+              impactAssessment = parseImpactAssessment(parsed.impactAssessment);
+              if (impactAssessment) {
+                console.log(
+                  `[Generate] Impact assessment for ${mpa.key} v${versionIndex + 1}: strength=${impactAssessment.strength}, missing=${impactAssessment.missingLevers.join(",") || "none"}`
+                );
+              }
+              if (Array.isArray(parsed.clarifyingQuestions)) {
+                clarifyingQuestions = parsed.clarifyingQuestions.filter(
+                  (q: unknown) =>
+                    typeof q === "object" &&
+                    q !== null &&
+                    "question" in q &&
+                    typeof (q as { question: string }).question === "string" &&
+                    (q as { question: string }).question.length > 10
+                );
+                if (clarifyingQuestions.length > 0) {
+                  console.log(
+                    `[Generate] Found ${clarifyingQuestions.length} clarifying questions for ${mpa.key}:`
+                  );
+                  clarifyingQuestions.forEach((q, i) => {
+                    const typedQ = q as {
+                      question: string;
+                      category?: string;
+                      lever?: string;
+                    };
+                    console.log(
+                      `  [${i + 1}] (${typedQ.category || "general"}${typedQ.lever ? `/${typedQ.lever}` : ""}): "${typedQ.question.substring(0, 80)}..."`
+                    );
+                  });
+                } else if (includeMeta) {
+                  console.log(
+                    `[Generate] clarifyingQuestions array was empty or malformed for ${mpa.key}`
+                  );
+                }
+              } else if (includeMeta) {
+                console.log(
+                  `[Generate] No clarifyingQuestions array in response for ${mpa.key}`
+                );
+              }
+            } else {
+              const jsonArrayMatch = text.match(/\[[\s\S]*\]/);
+              if (jsonArrayMatch) {
+                statements = JSON.parse(jsonArrayMatch[0]);
+              } else {
+                statements = text
+                  .split("\n")
+                  .filter((line) => line.trim().length > 50)
+                  .slice(0, 3);
+              }
+            }
+          } catch {
+            statements = text
+              .split("\n")
+              .filter((line) => line.trim().length > 50)
+              .slice(0, 3);
+          }
+
+          if (statements.length === 0) return null;
+
+          console.log(
+            `[Generate] === RAW STATEMENTS (before sanitization) for ${mpa.key} v${versionIndex + 1} ===`
+          );
+          statements.forEach((s, i) => {
+            console.log(
+              `  [${i + 1}] (${s.length} chars): "${s.substring(0, 150)}..."`
+            );
+          });
+
+          const { repairBannedFormattingBatch } = await import(
+            "@/lib/banned-formatting"
+          );
+          const formattingRepair = await repairBannedFormattingBatch(statements, {
+            model: modelProvider as LanguageModel,
+            maxAttempts: 2,
+          });
+          if (formattingRepair.flaggedCount > 0) {
+            console.warn(
+              `[Generate] Banned-formatting flagged ${formattingRepair.flaggedCount} statement(s) for ${mpa.key} v${versionIndex + 1}: ${formattingRepair.results
+                .filter((r) => r.wasFlagged)
+                .map((r) => r.violationsFound.join("/"))
+                .join("; ")}`
+            );
+            statements = formattingRepair.statements;
+          }
+
           const { sanitizeStatements } = await import("@/lib/quality-control");
           const userAbbrevs = settings.abbreviations || [];
           const userAcros = resolveStoredAcronyms(settings.acronyms);
-          const sanitizationResult = sanitizeStatements(statements, userAbbrevs, userAcros);
+          const sanitizationResult = sanitizeStatements(
+            statements,
+            userAbbrevs,
+            userAcros
+          );
+          statements = sanitizationResult.sanitized;
           if (sanitizationResult.hadIssues) {
-            console.log(`[Generate] Sanitized ${sanitizationResult.issueCount} statement(s) from initial generation`);
-            console.log(`[Generate] Applied ${userAbbrevs.length} abbreviations and checked ${userAcros.length} acronyms`);
-            statements = sanitizationResult.sanitized;
-            
-            // Log after sanitization
-            console.log(`[Generate] === AFTER SANITIZATION for ${mpa.key} ===`);
-            statements.forEach((s, i) => {
-              console.log(`  [${i + 1}] (${s.length} chars): "${s.substring(0, 150)}..."`);
-            });
+            console.log(
+              `[Generate] Sanitized ${sanitizationResult.issueCount} statement(s) from v${versionIndex + 1}`
+            );
           }
-          
-          // POST-GENERATION QUALITY CONTROL
-          // Single consolidated QC pass that handles:
-          // - Character count enforcement (when fillToMax is enabled)
-          // - Statement diversity check
-          // - Instruction compliance verification
-          // This is ONE LLM call instead of multiple per-statement calls
+
           let verifiedStatements = statements;
           let qcFeedback: string | undefined;
-          
-          // Quality Control — disabled for default-key users to halve LLM cost per request
           const ENABLE_QC = !usageCheck.usingDefaultKey;
-          
+
           if (ENABLE_QC && shouldEnforceCharLimits && fillToMax) {
-            // For multi-statement, just log and skip QC (LLM compression doesn't work well)
             if (isMultiStatementGeneration && statements.length >= 2) {
               const combinedLength = statements.join(" ").length;
-              const combinedTarget = effectiveMaxChars;
-              
-              console.log(`[Generate] Multi-statement: combined ${combinedLength}/${combinedTarget} chars`);
-              
-              if (combinedLength > combinedTarget) {
-                console.warn(`[Generate] ⚠️ Combined length ${combinedLength} exceeds ${combinedTarget} - statements may need manual trimming`);
+              console.log(
+                `[Generate] Multi-statement v${versionIndex + 1}: combined ${combinedLength}/${effectiveMaxChars} chars`
+              );
+              if (combinedLength > effectiveMaxChars) {
+                console.warn(
+                  `[Generate] ⚠️ Combined length ${combinedLength} exceeds ${effectiveMaxChars}`
+                );
               }
-              
-              // Skip QC for multi-statement - it tends to make things worse
-              // The prompt instructs shorter generation, and user can adjust in UI
             } else {
-              // Single statement - use original logic
               const qcTargetMax = effectiveMaxChars;
               const targetMin = qcTargetMax - 10;
-              
-              const qcCheck = shouldRunQualityControl(statements, fillToMax, qcTargetMax, targetMin);
-              
+              const qcCheck = shouldRunQualityControl(
+                statements,
+                fillToMax,
+                qcTargetMax,
+                targetMin
+              );
+
               if (qcCheck.shouldRun) {
                 try {
-                  console.log(`[Generate] Single-statement QC using target: ${qcTargetMax} chars`);
                   const qcConfig: QualityControlConfig = {
                     statements,
                     userPrompt: userPrompt,
@@ -1549,58 +1634,101 @@ ALWAYS include 1-3 clarifying questions, even if input seems detailed. Ask about
                     context: `${mpa.label} statement for ${rateeRank}`,
                     model: modelProvider as LanguageModel,
                   };
-                
                   const qcResult = await performQualityControl(qcConfig);
                   verifiedStatements = qcResult.statements;
                   qcFeedback = qcResult.evaluation.overallFeedback;
-                  
-                  console.log(`[Generate] Single-statement QC for ${mpa.key}: adjusted=${qcResult.wasAdjusted}`);
                 } catch (qcError) {
-                  console.error(`[Generate] QC failed for ${mpa.key}:`, qcError);
+                  console.error(
+                    `[Generate] QC failed for ${mpa.key} v${versionIndex + 1}:`,
+                    qcError
+                  );
                   verifiedStatements = statements;
                 }
-              } else {
-                console.log(`[Generate] Skipping QC for ${mpa.key}: ${qcCheck.reason}`);
               }
             }
           }
-          
-          const historyIds: string[] = [];
-          
-          for (const statement of verifiedStatements) {
-            const { data: historyData } = await supabase
-              .from("statement_history")
-              .insert({
-                user_id: user.id,
-                ratee_id: rateeId,
-                mpa: mpa.key,
-                afsc: rateeAfsc || "UNKNOWN",
-                rank: rateeRank,
-                original_statement: statement,
-                model_used: model,
-                cycle_year: cycleYear,
-              } as never)
-              .select("id")
-              .single();
 
-            if (historyData) {
-              historyIds.push((historyData as { id: string }).id);
+          return {
+            statements: verifiedStatements,
+            relevancyScore,
+            clarifyingQuestions,
+            impactAssessment,
+            qcFeedback,
+            formattingFlags: formattingRepair.results
+              .filter((r) => r.wasFlagged)
+              .map((r) => ({
+                violations: r.violationsFound,
+                remaining: r.remainingViolations,
+                method: r.method,
+                attempts: r.attempts,
+              })),
+          };
+        };
+
+        const versionOutputs = (
+          await Promise.all(
+            Array.from({ length: versionCount }, (_, i) => generateVersion(i))
+          )
+        ).filter((v): v is VersionOut => v !== null);
+
+        if (versionOutputs.length > 0) {
+          const primary = versionOutputs[0];
+          const statementVersions = versionOutputs.map((v) => v.statements);
+          const historyIds: string[] = [];
+
+          for (const versionStatements of statementVersions) {
+            for (const statement of versionStatements) {
+              const { data: historyData } = await supabase
+                .from("statement_history")
+                .insert({
+                  user_id: user.id,
+                  ratee_id: rateeId,
+                  mpa: mpa.key,
+                  afsc: rateeAfsc || "UNKNOWN",
+                  rank: rateeRank,
+                  original_statement: statement,
+                  model_used: model,
+                  cycle_year: cycleYear,
+                } as never)
+                .select("id")
+                .single();
+
+              if (historyData) {
+                historyIds.push((historyData as { id: string }).id);
+              }
             }
           }
 
-          // Include QC feedback and clarifying questions in results if available
-          results.push({ 
-            mpa: mpa.key, 
-            statements: verifiedStatements, 
-            historyIds, 
-            relevancyScore,
-            ...(qcFeedback && { qcFeedback }),
-            ...(clarifyingQuestions.length > 0 && { clarifyingQuestions }),
+          results.push({
+            mpa: mpa.key,
+            statements: primary.statements,
+            ...(versionCount > 1 && { statementVersions }),
+            historyIds,
+            relevancyScore: primary.relevancyScore,
+            ...(primary.qcFeedback && { qcFeedback: primary.qcFeedback }),
+            ...(primary.clarifyingQuestions.length > 0 && {
+              clarifyingQuestions: primary.clarifyingQuestions,
+            }),
+            ...(primary.impactAssessment && {
+              impactAssessment: primary.impactAssessment,
+            }),
+            ...(primary.formattingFlags.length > 0 && {
+              formattingViolations: primary.formattingFlags,
+            }),
           });
         }
       } catch (error) {
         console.error(`Error generating for ${mpa.key}:`, error);
       }
+    }
+
+    // Never keep a credit when the model produced nothing usable
+    if (results.length === 0) {
+      return refundAndError(
+        billableCtx,
+        { error: "Failed to generate statements. Please try again." },
+        { status: 500 }
+      );
     }
 
     return cacheBillableJson(billableCtx, { statements: results }, usageCheck);

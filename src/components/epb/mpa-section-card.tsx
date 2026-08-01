@@ -57,11 +57,17 @@ import { SentencePills, type DraggedSentence } from "./sentence-pills";
 import { SentenceDropOverlay } from "./sentence-drop-overlay";
 import { SplitViewEditor } from "./split-view-editor";
 // Per-section collaboration removed - using page-level collaboration instead
-import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, AwardSelection, Rank } from "@/types/database";
+import type { EPBShellSection, EPBShellSnapshot, EPBSavedExample, Accomplishment, AwardSelection, Rank, ImpactBoosterState } from "@/types/database";
 import { useStyleFeedback, getMpaCategory } from "@/hooks/use-style-feedback";
-import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
-import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 import { PromptSettingsModal } from "./prompt-settings-modal";
+import { ImpactBoosterPanel } from "./impact-booster-panel";
+import { WordReplacementSlider } from "./word-replacement-slider";
+import {
+  DEFAULT_IMPACT_BOOSTER_PROMPTS,
+  buildImpactBoosterContext,
+  hasImpactBoosterContent,
+} from "@/lib/impact-booster";
+import { parseStatement } from "@/lib/sentence-utils";
 import { MpaDescriptionToggleButton, scrollMpaDescriptionPanelTo } from "./mpa-description-editor";
 import { getEpbZenModeClassName } from "./epb-zen-mode";
 import {
@@ -81,6 +87,10 @@ interface MPASectionCardProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onSave: (text: string) => Promise<void>;
+  /** Persist Impact Booster for this MPA only */
+  onSaveImpactBooster?: (booster: ImpactBoosterState) => Promise<void>;
+  /** Clear Impact Booster for this MPA */
+  onClearImpactBooster?: () => Promise<void>;
   onCreateSnapshot: (text: string) => Promise<void>;
   onGenerateStatement: (options: GenerateOptions) => Promise<string[]>;
   onReviseStatement: (text: string, context?: string, versionCount?: number, aggressiveness?: number) => Promise<string[]>;
@@ -285,6 +295,7 @@ const DEFAULT_SECTION_STATE = {
   statement1Context: "",
   statement2Context: "",
   selectedAwardIds: [] as string[],
+  impactBoosterPrompts: [],
   selectedAccomplishmentIds: [] as string[],
 };
 
@@ -301,10 +312,12 @@ const MAX_REVISION_HISTORY = 8;
 
 export function MPASectionCard({
   section,
-  rateeId,
+  rateeId: _rateeId,
   isCollapsed,
   onToggleCollapse,
   onSave,
+  onSaveImpactBooster,
+  onClearImpactBooster,
   onCreateSnapshot,
   onGenerateStatement,
   onReviseStatement,
@@ -355,9 +368,6 @@ export function MPASectionCard({
   const zenModeMpaKey = useEPBShellStore((s) => s.zenModeMpaKey);
   const setZenModeMpaKey = useEPBShellStore((s) => s.setZenModeMpaKey);
   
-  // Get active clarifying question set for modal rendering
-  const activeQuestionSet = useClarifyingQuestionsStore((s) => s.getActiveQuestionSet());
-  
   // Use local ref for autosave timer to avoid Zustand updates on every keystroke
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -379,9 +389,8 @@ export function MPASectionCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
   
-  // Revise panel state
+  // Revise panel state — always request 3 alternatives (1 credit)
   const [showRevisePanel, setShowRevisePanel] = useState(false);
-  const [reviseVersionCount, setReviseVersionCount] = useState(3);
   const [reviseContext, setReviseContext] = useState("");
   const [reviseAggressiveness, setReviseAggressiveness] = useState(50);
   const [generatedRevisions, setGeneratedRevisions] = useState<string[]>([]);
@@ -391,12 +400,20 @@ export function MPASectionCard({
   const [revisionHistory, setRevisionHistory] = useState<RevisionBatch[]>([]);
   const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
   
-  // AI Generate panel state
-  const [generateVersionCount, setGenerateVersionCount] = useState(3);
+  // AI Generate panel state — always request 3 alternatives (1 credit)
   const [generatedStatements, setGeneratedStatements] = useState<string[]>([]);
+
+  // Impact Booster — drafts feed Generate / Revise when include is on (no separate Enhance)
+  const [includeImpactBooster, setIncludeImpactBooster] = useState(true);
+  const [impactBoosterDraft, setImpactBoosterDraft] = useState<ImpactBoosterState | null>(null);
   
-  // Saved examples panel state
-  const [showExamples, setShowExamples] = useState(false);
+  // Saved examples panel — auto-open when Entries staged a new example here
+  const examplesFocus = useEPBShellStore((s) => s.examplesFocus);
+  const clearExamplesFocus = useEPBShellStore((s) => s.clearExamplesFocus);
+  const forceShowExamples = examplesFocus?.mpa === section.mpa;
+  const [showExamplesManual, setShowExamplesManual] = useState(false);
+  const showExamples = forceShowExamples || showExamplesManual;
+  const highlightedExampleIds = new Set(examplesFocus?.highlightIds ?? []);
   
   // Style learning feedback (non-blocking, fire-and-forget)
   const styleFeedback = useStyleFeedback();
@@ -926,6 +943,24 @@ export function MPASectionCard({
   };
 
   // Generate statement with AI
+  /** Persist draft (if any) and return injectable context when Include is on. */
+  const prepareImpactBoosterForRun = async (): Promise<string | undefined> => {
+    if (!includeImpactBooster) return undefined;
+    const source =
+      impactBoosterDraft && hasImpactBoosterContent(impactBoosterDraft)
+        ? impactBoosterDraft
+        : section.impact_booster;
+    if (!hasImpactBoosterContent(source)) return undefined;
+    if (
+      impactBoosterDraft &&
+      hasImpactBoosterContent(impactBoosterDraft) &&
+      onSaveImpactBooster
+    ) {
+      await onSaveImpactBooster(impactBoosterDraft);
+    }
+    return buildImpactBoosterContext(source) || undefined;
+  };
+
   const handleGenerate = async () => {
     updateSectionState(section.mpa, { isGenerating: true });
     setGeneratedStatements([]);
@@ -934,11 +969,15 @@ export function MPASectionCard({
       const allActionIds = state.usesTwoStatements
         ? [...state.statement1ActionIds, ...state.statement2ActionIds]
         : state.statement1ActionIds;
-      
+
       // Build selected awards to integrate into statement
       const selectedAwardsForGen = state.selectedAwardIds?.length > 0
         ? rateeAwards.filter((a) => state.selectedAwardIds.includes(a.id))
         : undefined;
+
+      // Always pass a string so the form does not fall back to persisted booster
+      // when the user unchecked Include.
+      const clarifyingContext = (await prepareImpactBoosterForRun()) ?? "";
 
       const results = await onGenerateStatement({
         useAccomplishments: state.sourceType === "actions" && allActionIds.length > 0,
@@ -947,10 +986,11 @@ export function MPASectionCard({
         usesTwoStatements: state.usesTwoStatements,
         statement1Context: state.statement1Context,
         statement2Context: state.statement2Context,
-        versionCount: generateVersionCount,
+        versionCount: 3,
         // HLR-specific: use EPB statements when source type is "epb-summary"
         useEPBStatements: state.sourceType === "epb-summary" && isHLR,
         selectedAwards: selectedAwardsForGen,
+        clarifyingContext,
       });
       if (results.length > 0) {
         resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
@@ -997,6 +1037,51 @@ export function MPASectionCard({
     }
   };
 
+  const impactBoosterPrompts =
+    (state.impactBoosterPrompts?.length ?? 0) > 0
+      ? state.impactBoosterPrompts
+      : DEFAULT_IMPACT_BOOSTER_PROMPTS;
+
+  // Prefer real statement text (editor or latest generated draft) — never
+  // placeholder labels from usesTwoStatements before sentences exist.
+  const impactBoosterSourceText = (() => {
+    if (localText.trim()) return localText;
+    if (generatedStatements[0]?.trim()) return generatedStatements[0];
+    return "";
+  })();
+
+  const impactBoosterSentencePreviews = (() => {
+    if (!impactBoosterSourceText.trim()) return null;
+    const parsed = parseStatement(impactBoosterSourceText);
+    if (!parsed.hasTwoSentences || parsed.sentences.length < 2) return null;
+    return {
+      1: parsed.sentences[0].text,
+      2: parsed.sentences[1].text,
+    };
+  })();
+
+  /** Open split view when Impact Booster expands and the editor has two sentences. */
+  const handleImpactBoosterExpanded = (expanded: boolean) => {
+    if (!expanded || isHLR || isSplitView || isSplitViewClosing) return;
+    if (!parseStatement(localText).hasTwoSentences) return;
+    animateEpbShellResize(mpaCardBodyShellRef.current, () => {
+      useEPBShellStore.getState().setSplitView(section.mpa, true);
+    });
+  };
+
+  const impactBoosterPanelProps = {
+    booster: section.impact_booster,
+    prompts: impactBoosterPrompts,
+    disabled: isLockedByOther,
+    includeInRun: includeImpactBooster,
+    onIncludeInRunChange: setIncludeImpactBooster,
+    onDraftChange: setImpactBoosterDraft,
+    onSave: onSaveImpactBooster!,
+    onClearAll: onClearImpactBooster!,
+    sentencePreviews: impactBoosterSentencePreviews,
+    onExpandedChange: handleImpactBoosterExpanded,
+  };
+
   // Generate revisions with AI (for revise panel)
   const handleGenerateRevisions = async () => {
     if (!localText.trim()) {
@@ -1007,7 +1092,16 @@ export function MPASectionCard({
     setIsRevising(true);
     setGeneratedRevisions([]);
     try {
-      const revisions = await onReviseStatement(localText, reviseContext || undefined, reviseVersionCount, reviseAggressiveness);
+      const boosterCtx = await prepareImpactBoosterForRun();
+      const mergedReviseContext = [reviseContext?.trim(), boosterCtx]
+        .filter((p): p is string => !!p && p.length > 0)
+        .join("\n\n");
+      const revisions = await onReviseStatement(
+        localText,
+        mergedReviseContext || undefined,
+        3,
+        reviseAggressiveness
+      );
       if (revisions.length > 0) {
         // Record this set in short-term history so the user can return to it
         // for free instead of spending another token to regenerate.
@@ -1531,7 +1625,10 @@ export function MPASectionCard({
                       onClick={() => {
                         resizeCardBody(() => {
                           setShowHistory(!showHistory);
-                          if (!showHistory) setShowExamples(false);
+                          if (!showHistory) {
+                            clearExamplesFocus();
+                            setShowExamplesManual(false);
+                          }
                         });
                       }}
                     >
@@ -1551,8 +1648,13 @@ export function MPASectionCard({
                       )}
                       onClick={() => {
                         resizeCardBody(() => {
-                          setShowExamples(!showExamples);
-                          if (!showExamples) setShowHistory(false);
+                          if (showExamples) {
+                            clearExamplesFocus();
+                            setShowExamplesManual(false);
+                            return;
+                          }
+                          setShowExamplesManual(true);
+                          setShowHistory(false);
                         });
                       }}
                     >
@@ -1606,7 +1708,7 @@ export function MPASectionCard({
 
             {/* History Panel - inline dropdown */}
             {showHistory && (
-              <div className="rounded-lg border bg-card shadow-lg animate-in fade-in-0 duration-200">
+              <div className="rounded-lg border bg-card shadow-lg overflow-hidden animate-in fade-in-0 duration-200">
                 <div className="p-4 border-b">
                   <h4 className="font-medium text-sm">Snapshot History</h4>
                   <p className="text-xs text-muted-foreground">
@@ -1622,7 +1724,7 @@ export function MPASectionCard({
                     snapshots.map((snap) => (
                       <div
                         key={snap.id}
-                        className="p-4 border-b last:border-0"
+                        className="p-4 border-b last:border-b-0"
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <p className="text-xs text-muted-foreground">
@@ -1655,7 +1757,7 @@ export function MPASectionCard({
 
             {/* Saved Examples Panel */}
             {showExamples && (
-              <div className="rounded-lg border bg-card shadow-lg animate-in fade-in-0 duration-200">
+              <div className="rounded-lg border bg-card shadow-lg overflow-hidden animate-in fade-in-0 duration-200">
                 <div className="p-4 border-b">
                   <h4 className="font-medium text-sm flex items-center gap-2">
                     <BookMarked className="size-5" />
@@ -1671,18 +1773,33 @@ export function MPASectionCard({
                       No saved examples yet. Generate statements and save your favorites here for later.
                     </p>
                   ) : (
-                    savedExamples.map((example) => (
+                    savedExamples.map((example) => {
+                      const isNew = highlightedExampleIds.has(example.id);
+                      return (
                       <div
                         key={example.id}
-                        className="p-4 border-b last:border-0"
+                        className={cn(
+                          "p-4 border-b last:border-b-0",
+                          isNew && "bg-primary/5 border-l-2 border-l-primary/40"
+                        )}
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                            {isNew && (
+                              <Badge
+                                variant="default"
+                                className="h-5 px-1.5 text-[10px] font-medium"
+                              >
+                                New
+                              </Badge>
+                            )}
                             <span>
                               {example.created_by_rank ? `${example.created_by_rank} ${example.created_by_name}` : example.created_by_name || "Unknown"}
                             </span>
                             <span>•</span>
-                            <span>{new Date(example.created_at).toLocaleDateString()}</span>
+                            <time dateTime={example.created_at}>
+                              {new Date(example.created_at).toLocaleString()}
+                            </time>
                           </div>
                           <div className="flex items-center gap-1">
                             {!isLockedByOther && (
@@ -1726,7 +1843,8 @@ export function MPASectionCard({
                           </span>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1760,96 +1878,48 @@ export function MPASectionCard({
 
                 {/* Options */}
                 <div className="space-y-3">
-                  {/* Top row: Versions and Context */}
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    {/* Version count selector */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">Versions:</span>
-                      <div className="flex items-center border rounded-md">
-                        {[1, 2, 3].map((num) => (
-                          <button
-                            key={num}
-                            onClick={() => setReviseVersionCount(num)}
-                            className={cn(
-                              "px-2.5 py-1 text-xs transition-colors",
-                              num === 1 && "rounded-l-md",
-                              num === 3 && "rounded-r-md",
-                              reviseVersionCount === num
-                                ? "bg-primary text-primary-foreground"
-                                : "hover:bg-muted"
-                            )}
-                          >
-                            {num}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                  <input
+                    type="text"
+                    value={reviseContext}
+                    onChange={(e) => setReviseContext(e.target.value)}
+                    placeholder="Optional: How should it sound? (e.g., more concise, more impactful...)"
+                    className="w-full h-7 px-2.5 text-xs rounded-md border border-input bg-transparent placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label="Revision direction"
+                  />
 
-                    {/* Context input */}
-                    <div className="flex-1">
-                      <input
-                        type="text"
-                        value={reviseContext}
-                        onChange={(e) => setReviseContext(e.target.value)}
-                        placeholder="Optional: How should it sound? (e.g., more concise, more impactful...)"
-                        className="w-full h-7 px-2.5 text-xs rounded-md border border-input bg-transparent placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Aggressiveness slider */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Word Replacement:</span>
-                      <span className="text-xs font-medium tabular-nums">
-                        {reviseAggressiveness <= 20 ? "Minimal" : reviseAggressiveness <= 40 ? "Conservative" : reviseAggressiveness <= 60 ? "Moderate" : reviseAggressiveness <= 80 ? "Aggressive" : "Maximum"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] text-muted-foreground shrink-0">Keep Most</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="10"
-                        value={reviseAggressiveness}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          setReviseAggressiveness(value);
-                          styleFeedback.trackSliderUsed(value);
-                        }}
-                        className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                      <span className="text-[10px] text-muted-foreground shrink-0">Replace All</span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      {reviseAggressiveness <= 20 
-                        ? "Only fix obvious issues, preserve your voice" 
-                        : reviseAggressiveness <= 40 
-                          ? "Light touch, replace only weak words" 
-                          : reviseAggressiveness <= 60 
-                            ? "Balanced refresh with new phrasing" 
-                            : reviseAggressiveness <= 80 
-                              ? "Substantial rewrite, keep only metrics" 
-                              : "Complete rewrite, preserve only data"}
-                    </p>
-                  </div>
-
+                  <WordReplacementSlider
+                    id={`word-replacement-${section.mpa}`}
+                    value={reviseAggressiveness}
+                    disabled={isRevising || isLockedByOther}
+                    onChange={(value) => {
+                      setReviseAggressiveness(value);
+                      styleFeedback.trackSliderUsed(value);
+                    }}
+                  />
                 </div>
 
-                {/* Generate button */}
+                {/* Impact Booster — directly before every Revise CTA */}
+                {onSaveImpactBooster && onClearImpactBooster && (
+                  <ImpactBoosterPanel
+                    key={`impact-booster-revise-pre-${section.id}-${section.impact_booster?.answers?.length ?? 0}-${section.impact_booster?.freeform?.length ?? 0}`}
+                    {...impactBoosterPanelProps}
+                    isGenerating={isRevising}
+                    includeLabel="Include on Revise"
+                  />
+                )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={handleGenerateRevisions}
                     disabled={isRevising || !localText.trim()}
-                    className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
                   >
                     {isRevising ? (
                       <Loader2 className="size-5 animate-spin mr-2" />
                     ) : (
                       <Wand2 className="size-5 mr-2" />
                     )}
-                    Generate {reviseVersionCount} Revision{reviseVersionCount > 1 ? "s" : ""}
+                    Generate 3 Revisions
                     <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
                   </button>
                 </div>
@@ -2002,6 +2072,17 @@ export function MPASectionCard({
                         </div>
                       </div>
                     ))}
+
+                    {/* Impact Booster after revisions — available before the next pass */}
+                    {onSaveImpactBooster && onClearImpactBooster && (
+                      <ImpactBoosterPanel
+                        key={`impact-booster-revise-post-${section.id}-${section.impact_booster?.answers?.length ?? 0}-${section.impact_booster?.freeform?.length ?? 0}`}
+                        {...impactBoosterPanelProps}
+                        isGenerating={isRevising}
+                        showIntroHighlight={false}
+                        includeLabel="Include on Revise"
+                      />
+                    )}
                   </div>
                 </EpbAnimatedCollapse>
               </div>
@@ -2257,46 +2338,22 @@ export function MPASectionCard({
                   </div>
                 )}
 
-                {/* Version count and Generate button */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  {/* Version count selector */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Versions:</span>
-                    <div className="flex items-center border rounded-md">
-                      {[1, 2, 3].map((num) => (
-                        <button
-                          key={num}
-                          onClick={() => setGenerateVersionCount(num)}
-                          className={cn(
-                            "px-2.5 py-1 text-xs transition-colors",
-                            num === 1 && "rounded-l-md",
-                            num === 3 && "rounded-r-md",
-                            generateVersionCount === num
-                              ? "bg-primary text-primary-foreground"
-                              : "hover:bg-muted"
-                          )}
-                        >
-                          {num}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                {/* Impact Booster intentionally omitted before first Generate —
+                    accomplishments already carry impact/metrics; show after results. */}
 
-                  {/* Generate button */}
-                  <button
-                    onClick={handleGenerate}
-                    disabled={state.isGenerating || !canGenerate}
-                    className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                  >
-                    {state.isGenerating ? (
-                      <Loader2 className="size-5 animate-spin mr-2" />
-                    ) : (
-                      <Sparkles className="size-5 mr-2" />
-                    )}
-                    Generate {generateVersionCount} Statement{generateVersionCount > 1 ? "s" : ""}
-                    <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
-                  </button>
-                </div>
+                <button
+                  onClick={handleGenerate}
+                  disabled={state.isGenerating || !canGenerate}
+                  className="w-full h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
+                >
+                  {state.isGenerating ? (
+                    <Loader2 className="size-5 animate-spin mr-2" />
+                  ) : (
+                    <Sparkles className="size-5 mr-2" />
+                  )}
+                  Generate 3 Statements
+                  <TokenCostBadge compact className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
+                </button>
 
                 {/* Generated Statements - collapse smoothly after "Use This" */}
                 <EpbAnimatedCollapse
@@ -2316,13 +2373,6 @@ export function MPASectionCard({
                         <h5 className="text-xs font-medium text-muted-foreground">
                           Generated Statements ({generatedStatements.length})
                         </h5>
-                        {rateeId && (
-                          <ClarifyingQuestionsIndicator
-                            mpaKey={section.mpa}
-                            rateeId={rateeId}
-                            hasGenerated={generatedStatements.length > 0}
-                          />
-                        )}
                       </div>
                       {isLockedByOther && lockedByInfo && (
                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -2418,52 +2468,23 @@ export function MPASectionCard({
                         </div>
                       </div>
                     ))}
+
+                    {/* Impact Booster after statements — available before the next pass */}
+                    {onSaveImpactBooster && onClearImpactBooster && (
+                      <ImpactBoosterPanel
+                        key={`impact-booster-gen-post-${section.id}-${section.impact_booster?.answers?.length ?? 0}-${section.impact_booster?.freeform?.length ?? 0}-${state.impactBoosterPrompts?.length ?? 0}`}
+                        {...impactBoosterPanelProps}
+                        isGenerating={state.isGenerating}
+                        showIntroHighlight={false}
+                        includeLabel="Include on Generate"
+                      />
+                    )}
                   </div>
                 </EpbAnimatedCollapse>
               </div>
             )}
           </div>
           </CardContent>
-      )}
-
-      {/* Clarifying Questions Modal - only render for THIS MPA if it has the active question set */}
-      {rateeId && activeQuestionSet?.mpaKey === section.mpa && (
-        <ClarifyingQuestionsModal
-          onRegenerate={async (clarifyingContext, _mpaKey) => {
-            console.log("[MPASectionCard] onRegenerate called for MPA:", section.mpa, "with clarifyingContext length:", clarifyingContext.length);
-            // Regenerate with clarifying context passed as a separate parameter
-            updateSectionState(section.mpa, { isGenerating: true });
-            setGeneratedStatements([]);
-            try {
-              console.log("[MPASectionCard] Calling onGenerateStatement with clarifyingContext...");
-              const regenAwards = state.selectedAwardIds?.length > 0
-                ? rateeAwards.filter((a) => state.selectedAwardIds.includes(a.id))
-                : undefined;
-              const results = await onGenerateStatement({
-                useAccomplishments: state.sourceType === "actions",
-                accomplishmentIds: state.usesTwoStatements
-                  ? [...state.statement1ActionIds, ...state.statement2ActionIds]
-                  : state.statement1ActionIds,
-                customContext: state.sourceType === "custom" ? state.statement1Context : undefined,
-                usesTwoStatements: state.usesTwoStatements,
-                statement1Context: state.statement1Context,
-                statement2Context: state.statement2Context,
-                versionCount: 3,
-                clarifyingContext,
-                selectedAwards: regenAwards,
-              });
-              console.log("[MPASectionCard] onGenerateStatement returned results:", results?.length);
-              if (results?.length) {
-                resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
-              }
-            } catch (err) {
-              console.error("[MPASectionCard] Regenerate with context error:", err);
-            } finally {
-              updateSectionState(section.mpa, { isGenerating: false });
-            }
-          }}
-          isRegenerating={state.isGenerating}
-        />
       )}
 
       {/* Prompt Settings Modal */}

@@ -1,22 +1,29 @@
 /** Fallback when epb_config cannot be loaded */
 export const DEFAULT_SIGNUP_TRIAL_CREDITS = 20;
 
-/** Starter purchase package */
+/**
+ * Token purchase unit: one pack = 100 tokens for $1 USD.
+ * Checkout quantity is pack count (Stripe Price × quantity).
+ */
 export const PURCHASE_CREDITS = 100;
 export const PURCHASE_PRICE_USD = 1;
 export const PURCHASE_PRICE_CENTS = 100;
 
+/** Minimum / maximum packs per checkout (abuse ceiling; buy again for more). */
+export const MIN_PURCHASE_PACKS = 1;
+export const MAX_PURCHASE_PACKS = 1000;
+
 /**
- * Live Stripe Price ID for the starter package (100 AI calls / $1 USD).
+ * Live Stripe Price ID for one pack (100 AI calls / $1 USD).
  * Set STRIPE_PRICE_100_CREDITS to this value in production, or your test-mode price locally.
  */
 export const LIVE_STARTER_PRICE_ID = "price_1TfRl1RmU7HJ5YzinnKdFWDl";
 
-/** Live Stripe Product ID for the starter package. */
+/** Live Stripe Product ID for the token pack. */
 export const LIVE_STARTER_PRODUCT_ID = "prod_UelHo41h4odIsL";
 
-/** Display label for the starter package */
-export const PURCHASE_PACKAGE_LABEL = `$${PURCHASE_PRICE_USD} for ${PURCHASE_CREDITS} AI calls`;
+/** Display label for unit pricing */
+export const PURCHASE_PACKAGE_LABEL = `$${PURCHASE_PRICE_USD} per ${PURCHASE_CREDITS} AI tokens`;
 
 /** Credit ledger rows per page on the billing settings page */
 export const LEDGER_PAGE_SIZE = 10;

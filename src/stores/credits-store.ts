@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
-import { DEFAULT_SIGNUP_TRIAL_CREDITS } from "@/lib/billing/constants";
+import {
+  DEFAULT_SIGNUP_TRIAL_CREDITS,
+  MIN_PURCHASE_PACKS,
+} from "@/lib/billing/constants";
 import type { EarnRewardsSummary } from "@/lib/billing/reward-constants";
 import { useAvailableModelsStore } from "@/stores/available-models-store";
 
@@ -34,6 +37,9 @@ interface CreditsState {
   embeddedClientSecret: string | null;
   embeddedCheckoutLoading: boolean;
   embeddedCheckoutError: string | null;
+  /** Pack count used for the open/last embedded checkout (1 pack = 100 tokens). */
+  purchasePacks: number;
+  setPurchasePacks: (packs: number) => void;
   ledgerRefreshNonce: number;
   realtimeInitialized: boolean;
   earnRewardsEligible: boolean;
@@ -64,7 +70,7 @@ interface CreditsState {
   setEarnTokensIntroSeen: (seen: boolean) => void;
   openPurchaseDialog: () => void;
   closePurchaseDialog: () => void;
-  openEmbeddedCheckout: () => Promise<void>;
+  openEmbeddedCheckout: (packs?: number) => Promise<void>;
   closeEmbeddedCheckout: () => void;
   bumpLedgerRefresh: () => void;
   fetchCredits: () => Promise<void>;
@@ -96,6 +102,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   embeddedClientSecret: null,
   embeddedCheckoutLoading: false,
   embeddedCheckoutError: null,
+  purchasePacks: MIN_PURCHASE_PACKS,
   ledgerRefreshNonce: 0,
   realtimeInitialized: false,
   earnRewardsEligible: false,
@@ -171,11 +178,15 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
 
   closePurchaseDialog: () => set({ isOpen: false }),
 
+  setPurchasePacks: (packs) => set({ purchasePacks: packs }),
+
   // Opens the in-app embedded Stripe checkout. Fetches the session client
   // secret here (rather than in a component effect) so the dialog can render
   // declaratively from store state. Credits land via the webhook + realtime.
-  openEmbeddedCheckout: async () => {
+  openEmbeddedCheckout: async (packs) => {
+    const resolvedPacks = packs ?? get().purchasePacks;
     set({
+      purchasePacks: resolvedPacks,
       embeddedCheckoutOpen: true,
       embeddedCheckoutLoading: true,
       embeddedCheckoutError: null,
@@ -186,15 +197,36 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
     try {
       const res = await fetch("/api/billing/checkout/embedded", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packs: resolvedPacks }),
       });
-      const data = await res.json();
 
-      if (!res.ok || !data.clientSecret) {
-        throw new Error(data.error || "Unable to start checkout");
+      if (!res.ok) {
+        let message = "Unable to start checkout";
+        try {
+          const errBody = (await res.json()) as { error?: string };
+          if (typeof errBody.error === "string" && errBody.error) {
+            message = errBody.error;
+          }
+        } catch {
+          // Non-JSON error body — keep default message.
+        }
+        throw new Error(message);
+      }
+
+      const data = (await res.json()) as {
+        clientSecret?: string;
+        packs?: number;
+      };
+
+      if (!data.clientSecret) {
+        throw new Error("Unable to start checkout");
       }
 
       set({
         embeddedClientSecret: data.clientSecret,
+        purchasePacks:
+          typeof data.packs === "number" ? data.packs : resolvedPacks,
         embeddedCheckoutLoading: false,
       });
     } catch (error) {
@@ -333,6 +365,7 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       embeddedClientSecret: null,
       embeddedCheckoutLoading: false,
       embeddedCheckoutError: null,
+      purchasePacks: MIN_PURCHASE_PACKS,
       ledgerRefreshNonce: 0,
       realtimeInitialized: false,
       earnRewardsEligible: false,

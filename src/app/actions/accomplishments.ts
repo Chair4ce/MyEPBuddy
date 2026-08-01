@@ -48,15 +48,10 @@ async function logSensitiveDataEvent(
 // ---------------------------------------------------------------------------
 
 function validateSensitiveData(
-  fields: { details?: string; impact?: string | null; metrics?: string | null },
+  fields: Record<string, string | null | undefined>,
   userId: string
 ): { blocked: boolean; matches: SensitiveMatch[]; error?: string } {
-  const scanFields: { details?: string; impact?: string; metrics?: string } = {};
-  if (fields.details) scanFields.details = fields.details;
-  if (fields.impact) scanFields.impact = fields.impact;
-  if (fields.metrics) scanFields.metrics = fields.metrics;
-
-  const matches = scanForSensitiveData(scanFields);
+  const matches = scanForSensitiveData(fields);
   if (matches.length > 0) {
     // Fire-and-forget audit log for the blocked attempt
     logSensitiveDataEvent("blocked", null, userId, matches);
@@ -83,8 +78,17 @@ export async function createAccomplishment(
   }
 
   // Server-side sensitive data scan — defense-in-depth
+  const stewardship = data.stewardship_impact ?? {};
   const validation = validateSensitiveData(
-    { details: data.details, impact: data.impact, metrics: data.metrics },
+    {
+      details: data.details,
+      impact: data.impact,
+      metrics: data.metrics,
+      stewardship_time: stewardship.time,
+      stewardship_money: stewardship.money,
+      stewardship_resources: stewardship.resources,
+      stewardship_outcome: stewardship.outcome,
+    },
     user.id
   );
   if (validation.blocked) {
@@ -96,6 +100,7 @@ export async function createAccomplishment(
     .from("accomplishments")
     .insert({
       ...data,
+      stewardship_impact: stewardship,
       created_by: data.created_by || user.id,
     })
     .select()
@@ -127,12 +132,17 @@ export async function updateAccomplishment(
 
   // Server-side sensitive data scan — defense-in-depth
   // Only scan fields that are being updated
-  if (data.details || data.impact || data.metrics) {
+  const stewardship = data.stewardship_impact;
+  if (data.details || data.impact || data.metrics || stewardship) {
     const validation = validateSensitiveData(
       {
         details: data.details,
         impact: data.impact,
         metrics: data.metrics,
+        stewardship_time: stewardship?.time,
+        stewardship_money: stewardship?.money,
+        stewardship_resources: stewardship?.resources,
+        stewardship_outcome: stewardship?.outcome,
       },
       user.id
     );

@@ -146,6 +146,7 @@ export type Database = {
           impact: string | null
           metrics: string | null
           mpa: string
+          stewardship_impact: Json
           tags: Json | null
           team_member_id: string | null
           updated_at: string
@@ -165,6 +166,7 @@ export type Database = {
           impact?: string | null
           metrics?: string | null
           mpa: string
+          stewardship_impact?: Json
           tags?: Json | null
           team_member_id?: string | null
           updated_at?: string
@@ -182,6 +184,7 @@ export type Database = {
           details?: string
           id?: string
           impact?: string | null
+          stewardship_impact?: Json
           metrics?: string | null
           mpa?: string
           tags?: Json | null
@@ -1425,6 +1428,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          impact_booster: Record<string, unknown>
           is_complete: boolean
           last_edited_by: string | null
           mpa: string
@@ -1435,6 +1439,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          impact_booster?: Record<string, unknown>
           is_complete?: boolean
           last_edited_by?: string | null
           mpa: string
@@ -1445,6 +1450,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          impact_booster?: Record<string, unknown>
           is_complete?: boolean
           last_edited_by?: string | null
           mpa?: string

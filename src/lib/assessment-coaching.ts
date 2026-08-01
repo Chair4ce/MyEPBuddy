@@ -30,11 +30,11 @@ const INDICATOR_TIPS: Record<
   },
   impact_significance: {
     title: "Impact",
-    body: "Spell out who benefited and what changed (section, unit, or mission outcome) — not only that the task was finished.",
+    body: "Capture stewardship payoff: man-hours recovered, finishing early vs on-time, cost avoidance, or equipment/manpower capacity — then the readiness or mission result it funded. On-time alone is weaker than a clear early/% faster delta.",
   },
   metrics_quality: {
     title: "Metrics",
-    body: 'Add a baseline → result number (%, count, hours, errors, dollars). Vague "improved" will not carry an EPB bullet.',
+    body: "Quantify the lever (man-hrs, $, FMC/sortie/count) with a baseline → result — e.g. 6 mos → 3 wks, 3 mos early, 45% faster. Vague \"improved mission\" or \"finished on time\" will not carry an EPB bullet.",
   },
   scope_definition: {
     title: "Scope",

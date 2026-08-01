@@ -6,11 +6,51 @@ import {
   isStripeEventProcessed,
   recordStripeEvent,
 } from "@/lib/stripe/server";
-import { PURCHASE_CREDITS } from "@/lib/billing/constants";
+import { creditsFromPaidAmount } from "@/lib/billing/purchase-quantity";
 
 export const runtime = "nodejs";
 // Stripe needs the raw, unparsed body for signature verification.
 export const dynamic = "force-dynamic";
+
+type ResolvedCredits =
+  | { ok: true; credits: number }
+  | { ok: false; reason: "retry" | "invalid" };
+
+/**
+ * Resolve pack credits from the paid Checkout Session.
+ * Fail closed with retry if we cannot read line items — never grant from
+ * stale session metadata after adjustable_quantity changes.
+ */
+async function resolvePurchasedCredits(
+  session: Stripe.Checkout.Session,
+): Promise<ResolvedCredits> {
+  let lineItemQuantity: number | null = null;
+
+  try {
+    const lineItems = await getStripe().checkout.sessions.listLineItems(
+      session.id,
+      { limit: 1 },
+    );
+    lineItemQuantity = lineItems.data[0]?.quantity ?? null;
+  } catch (error) {
+    console.error(
+      "[billing/webhook] Failed to list line items; will retry",
+      error,
+    );
+    return { ok: false, reason: "retry" };
+  }
+
+  const credits = creditsFromPaidAmount({
+    lineItemQuantity,
+    amountSubtotalCents: session.amount_subtotal,
+  });
+
+  if (credits === null || credits <= 0) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  return { ok: true, credits };
+}
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -45,15 +85,10 @@ export async function POST(request: NextRequest) {
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.user_id;
-        const parsedCredits = parseInt(session.metadata?.credits ?? "", 10);
-        const credits = Number.isNaN(parsedCredits)
-          ? PURCHASE_CREDITS
-          : parsedCredits;
 
-        if (!userId || credits <= 0) {
-          // Acknowledge so Stripe stops retrying a malformed event we can't act on.
+        if (!userId) {
           console.error(
-            "[billing/webhook] Missing/invalid session metadata; acknowledging without grant",
+            "[billing/webhook] Missing user_id metadata; acknowledging without grant",
             { eventId: event.id, metadata: session.metadata },
           );
           await recordStripeEvent(event);
@@ -65,10 +100,31 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ received: true, skipped: "unpaid" });
         }
 
+        const resolved = await resolvePurchasedCredits(session);
+        if (!resolved.ok) {
+          if (resolved.reason === "retry") {
+            // Transient Stripe API failure — 500 so Stripe retries.
+            return NextResponse.json(
+              { error: "Unable to resolve purchased quantity" },
+              { status: 500 },
+            );
+          }
+          console.error(
+            "[billing/webhook] Unable to derive credits from paid session",
+            {
+              eventId: event.id,
+              amountSubtotal: session.amount_subtotal,
+              metadata: session.metadata,
+            },
+          );
+          await recordStripeEvent(event);
+          return NextResponse.json({ received: true, skipped: "invalid_quantity" });
+        }
+
         // grant_credits is idempotent on stripe_event_id, so retries are safe.
         await grantCreditsFromStripe({
           userId,
-          credits,
+          credits: resolved.credits,
           stripeEventId: event.id,
           stripeCheckoutSessionId: session.id,
         });

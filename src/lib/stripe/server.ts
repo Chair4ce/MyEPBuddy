@@ -1,6 +1,10 @@
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/server";
-import { PURCHASE_CREDITS } from "@/lib/billing/constants";
+import {
+  MAX_PURCHASE_PACKS,
+  MIN_PURCHASE_PACKS,
+} from "@/lib/billing/constants";
+import { creditsForPacks, parsePurchasePacks } from "@/lib/billing/purchase-quantity";
 import { getValidatedCreditsPriceId } from "@/lib/stripe/validate-price";
 
 let stripeClient: Stripe | null = null;
@@ -79,32 +83,64 @@ export async function getOrCreateStripeCustomer(
   return customer.id;
 }
 
+function resolveCheckoutPacks(rawPacks: number | undefined): {
+  packs: number;
+  credits: number;
+} {
+  const parsed = parsePurchasePacks(rawPacks ?? MIN_PURCHASE_PACKS);
+  if (!parsed.ok) {
+    throw new Error(parsed.error);
+  }
+  return { packs: parsed.packs, credits: parsed.credits };
+}
+
+function checkoutLineItem(priceId: string, packs: number) {
+  return {
+    price: priceId,
+    quantity: packs,
+    // Lets buyers change pack count inside Stripe Checkout (hosted + embedded).
+    adjustable_quantity: {
+      enabled: true,
+      minimum: MIN_PURCHASE_PACKS,
+      maximum: MAX_PURCHASE_PACKS,
+    },
+  };
+}
+
+function checkoutCreditMetadata(userId: string, packs: number) {
+  const credits = creditsForPacks(packs);
+  return {
+    user_id: userId,
+    packs: String(packs),
+    credits: String(credits),
+  };
+}
+
 export async function createCreditsCheckoutSession(params: {
   userId: string;
   email: string;
+  packs?: number;
 }): Promise<string> {
   const stripe = getStripe();
-  const customerId = await getOrCreateStripeCustomer(params.userId, params.email);
-  const priceId = await getValidatedCreditsPriceId(stripe);
+  const { packs } = resolveCheckoutPacks(params.packs);
+  const metadata = checkoutCreditMetadata(params.userId, packs);
+  const [customerId, priceId] = await Promise.all([
+    getOrCreateStripeCustomer(params.userId, params.email),
+    getValidatedCreditsPriceId(stripe),
+  ]);
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: [checkoutLineItem(priceId, packs)],
     success_url: `${getAppUrl()}/settings/billing?checkout=success`,
     cancel_url: `${getAppUrl()}/settings/billing?checkout=cancelled`,
     // Generate an itemized invoice/receipt for this one-time purchase so it
     // appears in the Stripe billing portal's invoice history and is emailed.
     invoice_creation: { enabled: true },
-    metadata: {
-      user_id: params.userId,
-      credits: String(PURCHASE_CREDITS),
-    },
+    metadata,
     payment_intent_data: {
-      metadata: {
-        user_id: params.userId,
-        credits: String(PURCHASE_CREDITS),
-      },
+      metadata,
     },
   });
 
@@ -126,29 +162,28 @@ export async function createCreditsCheckoutSession(params: {
 export async function createEmbeddedCreditsCheckoutSession(params: {
   userId: string;
   email: string;
+  packs?: number;
 }): Promise<string> {
   const stripe = getStripe();
-  const customerId = await getOrCreateStripeCustomer(params.userId, params.email);
-  const priceId = await getValidatedCreditsPriceId(stripe);
+  const { packs } = resolveCheckoutPacks(params.packs);
+  const metadata = checkoutCreditMetadata(params.userId, packs);
+  const [customerId, priceId] = await Promise.all([
+    getOrCreateStripeCustomer(params.userId, params.email),
+    getValidatedCreditsPriceId(stripe),
+  ]);
 
   const session = await stripe.checkout.sessions.create({
     ui_mode: "embedded",
     mode: "payment",
     customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: [checkoutLineItem(priceId, packs)],
     redirect_on_completion: "never",
     // Generate an itemized invoice/receipt for this one-time purchase so it
     // appears in the Stripe billing portal's invoice history and is emailed.
     invoice_creation: { enabled: true },
-    metadata: {
-      user_id: params.userId,
-      credits: String(PURCHASE_CREDITS),
-    },
+    metadata,
     payment_intent_data: {
-      metadata: {
-        user_id: params.userId,
-        credits: String(PURCHASE_CREDITS),
-      },
+      metadata,
     },
   });
 

@@ -1,7 +1,32 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_MPA_DESCRIPTIONS } from "@/lib/constants";
-import type { EPBShell, EPBShellSection, EPBShellSnapshot, EPBSavedExample, Rank, MPADescriptions } from "@/types/database";
+import { normalizeImpactBooster } from "@/lib/impact-booster";
+import type {
+  EPBShell,
+  EPBShellSection,
+  EPBShellSnapshot,
+  EPBSavedExample,
+  Rank,
+  MPADescriptions,
+  ImpactLever,
+} from "@/types/database";
+
+function normalizeSection(section: EPBShellSection): EPBShellSection {
+  return {
+    ...section,
+    impact_booster: normalizeImpactBooster(section.impact_booster),
+  };
+}
+
+/** Fresh Impact Booster prompts from the latest generate (session UI state) */
+export interface ImpactBoosterPrompt {
+  question: string;
+  category: string;
+  hint?: string;
+  lever?: ImpactLever;
+  sentenceNumber?: 1 | 2;
+}
 
 // MPA workspace mode for each section
 export type MPAWorkspaceMode = "view" | "edit" | "ai-assist";
@@ -35,6 +60,9 @@ export interface MPASectionState {
   
   // HLR-specific: selected award IDs to integrate into statement
   selectedAwardIds: string[];
+
+  /** Pending Impact Booster questions from latest generate (not persisted) */
+  impactBoosterPrompts: ImpactBoosterPrompt[];
   
   // Legacy - keeping for backwards compatibility
   selectedAccomplishmentIds: string[];
@@ -97,6 +125,12 @@ interface EPBShellState {
 
   /** Active MPA card in zen writing mode (dims surrounding content) */
   zenModeMpaKey: string | null;
+
+  /**
+   * After staging an example from Entries (or similar), open Saved Examples
+   * on this MPA and highlight the new rows.
+   */
+  examplesFocus: { mpa: string; highlightIds: string[] } | null;
   
   // Actions
   setSelectedRatee: (ratee: SelectedRatee | null) => void;
@@ -143,6 +177,8 @@ interface EPBShellState {
   closeMpaDescriptionDrawer: () => void;
   setFocusedMpaKey: (mpaKey: string | null) => void;
   setZenModeMpaKey: (mpaKey: string | null) => void;
+  setExamplesFocus: (focus: { mpa: string; highlightIds: string[] } | null) => void;
+  clearExamplesFocus: () => void;
   fetchMpaDescriptions: (userId: string) => Promise<MPADescriptions>;
   
   // Duty description management
@@ -181,6 +217,8 @@ const getDefaultSectionState = (): MPASectionState => ({
   
   // HLR awards
   selectedAwardIds: [],
+
+  impactBoosterPrompts: [],
   
   // Legacy
   selectedAccomplishmentIds: [],
@@ -207,7 +245,8 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   mpaDescriptionsCache: null,
   isLoadingMpaDescriptions: false,
   zenModeMpaKey: null,
-
+  examplesFocus: null,
+  
   setSelectedRatee: (ratee) => {
     // Clear autosave timers when switching members
     const timers = get().autosaveTimers;
@@ -240,7 +279,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
     if (shell?.sections) {
       const sectionsMap: Record<string, EPBShellSection> = {};
       shell.sections.forEach((s) => {
-        sectionsMap[s.mpa] = s;
+        sectionsMap[s.mpa] = normalizeSection(s);
       });
       set({ sections: sectionsMap });
     } else {
@@ -256,20 +295,24 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
   setSections: (sections) => {
     const sectionsMap: Record<string, EPBShellSection> = {};
     sections.forEach((s) => {
-      sectionsMap[s.mpa] = s;
+      sectionsMap[s.mpa] = normalizeSection(s);
     });
     set({ sections: sectionsMap });
   },
 
   updateSection: (mpa, updates) =>
-    set((state) => ({
-      sections: {
-        ...state.sections,
-        [mpa]: state.sections[mpa]
-          ? { ...state.sections[mpa], ...updates }
-          : { ...updates, mpa } as EPBShellSection,
-      },
-    })),
+    set((state) => {
+      const existing = state.sections[mpa];
+      const merged = existing
+        ? { ...existing, ...updates }
+        : ({ ...updates, mpa } as EPBShellSection);
+      return {
+        sections: {
+          ...state.sections,
+          [mpa]: normalizeSection(merged),
+        },
+      };
+    }),
 
   setSnapshots: (sectionId, snapshots) =>
     set((state) => ({
@@ -480,6 +523,10 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
 
   setZenModeMpaKey: (mpaKey) => set({ zenModeMpaKey: mpaKey }),
 
+  setExamplesFocus: (focus) => set({ examplesFocus: focus }),
+
+  clearExamplesFocus: () => set({ examplesFocus: null }),
+
   fetchMpaDescriptions: async (userId) => {
     const cached = get().mpaDescriptionsCache;
     if (cached) return cached;
@@ -532,6 +579,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       mpaDescriptionsCache: null,
       isLoadingMpaDescriptions: false,
       zenModeMpaKey: null,
+      // Keep examplesFocus — Entries→EPB handoff sets it after ratee switch
     }));
   },
 
@@ -562,6 +610,7 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
       mpaDescriptionsCache: null,
       isLoadingMpaDescriptions: false,
       zenModeMpaKey: null,
+      examplesFocus: null,
     }));
   },
 }));

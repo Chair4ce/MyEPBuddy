@@ -13,6 +13,10 @@
 
 import { generateText, type LanguageModel } from "ai";
 import { validateCharacterCount, type CharacterValidationResult } from "./character-verification";
+import {
+  applyDeterministicBannedFormattingFixes,
+  hasBannedFormatting,
+} from "./banned-formatting";
 
 // ============================================================================
 // STATEMENT SANITIZATION
@@ -29,7 +33,8 @@ const MALFORMED_PATTERNS = [
 ];
 
 /**
- * Banned words/phrases that should not appear
+ * Banned words/phrases that should not appear.
+ * Slash abbreviations / banned punctuation are checked via hasBannedFormatting().
  */
 const BANNED_WORDS = [
   "spearheaded",
@@ -39,9 +44,6 @@ const BANNED_WORDS = [
   "facilitated",
   "utilized",
   "impacted",
-  "w/ ",  // Banned abbreviation - not standard for EPBs
-  "--",   // Banned punctuation - use commas instead
-  ";",    // Banned punctuation - use commas instead
 ];
 
 /**
@@ -66,6 +68,10 @@ export function detectMalformedStatement(statement: string): {
     if (lowerStatement.includes(word)) {
       issues.push(`Contains banned word: "${word}"`);
     }
+  }
+
+  if (hasBannedFormatting(statement)) {
+    issues.push("Contains banned formatting (w/, w/o, b/c, --, or ;)");
   }
   
   // Check for incomplete ending (doesn't end with period or proper punctuation)
@@ -154,17 +160,7 @@ const BANNED_WORD_REPLACEMENTS: Record<string, string> = {
 };
 
 /**
- * Replacement map for banned punctuation/formatting patterns
- */
-const BANNED_PUNCTUATION_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/w\/ /gi, "with "],           // "w/ " → "with "
-  [/--/g, ", "],                  // "--" → ", "
-  [/;\s*/g, ", "],                // ";" → ", "
-  [/\s*,\s*,\s*/g, ", "],         // Fix double commas from replacements
-];
-
-/**
- * Replace banned words with acceptable alternatives
+ * Replace banned words and banned formatting with acceptable alternatives
  */
 export function replaceBannedWords(statement: string): string {
   let result = statement;
@@ -182,15 +178,8 @@ export function replaceBannedWords(statement: string): string {
     });
   }
   
-  // Replace banned punctuation patterns
-  for (const [pattern, replacement] of BANNED_PUNCTUATION_REPLACEMENTS) {
-    result = result.replace(pattern, replacement);
-  }
-  
-  // Clean up any resulting issues
-  result = result.replace(/\s{2,}/g, " ");  // Multiple spaces
-  result = result.replace(/,\s*\./g, ".");  // Comma before period
-  result = result.replace(/\.,/g, ".");     // Period followed by comma
+  // Banned formatting (w/, w/o, b/c, --, ;) — shared detector/replacer
+  result = applyDeterministicBannedFormattingFixes(result).text;
   
   return result.trim();
 }
@@ -549,6 +538,12 @@ You must be OBJECTIVE and PRECISE. Count characters exactly.
 - Compression techniques: "hours" → "hrs", "months" → "mos", "and" → "&", "squadron" → "sq", remove "very", "highly", "overall"
 
 **BANNED WORDS:** Spearheaded, Orchestrated, Synergized, Leveraged, Facilitated, Utilized, Impacted
+
+**BANNED FORMATTING (NEVER INTRODUCE):**
+- "w/" → write "with"
+- "w/o" → write "without"
+- "b/c" → write "because"
+- "--" or ";" → use commas
 
 CRITICAL: Output ONLY valid JSON. No explanations outside the JSON structure.`;
 }

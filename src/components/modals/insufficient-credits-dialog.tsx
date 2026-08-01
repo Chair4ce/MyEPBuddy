@@ -20,6 +20,7 @@ import {
   PURCHASE_PACKAGE_LABEL,
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
+import { TokenPackQuantityPicker } from "@/components/billing/token-pack-quantity-picker";
 
 export function InsufficientCreditsDialog() {
   const {
@@ -30,9 +31,13 @@ export function InsufficientCreditsDialog() {
     isCheckoutLoading,
     setIsCheckoutLoading,
     openEmbeddedCheckout,
+    purchasePacks,
+    setPurchasePacks,
   } = useCreditsStore();
 
   const [termsChecked, setTermsChecked] = useState(false);
+  const tokens = purchasePacks * PURCHASE_CREDITS;
+  const priceUsd = purchasePacks * PURCHASE_PRICE_USD;
 
   async function handlePurchase() {
     if (!billingTermsAccepted && !termsChecked) {
@@ -56,7 +61,7 @@ export function InsufficientCreditsDialog() {
       }
 
       // Swap the "out of calls" dialog for in-app checkout (no redirect).
-      await openEmbeddedCheckout();
+      await openEmbeddedCheckout(purchasePacks);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Checkout failed. Try again.",
@@ -73,7 +78,7 @@ export function InsufficientCreditsDialog() {
         if (!open) closePurchaseDialog();
       }}
     >
-      <AlertDialogContent size="sm">
+      <AlertDialogContent size="md">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary shrink-0" />
@@ -86,14 +91,22 @@ export function InsufficientCreditsDialog() {
                 keep generating statements and assessments.
               </p>
 
-              <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
-                <p className="text-sm font-medium text-foreground">
-                  {PURCHASE_PACKAGE_LABEL}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {PURCHASE_CREDITS} tokens · ${PURCHASE_PRICE_USD} one-time ·
-                  never expire
-                </p>
+              <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {PURCHASE_PACKAGE_LABEL}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Choose any multiple of {PURCHASE_CREDITS} · one-time · never
+                    expire
+                  </p>
+                </div>
+                <TokenPackQuantityPicker
+                  id="insufficient-token-packs"
+                  packs={purchasePacks}
+                  onPacksChange={setPurchasePacks}
+                  disabled={isCheckoutLoading}
+                />
               </div>
 
               {!billingTermsAccepted && (
@@ -156,7 +169,7 @@ export function InsufficientCreditsDialog() {
                 Opening checkout...
               </>
             ) : (
-              `Buy ${PURCHASE_CREDITS} tokens — $${PURCHASE_PRICE_USD}`
+              `Buy ${tokens.toLocaleString()} tokens — $${priceUsd.toLocaleString()}`
             )}
           </Button>
         </AlertDialogFooter>
