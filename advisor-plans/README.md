@@ -235,6 +235,28 @@ Press scale for MyEPBuddy remains **0.98** (product rule), not PeriDocs 0.99. Sk
 3. **Motion:** 018 (can parallelize with wave 1–2 after rules/CSS land)  
 4. **Polish:** 015, 019, 020 + leftover Topic A–E TODOs (001, 002, 004, 006–010)
 
+### Execution log (2026-07-31 / 2026-08-01)
+
+Shipped on `main` (descriptive commits, no per-plan branches). Gates: `tsc` between plans; React Doctor `--scope lines` / `--scope changed` monitored (SQL-only plans do not move whole-app 26/100).
+
+| Plan | Result | Notes |
+|------|--------|-------|
+| 011 | DONE | Migrations `199` + `200` (SECURITY DEFINER `current_user` bug fixed) — local + remote |
+| 014 | DONE | Migration `201` — burst/daily caps pinned; app call sites updated |
+| 016 | **PINNED** | High-risk profiles SELECT + teams INSERT RLS — walk carefully |
+| 013 | DONE | `consume_credit` RPC errors → `serviceError` |
+| 012 | DONE | EPB/Fuse/`adapt-sentence`/`assess-epb` → `billableFetch` (DnD logic untouched) |
+| 017 | DONE | `generate-billing-contract` helper + characterization tests |
+| 018 | **PINNED** | Large motion port — walk carefully |
+| 015 | DONE | Migration `202` + admin-client analytics insert |
+| 019 | **PINNED** | Managed-member history FK |
+| 020 | **PINNED** | Impure revision `setState` in `mpa-section-card` (sacred surface) |
+| 001 | DONE | Already in tree (`amountSubtotalCents`); verified |
+| 002 | DONE | Edge tests expanded |
+| 010 | DONE | Payload helper extracted + tested |
+
+**Still TODO / pin next walkthrough:** 016, 018, 019, 020, then MPA-adjacent 004/006 (and optional 007–009). Do not touch EPB split view or sentence DnD unless explicitly approved.
+
 ### Considered and rejected (F–H)
 
 - Full god-file splits (`mpa-section-card`, `team/page`) — L/HIGH risk; needs characterization tests first (direction follow-up). **Never** include split view or sentence DnD in a god-file split without explicit operator approval.
