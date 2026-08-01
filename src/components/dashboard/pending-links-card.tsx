@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import {
   Card,
@@ -146,10 +147,11 @@ export function PendingLinksCard() {
   };
 
   useEffect(() => {
+    const profileId = profile?.id;
     const controller = new AbortController();
 
     void (async () => {
-      if (!profile?.id) return;
+      if (!profileId) return;
 
       setIsLoading(true);
 
@@ -176,17 +178,17 @@ export function PendingLinksCard() {
       const { data, error } = await supabase
         .from("pending_managed_links")
         .select("id, team_member_id, status, data_synced, supervisor_accepted, created_at, snoozed_until")
-        .eq("user_id", profile.id)
+        .eq("user_id", profileId)
         .eq("status", "pending")
         .or("snoozed_until.is.null,snoozed_until.lt." + new Date().toISOString())
         .abortSignal(controller.signal) as { data: PendingLinkRow[] | null; error: Error | null };
+
+      if (controller.signal.aborted || isAbortError(error)) return;
 
       if (error) {
         console.error("Error loading pending links:", error);
         return;
       }
-
-      if (controller.signal.aborted) return;
 
       if (!data || data.length === 0) {
         setPendingLinks([]);
@@ -279,7 +281,9 @@ export function PendingLinksCard() {
 
       setPendingLinks(transformed);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     })();
 

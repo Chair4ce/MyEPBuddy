@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -199,6 +200,7 @@ export function AwardPackagesManager({
         .order("updated_at", { ascending: false })
         .abortSignal(signal);
 
+      if (signal.aborted || isAbortError(error)) return;
       if (error) {
         console.error("Error loading award packages:", error);
         toast.error("Failed to load award packages");
@@ -275,6 +277,7 @@ export function AwardPackagesManager({
 
       setPackages(enrichedPackages);
     } catch (error) {
+      if (signal.aborted || isAbortError(error)) return;
       console.error("Error loading packages:", error);
       toast.error("Failed to load award packages");
     }

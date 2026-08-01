@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import type { Rank, Accomplishment, RefinedStatement } from "@/types/database";
 import { MPA_ABBREVIATIONS } from "@/lib/constants";
+import { isAbortError } from "@/lib/supabase/abort";
 
 interface PendingReview {
   id: string;
@@ -75,7 +76,8 @@ export function PendingPriorDataCard() {
   const supabase = createClient();
 
   useEffect(() => {
-    if (!profile?.id) {
+    const profileId = profile?.id;
+    if (!profileId) {
       setIsLoading(false);
       return;
     }
@@ -95,25 +97,27 @@ export function PendingPriorDataCard() {
               rank
             )
           `)
-          .eq("subordinate_id", profile!.id)
+          .eq("subordinate_id", profileId)
           .eq("status", "pending")
           .abortSignal(controller.signal);
+
+        if (controller.signal.aborted || isAbortError(error)) return;
 
         if (error) {
           console.error("Error loading pending reviews:", error);
           return;
         }
 
-        if (controller.signal.aborted) return;
-
         setPendingReviews((data as unknown as PendingReview[]) || []);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     })();
 
     return () => controller.abort();
-  }, [profile, supabase]);
+  }, [profile?.id, supabase]);
 
   const fetchPreviewData = async (review: PendingReview) => {
     setIsFetchingPreview(true);

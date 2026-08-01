@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import {
   Dialog,
@@ -91,25 +92,27 @@ export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) 
   useEffect(() => {
     const controller = new AbortController();
 
+    const profileId = profile?.id;
+
     void (async () => {
-      if (!open || !profile) return;
+      if (!open || !profileId) return;
 
       setIsLoading(true);
       try {
         const { data, error } = await (supabase
           .from("war_settings") as ReturnType<typeof supabase.from>)
           .select("*")
-          .eq("user_id", profile.id)
+          .eq("user_id", profileId)
           .abortSignal(controller.signal)
           .single();
+
+        if (controller.signal.aborted || isAbortError(error)) return;
 
         if (error && error.code !== "PGRST116") {
           console.error("Error loading WAR settings:", error);
           toast.error("Failed to load WAR settings");
           return;
         }
-
-        if (controller.signal.aborted) return;
 
         const row = data as {
           id: string;
@@ -135,13 +138,15 @@ export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) 
           });
         }
       } finally {
-        setIsLoading(false);
-        setHasChanges(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+          setHasChanges(false);
+        }
       }
     })();
 
     return () => controller.abort();
-  }, [open, profile, supabase]);
+  }, [open, profile?.id, supabase]);
 
   // Handle save
   const handleSave = async () => {

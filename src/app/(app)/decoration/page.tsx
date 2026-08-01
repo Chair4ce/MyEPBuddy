@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError, logUnlessAborted } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Analytics } from "@/lib/analytics";
@@ -248,10 +249,7 @@ export default function DecorationPage() {
         .order("updated_at", { ascending: false })
         .abortSignal(signal);
 
-      if (error) {
-        console.error("Error loading decoration shells:", error);
-        return;
-      }
+      if (logUnlessAborted(error, "Error loading decoration shells:", signal)) return;
 
       // Enrich with owner profile/member info
       const enrichedDecorations: DecorationShellWithDetails[] = await Promise.all(
@@ -331,6 +329,7 @@ export default function DecorationPage() {
 
       setDecorations(enrichedDecorations);
     } catch (error) {
+      if (signal.aborted || isAbortError(error)) return;
       console.error("Error loading decorations:", error);
       toast.error("Failed to load decorations");
     }

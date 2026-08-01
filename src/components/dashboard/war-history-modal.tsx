@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import {
   Dialog,
@@ -85,18 +86,22 @@ export function WARHistoryModal({
   useEffect(() => {
     const controller = new AbortController();
 
+    const profileId = profile?.id;
+
     void (async () => {
-      if (!open || !profile) return;
+      if (!open || !profileId) return;
 
       setIsLoading(true);
       try {
         const { data, error } = await supabase
           .from("war_reports")
           .select("*")
-          .eq("user_id", profile.id)
+          .eq("user_id", profileId)
           .order("week_start", { ascending: false })
           .limit(100)
           .abortSignal(controller.signal);
+
+        if (controller.signal.aborted || isAbortError(error)) return;
 
         if (error) {
           console.error("Error loading WAR reports:", error);
@@ -104,16 +109,16 @@ export function WARHistoryModal({
           return;
         }
 
-        if (controller.signal.aborted) return;
-
         setReports(data || []);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     })();
 
     return () => controller.abort();
-  }, [open, profile, supabase]);
+  }, [open, profile?.id, supabase]);
 
   // Filter reports by search query
   const filteredReports = useMemo(() => {

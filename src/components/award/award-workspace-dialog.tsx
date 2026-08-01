@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore, type SectionSlotState } from "@/stores/award-shell-store";
+import { isAbortError } from "@/lib/supabase/abort";
 import { Analytics } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -355,6 +356,7 @@ export function AwardWorkspaceDialog({
           }
         }
       } catch (error) {
+        if (controller.signal.aborted || isAbortError(error)) return;
         console.error("Error loading shell data:", error);
         toast.error("Failed to load award package");
       } finally {

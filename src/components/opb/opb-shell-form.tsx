@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { isAbortError } from "@/lib/supabase/abort";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 
@@ -127,6 +128,8 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
           .eq("status", "active")
           .abortSignal(controller.signal)
           .single();
+
+        if (controller.signal.aborted || isAbortError(error)) return;
 
         if (error && error.code !== "PGRST116") {
           console.error("Error loading OPB shell:", error);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError, logUnlessAborted } from "@/lib/supabase/abort";
 import { getFullName } from "@/lib/utils";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardShellStore } from "@/stores/award-shell-store";
@@ -281,10 +282,7 @@ export default function AwardPage() {
         .order("updated_at", { ascending: false })
         .abortSignal(signal);
 
-      if (error) {
-        console.error("Error loading award shells:", error);
-        return;
-      }
+      if (logUnlessAborted(error, "Error loading award shells:", signal)) return;
 
       // Type the raw rows
       const shells = (shellsData || []).map((d) => d as unknown as AwardShell & {
@@ -389,6 +387,7 @@ export default function AwardPage() {
 
       setAwards(enrichedAwards);
     } catch (error) {
+      if (signal.aborted || isAbortError(error)) return;
       console.error("Error loading awards:", error);
       toast.error("Failed to load award packages");
     }

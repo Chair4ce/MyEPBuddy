@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import { isAbortError } from "@/lib/supabase/abort";
 import { shareDecorationShellWithUser } from "@/app/actions/shell-shares";
 import {
   Share2,
@@ -136,7 +137,7 @@ export function DecorationShellShareDialog({
           }
         }
 
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || isAbortError(shellError) || isAbortError(sharesError)) return;
         if (shellError || sharesError) {
           console.error("Failed to load access:", shellError ?? sharesError);
           return;

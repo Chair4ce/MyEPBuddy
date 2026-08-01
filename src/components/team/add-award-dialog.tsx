@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import { useAwardsStore } from "@/stores/awards-store";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ResizeContainer } from "@/components/ui/resize-container";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -138,6 +139,7 @@ export function AddAwardDialog({
         if (error) throw error;
         setLocalCatalog(data || []);
       } catch (error) {
+        if (controller.signal.aborted || isAbortError(error)) return;
         console.error("Error loading award catalog:", error);
       }
     }
@@ -401,21 +403,22 @@ export function AddAwardDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Trophy className="size-5 text-amber-500" />
-            {isRequestMode ? "Request Award Recognition" : "Add Award / Recognition"}
-          </DialogTitle>
-          <DialogDescription>
-            {isRequestMode
-              ? "Submit an award for supervisor approval"
-              : "Record an award or recognition for a team member"}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <ResizeContainer>
+          <div className="flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trophy className="size-5 text-amber-500" />
+                {isRequestMode ? "Request Award Recognition" : "Add Award / Recognition"}
+              </DialogTitle>
+              <DialogDescription>
+                {isRequestMode
+                  ? "Submit an award for supervisor approval"
+                  : "Record an award or recognition for a team member"}
+              </DialogDescription>
+            </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4 -mr-4">
-          <div className="space-y-4 pr-2">
+            <div className="space-y-4">
             {/* Award Type Selection */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Award Type</Label>
@@ -426,7 +429,7 @@ export function AddAwardDialog({
                     type="button"
                     onClick={() => setAwardType(type.value)}
                     className={cn(
-                      "flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-all",
+                      "flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-[border-color,background-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
                       awardType === type.value
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/50"
@@ -775,26 +778,27 @@ export function AddAwardDialog({
                 )}
               </div>
             )}
-          </div>
-        </ScrollArea>
+            </div>
 
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="size-4 mr-2 animate-spin" />
-                {isRequestMode ? "Submitting..." : "Adding..."}
-              </>
-            ) : isRequestMode ? (
-              "Submit Request"
-            ) : (
-              "Add Award"
-            )}
-          </Button>
-        </DialogFooter>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                    {isRequestMode ? "Submitting..." : "Adding..."}
+                  </>
+                ) : isRequestMode ? (
+                  "Submit Request"
+                ) : (
+                  "Add Award"
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        </ResizeContainer>
       </DialogContent>
     </Dialog>
   );

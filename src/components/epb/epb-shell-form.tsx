@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { isAbortError } from "@/lib/supabase/abort";
 import { Analytics } from "@/lib/analytics";
 import { billableFetch, fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
@@ -762,6 +763,8 @@ export function EPBShellForm({
         
         if (controller.signal.aborted) return;
 
+        if (controller.signal.aborted || isAbortError(error)) return;
+
         if (error) {
           console.error("Error loading shell:", error);
         }
@@ -878,9 +881,8 @@ export function EPBShellForm({
           setCurrentShell(null);
         }
       } catch (error) {
-        if (!controller.signal.aborted) {
-          console.error("Failed to load shell:", error);
-        }
+        if (controller.signal.aborted || isAbortError(error)) return;
+        console.error("Failed to load shell:", error);
       } finally {
         setIsLoadingShell(false);
       }

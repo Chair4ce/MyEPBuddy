@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
 import {
@@ -680,6 +681,7 @@ export default function TeamPage() {
       await loadTeamSupervisionDates(signal);
 
     } catch (error) {
+      if (signal.aborted || isAbortError(error)) return;
       console.error("Error loading team data:", error);
       toast.error("Failed to load team data");
     } finally {
@@ -855,6 +857,7 @@ export default function TeamPage() {
 
       setMemberMetrics(metrics);
     } catch (error) {
+      if (signal.aborted || isAbortError(error)) return;
       console.error("Error loading member metrics:", error);
     }
   }
@@ -1612,6 +1615,7 @@ export default function TeamPage() {
       if (signal.aborted) return;
       setPendingAwardRequests((requests as AwardRequest[]) || []);
     } catch (error) {
+      if (signal.aborted || isAbortError(error)) return;
       console.error("Error loading awards:", error);
     } finally {
       setIsLoadingAwards(false);

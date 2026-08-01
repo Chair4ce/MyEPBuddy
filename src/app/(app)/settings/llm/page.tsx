@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isAbortError } from "@/lib/supabase/abort";
 import { cn } from "@/lib/utils";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
@@ -888,13 +889,12 @@ export default function LLMSettingsPage() {
           .abortSignal(controller.signal)
           .maybeSingle();
 
+        if (controller.signal.aborted || isAbortError(error)) return;
         if (error) {
           console.error("Error loading settings:", error);
           toast.error("Failed to load settings");
           return;
         }
-
-        if (controller.signal.aborted) return;
 
         if (data) {
           setHasExistingSettings(true);
