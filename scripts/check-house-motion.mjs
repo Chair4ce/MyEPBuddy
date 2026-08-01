@@ -14,6 +14,9 @@
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+// Labels must NOT contain Tailwind class literals (especially arbitrary
+// values like ease-[var(--…)]). Tailwind v4 scans this file and will emit
+// invalid CSS if a wildcard token such as --ease-* appears inside brackets.
 const PATTERNS = [
   {
     re: /active:scale-9[05]\b/,
@@ -21,29 +24,29 @@ const PATTERNS = [
   },
   {
     re: /active:scale-\[0\.9\d\]/,
-    label: "hand-written active:scale-[0.9x] (use motionPressable / t-press)",
+    label: "hand-written active:scale-[0.9…] (use motionPressable / t-press)",
   },
   {
     re: /transition-all duration-(?:150|200|300)\b/,
-    label: "transition-all duration-* (use motionTransitionInteractive)",
+    label: "transition-all duration-N (use motionTransitionInteractive)",
   },
   {
     re: /duration-\d+ ease-in-out\b/,
-    label: "duration-* ease-in-out (use --duration-* + --ease-* tokens)",
+    label: "duration-N ease-in-out (use house duration + ease CSS variables)",
   },
   {
     re: /\bease-in-out\b/,
-    label: "ease-in-out (use ease-[var(--ease-smooth)] or --ease-close)",
+    label: "ease-in-out (use house ease CSS variable, e.g. --ease-smooth)",
   },
   {
     re: /\banimate-in\b/,
-    label: "animate-in (use motionEnter* from @/lib/motion/classes)",
+    label: "animate-in (use motionEnter helpers from @/lib/motion/classes)",
   },
   {
-    re: /ease-\[cubic-bezier\(/,
-    // Phrased without a bracket class literal on purpose: Tailwind's content
-    // scanner reads this file and would try to compile a wildcard utility.
-    label: "inline cubic-bezier (use an --ease-* variable token instead)",
+    // Escape the opening bracket in the regex source so the content scanner
+    // cannot treat this as an arbitrary-value utility candidate.
+    re: new RegExp(String.raw`ease-\[cubic-bezier\(`),
+    label: "inline cubic-bezier (use a house ease CSS variable instead)",
   },
 ];
 

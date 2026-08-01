@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Docs / tooling — never scan for utility candidates (avoids invalid CSS from
+   example strings like ease-[var(--ease-*)] in scripts and advisor plans). */
+@source not "../../scripts";
+@source not "../../advisor-plans";
+@source not "../../.cursor";
+@source not "../../.agents";
+
 @theme inline {
   --font-sans: "JetBrains Mono", ui-monospace, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
