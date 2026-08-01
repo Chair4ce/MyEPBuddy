@@ -25,7 +25,7 @@ Two `<ImpactBoosterPanel>` instances in [`src/components/epb/mpa-section-card.ts
 
 **In scope**: `src/components/epb/mpa-section-card.tsx` only — extract one `handleImpactBoosterEnhance(clarifyingContext: string)` function used by both panels.
 
-**Out of scope**: Changing Impact Booster API, persistence, or generate route.
+**Out of scope**: Changing Impact Booster API, persistence, or generate route; **EPB MPA split view** and **sentence drag-and-drop** (sacred — `advisor-plans/README.md`). Extract the enhance handler only; do not refactor layout, DnD, or split chrome.
 
 ## Steps
 
@@ -41,3 +41,4 @@ Two `<ImpactBoosterPanel>` instances in [`src/components/epb/mpa-section-card.ts
 ## STOP conditions
 
 - Panel props diverge such that sharing would change behavior — report instead of forcing a merge.
+- Diff would touch split-view or sentence DnD code — STOP; keep the change limited to the enhance-handler extract.

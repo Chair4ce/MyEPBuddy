@@ -43,7 +43,7 @@ Impact Booster sits above Generate / Revise and again under results. Unsaved tex
 **In scope**
 
 - `src/components/epb/impact-booster-panel.tsx` — expose a stable way to flush drafts (e.g. `onDraftChange` / imperative handle via `useImperativeHandle` + `forwardRef`, or lift draft into parent).
-- `src/components/epb/mpa-section-card.tsx` — before `handleGenerate` / `handleGenerateRevisions`, persist flushed drafts then inject context.
+- `src/components/epb/mpa-section-card.tsx` — before `handleGenerate` / `handleGenerateRevisions`, persist flushed drafts then inject context. **Do not touch split view or sentence drag-and-drop** (sacred — `advisor-plans/README.md`).
 - Optional tiny helper in `src/lib/impact-booster.ts` if merge logic grows.
 
 **Out of scope**
@@ -51,6 +51,7 @@ Impact Booster sits above Generate / Revise and again under results. Unsaved tex
 - Removing the post-results panel (product wants both placements).
 - Changing Stripe / billing / migrations.
 - Reintroducing the clarifying-questions modal.
+- **EPB MPA split view** and **sentence drag-and-drop** (sacred — `advisor-plans/README.md`).
 
 ## Steps
 
@@ -74,6 +75,7 @@ Impact Booster sits above Generate / Revise and again under results. Unsaved tex
 
 - If React Compiler / project rules forbid the chosen ref pattern, switch to lifted parent state — do not add `useEffect` to sync.
 - If `onSaveImpactBooster` is missing on a code path, skip flush and report — do not invent persistence.
+- Diff would touch split-view or sentence DnD code — STOP; keep the change limited to Impact Booster draft flush / generate context.
 
 ## Maintenance note
 

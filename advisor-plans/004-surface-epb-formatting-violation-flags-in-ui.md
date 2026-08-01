@@ -59,6 +59,7 @@ Generate UI consumers (find the exact store/component during execution — likel
 - Analytics/telemetry pipelines
 - Changing repair logic in `banned-formatting.ts`
 - Award / decoration UIs
+- **EPB MPA split view** and **sentence drag-and-drop** (sacred — `advisor-plans/README.md`). Surface flags near version pickers / muted helper text only; do not alter DnD overlays or split layout.
 
 ## Git workflow
 
@@ -108,6 +109,7 @@ Match existing EPB muted helper-text / badge patterns in the parent component.
 
 - Generate results are not typed in the client (opaque `any`) and wiring requires a large refactor — stop and report the consumer path instead of inventing a parallel state tree
 - Design system already has a “QC feedback” surface — reuse it rather than inventing a second banner pattern; if unclear which to reuse, STOP and ask
+- Flag UI would require changing split-view structure or sentence DnD — STOP and place the note outside those subtrees (or report)
 
 ## Maintenance notes
 
