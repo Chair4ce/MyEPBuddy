@@ -11,9 +11,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { PageSpinner } from "@/components/ui/spinner";
 import {
   Select,
@@ -31,8 +29,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { EntryCard } from "@/components/entries/entry-card";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
 import { FuseToEpbBar } from "@/components/entries/fuse-to-epb-bar";
 import { FuseToEpbDialog } from "@/components/entries/fuse-to-epb-dialog";
@@ -40,29 +38,16 @@ import { TagFilterPopover } from "@/components/entries/tag-filter-popover";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
-import {
-  STEWARDSHIP_LABELS,
-  hasStewardshipImpactContent,
-  normalizeStewardshipImpact,
-} from "@/lib/stewardship-impact";
-import { Plus, Pencil, Trash2, Filter, FileText, LayoutList, CalendarDays } from "lucide-react";
+import { Plus, Filter, FileText, LayoutList, CalendarDays } from "lucide-react";
 import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import { EPBProgressCard } from "@/components/epb/epb-progress-card";
 import { SupervisorFeedbackPanel } from "@/components/entries/supervisor-feedback-panel";
 import type { Rank } from "@/types/database";
 import type { SelectedRatee } from "@/stores/epb-shell-store";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { Accomplishment, AwardQuarter } from "@/types/database";
-import { UserCheck } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { formatShortDate, formatShortDateWithYear } from "@/lib/format";
 
 function EntriesContent() {
@@ -110,6 +95,24 @@ function EntriesContent() {
       else next.delete(id);
       return next;
     });
+  };
+
+  /** Card click selects the entry; ignore clicks on edit/delete/checkbox controls. */
+  const handleEntryCardClick = (
+    e: React.MouseEvent,
+    entryId: string,
+    isSelected: boolean,
+    showSelect: boolean
+  ) => {
+    if (!showSelect) return;
+    const target = e.target;
+    if (
+      target instanceof Element &&
+      target.closest("button, a, input, label, [role='checkbox']")
+    ) {
+      return;
+    }
+    toggleEntrySelected(entryId, !isSelected);
   };
 
   // Open dialog if ?new=true
@@ -198,7 +201,6 @@ function EntriesContent() {
   // Group entries by quarter for quarterly view
   interface QuarterGroup {
     quarter: AwardQuarter;
-    label: string;
     dateRange: { start: string; end: string };
     entries: Accomplishment[];
   }
@@ -237,7 +239,6 @@ function EntriesContent() {
 
       return {
         quarter: q.value,
-        label: useFiscalYear ? `FY${cycleYear.toString().slice(-2)} ${q.value}` : `${q.value} ${cycleYear}`,
         dateRange,
         entries: [],
       };
@@ -306,14 +307,6 @@ function EntriesContent() {
     !!fuseRatee &&
     isEnlisted(fuseRatee.rank) &&
     selectedAccomplishments.length > 0;
-
-  // Helper to get score color for display
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-green-600 bg-green-500/10 border-green-500/30";
-    if (score >= 60) return "text-blue-600 bg-blue-500/10 border-blue-500/30";
-    if (score >= 40) return "text-amber-600 bg-amber-500/10 border-amber-500/30";
-    return "text-muted-foreground bg-muted border-border";
-  };
 
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
@@ -511,134 +504,51 @@ function EntriesContent() {
                     )}>
                       {group.quarter}
                     </div>
-                    <div>
-                      <CardTitle className="text-base">{group.label}</CardTitle>
-                      <CardDescription className="text-xs">
-                        {formatShortDate(group.dateRange.start)} - {formatShortDateWithYear(group.dateRange.end)}
-                      </CardDescription>
-                    </div>
+                    <CardDescription className="text-xs">
+                      {formatShortDate(group.dateRange.start)} - {formatShortDateWithYear(group.dateRange.end)}
+                    </CardDescription>
                   </div>
-                  <Badge variant={group.entries.length > 0 ? "default" : "secondary"}>
-                    {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}
-                  </Badge>
                 </div>
               </CardHeader>
               {group.entries.length > 0 && (
                 <CardContent className="pt-0">
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {group.entries.map((entry) => {
-                      const hasScore = entry.assessment_scores?.overall_score != null;
-                      const overallScore = entry.assessment_scores?.overall_score || 0;
-                      
                       const isSelected = selectedEntryIds.has(entry.id);
                       const showSelect = isEnlisted(fuseRatee?.rank ?? null);
                       return (
-                      <div 
-                        key={entry.id} 
-                        className={cn(
-                          "group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors",
-                          isSelected && "ring-1 ring-primary/40 bg-primary/5"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3 flex-1 min-w-0">
-                            {showSelect && (
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={(checked) =>
-                                  toggleEntrySelected(entry.id, checked === true)
-                                }
-                                aria-label={`Select ${entry.action_verb}`}
-                                className="mt-1"
-                              />
-                            )}
-                            <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <Badge variant="outline" className="text-xs">
-                                {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {formatShortDate(entry.date)}
-                              </span>
-                              {/* Score badge - compact for quarterly view (Enlisted only) */}
-                              {hasScore && isEnlisted(profile?.rank as Rank) && (
-                                <span className={cn(
-                                  "text-[10px] font-semibold px-1.5 py-0.5 rounded",
-                                  getScoreColor(overallScore)
-                                )}>
-                                  {overallScore}
-                                </span>
-                              )}
-                              {entry.created_by && entry.created_by !== entry.user_id && creatorProfiles[entry.created_by] && (
-                                <TooltipProvider delayDuration={200}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant="secondary" className="text-xs gap-1">
-                                        <UserCheck className="size-3" />
-                                        {creatorProfiles[entry.created_by].rank}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      Entry created by {creatorProfiles[entry.created_by].rank} {creatorProfiles[entry.created_by].full_name}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                            <p className="font-medium text-sm">{entry.action_verb}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{entry.details}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-8"
-                              onClick={() => handleEdit(entry)}
-                              aria-label="Edit entry"
-                            >
-                              <Pencil className="size-3.5" />
-                            </Button>
-                            <AlertDialog
-                              open={deleteId === entry.id}
-                              onOpenChange={(open) => !open && setDeleteId(null)}
-                            >
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-8 text-destructive hover:text-destructive"
-                                  onClick={() => setDeleteId(entry.id)}
-                                  aria-label="Delete entry"
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Entry</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete this entry? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction asChild>
-                                    <Button
-                                      variant="destructive"
-                                      className="text-[#ffffff]"
-                                      onClick={() => handleDelete(entry.id)}
-                                    >
-                                      Delete
-                                    </Button>
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </div>
-                      </div>
-                    );
+                        <EntryCard
+                          key={entry.id}
+                          entry={entry}
+                          variant="compact"
+                          mpaLabel={
+                            mgas.find((m) => m.key === entry.mpa)?.label ||
+                            entry.mpa ||
+                            "Unassigned"
+                          }
+                          showSelect={showSelect}
+                          isSelected={isSelected}
+                          showScore={isEnlisted(profile?.rank as Rank)}
+                          creator={
+                            entry.created_by
+                              ? creatorProfiles[entry.created_by]
+                              : undefined
+                          }
+                          onToggleSelect={(checked) =>
+                            toggleEntrySelected(entry.id, checked)
+                          }
+                          onEdit={() => handleEdit(entry)}
+                          onRequestDelete={() => setDeleteId(entry.id)}
+                          onCardClick={(e) =>
+                            handleEntryCardClick(
+                              e,
+                              entry.id,
+                              isSelected,
+                              showSelect
+                            )
+                          }
+                        />
+                      );
                     })}
                   </div>
                 </CardContent>
@@ -648,235 +558,71 @@ function EntriesContent() {
         </div>
       ) : (
         /* List View */
-        <div className="space-y-4">
+        <div className="space-y-3">
           {filteredAccomplishments.map((entry) => {
-            const hasScore = entry.assessment_scores?.overall_score != null;
-            const overallScore = entry.assessment_scores?.overall_score || 0;
             const isSelected = selectedEntryIds.has(entry.id);
             const showSelect = isEnlisted(fuseRatee?.rank ?? null);
-            
+
             return (
-            <Card
-              key={entry.id}
-              className={cn(
-                "group",
-                isSelected && "ring-1 ring-primary/40 bg-primary/5"
-              )}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    {showSelect && (
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={(checked) =>
-                          toggleEntrySelected(entry.id, checked === true)
-                        }
-                        aria-label={`Select ${entry.action_verb}`}
-                        className="mt-1"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <Badge variant="outline">
-                        {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {formatShortDateWithYear(entry.date)}
-                      </span>
-                      {/* Show creator badge if entry was created by supervisor */}
-                      {entry.created_by && entry.created_by !== entry.user_id && creatorProfiles[entry.created_by] && (
-                        <TooltipProvider delayDuration={200}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge variant="secondary" className="text-xs gap-1">
-                                <UserCheck className="size-3" />
-                                {creatorProfiles[entry.created_by].rank} {creatorProfiles[entry.created_by].full_name?.split(" ")[0]}
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Entry created by {creatorProfiles[entry.created_by].rank} {creatorProfiles[entry.created_by].full_name}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    <CardTitle className="text-lg leading-tight">
-                      {entry.action_verb}
-                    </CardTitle>
-                    </div>
-                  </div>
-                  
-                  {/* Score Display - Prominent on the right (Enlisted only) */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    {isEnlisted(profile?.rank as Rank) && (
-                      hasScore ? (
-                        <TooltipProvider delayDuration={200}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className={cn(
-                                "px-3 py-1.5 rounded-lg border font-semibold text-lg cursor-default",
-                                getScoreColor(overallScore)
-                              )}>
-                                {overallScore}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-xs">
-                              <div className="space-y-1">
-                                <p className="font-medium">Quality Score: {overallScore}/100</p>
-                                {entry.assessment_scores?.primary_mpa && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Best fit: {mgas.find(m => m.key === entry.assessment_scores?.primary_mpa)?.label || entry.assessment_scores.primary_mpa}
-                                  </p>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        <div className="px-3 py-1.5 rounded-lg border border-dashed text-muted-foreground text-sm opacity-50">
-                          --
-                        </div>
-                      )
-                    )}
-                    
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEdit(entry)}
-                      aria-label="Edit entry"
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <AlertDialog
-                      open={deleteId === entry.id}
-                      onOpenChange={(open) => !open && setDeleteId(null)}
-                    >
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteId(entry.id)}
-                          aria-label="Delete entry"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Entry</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete this entry? This
-                            action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction asChild>
-                            <Button
-                              variant="destructive"
-                              className="text-[#ffffff]"
-                              onClick={() => handleDelete(entry.id)}
-                            >
-                              Delete
-                            </Button>
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Details
-                  </p>
-                  <p className="text-sm">{entry.details}</p>
-                </div>
-                {(() => {
-                  const stewardship = normalizeStewardshipImpact(
-                    entry.stewardship_impact
-                  );
-                  if (hasStewardshipImpactContent(stewardship)) {
-                    const rows: Array<{ label: string; value: string }> = [];
-                    if (stewardship.time) {
-                      rows.push({ label: STEWARDSHIP_LABELS.time, value: stewardship.time });
-                    }
-                    if (stewardship.money) {
-                      rows.push({ label: STEWARDSHIP_LABELS.money, value: stewardship.money });
-                    }
-                    if (stewardship.resources) {
-                      rows.push({
-                        label: STEWARDSHIP_LABELS.resources,
-                        value: stewardship.resources,
-                      });
-                    }
-                    if (stewardship.outcome) {
-                      rows.push({
-                        label: STEWARDSHIP_LABELS.outcome,
-                        value: stewardship.outcome,
-                      });
-                    }
-                    return (
-                      <div className="space-y-1.5">
-                        <p className="text-sm font-medium text-muted-foreground">
-                          Impact
-                        </p>
-                        <div className="space-y-1">
-                          {rows.map((row) => (
-                            <div
-                              key={row.label}
-                              className="flex gap-2 text-sm"
-                            >
-                              <span className="w-[6.5rem] shrink-0 text-muted-foreground">
-                                {row.label}
-                              </span>
-                              <span>{row.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (entry.impact) {
-                    return (
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          Impact
-                        </p>
-                        <p className="text-sm">{entry.impact}</p>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-                {entry.metrics && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Metrics
-                    </p>
-                    <p className="text-sm">{entry.metrics}</p>
-                  </div>
-                )}
-                {entry.tags && entry.tags.length > 0 && (
-                  <div className="flex gap-1 flex-wrap pt-2">
-                    {entry.tags.map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
+              <EntryCard
+                key={entry.id}
+                entry={entry}
+                variant="list"
+                mpaLabel={
+                  mgas.find((m) => m.key === entry.mpa)?.label ||
+                  entry.mpa ||
+                  "Unassigned"
+                }
+                showSelect={showSelect}
+                isSelected={isSelected}
+                showScore={isEnlisted(profile?.rank as Rank)}
+                creator={
+                  entry.created_by
+                    ? creatorProfiles[entry.created_by]
+                    : undefined
+                }
+                onToggleSelect={(checked) =>
+                  toggleEntrySelected(entry.id, checked)
+                }
+                onEdit={() => handleEdit(entry)}
+                onRequestDelete={() => setDeleteId(entry.id)}
+                onCardClick={(e) =>
+                  handleEntryCardClick(e, entry.id, isSelected, showSelect)
+                }
+              />
+            );
           })}
         </div>
       )}
+
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Entry</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this entry? This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                className="text-[#ffffff]"
+                onClick={() => {
+                  if (deleteId) handleDelete(deleteId);
+                }}
+              >
+                Delete
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <EntryFormDialog
         open={dialogOpen}

@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCreditsStore } from "@/stores/credits-store";
+import { Coins } from "lucide-react";
 
 interface UsageIndicatorProps {
   isCollapsed: boolean;
@@ -36,10 +37,6 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
       : "[&>[data-slot=progress-indicator]]:bg-emerald-500";
 
   const label = `${balance} token${balance !== 1 ? "s" : ""} left`;
-  const collapsedCount =
-    balance >= 1000
-      ? `${Math.floor(balance / 1000)}k`
-      : String(balance);
 
   if (isCollapsed) {
     return (
@@ -48,24 +45,18 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
           <Link
             href="/settings/billing"
             className={cn(
-              "flex items-center justify-center h-10 w-10 mx-auto rounded-md transition-colors",
+              // Match NavItem collapsed layout: left-aligned w-10, no mx-auto
+              "flex items-center justify-center h-10 w-10 rounded-md text-sm font-medium transition-colors",
               isActive
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent/50",
+                : "text-sidebar-foreground hover:bg-sidebar-accent/50",
               !isActive && isCritical && "text-red-500",
               !isActive && isWarning && "text-amber-500",
             )}
             aria-label={label}
             data-tour="nav-settings-billing"
           >
-            <span
-              className={cn(
-                "text-xs font-semibold tabular-nums leading-none",
-                balance >= 100 && "text-[10px]",
-              )}
-            >
-              {collapsedCount}
-            </span>
+            <Coins className="size-4 shrink-0" />
           </Link>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>

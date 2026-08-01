@@ -33,6 +33,7 @@ import {
   ENTRY_MGAS,
   getActiveCycleYear,
 } from "@/lib/constants";
+import { composeImpactString } from "@/lib/stewardship-impact";
 import type { Rank, Project } from "@/types/database";
 import {
   Loader2,
@@ -46,6 +47,11 @@ import {
 import { celebrateEntry } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
+import {
+  emptyStewardshipFormValue,
+  StewardshipImpactFields,
+  stewardshipImpactFromForm,
+} from "@/components/entries/stewardship-impact-fields";
 
 // Role categories with their options
 const ROLE_CATEGORIES = {
@@ -141,7 +147,7 @@ export function AddProjectAccomplishmentDialog({
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
     details: "",
-    impact: "",
+    stewardship: emptyStewardshipFormValue(),
     metrics: "",
     mpa: "executing_mission",
     tags: "",
@@ -195,7 +201,7 @@ export function AddProjectAccomplishmentDialog({
       setForm({
         date: new Date().toISOString().split("T")[0],
         details: "",
-        impact: "",
+        stewardship: emptyStewardshipFormValue(),
         metrics: "",
         mpa: "executing_mission",
         tags: "",
@@ -288,11 +294,18 @@ export function AddProjectAccomplishmentDialog({
   async function handleSubmit() {
     if (!profile || !project || !canSubmit()) return;
 
+    const stewardshipImpact = stewardshipImpactFromForm(form.stewardship);
+    const composedImpact = composeImpactString(stewardshipImpact);
+
     // Scan for PII, CUI, and classification markings — hard block if found
     const sensitiveMatches = scanForSensitiveData({
       details: form.details,
-      impact: form.impact,
+      impact: composedImpact,
       metrics: form.metrics,
+      stewardship_time: form.stewardship.time,
+      stewardship_money: form.stewardship.money,
+      stewardship_resources: form.stewardship.resources,
+      stewardship_outcome: form.stewardship.outcome,
     });
     if (sensitiveMatches.length > 0) {
       toast.error(getScanSummary(sensitiveMatches), { duration: 10000 });
@@ -323,7 +336,8 @@ export function AddProjectAccomplishmentDialog({
           date: form.date,
           action_verb: member.actionVerb,
           details: form.details,
-          impact: form.impact || null,
+          impact: composedImpact,
+          stewardship_impact: stewardshipImpact,
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
@@ -516,29 +530,24 @@ export function AddProjectAccomplishmentDialog({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="impact">Impact/Result</Label>
-                <Textarea
-                  id="impact"
-                  placeholder="What was the outcome? (optional)"
-                  value={form.impact}
-                  onChange={(e) => setForm({ ...form, impact: e.target.value })}
-                  className="min-h-[60px] resize-y"
-                  aria-label="Impact or result"
-                />
-                {project.result && (
-                  <p className="text-xs text-muted-foreground">
-                    Project result will also be used: &quot;{project.result.slice(0, 80)}...&quot;
-                  </p>
-                )}
-              </div>
+              <StewardshipImpactFields
+                value={form.stewardship}
+                onChange={(stewardship) => setForm({ ...form, stewardship })}
+                disabled={isSubmitting}
+                idPrefix="project-stewardship"
+              />
+              {project.result && (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Project result will also be used: &quot;{project.result.slice(0, 80)}...&quot;
+                </p>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="metrics">Metrics</Label>
                   <Input
                     id="metrics"
-                    placeholder="e.g., 15% increase"
+                    placeholder="e.g. 3 mos early, cut cycle 45%, 120 man-hrs/mo, $12K cost avoidance"
                     value={form.metrics}
                     onChange={(e) => setForm({ ...form, metrics: e.target.value })}
                     aria-label="Quantifiable metrics"

@@ -29,7 +29,6 @@ import {
   TrendingUp,
   UserCheck,
   Award,
-  MessageSquare,
   Filter,
   X,
   LayoutList,
@@ -55,7 +54,6 @@ import { AccomplishmentDetailDialog } from "./accomplishment-detail-dialog";
 import { WARSettingsModal } from "./war-settings-modal";
 import { WARViewModal } from "./war-view-modal";
 import { WARHistoryModal } from "./war-history-modal";
-import { getAccomplishmentCommentCounts } from "@/app/actions/accomplishment-comments";
 import type { Accomplishment, Profile, ManagedMember, Rank } from "@/types/database";
 import {
   Popover,
@@ -139,7 +137,6 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     isLoading,
     hasSubordinates,
     setFeedAccomplishments,
-    updateAccomplishmentCommentCounts,
     updateAccomplishment,
     setIsLoading,
     setHasSubordinates,
@@ -348,15 +345,6 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         );
 
         setFeedAccomplishments(feedItems);
-
-        // Load comment counts for all accomplishments
-        if (feedItems.length > 0) {
-          const accIds = feedItems.map((a) => a.id);
-          const countsResult = await getAccomplishmentCommentCounts(accIds);
-          if (countsResult.data) {
-            updateAccomplishmentCommentCounts(countsResult.data);
-          }
-        }
       } catch (error) {
         console.error("Error loading team feed:", error);
       } finally {
@@ -371,7 +359,6 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     managedMembers,
     supabase,
     setFeedAccomplishments,
-    updateAccomplishmentCommentCounts,
     setIsLoading,
     setHasSubordinates,
   ]);
@@ -1424,12 +1411,6 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                             {acc.author_name}
                                           </span>
                                           <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>
-                                          {(acc.unresolved_comment_count ?? 0) > 0 && (
-                                            <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                              <MessageSquare className="size-3" />
-                                              {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
-                                            </Badge>
-                                          )}
                                         </div>
                                         <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
                                       </div>
@@ -1539,12 +1520,6 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                     <Calendar className="size-3" />
                                     {formatDayOnly(acc.date)}
                                   </span>
-                                  {(acc.unresolved_comment_count ?? 0) > 0 && (
-                                    <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
-                                      <MessageSquare className="size-3" />
-                                      {acc.unresolved_comment_count} {acc.unresolved_comment_count === 1 ? "Comment" : "Comments"}
-                                    </Badge>
-                                  )}
                                 </div>
 
                                 <p className="text-sm text-muted-foreground line-clamp-2">

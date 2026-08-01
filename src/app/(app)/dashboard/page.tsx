@@ -162,7 +162,7 @@ export default function DashboardPage() {
             </p>
             <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
               <li>Generate and manage EPBs for enlisted subordinates</li>
-              <li>Review and comment on team member entries</li>
+              <li>Review team member entries</li>
               <li>Track your team&apos;s performance progress</li>
               <li>Create award packages for your Airmen</li>
             </ul>

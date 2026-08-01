@@ -130,38 +130,6 @@ export interface Accomplishment {
   updated_at: string;
 }
 
-// Accomplishment Comments / Request for Information
-export interface AccomplishmentComment {
-  id: string;
-  accomplishment_id: string;
-  author_id: string;
-  comment_text: string;
-  is_resolved: boolean;
-  resolved_at: string | null;
-  resolved_by: string | null;
-  visible_to: string[] | null; // Array of user IDs who can see private comments
-  created_at: string;
-  updated_at: string;
-}
-
-// Comment with author info and visibility details
-export interface AccomplishmentCommentWithAuthor extends AccomplishmentComment {
-  author_name: string | null;
-  author_rank: Rank | null;
-  author_avatar_url: string | null;
-  resolved_by_name: string | null;
-  resolved_by_rank: Rank | null;
-  visible_to_names: string[]; // Names of users who can see (for display)
-}
-
-// Chain member for recipient selection in private comments
-export interface ChainMember {
-  user_id: string;
-  full_name: string;
-  rank: Rank | null;
-  is_owner: boolean;
-}
-
 export interface MajorGradedArea {
   key: string;
   label: string;

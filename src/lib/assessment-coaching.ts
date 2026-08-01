@@ -116,6 +116,22 @@ export function getAssessmentCoachingTips(
   return tips.slice(0, 4);
 }
 
+/**
+ * True when the entry was saved after the last AI assessment.
+ * Small skew covers same-request writes that bump both timestamps.
+ */
+export function isAssessmentStale(
+  assessedAt: string | null | undefined,
+  updatedAt: string | null | undefined,
+  skewMs = 2000
+): boolean {
+  if (!assessedAt || !updatedAt) return false;
+  const assessed = Date.parse(assessedAt);
+  const updated = Date.parse(updatedAt);
+  if (Number.isNaN(assessed) || Number.isNaN(updated)) return false;
+  return updated - assessed > skewMs;
+}
+
 export function getAssessmentChrome(role: AssessmentViewerRole): {
   sectionLabel: string;
   ctaLabel: string;

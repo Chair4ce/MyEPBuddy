@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { FeedAccomplishment } from "@/stores/team-feed-store";
 import { useUserStore } from "@/stores/user-store";
 import {
@@ -58,30 +58,15 @@ import {
   ChevronUp,
   GitBranch,
   Pencil,
-  MessageSquare,
-  Send,
   Check,
   X,
   Loader2,
-  CheckCircle2,
-  Clock,
-  Lock,
-  Eye,
 } from "lucide-react";
 import { ENTRY_MGAS, DEFAULT_ACTION_VERBS } from "@/lib/constants";
 import { ChainOfCommandDisplay } from "./chain-of-command-display";
 import { updateAccomplishment } from "@/app/actions/accomplishments";
-import {
-  getAccomplishmentComments,
-  createAccomplishmentComment,
-  resolveAccomplishmentComment,
-  deleteAccomplishmentComment,
-  getAccomplishmentChainMembers,
-} from "@/app/actions/accomplishment-comments";
-import type { AccomplishmentCommentWithAuthor, ChainMember } from "@/types/database";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
 import {
-  formatCommentTimeAgo,
   formatCreatedAgo,
   formatWeekdayShortDate,
 } from "@/lib/format";
@@ -103,21 +88,7 @@ export function AccomplishmentDetailDialog({
   const [showChain, setShowChain] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Comments state
-  const [comments, setComments] = useState<AccomplishmentCommentWithAuthor[]>([]);
-  const [isLoadingComments, setIsLoadingComments] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [showComments, setShowComments] = useState(true);
-  const commentsEndRef = useRef<HTMLDivElement>(null);
-  
-  // Visibility selection state (for private comments)
-  const [chainMembers, setChainMembers] = useState<ChainMember[]>([]);
-  const [isLoadingChainMembers, setIsLoadingChainMembers] = useState(false);
-  const [selectedVisibleTo, setSelectedVisibleTo] = useState<string[]>([]);
-  const [showVisibilitySelect, setShowVisibilitySelect] = useState(false);
-  
+
   // Edit form state
   const [editForm, setEditForm] = useState({
     date: "",
@@ -129,7 +100,7 @@ export function AccomplishmentDetailDialog({
     mpa: "",
     tags: "",
   });
-  
+
   // Unsaved changes confirmation
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
@@ -193,45 +164,6 @@ export function AccomplishmentDetailDialog({
     (member) => member.id === profile?.id
   ) ?? false;
 
-  // Load comments and chain members when dialog opens
-  useEffect(() => {
-    if (!open || !accomplishment) return;
-
-    let cancelled = false;
-    setSelectedVisibleTo([]);
-    setShowVisibilitySelect(false);
-
-    void (async () => {
-      setIsLoadingComments(true);
-      try {
-        const result = await getAccomplishmentComments(accomplishment.id);
-        if (cancelled) return;
-        if (result.data) {
-          setComments(result.data);
-        }
-      } finally {
-        setIsLoadingComments(false);
-      }
-    })();
-
-    void (async () => {
-      setIsLoadingChainMembers(true);
-      try {
-        const result = await getAccomplishmentChainMembers(accomplishment.id);
-        if (cancelled) return;
-        if (result.data) {
-          setChainMembers(result.data);
-        }
-      } finally {
-        setIsLoadingChainMembers(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, accomplishment?.id]);
-
   // Reset edit state when accomplishment changes
   useEffect(() => {
     if (accomplishment) {
@@ -252,32 +184,6 @@ export function AccomplishmentDetailDialog({
     }
     setIsEditing(false);
   }, [accomplishment]);
-
-  async function loadComments() {
-    if (!accomplishment) return;
-    setIsLoadingComments(true);
-    try {
-      const result = await getAccomplishmentComments(accomplishment.id);
-      if (result.data) {
-        setComments(result.data);
-      }
-    } finally {
-      setIsLoadingComments(false);
-    }
-  }
-
-  async function loadChainMembers() {
-    if (!accomplishment) return;
-    setIsLoadingChainMembers(true);
-    try {
-      const result = await getAccomplishmentChainMembers(accomplishment.id);
-      if (result.data) {
-        setChainMembers(result.data);
-      }
-    } finally {
-      setIsLoadingChainMembers(false);
-    }
-  }
 
   async function handleSubmitEdit() {
     if (!accomplishment) return;
@@ -342,67 +248,11 @@ export function AccomplishmentDetailDialog({
     }
   }
 
-  async function handleSubmitComment() {
-    if (!accomplishment || !newComment.trim()) return;
-
-    setIsSubmittingComment(true);
-    try {
-      const visibleTo = selectedVisibleTo.length > 0 ? selectedVisibleTo : null;
-      const result = await createAccomplishmentComment(accomplishment.id, newComment.trim(), visibleTo);
-      
-      if (result.error) {
-        toast.error(result.error);
-      } else {
-        setNewComment("");
-        setSelectedVisibleTo([]);
-        setShowVisibilitySelect(false);
-        await loadComments();
-        setTimeout(() => {
-          commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100);
-        toast.success(visibleTo ? "Private comment sent" : "Comment added");
-      }
-    } finally {
-      setIsSubmittingComment(false);
-    }
-  }
-
-  // Toggle a user in the visibility list
-  function toggleVisibility(userId: string) {
-    setSelectedVisibleTo((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
-    );
-  }
-
-  async function handleResolveComment(commentId: string, isResolved: boolean) {
-    const result = await resolveAccomplishmentComment(commentId, isResolved);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      await loadComments();
-      toast.success(isResolved ? "Marked as resolved" : "Reopened");
-    }
-  }
-
-  async function handleDeleteComment(commentId: string) {
-    const result = await deleteAccomplishmentComment(commentId);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      await loadComments();
-      toast.success("Comment deleted");
-    }
-  }
-
   if (!accomplishment) return null;
 
   const mpaLabel =
     ENTRY_MGAS.find((m) => m.key === accomplishment.mpa)?.label ||
     accomplishment.mpa;
-
-  const unresolvedCount = comments.filter((c) => !c.is_resolved).length;
 
   return (
     <>
@@ -773,189 +623,6 @@ export function AccomplishmentDetailDialog({
                 />
               )}
             </div>
-
-            {/* Comments Section - Only visible to chain of supervision */}
-            {isInChain && (
-              <>
-                <Separator />
-                
-                <div className="space-y-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-between hover:bg-muted/50 h-9 px-2"
-                    onClick={() => setShowComments(!showComments)}
-                  >
-                    <span className="flex items-center gap-2 text-sm font-medium">
-                      <MessageSquare className="size-4 text-primary" />
-                      Supervision Comments
-                      {unresolvedCount > 0 && (
-                        <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
-                          {unresolvedCount} open
-                        </Badge>
-                      )}
-                    </span>
-                    {showComments ? (
-                      <ChevronUp className="size-4" />
-                    ) : (
-                      <ChevronDown className="size-4" />
-                    )}
-                  </Button>
-
-                  {showComments && (
-                    <div className="space-y-3">
-                      {/* Comments List - Scrollable */}
-                      {isLoadingComments ? (
-                        <div className="flex items-center justify-center py-6">
-                          <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : comments.length === 0 ? (
-                        <div className="text-center py-4 text-sm text-muted-foreground">
-                          <MessageSquare className="size-6 mx-auto mb-2 opacity-50" />
-                          <p className="text-xs">No comments yet</p>
-                        </div>
-                      ) : (
-                        <div className="max-h-[200px] sm:max-h-[250px] overflow-y-auto space-y-2 pr-1">
-                          {comments.map((comment) => (
-                            <CommentItem
-                              key={comment.id}
-                              comment={comment}
-                              currentUserId={profile?.id}
-                              onResolve={handleResolveComment}
-                              onDelete={handleDeleteComment}
-                            />
-                          ))}
-                          <div ref={commentsEndRef} />
-                        </div>
-                      )}
-
-                      {/* New Comment Form */}
-                      <div className="space-y-2">
-                        {/* Visibility Toggle */}
-                        <div className="space-y-2">
-                          <Button
-                            type="button"
-                            variant={showVisibilitySelect ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-7 text-xs gap-1.5"
-                            onClick={() => {
-                              setShowVisibilitySelect(!showVisibilitySelect);
-                              if (showVisibilitySelect) {
-                                setSelectedVisibleTo([]);
-                              }
-                            }}
-                          >
-                            {selectedVisibleTo.length === 0 ? (
-                              <>
-                                <Eye className="size-3" />
-                                <span className="hidden sm:inline">Visible to Chain</span>
-                                <span className="sm:hidden">Public</span>
-                              </>
-                            ) : (
-                              <>
-                                <Lock className="size-3" />
-                                <span className="hidden sm:inline">
-                                  Private ({selectedVisibleTo.length} selected)
-                                </span>
-                                <span className="sm:hidden">
-                                  Private ({selectedVisibleTo.length})
-                                </span>
-                              </>
-                            )}
-                          </Button>
-                          
-                          {/* Visibility Toggle List */}
-                          {showVisibilitySelect && (
-                            <div className="rounded-lg border bg-muted/30 p-2">
-                              <p className="text-xs text-muted-foreground px-1 pb-1">
-                                Select who can see this comment:
-                              </p>
-                              {isLoadingChainMembers ? (
-                                <div className="flex items-center gap-2 py-2 px-1 text-xs text-muted-foreground">
-                                  <Loader2 className="size-3 animate-spin" />
-                                  Loading...
-                                </div>
-                              ) : chainMembers.length === 0 ? (
-                                <p className="text-xs text-muted-foreground py-2 px-1">
-                                  No recipients available
-                                </p>
-                              ) : (
-                                <div className="max-h-[150px] overflow-y-auto space-y-1">
-                                  {chainMembers.map((member) => {
-                                    const isSelected = selectedVisibleTo.includes(member.user_id);
-                                    return (
-                                      <button
-                                        key={member.user_id}
-                                        type="button"
-                                        onClick={() => toggleVisibility(member.user_id)}
-                                        className={`w-full flex items-center gap-2 p-2 rounded-md text-left text-xs transition-colors ${
-                                          isSelected 
-                                            ? "bg-primary/10 text-primary" 
-                                            : "hover:bg-muted"
-                                        }`}
-                                      >
-                                        <div className={`size-4 rounded border flex items-center justify-center shrink-0 ${
-                                          isSelected 
-                                            ? "bg-primary border-primary text-primary-foreground" 
-                                            : "border-muted-foreground/30"
-                                        }`}>
-                                          {isSelected && <Check className="size-3" />}
-                                        </div>
-                                        <span className="flex-1">
-                                          {member.rank ? `${member.rank} ` : ""}{member.full_name}
-                                        </span>
-                                        {member.is_owner && (
-                                          <Badge variant="outline" className="h-4 text-[10px] px-1 shrink-0">
-                                            Owner
-                                          </Badge>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Comment Input */}
-                        <div className="flex gap-2 items-start">
-                          <div className="flex-1 min-w-0">
-                            <Textarea
-                              placeholder={selectedVisibleTo.length === 0 
-                                ? "Add a comment..." 
-                                : `Private message to ${selectedVisibleTo.length} selected...`
-                              }
-                              value={newComment}
-                              onChange={(e) => setNewComment(e.target.value)}
-                              className="min-h-[50px] text-sm resize-none"
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                                  e.preventDefault();
-                                  handleSubmitComment();
-                                }
-                              }}
-                            />
-                          </div>
-                          <Button
-                            size="icon"
-                            onClick={handleSubmitComment}
-                            disabled={!newComment.trim() || isSubmittingComment}
-                            className="shrink-0 size-9"
-                          >
-                            {isSubmittingComment ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Send className="size-4" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
           </div>
         </div>
       </DialogContent>
@@ -983,116 +650,5 @@ export function AccomplishmentDetailDialog({
       </AlertDialogContent>
     </AlertDialog>
     </>
-  );
-}
-
-// Comment Item Component
-interface CommentItemProps {
-  comment: AccomplishmentCommentWithAuthor;
-  currentUserId?: string;
-  onResolve: (id: string, isResolved: boolean) => void;
-  onDelete: (id: string) => void;
-}
-
-function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentItemProps) {
-  const isAuthor = comment.author_id === currentUserId;
-  const isPrivate = comment.visible_to && comment.visible_to.length > 0;
-  const isInVisibleTo = isPrivate && currentUserId && comment.visible_to?.includes(currentUserId);
-  
-  return (
-    <div
-      className={`group rounded-lg border p-2.5 sm:p-3 transition-colors ${
-        isPrivate 
-          ? "bg-primary/5 border-primary/20" 
-          : comment.is_resolved
-            ? "bg-muted/30 border-muted"
-            : "bg-card border-border"
-      }`}
-    >
-      <div className="flex items-start gap-2 sm:gap-3">
-        {/* Avatar */}
-        <div className={`size-7 sm:size-8 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
-          isPrivate ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-        }`}>
-          {(comment.author_name || "?")
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase()}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-              <span className="text-xs sm:text-sm font-medium truncate">
-                {comment.author_rank && (
-                  <span className="text-muted-foreground">{comment.author_rank} </span>
-                )}
-                {comment.author_name}
-              </span>
-              {isPrivate && (
-                <Badge variant="secondary" className="text-xs gap-1 h-5 px-1.5 bg-primary/10 text-primary border-primary/20">
-                  <Lock className="size-3" />
-                  <span className="hidden sm:inline">
-                    {isAuthor 
-                      ? `To ${comment.visible_to_names.slice(0, 2).join(", ")}${comment.visible_to_names.length > 2 ? ` +${comment.visible_to_names.length - 2}` : ""}`
-                      : isInVisibleTo 
-                        ? "Private to you" 
-                        : "Private"
-                    }
-                  </span>
-                </Badge>
-              )}
-              <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-                <Clock className="size-3" />
-                {formatCommentTimeAgo(comment.created_at)}
-              </span>
-              {comment.is_resolved && (
-                <Badge variant="outline" className="text-xs gap-1 text-muted-foreground h-5 px-1">
-                  <CheckCircle2 className="size-3" />
-                  <span className="hidden sm:inline">Resolved</span>
-                </Badge>
-              )}
-            </div>
-            {/* Actions - Always visible on mobile for touch */}
-            <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 sm:size-7"
-                onClick={() => onResolve(comment.id, !comment.is_resolved)}
-                title={comment.is_resolved ? "Reopen" : "Mark as resolved"}
-              >
-                {comment.is_resolved ? (
-                  <X className="size-3" />
-                ) : (
-                  <Check className="size-3" />
-                )}
-              </Button>
-              {isAuthor && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 sm:size-7 text-destructive hover:text-destructive"
-                  onClick={() => onDelete(comment.id)}
-                  title="Delete comment"
-                >
-                  <X className="size-3" />
-                </Button>
-              )}
-            </div>
-          </div>
-          <p
-            className={`text-xs sm:text-sm mt-1 break-words ${
-              comment.is_resolved ? "text-muted-foreground" : ""
-            }`}
-          >
-            {comment.comment_text}
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   getAssessmentChrome,
   getAssessmentCoachingTips,
   INDICATOR_WEAK_THRESHOLD,
+  isAssessmentStale,
 } from "../assessment-coaching";
 import { PORTFOLIO_MISFILE_GAP } from "../cycle-portfolio";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
@@ -179,6 +180,36 @@ describe("getAssessmentCoachingTips", () => {
 
     expect(tips).toHaveLength(1);
     expect(tips[0].id).toBe("impact_significance");
+  });
+});
+
+describe("isAssessmentStale", () => {
+  it("is false when assessed_at is missing", () => {
+    expect(isAssessmentStale(null, "2026-08-01T12:00:00.000Z")).toBe(false);
+  });
+
+  it("is false when assessment is current or newer than updated_at", () => {
+    expect(
+      isAssessmentStale(
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T11:59:00.000Z"
+      )
+    ).toBe(false);
+    expect(
+      isAssessmentStale(
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T12:00:01.000Z"
+      )
+    ).toBe(false);
+  });
+
+  it("is true when the entry was updated after assessment", () => {
+    expect(
+      isAssessmentStale(
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T12:05:00.000Z"
+      )
+    ).toBe(true);
   });
 });
 

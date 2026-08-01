@@ -14,9 +14,6 @@ export interface FeedAccomplishment extends Accomplishment {
   // Chain of command info
   chain_depth: number;
   supervisor_chain: ChainMember[];
-  // Comment counts
-  comment_count?: number;
-  unresolved_comment_count?: number;
 }
 
 export interface ChainMember {
@@ -32,9 +29,6 @@ interface TeamFeedState {
   isLoading: boolean;
   hasSubordinates: boolean;
   setFeedAccomplishments: (accomplishments: FeedAccomplishment[]) => void;
-  updateAccomplishmentCommentCounts: (
-    counts: Record<string, { total: number; unresolved: number }>
-  ) => void;
   updateAccomplishment: (id: string, updates: Partial<FeedAccomplishment>) => void;
   setIsLoading: (loading: boolean) => void;
   setHasSubordinates: (has: boolean) => void;
@@ -46,15 +40,6 @@ export const useTeamFeedStore = create<TeamFeedState>((set) => ({
   isLoading: true,
   hasSubordinates: false,
   setFeedAccomplishments: (feedAccomplishments) => set({ feedAccomplishments }),
-  updateAccomplishmentCommentCounts: (counts) =>
-    set((state) => ({
-      feedAccomplishments: state.feedAccomplishments.map((acc) => ({
-        ...acc,
-        comment_count: counts[acc.id]?.total ?? acc.comment_count ?? 0,
-        unresolved_comment_count:
-          counts[acc.id]?.unresolved ?? acc.unresolved_comment_count ?? 0,
-      })),
-    })),
   updateAccomplishment: (id, updates) =>
     set((state) => ({
       feedAccomplishments: state.feedAccomplishments.map((acc) =>
