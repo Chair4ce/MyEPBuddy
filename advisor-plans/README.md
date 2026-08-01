@@ -8,6 +8,23 @@ Execute in the order below within each topic unless dependencies say otherwise. 
 
 ---
 
+## ⛔ Sacred surfaces — DO NOT TOUCH (operator lock)
+
+Unless a plan **explicitly** says otherwise **and** the operator re-confirms in the execution prompt, executors must **not modify, refactor, restyle, or “improve”**:
+
+1. **EPB MPA split view** (two-statement / split editing UI on `/epb`)
+2. **EPB MPA sentence drag-and-drop** (reorder / drop between S1–S2, drop overlays, related DnD sensors/handlers)
+
+These took significant investment. Prefer leaving `mpa-section-card.tsx` DnD/split code paths untouched even when the same file is in scope for an unrelated fix (Impact Booster flush, revision `setState`, motion pilots).
+
+**Allowed nearby work** (only the named concern): Impact Booster wiring, generate/revise CTAs, `billableFetch`, revision-history state purity — surgically, without changing split/DnD behavior, props, layout, or motion of those features.
+
+**If a fix appears to require changing split view or sentence DnD:** STOP and report. Do not “just tweak” it.
+
+Search anchors to avoid (do not “clean up” while in the file): `SentenceDropOverlay`, split-view / `usesTwoStatements` layout chrome tied to DnD, `@dnd-kit` sensors/handlers for sentences, sentence reorder state.
+
+---
+
 ## Topic A — Variable token pack purchasing
 
 **Not audited (A):** performance, DX, docs, roadmap/direction, unrelated dirty file `src/app/(app)/team/page.tsx`, Supabase migrations outside the grant path already used by this feature.
@@ -162,3 +179,64 @@ Recommended: **010** can land immediately (extract pure helpers in the same PR);
 - Topic C: 005 DONE; next is **006** (draft flush + dual-panel sync).
 - Topic D: shipped with migration 198. **007** (background redaction coverage) and **008** (detail-dialog stewardship parity) are independent of each other and of Topics A–C — either order is fine. Optional follow-up beyond this pass: team bulk-add stewardship UI (rejected this round, see Topic D).
 - Topic E: Fuse to EPB shipped on Entries. **010** (unit tests) is the cheap next step; **009** (shared shell create) before a third create call site appears.
+- Topic F–H (2026-08-01 whole-app improve + React Doctor 26/100): see below. Coordinate migration numbers across **011 / 014 / 015 / 016** (next free after `198_*` is `199_*`).
+
+---
+
+## Topic F — Security hardening (whole-app audit)
+
+React Doctor whole-app **26/100** (51 errors). Downgraded: early “no RLS” migration noise (later migrations enable RLS); `.next` “secret in browser artifact” (no service-role/Stripe secrets in client bundles).
+
+### Findings → plans
+
+| # | Finding | Plan | Priority | Effort | Status |
+|---|---------|------|----------|--------|--------|
+| 1 | `profiles.role` self-escalation via own-row UPDATE | 011 | P1 | M | DONE |
+| 4 | Caller-controlled `p_burst_limit` on `consume_credit` | 014 | P1 | S | TODO |
+| 5 | `analytics_events` INSERT `WITH CHECK (true)` | 015 | P2 | S | TODO |
+| 6–7 | World-readable profiles SELECT + unsupervised teams INSERT | 016 | P1 | M | TODO |
+
+### Execution order
+
+**011 → 014 → 016 → 015** (role freeze + burst pin first; RLS SELECT/INSERT next; analytics last).
+
+---
+
+## Topic G — Credit / generate money-path safety
+
+| # | Finding | Plan | Priority | Effort | Status |
+|---|---------|------|----------|--------|--------|
+| 2 | EPB/Fuse raw `fetch` skips Idempotency-Key | 012 | P1 | S | TODO |
+| 3 | `consume_credit` RPC errors mislabeled as insufficient credits | 013 | P1 | S | TODO |
+| 8 | No generate billing contract tests (1 credit / refund empty) | 017 | P1 | M | TODO |
+| 9 | Managed-member history FK silent fail | 019 | P2 | M | TODO |
+| 10 | Impure `setState` in revision history | 020 | P2 | S | TODO |
+
+### Execution order
+
+**013 → 012 → 017**, then **019 / 020** anytime.
+
+---
+
+## Topic H — PeriDocs house motion → MyEPBuddy
+
+Port PeriDocs motion rules, CSS tokens, `@/lib/motion/classes`, and `check-house-motion.mjs` into this repo; pilot on Fuse + stewardship + Impact Booster. Source (read-only): `/Users/jacyhoag/Workspace/peridocs/.cursor/rules/motion-*.mdc` + `lib/motion/*`.
+
+| Plan | Title | Priority | Effort | Status |
+|------|-------|----------|--------|--------|
+| 018  | Adopt PeriDocs house motion into MyEPBuddy | P1 | L | TODO |
+
+Press scale for MyEPBuddy remains **0.98** (product rule), not PeriDocs 0.99. Skip PeriDocs marketing/Figma modules.
+
+### Suggested overall wave
+
+1. **Security:** 011, 014, 016  
+2. **Credits:** 013, 012, 017  
+3. **Motion:** 018 (can parallelize with wave 1–2 after rules/CSS land)  
+4. **Polish:** 015, 019, 020 + leftover Topic A–E TODOs (001, 002, 004, 006–010)
+
+### Considered and rejected (F–H)
+
+- Full god-file splits (`mpa-section-card`, `team/page`) — L/HIGH risk; needs characterization tests first (direction follow-up). **Never** include split view or sentence DnD in a god-file split without explicit operator approval.
+- Charging 1 credit per version — product decision, not a bug; multi-version fan-out cost tracked as direction only.
+- Copying PeriDocs marketing motion / brand look — out of scope for 018.
