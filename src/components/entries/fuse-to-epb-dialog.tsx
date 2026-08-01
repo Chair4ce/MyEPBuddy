@@ -42,6 +42,11 @@ import {
   majorityMpa,
   toGenerateAccomplishmentPayload,
 } from "@/lib/fuse-to-epb";
+import {
+  createEpbShell,
+  listEpbShellCycleYears,
+  type EpbShellWithSections,
+} from "@/lib/epb-shell-create";
 import { Analytics } from "@/lib/analytics";
 import type {
   Accomplishment,
@@ -162,18 +167,7 @@ export function FuseToEpbDialog({
   };
 
   const prepareNeedShell = async (action: PendingShellAction) => {
-    let historyQuery = supabase.from("epb_shells").select("cycle_year");
-    if (ratee.isManagedMember) {
-      historyQuery = historyQuery.eq("team_member_id", ratee.id);
-    } else {
-      historyQuery = historyQuery
-        .eq("user_id", ratee.id)
-        .is("team_member_id", null);
-    }
-    const { data: historyData } = await historyQuery;
-    const cycleYears = (
-      (historyData as { cycle_year: number }[] | null) ?? []
-    ).map((r) => r.cycle_year);
+    const cycleYears = await listEpbShellCycleYears(supabase, ratee);
     const nextYear = getNextEpbShellCycleYear(
       ratee.rank as Rank | null,
       cycleYears
@@ -186,87 +180,35 @@ export function FuseToEpbDialog({
     setStep("need-shell");
   };
 
-  const createShell = async (): Promise<
-    EPBShell & { sections: EPBShellSection[] }
-  > => {
+  const createShell = async (): Promise<EpbShellWithSections> => {
     if (!profile) throw new Error("Not signed in");
 
-    let historyQuery = supabase.from("epb_shells").select("cycle_year");
-    if (ratee.isManagedMember) {
-      historyQuery = historyQuery.eq("team_member_id", ratee.id);
-    } else {
-      historyQuery = historyQuery
-        .eq("user_id", ratee.id)
-        .is("team_member_id", null);
+    const result = await createEpbShell(supabase, {
+      ratee,
+      profileId: profile.id,
+    });
+
+    switch (result.status) {
+      case "created":
+        Analytics.epbShellCreated(
+          ratee.isManagedMember
+            ? "managed_member"
+            : ratee.id === profile.id
+              ? "self"
+              : "subordinate"
+        );
+        return result.shell;
+      case "active_exists":
+        throw new Error(
+          "Archive the current EPB before starting a new evaluation cycle."
+        );
+      case "archived_conflict":
+        throw new Error(
+          "An archived EPB exists for this cycle. Open EPB to restore it or start the next cycle."
+        );
+      case "loaded_existing":
+        return result.shell;
     }
-    const { data: historyData } = await historyQuery;
-    const cycleYears = (
-      (historyData as { cycle_year: number }[] | null) ?? []
-    ).map((r) => r.cycle_year);
-    const targetCycleYear = getNextEpbShellCycleYear(
-      ratee.rank as Rank | null,
-      cycleYears
-    );
-
-    const { data: activeShell } = await (() => {
-      let q = supabase.from("epb_shells").select("id").neq("status", "archived");
-      if (ratee.isManagedMember) {
-        q = q.eq("team_member_id", ratee.id);
-      } else {
-        q = q.eq("user_id", ratee.id).is("team_member_id", null);
-      }
-      return q.maybeSingle();
-    })();
-
-    if (activeShell) {
-      throw new Error(
-        "Archive the current EPB before starting a new evaluation cycle."
-      );
-    }
-
-    const insertData: {
-      user_id: string;
-      team_member_id?: string;
-      created_by: string;
-      cycle_year: number;
-    } = {
-      user_id: ratee.isManagedMember ? profile.id : ratee.id,
-      created_by: profile.id,
-      cycle_year: targetCycleYear,
-    };
-    if (ratee.isManagedMember) {
-      insertData.team_member_id = ratee.id;
-    }
-
-    const { data: insertedShell, error: insertError } = await supabase
-      .from("epb_shells")
-      .insert(insertData as never)
-      .select("id")
-      .single();
-
-    if (insertError) throw insertError;
-    if (!insertedShell) throw new Error("No shell returned from insert");
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const shellId = (insertedShell as { id: string }).id;
-    const { data, error } = await supabase
-      .from("epb_shells")
-      .select(`*, sections:epb_shell_sections(*)`)
-      .eq("id", shellId)
-      .single();
-
-    if (error) throw error;
-
-    Analytics.epbShellCreated(
-      ratee.isManagedMember
-        ? "managed_member"
-        : ratee.id === profile.id
-          ? "self"
-          : "subordinate"
-    );
-
-    return data as EPBShell & { sections: EPBShellSection[] };
   };
 
   const applyStatementToShell = async (

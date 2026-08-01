@@ -58,6 +58,7 @@ import {
   Rows2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { createEpbShell } from "@/lib/epb-shell-create";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
@@ -79,6 +80,10 @@ import {
   normalizeImpactBooster,
   clearedImpactBooster,
 } from "@/lib/impact-booster";
+import type {
+  FormattingViolationFlag,
+  StatementGenerationResult,
+} from "@/lib/formatting-violation-note";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
 
 // Map raw award records to simplified selection format for statement integration
@@ -1071,108 +1076,39 @@ export function EPBShellForm({
 
     setIsCreatingShell(true);
     try {
-      const targetCycleYear =
-        explicitCycleYear ?? getNextEpbShellCycleYear(selectedRatee.rank, rateeShellCycleYears);
+      const result = await createEpbShell(supabase, {
+        ratee: selectedRatee,
+        profileId: profile.id,
+        cycleYear: explicitCycleYear,
+        cycleYears: rateeShellCycleYears,
+      });
 
-      const { data: activeShell } = await (() => {
-        let q = supabase
-          .from("epb_shells")
-          .select("id")
-          .neq("status", "archived");
-        if (selectedRatee.isManagedMember) {
-          q = q.eq("team_member_id", selectedRatee.id);
-        } else {
-          q = q.eq("user_id", selectedRatee.id).is("team_member_id", null);
-        }
-        return q.maybeSingle();
-      })();
-
-      if (activeShell) {
-        toast.error("Archive the current EPB before starting a new evaluation cycle.");
-        return;
-      }
-      
-      // Check if there's an existing shell (including archived) for the target cycle
-      let existingQuery = supabase
-        .from("epb_shells")
-        .select("id, status, cycle_year")
-        .eq("cycle_year", targetCycleYear);
-      
-      if (selectedRatee.isManagedMember) {
-        existingQuery = existingQuery.eq("team_member_id", selectedRatee.id);
-      } else {
-        existingQuery = existingQuery.eq("user_id", selectedRatee.id).is("team_member_id", null);
-      }
-      
-      const { data: existingShellData } = await existingQuery.maybeSingle();
-      const existingShell = existingShellData as { id: string; status: string; cycle_year: number } | null;
-      
-      if (existingShell) {
-        if (existingShell.status === "archived") {
-          // Archived shell for this cycle - show conflict dialog
-          setArchivedShellConflict({
-            shellId: existingShell.id,
-            cycleYear: existingShell.cycle_year,
-          });
-          setIsCreatingShell(false);
+      switch (result.status) {
+        case "active_exists":
+          toast.error("Archive the current EPB before starting a new evaluation cycle.");
           return;
-        } else {
-          // Active shell exists - reload it (shouldn't normally happen)
-          const { data, error } = await supabase
-            .from("epb_shells")
-            .select(`*, sections:epb_shell_sections(*)`)
-            .eq("id", existingShell.id)
-            .single();
-          
-          if (error) throw error;
-          setCurrentShell(data as EPBShell);
+        case "archived_conflict":
+          setArchivedShellConflict({
+            shellId: result.shellId,
+            cycleYear: result.cycleYear,
+          });
+          return;
+        case "loaded_existing":
+          setCurrentShell(result.shell);
           toast.info("Loaded existing EPB Shell");
           return;
-        }
+        case "created":
+          setCurrentShell(result.shell);
+          Analytics.epbShellCreated(
+            selectedRatee.isManagedMember
+              ? "managed_member"
+              : selectedRatee.id === profile.id
+                ? "self"
+                : "subordinate"
+          );
+          toast.success(`${result.cycleYear} EPB Shell created successfully!`);
+          return;
       }
-      
-      // No conflict - create the new shell
-      const insertData: {
-        user_id: string;
-        team_member_id?: string;
-        created_by: string;
-        cycle_year: number;
-      } = {
-        user_id: selectedRatee.isManagedMember ? profile.id : selectedRatee.id,
-        created_by: profile.id,
-        cycle_year: targetCycleYear,
-      };
-
-      if (selectedRatee.isManagedMember) {
-        insertData.team_member_id = selectedRatee.id;
-      }
-
-      const { data: insertedShell, error: insertError } = await supabase
-        .from("epb_shells")
-        .insert(insertData as never)
-        .select("id")
-        .single();
-
-      if (insertError) throw insertError;
-      if (!insertedShell) throw new Error("No shell returned from insert");
-
-      // Wait for trigger to complete, then fetch with sections
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const shellId = (insertedShell as { id: string }).id;
-      const { data, error } = await supabase
-        .from("epb_shells")
-        .select(`*, sections:epb_shell_sections(*)`)
-        .eq("id", shellId)
-        .single();
-
-      if (error) throw error;
-
-      setCurrentShell(data as EPBShell);
-      Analytics.epbShellCreated(
-        selectedRatee.isManagedMember ? "managed_member" : selectedRatee.id === profile.id ? "self" : "subordinate"
-      );
-      toast.success(`${targetCycleYear} EPB Shell created successfully!`);
     } catch (error: unknown) {
       console.error("Failed to create shell:", error);
       const errMsg = error instanceof Error ? error.message : "Failed to create EPB Shell";
@@ -1548,8 +1484,8 @@ export function EPBShellForm({
       // Clarifying context from user answers (for regeneration with enhanced details)
       clarifyingContext?: string;
     }
-  ): Promise<string[]> => {
-    if (!selectedRatee) return [];
+  ): Promise<StatementGenerationResult> => {
+    if (!selectedRatee) return { statements: [] };
 
     // Show one-time tip if duty description is empty
     const dutyDescription = currentShell?.duty_description?.trim();
@@ -1613,7 +1549,7 @@ export function EPBShellForm({
       const scan = scanTextForLLM(mergedClarifyingContext);
       if (scan.blocked) {
         toast.error(getScanSummary(scan.matches), { duration: 10000 });
-        return [];
+        return { statements: [] };
       }
     }
 
@@ -1651,12 +1587,15 @@ export function EPBShellForm({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        if (handleUsageLimitResponse(errorData)) return [];
+        if (handleUsageLimitResponse(errorData)) return { statements: [] };
         throw new Error(errorData.error || "Generation failed");
       }
 
       const result = await response.json();
       const mpaResult = result.statements?.[0];
+      const formattingViolations = mpaResult?.formattingViolations as
+        | FormattingViolationFlag[]
+        | undefined;
       const versionArrays: string[][] =
         Array.isArray(mpaResult?.statementVersions) &&
         mpaResult.statementVersions.length > 0
@@ -1711,7 +1650,10 @@ export function EPBShellForm({
         .filter((r): r is string => r !== null);
 
       Analytics.generateCompleted(model, Date.now() - generateStartTime, validResults.length);
-      return validResults;
+      return {
+        statements: validResults,
+        ...(formattingViolations?.length ? { formattingViolations } : {}),
+      };
     } catch (error) {
       console.error("Generate error:", error);
       Analytics.generateFailed(model, error instanceof Error ? error.message : "Unknown error");
@@ -1726,7 +1668,7 @@ export function EPBShellForm({
     context?: string,
     versionCount: number = 3,
     aggressiveness: number = 50,
-  ): Promise<string[]> => {
+  ): Promise<StatementGenerationResult> => {
     try {
       const response = await fetchWithRetry("/api/revise-selection", {
         method: "POST",
@@ -1753,14 +1695,19 @@ export function EPBShellForm({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        if (handleUsageLimitResponse(errorData)) return [];
+        if (handleUsageLimitResponse(errorData)) return { statements: [] };
         throw new Error(errorData.error || "Revision failed");
       }
 
       const result = await response.json();
-      // Return all revisions (or slice to requested count)
-      const revisions = result.revisions || [];
-      return revisions.slice(0, versionCount);
+      const revisions = (result.revisions || []).slice(0, versionCount);
+      const formattingViolations = result.formattingViolations as
+        | FormattingViolationFlag[]
+        | undefined;
+      return {
+        statements: revisions,
+        ...(formattingViolations?.length ? { formattingViolations } : {}),
+      };
     } catch (error) {
       console.error("Revise error:", error);
       throw error;
