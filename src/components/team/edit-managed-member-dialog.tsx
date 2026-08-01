@@ -214,14 +214,23 @@ export function EditManagedMemberDialog({
       });
 
       let inviteSent = false;
+      let inviteUrl: string | undefined;
       if (emailChanged && newEmail) {
         const invite = await requestManagedMemberInvite({
           teamMemberId: member.id,
           recipientEmail: newEmail,
         });
         inviteSent = invite.sent;
+        inviteUrl = invite.inviteUrl;
         if (!invite.sent) {
-          console.error("Managed member invite email not sent:", invite.error);
+          console.warn("Managed member invite email not sent:", invite.error);
+          if (inviteUrl && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(inviteUrl);
+            } catch {
+              // Clipboard is best-effort.
+            }
+          }
         }
       }
 
@@ -229,7 +238,9 @@ export function EditManagedMemberDialog({
         emailChanged && newEmail
           ? inviteSent
             ? `An invite email was sent to ${newEmail}.`
-            : `We couldn't send the invite email to ${newEmail}.`
+            : inviteUrl
+              ? `Invite email isn't configured on the server — invite link copied for you to share with ${newEmail}.`
+              : `We couldn't send the invite email to ${newEmail}.`
           : undefined;
 
       // If email changed and we should create a pending link

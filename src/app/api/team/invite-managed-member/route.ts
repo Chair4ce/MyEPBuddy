@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { stripHtml } from "@/lib/email/html-safe";
 import { searchProfileByEmail } from "@/lib/profile-directory";
 import {
+  buildManagedInviteCtaUrl,
   buildManagedMemberInviteEmail,
   type ManagedMemberInviteVariant,
 } from "@/lib/email/managed-member-invite";
@@ -144,22 +145,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resendApiKey = process.env.RESEND_API_KEY;
-    const fromEmail = getTransactionalFromEmail();
-
-    if (!resendApiKey || !fromEmail) {
-      console.error(
-        "Managed member invite not sent - missing RESEND_API_KEY or EMAIL_FROM/FEEDBACK_FROM_EMAIL."
-      );
-      return NextResponse.json(
-        {
-          error:
-            "Email is not configured. Set RESEND_API_KEY and EMAIL_FROM (or FEEDBACK_FROM_EMAIL).",
-        },
-        { status: 503 }
-      );
-    }
-
     const { data: supervisorProfile } = await supabase
       .from("profiles")
       .select("id, email, full_name, first_name, last_name, rank")
@@ -201,6 +186,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const inviteUrl = buildManagedInviteCtaUrl(
+      getSiteUrl(),
+      variant,
+      recipientEmail,
+      supervisorDisplayName,
+      teamMember.id,
+      tokenResult.token
+    );
+
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const fromEmail = getTransactionalFromEmail();
+
+    // Token/link always succeed — email is best-effort. Missing Resend config
+    // must not fail add-member (clients treat invite as optional).
+    if (!resendApiKey || !fromEmail) {
+      console.warn(
+        "Managed member invite link created but email not sent — missing RESEND_API_KEY or EMAIL_FROM/FEEDBACK_FROM_EMAIL."
+      );
+      return NextResponse.json({
+        success: true,
+        emailSent: false,
+        code: "email_not_configured",
+        variant,
+        inviteUrl,
+        error:
+          "Invite link created, but email is not configured. Set RESEND_API_KEY and EMAIL_FROM (or FEEDBACK_FROM_EMAIL) on the server.",
+      });
+    }
+
     const emailContent = buildManagedMemberInviteEmail({
       siteUrl: getSiteUrl(),
       recipientEmail,
@@ -211,24 +225,38 @@ export async function POST(request: NextRequest) {
       variant,
     });
 
-    await sendResendEmail({
-      resendApiKey,
-      from: fromEmail,
-      to: recipientEmail,
-      subject: emailContent.subject,
-      html: emailContent.html,
-      text: emailContent.text,
-      replyTo: supervisor?.email || user.email || null,
-    });
+    try {
+      await sendResendEmail({
+        resendApiKey,
+        from: fromEmail,
+        to: recipientEmail,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
+        replyTo: supervisor?.email || user.email || null,
+      });
+    } catch (sendError) {
+      console.error("Managed member invite Resend error:", sendError);
+      return NextResponse.json({
+        success: true,
+        emailSent: false,
+        code: "email_send_failed",
+        variant,
+        inviteUrl,
+        error: "Invite link created, but the email provider failed to send.",
+      });
+    }
 
     return NextResponse.json({
       success: true,
+      emailSent: true,
       variant,
+      inviteUrl,
     });
   } catch (error) {
     console.error("Managed member invite error:", error);
     return NextResponse.json(
-      { error: "Failed to send invite email" },
+      { error: "Failed to create managed member invite" },
       { status: 500 }
     );
   }

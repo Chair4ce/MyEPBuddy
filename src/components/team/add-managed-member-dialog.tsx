@@ -332,21 +332,32 @@ export function AddManagedMemberDialog({
       addManagedMember(createdMember);
 
       let inviteSent = false;
+      let inviteUrl: string | undefined;
       if (email) {
         const invite = await requestManagedMemberInvite({
           teamMemberId: createdMember.id,
           recipientEmail: email,
         });
         inviteSent = invite.sent;
+        inviteUrl = invite.inviteUrl;
         if (!invite.sent) {
-          console.error("Managed member invite email not sent:", invite.error);
+          console.warn("Managed member invite email not sent:", invite.error);
+          if (inviteUrl && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(inviteUrl);
+            } catch {
+              // Clipboard is best-effort; toast still explains the situation.
+            }
+          }
         }
       }
 
       const inviteDescription = email
         ? inviteSent
           ? `An invite email was sent to ${email}.`
-          : `We couldn't send the invite email to ${email}. They can still sign up with this address to link.`
+          : inviteUrl
+            ? `Invite email isn't configured on the server, so we copied the invite link for you to share with ${email}.`
+            : `We couldn't send the invite email to ${email}. They can still sign up with this address to link.`
         : undefined;
 
       const subordinateIsCivilian = isCivilian(existingMatch?.rank ?? null);
