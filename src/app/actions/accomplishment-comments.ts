@@ -128,7 +128,7 @@ export async function createAccomplishmentComment(
   return { data };
 }
 
-export async function updateAccomplishmentComment(
+async function updateAccomplishmentComment(
   commentId: string,
   commentText: string
 ) {

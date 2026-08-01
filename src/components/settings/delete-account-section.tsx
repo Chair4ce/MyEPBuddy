@@ -138,6 +138,7 @@ export function DeleteAccountSection({ userEmail }: DeleteAccountSectionProps) {
           ? error.message
           : "Failed to delete account. Please try again.",
       );
+    } finally {
       setIsDeleting(false);
     }
   }

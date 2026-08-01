@@ -278,9 +278,9 @@ export function useVersionCheck(
 
   // Polling with jitter
   useEffect(() => {
-    if (disabled || pollInterval <= 0) return;
+    if (disabled || pollInterval <= 0) return () => {};
 
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     
     const scheduleNext = () => {
       const jitteredInterval = addJitter(pollInterval);
@@ -291,7 +291,9 @@ export function useVersionCheck(
     };
     
     scheduleNext();
-    return () => clearTimeout(timeoutId);
+    return () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
   }, [disabled, pollInterval, checkForUpdate]);
 
   // Check when the tab regains focus or becomes visible (mobile/PWA return).

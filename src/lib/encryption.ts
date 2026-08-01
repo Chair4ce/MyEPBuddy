@@ -133,7 +133,7 @@ export function isEncrypted(value: string): boolean {
  * Safely encrypt a value, returning the original if encryption fails
  * Logs errors but doesn't throw
  */
-export function safeEncrypt(plaintext: string): string | null {
+function safeEncrypt(plaintext: string): string | null {
   try {
     return encrypt(plaintext);
   } catch (error) {
@@ -166,7 +166,7 @@ export function safeDecrypt(value: string): string | null {
  * Generate a new encryption key (for setup purposes)
  * Returns a hex-encoded 256-bit key
  */
-export function generateEncryptionKey(): string {
+function generateEncryptionKey(): string {
   return randomBytes(KEY_LENGTH).toString("hex");
 }
 

@@ -93,7 +93,7 @@ export function useShellFieldLocks({
   useEffect(() => {
     if (!shellId || !enabled) {
       setLocks({});
-      return;
+      return () => {};
     }
 
     fetchLocks();

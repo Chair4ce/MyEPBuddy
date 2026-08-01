@@ -1,6 +1,6 @@
 /** Fallback mirrors of DB token_reward_config (used when catalog cannot load). */
 export const REFERRAL_REFERRER_TOKENS = 15;
-export const REFERRAL_REFEREE_TOKENS = 10;
+const REFERRAL_REFEREE_TOKENS = 10;
 export const SUPERVISION_PARTY_TOKENS = 8;
 export const FIRST_MANAGED_MEMBER_TOKENS = 10;
 

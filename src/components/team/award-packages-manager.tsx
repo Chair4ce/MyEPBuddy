@@ -53,6 +53,7 @@ import {
   Search,
   RefreshCw,
 } from "lucide-react";
+import { formatDateDefault } from "@/lib/format";
 
 // ============================================================================
 // Types
@@ -170,11 +171,10 @@ export function AwardPackagesManager({
   // Load Award Packages
   // ============================================================================
 
-  const loadPackages = useCallback(async () => {
+  const loadPackages = useCallback(async (signal: AbortSignal) => {
     if (!profile) return;
 
     try {
-      // Fetch all award shells created by this user
       const { data: shellsData, error } = await supabase
         .from("award_shells")
         .select(`
@@ -196,7 +196,8 @@ export function AwardPackagesManager({
           )
         `)
         .eq("created_by", profile.id)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .abortSignal(signal);
 
       if (error) {
         console.error("Error loading award packages:", error);
@@ -232,6 +233,7 @@ export function AwardPackagesManager({
                 .from("team_members")
                 .select("*")
                 .eq("id", shell.team_member_id)
+                .abortSignal(signal)
                 .single();
               if (memberData) {
                 ownerTeamMember = memberData as unknown as ManagedMember;
@@ -249,6 +251,7 @@ export function AwardPackagesManager({
                   .from("profiles")
                   .select("*")
                   .eq("id", shell.user_id)
+                  .abortSignal(signal)
                   .single();
                 if (profileData) {
                   ownerProfile = profileData as unknown as Profile;
@@ -279,21 +282,31 @@ export function AwardPackagesManager({
 
   // Initial load
   useEffect(() => {
-    async function init() {
+    let cancelled = false;
+    void (async () => {
       if (!open) return;
       setIsLoading(true);
-      await loadPackages();
-      setIsLoading(false);
-    }
-    init();
+      try {
+        await loadPackages(new AbortController().signal);
+        if (cancelled) return;
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open, loadPackages]);
 
   // Handle refresh
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadPackages();
-    setIsRefreshing(false);
-    toast.success("Award packages refreshed");
+    try {
+      await loadPackages(new AbortController().signal);
+      toast.success("Award packages refreshed");
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // ============================================================================
@@ -475,7 +488,7 @@ export function AwardPackagesManager({
       }
 
       // Refresh packages
-      await loadPackages();
+      await loadPackages(new AbortController().signal);
       handleCancelEdit();
       
       // Notify parent to refresh awards
@@ -634,7 +647,7 @@ export function AwardPackagesManager({
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Created</Label>
-                  <p className="font-medium">{new Date(pkg.created_at).toLocaleDateString()}</p>
+                  <p className="font-medium">{formatDateDefault(pkg.created_at)}</p>
                 </div>
               </div>
 
@@ -685,7 +698,7 @@ export function AwardPackagesManager({
                             {getWinLevelLabel(win.win_level)}
                           </Badge>
                           <span className="text-amber-600/70 dark:text-amber-400/70">
-                            {new Date(win.won_at).toLocaleDateString()}
+                            {formatDateDefault(win.won_at)}
                           </span>
                         </div>
                       ))}

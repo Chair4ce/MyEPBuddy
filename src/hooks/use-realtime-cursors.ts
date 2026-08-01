@@ -102,19 +102,19 @@ export function useRealtimeCursors({
 
   // Subscribe to cursor channel
   useEffect(() => {
-    if (!enabled || !roomName) return;
+    if (!enabled || !roomName) {
+      return () => {};
+    }
 
-    const channel = supabase.channel(`cursors:${roomName}`, {
-      config: {
-        broadcast: { self: false }, // Don't receive own broadcasts
-      },
-    });
-
-    // Listen for cursor broadcasts
-    channel
+    const channel = supabase
+      .channel(`cursors:${roomName}`, {
+        config: {
+          broadcast: { self: false }, // Don't receive own broadcasts
+        },
+      })
       .on("broadcast", { event: "cursor" }, ({ payload }) => {
         if (!payload || payload.oderId === userIdRef.current) return;
-        
+
         setCursors((prev) => ({
           ...prev,
           [payload.oderId]: {
@@ -130,7 +130,6 @@ export function useRealtimeCursors({
         }));
       })
       .on("presence", { event: "leave" }, ({ key }) => {
-        // Remove cursor when user leaves
         setCursors((prev) => {
           const updated = { ...prev };
           delete updated[key];
@@ -148,7 +147,6 @@ export function useRealtimeCursors({
         }
       });
 
-    // Cleanup stale cursors every 3 seconds
     const cleanupInterval = setInterval(() => {
       const now = Date.now();
       setCursors((prev) => {
@@ -165,10 +163,8 @@ export function useRealtimeCursors({
 
     return () => {
       clearInterval(cleanupInterval);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      supabase.removeChannel(channel);
+      channelRef.current = null;
       setIsConnected(false);
       setCursors({});
     };

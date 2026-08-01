@@ -36,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { STANDARD_MGAS } from "@/lib/constants";
+import { formatDateDefault } from "@/lib/format";
 
 // Time period filter options — matches the activity feed pattern
 const TIME_PERIODS = [
@@ -387,9 +388,9 @@ export function MemberStatementsDialog({
                                       ? "Created by you"
                                       : "Created by member"}
                                     {" • "}
-                                    {new Date(
+                                    {formatDateDefault(
                                       stmt.created_at
-                                    ).toLocaleDateString()}
+                                    )}
                                   </span>
                                   <Button
                                     variant="ghost"
@@ -447,7 +448,7 @@ export function MemberStatementsDialog({
                               ? "Created by you"
                               : "Created by member"}
                             {" • "}
-                            {new Date(stmt.created_at).toLocaleDateString()}
+                            {formatDateDefault(stmt.created_at)}
                           </span>
                           <Button
                             variant="ghost"

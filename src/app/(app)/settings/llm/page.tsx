@@ -461,9 +461,9 @@ function AbbreviationEditor({
         {/* Mobile: Card layout */}
         <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md md:hidden">
           <div className="p-1.5 space-y-1">
-            {filteredAbbreviations.map((abbrev, idx) => (
+            {filteredAbbreviations.map((abbrev) => (
               <div 
-                key={`${abbrev.word}-${idx}`} 
+                key={abbrev.word} 
                 className="flex items-center justify-between gap-1.5 p-2 bg-muted/30 rounded"
               >
                 <div className="flex items-center gap-1 min-w-0 flex-1 text-xs sm:text-sm">
@@ -508,8 +508,8 @@ function AbbreviationEditor({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAbbreviations.map((abbrev, idx) => (
-                <TableRow key={`${abbrev.word}-${idx}`} className="group">
+              {filteredAbbreviations.map((abbrev) => (
+                <TableRow key={abbrev.word} className="group">
                   <TableCell className="font-medium">{abbrev.word}</TableCell>
                   <TableCell>
                     <ArrowRight className="size-4 text-muted-foreground" />
@@ -874,123 +874,115 @@ export default function LLMSettingsPage() {
   }, [pendingNavigation, router]);
 
   useEffect(() => {
-    if (profile) {
-      loadSettings();
-    }
-  }, [profile]);
-
-  async function loadSettings() {
     if (!profile) return;
-    setIsLoading(true);
 
-    try {
-      const { data, error } = await supabase
-        .from("user_llm_settings")
-        .select("*")
-        .eq("user_id", profile.id)
-        .maybeSingle();
+    const controller = new AbortController();
+    void (async () => {
+      setIsLoading(true);
 
-      if (error) {
-        throw error;
+      try {
+        const { data, error } = await supabase
+          .from("user_llm_settings")
+          .select("*")
+          .eq("user_id", profile.id)
+          .abortSignal(controller.signal)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Error loading settings:", error);
+          toast.error("Failed to load settings");
+          return;
+        }
+
+        if (controller.signal.aborted) return;
+
+        if (data) {
+          setHasExistingSettings(true);
+          const settings = data as unknown as UserLLMSettings;
+          const loadedStyleGuidelines = resolveStoredStyleGuidelines(settings.style_guidelines);
+          const loadedSystemPrompt = resolveStoredSystemPrompt(settings.base_system_prompt);
+          const loadedRankVerbs = settings.rank_verb_progression;
+          const loadedAcronyms = resolveStoredAcronyms(settings.acronyms);
+          const loadedAbbreviations = settings.abbreviations || [];
+
+          setStyleGuidelines(loadedStyleGuidelines);
+          setSystemPrompt(loadedSystemPrompt);
+          setRankVerbs(loadedRankVerbs);
+          setAcronyms(loadedAcronyms);
+          setAbbreviations(loadedAbbreviations);
+
+          const loadedMpaDescriptions = settings.mpa_descriptions || DEFAULT_MPA_DESCRIPTIONS;
+          setMpaDescriptions(loadedMpaDescriptions);
+
+          const loadedAwardPrompt = settings.award_system_prompt || DEFAULT_AWARD_SYSTEM_PROMPT;
+          const loadedAwardAbbreviations = settings.award_abbreviations || [];
+          const loadedAwardStyleGuidelines = settings.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES;
+
+          setAwardSystemPrompt(loadedAwardPrompt);
+          setAwardAbbreviations(loadedAwardAbbreviations);
+          setAwardStyleGuidelines(loadedAwardStyleGuidelines);
+
+          const loadedOpbSystemPrompt = settings.opb_system_prompt || DEFAULT_OPB_SYSTEM_PROMPT;
+          const loadedOpbStyleGuidelines = settings.opb_style_guidelines || DEFAULT_OPB_STYLE_GUIDELINES;
+
+          setOpbSystemPrompt(loadedOpbSystemPrompt);
+          setOpbStyleGuidelines(loadedOpbStyleGuidelines);
+
+          const loadedDecorationSystemPrompt = settings.decoration_system_prompt || DEFAULT_DECORATION_SYSTEM_PROMPT;
+          const loadedDecorationStyleGuidelines = settings.decoration_style_guidelines || DEFAULT_DECORATION_STYLE_GUIDELINES;
+          const loadedDecorationAbbreviations = settings.decoration_abbreviations || [];
+
+          setDecorationSystemPrompt(loadedDecorationSystemPrompt);
+          setDecorationStyleGuidelines(loadedDecorationStyleGuidelines);
+          setDecorationAbbreviations(loadedDecorationAbbreviations);
+
+          const loadedDutyDescriptionPrompt = resolveStoredDutyDescriptionPrompt(
+            settings.duty_description_prompt
+          );
+          setDutyDescriptionPrompt(loadedDutyDescriptionPrompt);
+
+          setInitialState({
+            styleGuidelines: loadedStyleGuidelines,
+            systemPrompt: loadedSystemPrompt,
+            rankVerbs: structuredClone(loadedRankVerbs),
+            acronyms: structuredClone(loadedAcronyms),
+            abbreviations: structuredClone(loadedAbbreviations),
+            mpaDescriptions: structuredClone(loadedMpaDescriptions),
+            awardSystemPrompt: loadedAwardPrompt,
+            awardAbbreviations: structuredClone(loadedAwardAbbreviations),
+            awardStyleGuidelines: loadedAwardStyleGuidelines,
+            opbSystemPrompt: loadedOpbSystemPrompt,
+            opbStyleGuidelines: loadedOpbStyleGuidelines,
+            decorationSystemPrompt: loadedDecorationSystemPrompt,
+            decorationStyleGuidelines: loadedDecorationStyleGuidelines,
+            decorationAbbreviations: structuredClone(loadedDecorationAbbreviations),
+            dutyDescriptionPrompt: loadedDutyDescriptionPrompt,
+          });
+        } else {
+          setInitialState({
+            styleGuidelines: DEFAULT_EPB_STYLE_GUIDELINES,
+            systemPrompt: DEFAULT_EPB_SYSTEM_PROMPT,
+            rankVerbs: structuredClone(DEFAULT_RANK_VERBS),
+            acronyms: structuredClone(DEFAULT_ACRONYMS),
+            abbreviations: [],
+            mpaDescriptions: structuredClone(DEFAULT_MPA_DESCRIPTIONS),
+            awardSystemPrompt: DEFAULT_AWARD_SYSTEM_PROMPT,
+            awardAbbreviations: [],
+            awardStyleGuidelines: DEFAULT_AWARD_STYLE_GUIDELINES,
+            opbSystemPrompt: DEFAULT_OPB_SYSTEM_PROMPT,
+            opbStyleGuidelines: DEFAULT_OPB_STYLE_GUIDELINES,
+            decorationSystemPrompt: DEFAULT_DECORATION_SYSTEM_PROMPT,
+            decorationStyleGuidelines: DEFAULT_DECORATION_STYLE_GUIDELINES,
+            decorationAbbreviations: [],
+            dutyDescriptionPrompt: DEFAULT_DUTY_DESCRIPTION_PROMPT,
+          });
+        }
+      } finally {
+        setIsLoading(false);
       }
-
-      if (data) {
-        setHasExistingSettings(true);
-        const settings = data as unknown as UserLLMSettings;
-        // SCOD date and cycle year are now computed from rank, not loaded from settings
-        const loadedStyleGuidelines = resolveStoredStyleGuidelines(settings.style_guidelines);
-        const loadedSystemPrompt = resolveStoredSystemPrompt(settings.base_system_prompt);
-        const loadedRankVerbs = settings.rank_verb_progression;
-        const loadedAcronyms = resolveStoredAcronyms(settings.acronyms);
-        const loadedAbbreviations = settings.abbreviations || [];
-
-        setStyleGuidelines(loadedStyleGuidelines);
-        // MPAs are not user-editable, always use STANDARD_MGAS
-        setSystemPrompt(loadedSystemPrompt);
-        setRankVerbs(loadedRankVerbs);
-        setAcronyms(loadedAcronyms);
-        setAbbreviations(loadedAbbreviations);
-
-        // Load MPA descriptions
-        const loadedMpaDescriptions = settings.mpa_descriptions || DEFAULT_MPA_DESCRIPTIONS;
-        setMpaDescriptions(loadedMpaDescriptions);
-
-        // Load award settings
-        const loadedAwardPrompt = settings.award_system_prompt || DEFAULT_AWARD_SYSTEM_PROMPT;
-        const loadedAwardAbbreviations = settings.award_abbreviations || [];
-        const loadedAwardStyleGuidelines = settings.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES;
-        
-        setAwardSystemPrompt(loadedAwardPrompt);
-        setAwardAbbreviations(loadedAwardAbbreviations);
-        setAwardStyleGuidelines(loadedAwardStyleGuidelines);
-
-        // Load OPB settings
-        const loadedOpbSystemPrompt = settings.opb_system_prompt || DEFAULT_OPB_SYSTEM_PROMPT;
-        const loadedOpbStyleGuidelines = settings.opb_style_guidelines || DEFAULT_OPB_STYLE_GUIDELINES;
-        
-        setOpbSystemPrompt(loadedOpbSystemPrompt);
-        setOpbStyleGuidelines(loadedOpbStyleGuidelines);
-
-        // Load Decoration settings
-        const loadedDecorationSystemPrompt = settings.decoration_system_prompt || DEFAULT_DECORATION_SYSTEM_PROMPT;
-        const loadedDecorationStyleGuidelines = settings.decoration_style_guidelines || DEFAULT_DECORATION_STYLE_GUIDELINES;
-        const loadedDecorationAbbreviations = settings.decoration_abbreviations || [];
-        
-        setDecorationSystemPrompt(loadedDecorationSystemPrompt);
-        setDecorationStyleGuidelines(loadedDecorationStyleGuidelines);
-        setDecorationAbbreviations(loadedDecorationAbbreviations);
-
-        // Load Duty Description prompt
-        const loadedDutyDescriptionPrompt = resolveStoredDutyDescriptionPrompt(
-          settings.duty_description_prompt
-        );
-        setDutyDescriptionPrompt(loadedDutyDescriptionPrompt);
-
-        // Store initial state for change detection (SCOD/cycle year now computed from rank)
-        setInitialState({
-          styleGuidelines: loadedStyleGuidelines,
-          systemPrompt: loadedSystemPrompt,
-          rankVerbs: JSON.parse(JSON.stringify(loadedRankVerbs)),
-          acronyms: JSON.parse(JSON.stringify(loadedAcronyms)),
-          abbreviations: JSON.parse(JSON.stringify(loadedAbbreviations)),
-          mpaDescriptions: JSON.parse(JSON.stringify(loadedMpaDescriptions)),
-          awardSystemPrompt: loadedAwardPrompt,
-          awardAbbreviations: JSON.parse(JSON.stringify(loadedAwardAbbreviations)),
-          awardStyleGuidelines: loadedAwardStyleGuidelines,
-          opbSystemPrompt: loadedOpbSystemPrompt,
-          opbStyleGuidelines: loadedOpbStyleGuidelines,
-          decorationSystemPrompt: loadedDecorationSystemPrompt,
-          decorationStyleGuidelines: loadedDecorationStyleGuidelines,
-          decorationAbbreviations: JSON.parse(JSON.stringify(loadedDecorationAbbreviations)),
-          dutyDescriptionPrompt: loadedDutyDescriptionPrompt,
-        });
-      } else {
-        // No existing settings - store defaults as initial state
-        setInitialState({
-          styleGuidelines: DEFAULT_EPB_STYLE_GUIDELINES,
-          systemPrompt: DEFAULT_EPB_SYSTEM_PROMPT,
-          rankVerbs: JSON.parse(JSON.stringify(DEFAULT_RANK_VERBS)),
-          acronyms: JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)),
-          abbreviations: [],
-          mpaDescriptions: JSON.parse(JSON.stringify(DEFAULT_MPA_DESCRIPTIONS)),
-          awardSystemPrompt: DEFAULT_AWARD_SYSTEM_PROMPT,
-          awardAbbreviations: [],
-          awardStyleGuidelines: DEFAULT_AWARD_STYLE_GUIDELINES,
-          opbSystemPrompt: DEFAULT_OPB_SYSTEM_PROMPT,
-          opbStyleGuidelines: DEFAULT_OPB_STYLE_GUIDELINES,
-          decorationSystemPrompt: DEFAULT_DECORATION_SYSTEM_PROMPT,
-          decorationStyleGuidelines: DEFAULT_DECORATION_STYLE_GUIDELINES,
-          decorationAbbreviations: [],
-          dutyDescriptionPrompt: DEFAULT_DUTY_DESCRIPTION_PROMPT,
-        });
-      }
-    } catch (error) {
-      console.error("Error loading settings:", error);
-      toast.error("Failed to load settings");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    })();
+    return () => controller.abort();
+  }, [profile, supabase]);
 
   async function saveSettings() {
     if (!profile) return;
@@ -1042,18 +1034,18 @@ export default function LLMSettingsPage() {
       setInitialState({
         styleGuidelines,
         systemPrompt,
-        rankVerbs: JSON.parse(JSON.stringify(rankVerbs)),
-        acronyms: JSON.parse(JSON.stringify(acronyms)),
-        abbreviations: JSON.parse(JSON.stringify(abbreviations)),
-        mpaDescriptions: JSON.parse(JSON.stringify(mpaDescriptions)),
+        rankVerbs: structuredClone(rankVerbs),
+        acronyms: structuredClone(acronyms),
+        abbreviations: structuredClone(abbreviations),
+        mpaDescriptions: structuredClone(mpaDescriptions),
         awardSystemPrompt,
-        awardAbbreviations: JSON.parse(JSON.stringify(awardAbbreviations)),
+        awardAbbreviations: structuredClone(awardAbbreviations),
         awardStyleGuidelines,
         opbSystemPrompt,
         opbStyleGuidelines,
         decorationSystemPrompt,
         decorationStyleGuidelines,
-        decorationAbbreviations: JSON.parse(JSON.stringify(decorationAbbreviations)),
+        decorationAbbreviations: structuredClone(decorationAbbreviations),
         dutyDescriptionPrompt,
       });
 

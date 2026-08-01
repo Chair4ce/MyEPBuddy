@@ -17,6 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2, Coins, MessageSquare } from "lucide-react";
+import {
+  updateAdminFeatureFlag,
+  updateAdminSignupTrialCredits,
+} from "@/app/actions/admin-config";
 import { AdminTokenGrantPanel } from "@/components/admin/admin-token-grant-panel";
 import { AdminUserFeedbackPanel } from "@/components/admin/admin-user-feedback-panel";
 import type { EPBConfig } from "@/types/database";
@@ -45,22 +49,26 @@ export default function AdminConfigPage() {
   }, [profile, router]);
 
   useEffect(() => {
-    async function loadConfig() {
-      const { data, error } = await supabase
-        .from("epb_config")
-        .select("*")
-        .eq("id", 1)
-        .single();
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("epb_config")
+          .select("*")
+          .eq("id", 1)
+          .abortSignal(controller.signal)
+          .single();
 
-      if (!error && data) {
-        const nextConfig = data as EPBConfig;
-        setConfig(nextConfig);
-        setTrialCreditsInput(String(nextConfig.signup_trial_credits ?? 20));
+        if (!error && data) {
+          const nextConfig = data as EPBConfig;
+          setConfig(nextConfig);
+          setTrialCreditsInput(String(nextConfig.signup_trial_credits ?? 20));
+        }
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    }
-
-    loadConfig();
+    })();
+    return () => controller.abort();
   }, [supabase]);
 
   async function updateFlag(key: FeatureFlagKey, checked: boolean) {
@@ -71,24 +79,16 @@ export default function AdminConfigPage() {
     setSavingField(key);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from("epb_config")
-        .update({ [key]: checked })
-        .eq("id", 1)
-        .select()
-        .single();
+      const result = await updateAdminFeatureFlag(key, checked);
 
-      if (error) {
+      if (!result.ok) {
         setConfig({ ...config, [key]: previous });
-        toast.error(error.message);
+        toast.error(result.error);
         return;
       }
 
-      if (data) {
-        setConfig(data);
-        setEpbConfig(data);
-      }
+      setConfig(result.config);
+      setEpbConfig(result.config);
     } catch {
       setConfig({ ...config, [key]: previous });
       toast.error("Failed to update setting");
@@ -111,26 +111,17 @@ export default function AdminConfigPage() {
     setSavingTrialCredits(true);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from("epb_config")
-        .update({ signup_trial_credits: parsed })
-        .eq("id", 1)
-        .select()
-        .single();
+      const result = await updateAdminSignupTrialCredits(parsed);
 
-      if (error) {
+      if (!result.ok) {
         setConfig({ ...config, signup_trial_credits: previous });
-        toast.error(error.message);
+        toast.error(result.error);
         return;
       }
 
-      if (data) {
-        setConfig(data);
-        setEpbConfig(data);
-        setTrialCreditsInput(String(data.signup_trial_credits));
-      }
-
+      setConfig(result.config);
+      setEpbConfig(result.config);
+      setTrialCreditsInput(String(result.config.signup_trial_credits));
       toast.success("Signup trial tokens updated for new accounts only.");
     } catch {
       setConfig({ ...config, signup_trial_credits: previous });

@@ -27,7 +27,7 @@ export const KEY_NAME_TO_PROVIDER: Record<ProviderKeyName, string> = {
   grok_key: "xai",
 };
 
-export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   google: "Google AI",
@@ -39,7 +39,7 @@ export function getModelsForProviderKey(keyName: ProviderKeyName) {
   return AI_MODELS.filter((model) => model.provider === provider);
 }
 
-export function getProviderModelSummary(keyName: ProviderKeyName): string {
+function getProviderModelSummary(keyName: ProviderKeyName): string {
   const models = getModelsForProviderKey(keyName);
   if (models.length === 0) return "";
   if (models.length <= 3) {

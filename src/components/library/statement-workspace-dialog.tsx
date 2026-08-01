@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
@@ -47,6 +47,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { scanStatementText, getScanSummary } from "@/lib/sensitive-data-scanner";
 import { cn, getCharacterCountColor } from "@/lib/utils";
+import { formatTime as formatSnapshotTime } from "@/lib/format";
 import { MAX_STATEMENT_CHARACTERS, STANDARD_MGAS, AI_MODELS, getActiveCycleYear } from "@/lib/constants";
 import { getAppDefaultModelId } from "@/lib/model-preferences";
 import { ModelSelector } from "@/components/model-selector";
@@ -180,18 +181,24 @@ export function StatementWorkspaceDialog({
     }
   }, []);
 
-  const collaboration = useWorkspaceCollaboration({
-    onStateChange: handleCollaborationStateChange,
-    onParticipantJoin: (participant) => {
-      toast.success(`${participant.fullName} joined the session`);
-    },
-    onParticipantLeave: (participantId) => {
-      const left = collaboration.collaborators.find((c) => c.id === participantId);
-      if (left) {
-        toast.info(`${left.fullName} left the session`);
-      }
-    },
-  });
+  const handleParticipantJoin = useCallback((participant: { fullName: string }) => {
+    toast.success(`${participant.fullName} joined the session`);
+  }, []);
+
+  const handleParticipantLeave = useCallback((_participantId: string) => {
+    toast.info("A collaborator left the session");
+  }, []);
+
+  const collaborationOptions = useMemo(
+    () => ({
+      onStateChange: handleCollaborationStateChange,
+      onParticipantJoin: handleParticipantJoin,
+      onParticipantLeave: handleParticipantLeave,
+    }),
+    [handleCollaborationStateChange, handleParticipantJoin, handleParticipantLeave]
+  );
+
+  const collaboration = useWorkspaceCollaboration(collaborationOptions);
 
   // Broadcast state changes when in collaboration mode
   const broadcastIfCollaborating = useCallback(
@@ -378,11 +385,6 @@ export function StatementWorkspaceDialog({
       })),
     });
     toast.success("Snapshot deleted");
-  }
-
-  // Format timestamp for display
-  function formatTime(date: Date): string {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
   // Fetch synonyms from Datamuse API using multiple endpoints for better results
@@ -965,9 +967,9 @@ export function StatementWorkspaceDialog({
                                 </div>
                               ) : filteredSynonyms.length > 0 ? (
                                 <div className="p-1 grid grid-cols-2 gap-0.5">
-                                  {filteredSynonyms.map((synonym, idx) => (
-                                    <button
-                                      key={idx}
+                                  {filteredSynonyms.map((synonym) => (
+                                    <button type="button"
+                                      key={synonym}
                                       className="text-left px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors truncate"
                                       onClick={() => replaceSynonym(synonym)}
                                       title={synonym}
@@ -997,9 +999,9 @@ export function StatementWorkspaceDialog({
                                 </div>
                               ) : filteredAiSynonyms.length > 0 ? (
                                 <div className="p-1 grid grid-cols-2 gap-0.5">
-                                  {filteredAiSynonyms.map((synonym, idx) => (
-                                    <button
-                                      key={idx}
+                                  {filteredAiSynonyms.map((synonym) => (
+                                    <button type="button"
+                                      key={`ai-${synonym}`}
                                       className="text-left px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors truncate"
                                       onClick={() => replaceSynonym(synonym)}
                                       title={synonym}
@@ -1175,7 +1177,7 @@ export function StatementWorkspaceDialog({
 
                             return (
                               <div
-                                key={idx}
+                                key={`suggestion-${suggestion.statement.slice(0, 40)}-${suggestion.statement.length}`}
                                 className={cn(
                                   "p-3 rounded-lg border bg-card transition-all duration-200 animate-in fade-in-0 slide-in-from-bottom-2",
                                   isOverLimit && "border-destructive/50"
@@ -1368,7 +1370,7 @@ export function StatementWorkspaceDialog({
                           #{snapshots.length - idx}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          {formatTime(snapshot.timestamp)}
+                          {formatSnapshotTime(snapshot.timestamp)}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           • {snapshot.statement.length} chars
@@ -1439,46 +1441,43 @@ function SourceStatementCard({
   onSelect: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onSelect}
       className={cn(
-        "p-2.5 rounded-lg border cursor-pointer transition-colors text-xs",
+        "w-full flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors text-xs text-left",
         isSelected
           ? "bg-primary/10 border-primary/30"
           : "bg-card hover:bg-muted/50"
       )}
-      onClick={onSelect}
     >
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-              {mpaLabel}
-            </Badge>
-            {ownerName && (
-              <span className="text-[10px] text-muted-foreground">
-                by {ownerName}
-              </span>
-            )}
-          </div>
-          <p className="line-clamp-2 leading-relaxed">{statement}</p>
-        </div>
-        <Button
-          variant={isSelected ? "default" : "ghost"}
-          size="icon"
-          className="size-6 shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect();
-          }}
-        >
-          {isSelected ? (
-            <Check className="size-3" />
-          ) : (
-            <Plus className="size-3" />
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+            {mpaLabel}
+          </Badge>
+          {ownerName && (
+            <span className="text-[10px] text-muted-foreground">
+              by {ownerName}
+            </span>
           )}
-        </Button>
+        </div>
+        <p className="line-clamp-2 leading-relaxed">{statement}</p>
       </div>
-    </div>
+      <span
+        className={cn(
+          "size-6 shrink-0 inline-flex items-center justify-center rounded-md",
+          isSelected ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+        )}
+        aria-hidden="true"
+      >
+        {isSelected ? (
+          <Check className="size-3" />
+        ) : (
+          <Plus className="size-3" />
+        )}
+      </span>
+    </button>
   );
 }
 

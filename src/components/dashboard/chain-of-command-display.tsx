@@ -26,14 +26,13 @@ export function ChainOfCommandDisplay({
   const currentUserId = profile?.id;
 
   return (
-    <div className={cn("relative", className)} role="list" aria-label="Chain of command">
-      <div className="space-y-0">
+    <ul className={cn("relative list-none m-0 p-0 space-y-0", className)} aria-label="Chain of command">
         {chain.map((member, index) => {
           const isCurrentUser = member.id === currentUserId;
           const isLast = index === chain.length - 1;
 
           return (
-            <div key={member.id} className="relative" role="listitem">
+            <li key={member.id} className="relative">
               {/* Vertical connector line */}
               {!isLast && (
                 <div
@@ -109,12 +108,12 @@ export function ChainOfCommandDisplay({
                   <ChevronDown className="size-4 text-muted-foreground/50" />
                 </div>
               )}
-            </div>
+            </li>
           );
         })}
 
         {/* The accomplishment author at the bottom */}
-        <div className="relative" role="listitem">
+        <li className="relative">
           {chain.length > 0 && (
             <div
               className="absolute left-5 -top-3 w-px h-3 bg-border"
@@ -164,9 +163,8 @@ export function ChainOfCommandDisplay({
               </span>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </li>
+    </ul>
   );
 }
 

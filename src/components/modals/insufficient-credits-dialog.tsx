@@ -21,6 +21,7 @@ import {
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
 import { TokenPackQuantityPicker } from "@/components/billing/token-pack-quantity-picker";
+import { formatInteger, formatUsd } from "@/lib/format";
 
 export function InsufficientCreditsDialog() {
   const {
@@ -169,7 +170,7 @@ export function InsufficientCreditsDialog() {
                 Opening checkout...
               </>
             ) : (
-              `Buy ${tokens.toLocaleString()} tokens — $${priceUsd.toLocaleString()}`
+              `Buy ${formatInteger(tokens)} tokens — $${formatUsd(priceUsd)}`
             )}
           </Button>
         </AlertDialogFooter>

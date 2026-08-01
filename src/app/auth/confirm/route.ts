@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = safeAppNextPath(searchParams.get("next"), origin);
 
   if (!token_hash || !type) {
     return NextResponse.redirect(
@@ -51,16 +51,15 @@ export async function GET(request: Request) {
   // Verification succeeded - redirect based on type
   const forwardedHost = request.headers.get("x-forwarded-host");
   const isLocalEnv = process.env.NODE_ENV === "development";
-  const safeNext = safeAppNextPath(next, origin);
 
   let redirectTo: string;
   if (type === "recovery") {
     redirectTo = "/reset-password";
   } else if (type === "magiclink" || type === "signup" || type === "email") {
     // Honor invite / post-auth next when present; otherwise dashboard.
-    redirectTo = safeNext || "/dashboard";
+    redirectTo = next || "/dashboard";
   } else {
-    redirectTo = safeNext;
+    redirectTo = next;
   }
 
   if (isLocalEnv) {

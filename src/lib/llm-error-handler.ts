@@ -463,7 +463,7 @@ function containsAny(text: string, substrings: string[]): boolean {
  * Returns a 429 response when the user has exceeded their weekly usage limit
  * on the app's default API key.
  */
-export function handleUsageLimitExceeded(
+function handleUsageLimitExceeded(
   weeklyUsed: number,
   weeklyLimit: number,
 ): NextResponse<LLMErrorResponse> {

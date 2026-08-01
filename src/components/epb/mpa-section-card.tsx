@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 // IMPORTANT: Not using shadcn Button, Switch, Progress, Label to avoid Radix ref composition issues
 // Using native HTML elements instead
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +80,7 @@ import {
   animateEpbShellResizeAfter,
   EPB_SPLIT_INNER_CLOSE_MS,
 } from "./epb-resize-transition";
+import { formatDateTime } from "@/lib/format";
 interface MPASectionCardProps {
   section: EPBShellSection;
   /** Ratee ID for clarifying questions feature */
@@ -167,7 +168,7 @@ function SourceToggle({
 }) {
   return (
     <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-muted/30 border">
-      <button
+      <button type="button"
         onClick={() => onSourceChange("actions")}
         className={cn(
           "flex-1 flex items-center justify-center gap-1 sm:gap-2 py-1.5 sm:py-2 px-2 sm:px-3 rounded-md text-xs sm:text-sm transition-all",
@@ -185,7 +186,7 @@ function SourceToggle({
           </Badge>
         )}
       </button>
-      <button
+      <button type="button"
         onClick={() => onSourceChange("custom")}
         className={cn(
           "flex-1 flex items-center justify-center gap-1 sm:gap-2 py-1.5 sm:py-2 px-2 sm:px-3 rounded-md text-xs sm:text-sm transition-all",
@@ -218,7 +219,7 @@ function HLRSourceToggle({
     <div className="flex flex-col gap-1.5 p-1.5 sm:p-2 rounded-lg bg-muted/30 border">
       {/* Top row: Actions and Custom */}
       <div className="flex items-center gap-1.5">
-        <button
+        <button type="button"
           onClick={() => onSourceChange("actions")}
           className={cn(
             "flex-1 flex items-center justify-center gap-1 sm:gap-2 py-1.5 px-2 sm:px-3 rounded-md text-xs sm:text-sm transition-all",
@@ -236,7 +237,7 @@ function HLRSourceToggle({
             </Badge>
           )}
         </button>
-        <button
+        <button type="button"
           onClick={() => onSourceChange("custom")}
           className={cn(
             "flex-1 flex items-center justify-center gap-1 sm:gap-2 py-1.5 px-2 sm:px-3 rounded-md text-xs sm:text-sm transition-all",
@@ -251,7 +252,7 @@ function HLRSourceToggle({
         </button>
       </div>
       {/* Bottom row: EPB Summary (full width, highlighted for HLR) */}
-      <button
+      <button type="button"
         onClick={() => onSourceChange("epb-summary")}
         className={cn(
           "w-full flex items-center justify-center gap-1.5 sm:gap-2 py-2 px-3 rounded-md text-xs sm:text-sm transition-all",
@@ -428,8 +429,6 @@ export function MPASectionCard({
   const statementAreaRef = useRef<HTMLDivElement>(null);
   const generatedRevisionsResultsRef = useRef<HTMLDivElement>(null);
   const generatedStatementsResultsRef = useRef<HTMLDivElement>(null);
-  const generatedRevisionsRef = useRef<string[]>([]);
-  const generatedStatementsRef = useRef<string[]>([]);
   const zenExitGuardRef = useRef({
     showRevisePanel: false,
     isRevisePanelClosing: false,
@@ -511,16 +510,21 @@ export function MPASectionCard({
     []
   );
 
-  generatedRevisionsRef.current = generatedRevisions;
-  generatedStatementsRef.current = generatedStatements;
-
-  zenExitGuardRef.current = {
+  useLayoutEffect(() => {
+    zenExitGuardRef.current = {
+      showRevisePanel,
+      isRevisePanelClosing,
+      isRevisionsResultsClosing,
+      isStatementsResultsClosing,
+      mode: state.mode,
+    };
+  }, [
     showRevisePanel,
     isRevisePanelClosing,
     isRevisionsResultsClosing,
     isStatementsResultsClosing,
-    mode: state.mode,
-  };
+    state.mode,
+  ]);
 
   const isUseThisClosing =
     isRevisePanelClosing || isRevisionsResultsClosing || isStatementsResultsClosing;
@@ -557,7 +561,7 @@ export function MPASectionCard({
   }, [section.mpa, setZenModeMpaKey]);
 
   const closeRevisePanelWithScroll = useCallback(() => {
-    const hasRevisions = generatedRevisionsRef.current.length > 0;
+    const hasRevisions = generatedRevisions.length > 0;
 
     const closePanel = () => {
       setIsRevisePanelClosing(true);
@@ -581,10 +585,10 @@ export function MPASectionCard({
 
     scrollStatementIntoView();
     closePanel();
-  }, [scrollStatementIntoView, tryExitZenMode]);
+  }, [generatedRevisions, scrollStatementIntoView, tryExitZenMode]);
 
   const closeGeneratedStatementsWithScroll = useCallback(() => {
-    if (generatedStatementsRef.current.length === 0) {
+    if (generatedStatements.length === 0) {
       scrollStatementIntoView();
       return;
     }
@@ -597,7 +601,7 @@ export function MPASectionCard({
         setIsStatementsResultsClosing(false);
       });
     }, EPB_GENERATED_RESULTS_CLOSE_MS);
-  }, [scrollStatementIntoView]);
+  }, [generatedStatements, scrollStatementIntoView]);
   
   // LOCAL state for textarea - initialized from section prop (source of truth)
   // This prevents constant re-renders during typing which causes ref composition loops
@@ -1111,11 +1115,9 @@ export function MPASectionCard({
           aggressiveness: reviseAggressiveness,
           createdAt: Date.now(),
         };
-        setRevisionHistory((prev) => {
-          const next = [...prev, batch].slice(-MAX_REVISION_HISTORY);
-          setActiveRevisionIndex(next.length - 1);
-          return next;
-        });
+        const nextHistory = [...revisionHistory, batch].slice(-MAX_REVISION_HISTORY);
+        setRevisionHistory(nextHistory);
+        setActiveRevisionIndex(nextHistory.length - 1);
         resizeCardBody(() => setGeneratedRevisions(revisions), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
@@ -1140,7 +1142,7 @@ export function MPASectionCard({
       });
     };
 
-    if (generatedRevisionsRef.current.length > 0) {
+    if (generatedRevisions.length > 0) {
       scrollStatementIntoView();
       setIsRevisionsResultsClosing(true);
       setTimeout(dismissRevisePanel, EPB_GENERATED_RESULTS_CLOSE_MS);
@@ -1243,7 +1245,7 @@ export function MPASectionCard({
       {/* Header - NO Collapsible/Radix components to avoid ref issues */}
       <CardHeader className="pb-3 px-4 sm:px-6">
         <div className="flex items-center justify-between gap-1.5 sm:gap-2">
-          <button 
+          <button type="button" 
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
             onClick={handleToggleCollapse}
           >
@@ -1291,7 +1293,7 @@ export function MPASectionCard({
           {!isHLR && onToggleSplitView && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <button type="button"
                   className={cn(
                     "inline-flex items-center justify-center rounded-md size-7 shrink-0 transition-colors",
                     isSplitView
@@ -1319,6 +1321,7 @@ export function MPASectionCard({
                     }
                   }}
                   disabled={isSplitViewClosing}
+                  aria-label={isSplitView ? "Switch to combined view" : "Switch to split view (S1 and S2)"}
                 >
                   <Rows2 className="size-5" />
                 </button>
@@ -1332,7 +1335,7 @@ export function MPASectionCard({
           {onToggleComplete && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <button type="button"
                   className={cn(
                     "inline-flex items-center justify-center rounded-md size-7 shrink-0 transition-colors",
                     section.is_complete
@@ -1343,6 +1346,7 @@ export function MPASectionCard({
                     e.stopPropagation();
                     onToggleComplete();
                   }}
+                  aria-label={section.is_complete ? "Mark MPA section as incomplete" : "Mark MPA section as complete"}
                 >
                   {section.is_complete ? (
                     <CheckCircle2 className="size-5" />
@@ -1360,9 +1364,10 @@ export function MPASectionCard({
           {isCollapsed && hasContent && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <button type="button"
                   className="inline-flex items-center justify-center rounded-md size-7 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                   onClick={handleCopy}
+                  aria-label={copied ? "Copied to clipboard" : "Copy statement to clipboard"}
                 >
                   {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </button>
@@ -1476,7 +1481,7 @@ export function MPASectionCard({
                   
                   <div className="flex items-center gap-1">
                     {hasUnsavedChanges && (
-                      <button 
+                      <button type="button" 
                         onClick={handleReset} 
                         className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                       >
@@ -1484,7 +1489,7 @@ export function MPASectionCard({
                         <span className="hidden sm:inline">Reset</span>
                       </button>
                     )}
-                    <button 
+                    <button type="button" 
                       onClick={handleCopy} 
                       disabled={!hasContent}
                       className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
@@ -1500,7 +1505,7 @@ export function MPASectionCard({
               {isSplitView && (
                 <div className="flex items-center justify-end gap-1">
                   {hasUnsavedChanges && (
-                    <button 
+                    <button type="button" 
                       onClick={handleReset} 
                       className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                     >
@@ -1508,7 +1513,7 @@ export function MPASectionCard({
                       <span className="hidden sm:inline">Reset</span>
                     </button>
                   )}
-                  <button 
+                  <button type="button" 
                     onClick={handleCopy} 
                     disabled={!hasContent}
                     className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
@@ -1524,7 +1529,7 @@ export function MPASectionCard({
             <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4 border-t">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 {/* AI Assist button - always visible */}
-                <button
+                <button type="button"
                   onClick={() => {
                     const isCurrentlyOpen = state.mode === "ai-assist" && !showRevisePanel;
                     if (isCurrentlyOpen) {
@@ -1554,7 +1559,7 @@ export function MPASectionCard({
 
                 {/* Revise button - only visible when text exists */}
                 {hasContent && (
-                  <button
+                  <button type="button"
                     onClick={() => {
                       const opening = !showRevisePanel;
                       if (opening) {
@@ -1599,13 +1604,14 @@ export function MPASectionCard({
                 {onRefresh && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
+                      <button type="button"
                         className={cn(
                           "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                           isRefreshing && "animate-spin"
                         )}
                         onClick={handleRefresh}
                         disabled={isRefreshing}
+                        aria-label="Refresh section data"
                       >
                         <RefreshCw className="size-4" />
                       </button>
@@ -1617,7 +1623,7 @@ export function MPASectionCard({
                 {/* History button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <button type="button"
                       className={cn(
                         "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showHistory && "bg-accent text-accent-foreground"
@@ -1631,6 +1637,7 @@ export function MPASectionCard({
                           }
                         });
                       }}
+                      aria-label={`Snapshot history${snapshots.length > 0 ? ` (${snapshots.length})` : ""}`}
                     >
                       <History className="size-4" />
                     </button>
@@ -1641,7 +1648,7 @@ export function MPASectionCard({
                 {/* Examples button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <button type="button"
                       className={cn(
                         "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showExamples && "bg-accent text-accent-foreground"
@@ -1657,6 +1664,7 @@ export function MPASectionCard({
                           setShowHistory(false);
                         });
                       }}
+                      aria-label={`Saved examples${savedExamples.length > 0 ? ` (${savedExamples.length})` : ""}`}
                     >
                       {savedExamples.length > 0 ? (
                         <BookMarked className="size-5" />
@@ -1673,7 +1681,7 @@ export function MPASectionCard({
                 {/* Prompt Settings button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <button type="button"
                       className={cn(
                         "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         showPromptSettings && "bg-accent text-accent-foreground"
@@ -1690,13 +1698,14 @@ export function MPASectionCard({
                 {/* Snapshot button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <button type="button"
                       className={cn(
                         "inline-flex items-center justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none",
                         isCreatingSnapshot && "animate-pulse"
                       )}
                       disabled={!hasContent || isCreatingSnapshot}
                       onClick={handleCreateSnapshot}
+                      aria-label="Save statement snapshot"
                     >
                       <Camera className="size-4" />
                     </button>
@@ -1728,11 +1737,11 @@ export function MPASectionCard({
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <p className="text-xs text-muted-foreground">
-                            {new Date(snap.created_at).toLocaleString()}
+                            {formatDateTime(snap.created_at)}
                           </p>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button
+                              <button type="button"
                                 onClick={() => handleRestoreSnapshot(snap)}
                                 className="text-[10px] px-1.5 py-0.5 rounded border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
                               >
@@ -1798,14 +1807,14 @@ export function MPASectionCard({
                             </span>
                             <span>•</span>
                             <time dateTime={example.created_at}>
-                              {new Date(example.created_at).toLocaleString()}
+                              {formatDateTime(example.created_at)}
                             </time>
                           </div>
                           <div className="flex items-center gap-1">
                             {!isLockedByOther && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleUseStatement(example.statement_text)}
                                     className="text-[10px] px-1.5 py-0.5 rounded border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
                                   >
@@ -1819,9 +1828,10 @@ export function MPASectionCard({
                             {onDeleteExample && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <button
+                                  <button type="button"
                                     onClick={() => onDeleteExample(example.id)}
                                     className="text-[10px] px-1.5 py-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                                    aria-label="Delete saved example"
                                   >
                                     <Trash2 className="size-3.5" />
                                   </button>
@@ -1868,7 +1878,7 @@ export function MPASectionCard({
                     <Wand2 className="size-5" />
                     Revise Current Statement
                   </h4>
-                  <button
+                  <button type="button"
                     onClick={handleCancelRevise}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -1909,7 +1919,7 @@ export function MPASectionCard({
                 )}
 
                 <div className="flex gap-2">
-                  <button
+                  <button type="button"
                     onClick={handleGenerateRevisions}
                     disabled={isRevising || !localText.trim()}
                     className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
@@ -1981,7 +1991,7 @@ export function MPASectionCard({
                     )}
                     {generatedRevisions.map((revision, index) => (
                       <div
-                        key={index}
+                        key={`rev-${revision.slice(0, 48)}-${revision.length}`}
                         data-epb-revision-item
                         className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
                         style={{ animationDelay: `${index * 100}ms` }}
@@ -1993,7 +2003,7 @@ export function MPASectionCard({
                           <div className="flex items-center gap-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     navigator.clipboard.writeText(revision);
                                     toast.success("Copied to clipboard");
@@ -2019,7 +2029,7 @@ export function MPASectionCard({
                               return (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <button
+                                    <button type="button"
                                       onClick={() => handleSaveToExamples(revision, `Revision v${index + 1}`)}
                                       disabled={saved || saving}
                                       aria-label={saved ? "Saved to your examples" : "Save this revision to your examples"}
@@ -2048,7 +2058,7 @@ export function MPASectionCard({
                             {!isLockedByOther && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleUseRevision(revision, index)}
                                     disabled={isUseThisClosing}
                                     className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"
@@ -2126,7 +2136,7 @@ export function MPASectionCard({
                         <span className="text-xs font-medium">Include Awards/Coins</span>
                       </div>
                       {(state.selectedAwardIds?.length || 0) > 0 && (
-                        <button
+                        <button type="button"
                           onClick={() => updateSectionState(section.mpa, { selectedAwardIds: [] })}
                           className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                         >
@@ -2141,7 +2151,7 @@ export function MPASectionCard({
                       {rateeAwards.map((award) => {
                         const isSelected = state.selectedAwardIds?.includes(award.id);
                         return (
-                          <button
+                          <button type="button"
                             key={award.id}
                             onClick={() => {
                               const current = state.selectedAwardIds || [];
@@ -2197,6 +2207,7 @@ export function MPASectionCard({
                     type="button"
                     role="switch"
                     aria-checked={state.usesTwoStatements}
+                    aria-label="Generate two statements sharing character limit"
                     onClick={() => updateSectionState(section.mpa, { usesTwoStatements: !state.usesTwoStatements })}
                     className={cn(
                       "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
@@ -2228,7 +2239,7 @@ export function MPASectionCard({
                           targetMpa={section.mpa}
                           statementNumber={state.usesTwoStatements ? 1 : undefined}
                           trigger={
-                            <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <button type="button" className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                               <Plus className="size-4 mr-1.5" />
                               {statement1Actions.length > 0 ? `${statement1Actions.length} Loaded` : "Load Actions"}
                             </button>
@@ -2261,7 +2272,7 @@ export function MPASectionCard({
                             targetMpa={section.mpa}
                             statementNumber={2}
                             trigger={
-                              <button className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                              <button type="button" className="inline-flex items-center justify-center rounded-md h-7 px-3 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                                 <Plus className="size-4 mr-1.5" />
                                 {statement2Actions.length > 0 ? `${statement2Actions.length} Loaded` : "Load Actions"}
                               </button>
@@ -2341,7 +2352,7 @@ export function MPASectionCard({
                 {/* Impact Booster intentionally omitted before first Generate —
                     accomplishments already carry impact/metrics; show after results. */}
 
-                <button
+                <button type="button"
                   onClick={handleGenerate}
                   disabled={state.isGenerating || !canGenerate}
                   className="w-full h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
@@ -2383,7 +2394,7 @@ export function MPASectionCard({
                     </div>
                     {generatedStatements.map((statement, index) => (
                       <div
-                        key={index}
+                        key={`stmt-${statement.slice(0, 48)}-${statement.length}`}
                         data-epb-statement-item
                         className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
                         style={{ animationDelay: `${index * 100}ms` }}
@@ -2395,7 +2406,7 @@ export function MPASectionCard({
                           <div className="flex items-center gap-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     navigator.clipboard.writeText(statement);
                                     toast.success("Copied to clipboard");
@@ -2415,7 +2426,7 @@ export function MPASectionCard({
                               return (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <button
+                                    <button type="button"
                                       onClick={() => handleSaveToExamples(statement, `Generated v${index + 1}`)}
                                       disabled={saved || saving}
                                       aria-label={saved ? "Saved to your examples" : "Save this statement to your examples"}
@@ -2444,7 +2455,7 @@ export function MPASectionCard({
                             {!isLockedByOther && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleUseStatement(statement)}
                                     disabled={isUseThisClosing}
                                     className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"

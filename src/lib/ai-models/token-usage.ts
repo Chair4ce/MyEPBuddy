@@ -24,7 +24,7 @@ import { getCachedCatalogRows } from "@/lib/ai-models/catalog-cache";
 import type { CatalogModelRow } from "@/lib/ai-models/types";
 
 export interface TokenTrackingContext {
-  userId: string;
+  subjectId: string;
   action: string;
   usingDefaultKey: boolean;
 }
@@ -118,7 +118,7 @@ async function recordTokenUsage(
 
     const admin = createAdminClient();
     const { error } = await admin.from("llm_token_usage").insert({
-      user_id: context.userId,
+      user_id: context.subjectId,
       action_type: context.action,
       model_id: modelId,
       provider,

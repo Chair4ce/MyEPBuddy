@@ -474,26 +474,156 @@ export default function TeamPage() {
   }, []);
 
   // Save rank colors to localStorage whenever they change
-  const updateRankColor = useCallback((rank: string, color: string | null) => {
-    setRankColors((prev) => {
-      const next = { ...prev };
+  const updateRankColor = useCallback(
+    (rank: string, color: string | null) => {
+      const next = { ...rankColors };
       if (color) {
         next[rank] = color;
       } else {
         delete next[rank];
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+      setRankColors(next);
+    },
+    [rankColors],
+  );
 
   useEffect(() => {
-    if (profile) {
-      loadTeamData();
-    }
-  }, [profile]);
+    const controller = new AbortController();
 
-  async function loadTeamData() {
+    void (async () => {
+      if (!profile) return;
+
+      setIsLoading(true);
+      try {
+        const { data: supervisorTeams } = await supabase
+          .from("teams")
+          .select("supervisor_id")
+          .eq("subordinate_id", profile.id)
+          .abortSignal(controller.signal);
+
+        const { data: incoming } = await supabase
+          .from("team_requests")
+          .select(`
+            *,
+            requester:profiles!team_requests_requester_id_fkey(*)
+          `)
+          .eq("target_id", profile.id)
+          .eq("status", "pending")
+          .abortSignal(controller.signal);
+
+        const { data: outgoing } = await supabase
+          .from("team_requests")
+          .select(`
+            *,
+            target:profiles!team_requests_target_id_fkey(*)
+          `)
+          .eq("requester_id", profile.id)
+          .eq("status", "pending")
+          .abortSignal(controller.signal);
+
+        let nextSupervisors: Profile[] = [];
+        if (supervisorTeams && supervisorTeams.length > 0) {
+          const supervisorIds = (supervisorTeams as { supervisor_id: string }[]).map((t) => t.supervisor_id);
+          const { data: supervisorProfiles } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", supervisorIds)
+            .abortSignal(controller.signal);
+          nextSupervisors = (supervisorProfiles as Profile[]) || [];
+        }
+
+        const { data: chainData } = await (supabase.rpc as Function)("get_subordinate_chain", {
+          supervisor_uuid: profile.id,
+        }).abortSignal(controller.signal) as { data: { subordinate_id: string; depth: number }[] | null };
+
+        const subordinateIds = chainData?.map((c: { subordinate_id: string }) => c.subordinate_id) || [];
+        const allChainIds = [...subordinateIds, profile.id];
+        const BATCH_SIZE = 50;
+        const allProfilesLocal: Profile[] = [];
+
+        for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
+          const batch = allChainIds.slice(i, i + BATCH_SIZE);
+          const { data: batchProfiles } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", batch)
+            .abortSignal(controller.signal);
+
+          if (controller.signal.aborted) return;
+
+          if (batchProfiles) {
+            allProfilesLocal.push(...(batchProfiles as Profile[]));
+          }
+        }
+
+        const allTeams: { supervisor_id: string; subordinate_id: string }[] = [];
+        for (let i = 0; i < allChainIds.length; i += BATCH_SIZE) {
+          const batch = allChainIds.slice(i, i + BATCH_SIZE);
+          const { data: batchTeams } = await supabase
+            .from("teams")
+            .select("supervisor_id, subordinate_id")
+            .in("supervisor_id", batch)
+            .abortSignal(controller.signal);
+
+          if (controller.signal.aborted) return;
+
+          if (batchTeams) {
+            allTeams.push(...(batchTeams as { supervisor_id: string; subordinate_id: string }[]));
+          }
+        }
+
+        const { data: supervisionData, error: supervisionError } = await supabase
+          .from("teams")
+          .select("subordinate_id, supervision_start_date, supervision_end_date")
+          .eq("supervisor_id", profile.id)
+          .abortSignal(controller.signal);
+
+        if (controller.signal.aborted) return;
+
+        setSupervisors(nextSupervisors);
+        setPendingRequests((incoming as TeamRequest[]) || []);
+        setSentRequests((outgoing as TeamRequest[]) || []);
+
+        if (allProfilesLocal.length > 0) {
+          setAllProfiles(allProfilesLocal);
+          const chainMembers: ChainMember[] = allProfilesLocal.map((p: Profile) => ({
+            ...p,
+            depth: p.id === profile.id ? 0 : (chainData?.find((c: { subordinate_id: string; depth: number }) => c.subordinate_id === p.id)?.depth || 1),
+          }));
+          setSubordinateChain(chainMembers.sort((a, b) => a.depth - b.depth));
+        } else {
+          setAllProfiles([profile]);
+          setSubordinateChain([]);
+        }
+
+        setTeamRelations(allTeams);
+        setExpandedNodes(new Set([profile.id]));
+
+        if (!supervisionError && supervisionData) {
+          const dates: Record<string, { start: string | null; end: string | null }> = {};
+          const typedData = supervisionData as unknown as Array<{
+            subordinate_id: string;
+            supervision_start_date: string | null;
+            supervision_end_date: string | null;
+          }>;
+          for (const team of typedData) {
+            dates[team.subordinate_id] = {
+              start: team.supervision_start_date,
+              end: team.supervision_end_date,
+            };
+          }
+          setTeamSupervisionDates(dates);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [profile, supabase]);
+
+  async function loadTeamData(signal: AbortSignal = new AbortController().signal) {
     if (!profile) return;
     setIsLoading(true);
 
@@ -502,14 +632,19 @@ export default function TeamPage() {
       const { data: supervisorTeams } = await supabase
         .from("teams")
         .select("supervisor_id")
-        .eq("subordinate_id", profile.id);
+        .eq("subordinate_id", profile.id)
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
 
       if (supervisorTeams && supervisorTeams.length > 0) {
         const supervisorIds = (supervisorTeams as { supervisor_id: string }[]).map((t) => t.supervisor_id);
         const { data: supervisorProfiles } = await supabase
           .from("profiles")
           .select("*")
-          .in("id", supervisorIds);
+          .in("id", supervisorIds)
+          .abortSignal(signal);
+        if (signal.aborted) return;
         setSupervisors((supervisorProfiles as Profile[]) || []);
       }
 
@@ -521,11 +656,12 @@ export default function TeamPage() {
           requester:profiles!team_requests_requester_id_fkey(*)
         `)
         .eq("target_id", profile.id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .abortSignal(signal);
 
+      if (signal.aborted) return;
       setPendingRequests((incoming as TeamRequest[]) || []);
 
-      // Load sent requests
       const { data: outgoing } = await supabase
         .from("team_requests")
         .select(`
@@ -533,15 +669,15 @@ export default function TeamPage() {
           target:profiles!team_requests_target_id_fkey(*)
         `)
         .eq("requester_id", profile.id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .abortSignal(signal);
 
+      if (signal.aborted) return;
       setSentRequests((outgoing as TeamRequest[]) || []);
 
-      // Load subordinate chain for tree visualization
-      await loadSubordinateChain();
+      await loadSubordinateChain(signal);
       
-      // Load supervision dates for real subordinates
-      await loadTeamSupervisionDates();
+      await loadTeamSupervisionDates(signal);
 
     } catch (error) {
       console.error("Error loading team data:", error);
@@ -551,14 +687,16 @@ export default function TeamPage() {
     }
   }
   
-  async function loadTeamSupervisionDates() {
+  async function loadTeamSupervisionDates(signal: AbortSignal = new AbortController().signal) {
     if (!profile) return;
     
     const { data, error } = await supabase
       .from("teams")
       .select("subordinate_id, supervision_start_date, supervision_end_date")
-      .eq("supervisor_id", profile.id);
+      .eq("supervisor_id", profile.id)
+      .abortSignal(signal);
     
+    if (signal?.aborted) return;
     if (!error && data) {
       const dates: Record<string, { start: string | null; end: string | null }> = {};
       const typedData = data as unknown as Array<{
@@ -576,15 +714,14 @@ export default function TeamPage() {
     }
   }
 
-  async function loadSubordinateChain() {
+  async function loadSubordinateChain(signal: AbortSignal = new AbortController().signal) {
     if (!profile) return;
 
-    // Get chain using the database function
     const { data: chainData } = await (supabase.rpc as Function)("get_subordinate_chain", {
       supervisor_uuid: profile.id,
     }) as { data: { subordinate_id: string; depth: number }[] | null };
 
-    // Always include current user's profile in the chain
+    if (signal?.aborted) return;
     // This ensures tree can be built even with no real subordinates
     const subordinateIds = chainData?.map((c: { subordinate_id: string }) => c.subordinate_id) || [];
     const allChainIds = [...subordinateIds, profile.id];
@@ -599,8 +736,10 @@ export default function TeamPage() {
       const { data: batchProfiles } = await supabase
         .from("profiles")
         .select("*")
-        .in("id", batch);
+        .in("id", batch)
+        .abortSignal(signal);
       
+      if (signal.aborted) return;
       if (batchProfiles) {
         allProfiles.push(...(batchProfiles as Profile[]));
       }
@@ -628,8 +767,10 @@ export default function TeamPage() {
       const { data: batchTeams } = await supabase
         .from("teams")
         .select("supervisor_id, subordinate_id")
-        .in("supervisor_id", batch);
+        .in("supervisor_id", batch)
+        .abortSignal(signal);
       
+      if (signal.aborted) return;
       if (batchTeams) {
         allTeams.push(...(batchTeams as { supervisor_id: string; subordinate_id: string }[]));
       }
@@ -642,7 +783,7 @@ export default function TeamPage() {
   }
 
   // Load metrics (entry and statement counts) for all members
-  async function loadMemberMetrics() {
+  async function loadMemberMetrics(signal: AbortSignal = new AbortController().signal) {
     if (!profile) return;
 
     const metrics: Record<string, MemberMetrics> = {};
@@ -666,9 +807,12 @@ export default function TeamPage() {
       const { data: accomplishments } = await supabase
         .from("accomplishments")
         .select("user_id, team_member_id, mpa, cycle_year")
-        .in("cycle_year", uniqueCycleYears) as {
+        .in("cycle_year", uniqueCycleYears)
+        .abortSignal(signal) as {
         data: { user_id: string; team_member_id: string | null; mpa: string; cycle_year: number }[] | null;
       };
+
+      if (signal.aborted) return;
 
       if (accomplishments) {
         for (const acc of accomplishments) {
@@ -688,9 +832,12 @@ export default function TeamPage() {
         .from("refined_statements")
         .select("user_id, team_member_id, mpa, cycle_year")
         .in("cycle_year", uniqueCycleYears)
-        .eq("statement_type", "epb") as {
+        .eq("statement_type", "epb")
+        .abortSignal(signal) as {
         data: { user_id: string; team_member_id: string | null; mpa: string; cycle_year: number }[] | null;
       };
+
+      if (signal.aborted) return;
 
       if (statements) {
         for (const stmt of statements) {
@@ -714,10 +861,83 @@ export default function TeamPage() {
 
   // Load metrics when subordinates or managed members change
   useEffect(() => {
-    if (profile && !isLoading) {
-      loadMemberMetrics();
+    if (!profile || isLoading) return;
+
+    const controller = new AbortController();
+
+    async function loadMemberMetricsForEffect() {
+      if (!profile) return;
+
+      const metrics: Record<string, MemberMetrics> = {};
+      const memberCycleYears = new Map<string, number>();
+
+      const registerMember = (id: string, rank: string | null) => {
+        memberCycleYears.set(id, getActiveCycleYear(rank as import("@/types/database").Rank | null));
+        metrics[id] = {
+          entries: { executing_mission: 0, leading_people: 0, managing_resources: 0, improving_unit: 0, hlr_assessment: 0 },
+          statements: { executing_mission: 0, leading_people: 0, managing_resources: 0, improving_unit: 0, hlr_assessment: 0 },
+        };
+      };
+
+      registerMember(profile.id, profile.rank);
+      subordinates.forEach((s) => registerMember(s.id, s.rank));
+      managedMembers.forEach((m) => registerMember(m.id, m.rank));
+
+      const uniqueCycleYears = [...new Set(memberCycleYears.values())];
+
+      const { data: accomplishments } = await supabase
+        .from("accomplishments")
+        .select("user_id, team_member_id, mpa, cycle_year")
+        .in("cycle_year", uniqueCycleYears)
+        .abortSignal(controller.signal) as {
+        data: { user_id: string; team_member_id: string | null; mpa: string; cycle_year: number }[] | null;
+      };
+
+      if (accomplishments) {
+        for (const acc of accomplishments) {
+          const memberId = acc.team_member_id ?? acc.user_id;
+          const expectedYear = memberCycleYears.get(memberId);
+          if (
+            expectedYear !== undefined &&
+            acc.cycle_year === expectedYear &&
+            metrics[memberId]?.entries[acc.mpa] !== undefined
+          ) {
+            metrics[memberId].entries[acc.mpa]++;
+          }
+        }
+      }
+
+      const { data: statements } = await supabase
+        .from("refined_statements")
+        .select("user_id, team_member_id, mpa, cycle_year")
+        .in("cycle_year", uniqueCycleYears)
+        .eq("statement_type", "epb")
+        .abortSignal(controller.signal) as {
+        data: { user_id: string; team_member_id: string | null; mpa: string; cycle_year: number }[] | null;
+      };
+
+      if (statements) {
+        for (const stmt of statements) {
+          const memberId = stmt.team_member_id ?? stmt.user_id;
+          const expectedYear = memberCycleYears.get(memberId);
+          if (
+            expectedYear !== undefined &&
+            stmt.cycle_year === expectedYear &&
+            metrics[memberId]?.statements[stmt.mpa] !== undefined
+          ) {
+            metrics[memberId].statements[stmt.mpa]++;
+          }
+        }
+      }
+
+      if (controller.signal.aborted) return;
+
+      setMemberMetrics(metrics);
     }
-  }, [profile, subordinates, managedMembers, isLoading]);
+
+    void loadMemberMetricsForEffect();
+    return () => controller.abort();
+  }, [profile, subordinates, managedMembers, isLoading, supabase]);
 
   // Collect unique creator IDs from managed members for profile lookup
   const creatorIds = useMemo(() => {
@@ -734,10 +954,11 @@ export default function TeamPage() {
   const [creatorProfiles, setCreatorProfiles] = useState<Record<string, Profile>>({});
   
   useEffect(() => {
-    async function fetchCreatorProfiles() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!profile || creatorIds.length === 0) return;
       
-      // Filter out IDs we already have
       const existingIds = new Set([
         profile.id,
         ...allProfiles.map(p => p.id),
@@ -750,8 +971,11 @@ export default function TeamPage() {
       const { data } = await supabase
         .from("profiles")
         .select("id, full_name, rank")
-        .in("id", missingIds);
-      
+        .in("id", missingIds)
+        .abortSignal(controller.signal);
+
+      if (controller.signal.aborted) return;
+
       if (data) {
         const newCreators: Record<string, Profile> = {};
         for (const p of data as Profile[]) {
@@ -759,9 +983,9 @@ export default function TeamPage() {
         }
         setCreatorProfiles(prev => ({ ...prev, ...newCreators }));
       }
-    }
-    
-    fetchCreatorProfiles();
+    })();
+
+    return () => controller.abort();
   }, [creatorIds, profile, allProfiles, subordinates, supabase]);
 
   // Build tree structure that includes both real profiles and managed members
@@ -1323,7 +1547,7 @@ export default function TeamPage() {
   }
 
   // Load awards for team members
-  async function loadAwards() {
+  async function loadAwards(signal: AbortSignal = new AbortController().signal) {
     if (!profile?.id) return;
     
     setIsLoadingAwards(true);
@@ -1344,8 +1568,11 @@ export default function TeamPage() {
           .from("awards")
           .select("*")
           .in("recipient_profile_id", allProfileIds)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .abortSignal(signal);
         
+        if (signal.aborted) return;
+
         if (profileAwards) {
           allAwards = [...allAwards, ...(profileAwards as Award[])];
         }
@@ -1356,16 +1583,19 @@ export default function TeamPage() {
           .from("awards")
           .select("*")
           .in("recipient_team_member_id", teamMemberIds)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .abortSignal(signal);
+
+        if (signal.aborted) return;
         
         if (memberAwards) {
           allAwards = [...allAwards, ...(memberAwards as Award[])];
         }
       }
 
+      if (signal.aborted) return;
       setAwards(allAwards);
 
-      // Load pending award requests (where I'm the approver)
       const { data: requests } = await supabase
         .from("award_requests")
         .select(`
@@ -1376,8 +1606,10 @@ export default function TeamPage() {
         `)
         .eq("approver_id", profile.id)
         .eq("status", "pending")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .abortSignal(signal);
 
+      if (signal.aborted) return;
       setPendingAwardRequests((requests as AwardRequest[]) || []);
     } catch (error) {
       console.error("Error loading awards:", error);
@@ -1388,10 +1620,75 @@ export default function TeamPage() {
 
   // Load awards when team data changes
   useEffect(() => {
-    if (profile && !isLoading && (subordinateChain.length > 0 || subordinates.length > 0 || managedMembers.length > 0)) {
-      loadAwards();
+    if (!profile || isLoading) return;
+    if (subordinateChain.length === 0 && subordinates.length === 0 && managedMembers.length === 0) return;
+
+    const controller = new AbortController();
+
+    async function loadAwardsForEffect() {
+      if (!profile?.id) return;
+
+      setIsLoadingAwards(true);
+      try {
+        const chainProfileIds = subordinateChain.map((m) => m.id);
+        const allProfileProfileIds = allProfiles.map((p) => p.id);
+        const allProfileIds = [...new Set([...chainProfileIds, ...subordinates.map((s) => s.id), ...allProfileProfileIds])];
+        const teamMemberIds = managedMembers.map((m) => m.id);
+
+        let allAwards: Award[] = [];
+
+        if (allProfileIds.length > 0) {
+          const { data: profileAwards } = await supabase
+            .from("awards")
+            .select("*")
+            .in("recipient_profile_id", allProfileIds)
+            .order("created_at", { ascending: false })
+            .abortSignal(controller.signal);
+
+          if (profileAwards) {
+            allAwards = [...allAwards, ...(profileAwards as Award[])];
+          }
+        }
+
+        for (const memberId of teamMemberIds) {
+          const { data: memberAwards } = await supabase
+            .from("awards")
+            .select("*")
+            .eq("recipient_team_member_id", memberId)
+            .order("created_at", { ascending: false })
+            .abortSignal(controller.signal);
+
+          if (memberAwards) {
+            allAwards = [...allAwards, ...(memberAwards as Award[])];
+          }
+        }
+
+        setAwards(allAwards);
+
+        const { data: requests } = await supabase
+          .from("award_requests")
+          .select(`
+            *,
+            requester:profiles!award_requests_requester_id_fkey(*),
+            recipient_profile:profiles!award_requests_recipient_profile_id_fkey(*),
+            recipient_team_member:team_members!award_requests_recipient_team_member_id_fkey(*)
+          `)
+          .eq("approver_id", profile.id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .abortSignal(controller.signal);
+
+        if (controller.signal.aborted) return;
+
+        setPendingAwardRequests((requests as AwardRequest[]) || []);
+      } finally {
+        setIsLoadingAwards(false);
+      }
     }
-  }, [profile, subordinateChain, subordinates, managedMembers, isLoading]);
+
+    void loadAwardsForEffect();
+    return () => controller.abort();
+  }, [profile, subordinateChain, subordinates, managedMembers, allProfiles, isLoading, supabase]);
 
   // Get awards for a specific member
   function getMemberAwards(profileId?: string, teamMemberId?: string): Award[] {
@@ -1470,6 +1767,8 @@ export default function TeamPage() {
 
         {/* Node card - mobile-first responsive design */}
         <div
+          role={hasChildren || isAssignMode ? "button" : undefined}
+          tabIndex={hasChildren || isAssignMode ? 0 : undefined}
           className={cn(
             "relative p-2.5 sm:p-3 rounded-lg border-2 transition-all bg-card md:max-w-lg my-1 mx-0.5 group",
             hasChildren && !isAssignMode && "cursor-pointer hover:shadow-md active:scale-[0.99]",
@@ -1490,6 +1789,18 @@ export default function TeamPage() {
               }
             } else if (hasChildren) {
               // Normal mode, toggle expand
+              toggleExpand(node.data.id);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            if (isAssignMode && selectedProjectId) {
+              if (!isProjectMember) {
+                const memberType = isManagedMember ? "team_member" : "profile";
+                handleAssignMemberToProject(node.data.id, memberType);
+              }
+            } else if (hasChildren) {
               toggleExpand(node.data.id);
             }
           }}
@@ -3392,6 +3703,8 @@ export default function TeamPage() {
                   <Popover key={rank}>
                     <PopoverTrigger asChild>
                       <button
+                        type="button"
+                        aria-label={`Choose color for ${rank}`}
                         className={cn(
                           "px-3 py-2 rounded border-2 text-xs font-medium transition-all hover:shadow-md cursor-pointer",
                           !color && "bg-card border-border hover:border-muted-foreground"
@@ -3418,6 +3731,7 @@ export default function TeamPage() {
                         </div>
                         <input
                           type="color"
+                          aria-label={`${rank} color picker`}
                           value={color || "#6b7280"}
                           onChange={(e) => updateRankColor(rank, e.target.value)}
                           className="w-full h-10 rounded cursor-pointer border-0"
@@ -3425,7 +3739,9 @@ export default function TeamPage() {
                         <div className="grid grid-cols-4 gap-1.5">
                           {["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"].map((preset) => (
                             <button
+                              type="button"
                               key={preset}
+                              aria-label={`Set ${rank} color to ${preset}`}
                               onClick={() => updateRankColor(rank, preset)}
                               className={cn(
                                 "size-7 rounded-full border-2 transition-transform hover:scale-110",

@@ -17,10 +17,10 @@ export const MAX_PURCHASE_PACKS = 1000;
  * Live Stripe Price ID for one pack (100 AI calls / $1 USD).
  * Set STRIPE_PRICE_100_CREDITS to this value in production, or your test-mode price locally.
  */
-export const LIVE_STARTER_PRICE_ID = "price_1TfRl1RmU7HJ5YzinnKdFWDl";
+const LIVE_STARTER_PRICE_ID = "price_1TfRl1RmU7HJ5YzinnKdFWDl";
 
 /** Live Stripe Product ID for the token pack. */
-export const LIVE_STARTER_PRODUCT_ID = "prod_UelHo41h4odIsL";
+const LIVE_STARTER_PRODUCT_ID = "prod_UelHo41h4odIsL";
 
 /** Display label for unit pricing */
 export const PURCHASE_PACKAGE_LABEL = `$${PURCHASE_PRICE_USD} per ${PURCHASE_CREDITS} AI tokens`;

@@ -23,6 +23,7 @@ import {
   Check,
 } from "lucide-react";
 import type { DutyDescriptionTemplate } from "@/types/database";
+import { formatDateDefault } from "@/lib/format";
 
 interface DutyDescriptionTemplatesPanelProps {
   templates: DutyDescriptionTemplate[];
@@ -133,7 +134,7 @@ export function DutyDescriptionTemplatesPanel({
               {filteredTemplates.length}
             </Badge>
           </div>
-          <button
+          <button type="button"
             onClick={() => setShowFilters(!showFilters)}
             className={cn(
               "size-7 rounded-md inline-flex items-center justify-center transition-colors",
@@ -158,7 +159,7 @@ export function DutyDescriptionTemplatesPanel({
             aria-label="Search templates"
           />
           {searchQuery && (
-            <button
+            <button type="button"
               onClick={() => setSearchQuery("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label="Clear search"
@@ -175,7 +176,7 @@ export function DutyDescriptionTemplatesPanel({
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-muted-foreground">Filter by:</span>
             {hasActiveFilters && (
-              <button
+              <button type="button"
                 onClick={clearFilters}
                 className="text-[10px] text-primary hover:underline"
               >
@@ -187,15 +188,15 @@ export function DutyDescriptionTemplatesPanel({
             {/* Office filter */}
             {uniqueLabels.offices.length > 0 && (
               <div className="flex-1 min-w-[100px]">
-                <label className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+                <label htmlFor="template-office-filter" className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
                   <Building2 className="size-3" />
                   Office
                 </label>
                 <select
+                  id="template-office-filter"
                   value={officeFilter || ""}
                   onChange={(e) => setOfficeFilter(e.target.value || null)}
                   className="w-full h-7 text-xs rounded-md border bg-background px-2"
-                  aria-label="Filter by office"
                 >
                   <option value="">All</option>
                   {uniqueLabels.offices.map((office) => (
@@ -210,15 +211,15 @@ export function DutyDescriptionTemplatesPanel({
             {/* Role filter */}
             {uniqueLabels.roles.length > 0 && (
               <div className="flex-1 min-w-[100px]">
-                <label className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+                <label htmlFor="template-role-filter" className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
                   <User className="size-3" />
                   Role
                 </label>
                 <select
+                  id="template-role-filter"
                   value={roleFilter || ""}
                   onChange={(e) => setRoleFilter(e.target.value || null)}
                   className="w-full h-7 text-xs rounded-md border bg-background px-2"
-                  aria-label="Filter by role"
                 >
                   <option value="">All</option>
                   {uniqueLabels.roles.map((role) => (
@@ -233,15 +234,15 @@ export function DutyDescriptionTemplatesPanel({
             {/* Rank filter */}
             {uniqueLabels.ranks.length > 0 && (
               <div className="flex-1 min-w-[100px]">
-                <label className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+                <label htmlFor="template-rank-filter" className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
                   <Star className="size-3" />
                   Rank
                 </label>
                 <select
+                  id="template-rank-filter"
                   value={rankFilter || ""}
                   onChange={(e) => setRankFilter(e.target.value || null)}
                   className="w-full h-7 text-xs rounded-md border bg-background px-2"
-                  aria-label="Filter by rank"
                 >
                   <option value="">All</option>
                   {uniqueLabels.ranks.map((rank) => (
@@ -263,7 +264,7 @@ export function DutyDescriptionTemplatesPanel({
             <Badge variant="secondary" className="text-[10px] gap-1">
               <Building2 className="size-2.5" />
               {officeFilter}
-              <button
+              <button type="button"
                 onClick={() => setOfficeFilter(null)}
                 className="ml-0.5 hover:text-destructive"
                 aria-label={`Remove office filter: ${officeFilter}`}
@@ -276,7 +277,7 @@ export function DutyDescriptionTemplatesPanel({
             <Badge variant="secondary" className="text-[10px] gap-1">
               <User className="size-2.5" />
               {roleFilter}
-              <button
+              <button type="button"
                 onClick={() => setRoleFilter(null)}
                 className="ml-0.5 hover:text-destructive"
                 aria-label={`Remove role filter: ${roleFilter}`}
@@ -289,7 +290,7 @@ export function DutyDescriptionTemplatesPanel({
             <Badge variant="secondary" className="text-[10px] gap-1">
               <Star className="size-2.5" />
               {rankFilter}
-              <button
+              <button type="button"
                 onClick={() => setRankFilter(null)}
                 className="ml-0.5 hover:text-destructive"
                 aria-label={`Remove rank filter: ${rankFilter}`}
@@ -312,7 +313,7 @@ export function DutyDescriptionTemplatesPanel({
                 : "No templates match your filters."}
             </p>
             {hasActiveFilters && (
-              <button
+              <button type="button"
                 onClick={clearFilters}
                 className="mt-2 text-xs text-primary hover:underline"
               >
@@ -347,7 +348,7 @@ export function DutyDescriptionTemplatesPanel({
                   </Badge>
                 )}
                 <span className="text-[10px] text-muted-foreground ml-auto">
-                  {new Date(template.created_at).toLocaleDateString()}
+                  {formatDateDefault(template.created_at)}
                 </span>
               </div>
 
@@ -367,7 +368,7 @@ export function DutyDescriptionTemplatesPanel({
               <div className="flex items-center gap-1 justify-end">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(template.template_text);
                         toast.success("Copied to clipboard");
@@ -384,7 +385,7 @@ export function DutyDescriptionTemplatesPanel({
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <button type="button"
                       onClick={() => handleApply(template.template_text)}
                       className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
                       aria-label="Apply this template"
@@ -399,7 +400,7 @@ export function DutyDescriptionTemplatesPanel({
                 {onDelete && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
+                      <button type="button"
                         onClick={() => handleDelete(template.id)}
                         disabled={deletingId === template.id}
                         className="h-6 px-2 rounded text-[10px] hover:bg-destructive/10 text-destructive transition-colors inline-flex items-center disabled:opacity-50"

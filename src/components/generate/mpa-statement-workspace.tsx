@@ -214,11 +214,11 @@ function StatementEditor({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        {statementNum && (
+        {statementNum != null && statementNum > 0 ? (
           <Badge variant="outline" className="text-xs">
             Statement {statementNum}
           </Badge>
-        )}
+        ) : null}
         <span className={cn(
           "text-xs",
           isOverLimit ? "text-destructive font-semibold" : getCharacterCountColor(charCount, availableChars)
@@ -254,7 +254,7 @@ function StatementEditor({
             ) : synonyms.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {synonyms.slice(0, 6).map((syn) => (
-                  <button
+                  <button type="button"
                     key={syn}
                     onClick={() => replaceSynonym(syn)}
                     className="px-2 py-0.5 text-xs bg-primary/10 hover:bg-primary/20 rounded transition-colors"
@@ -266,7 +266,7 @@ function StatementEditor({
             ) : (
               <p className="text-xs text-muted-foreground">No synonyms found</p>
             )}
-            <button
+            <button type="button"
               onClick={() => { setSelectedText(""); setSynonyms([]); }}
               className="text-xs text-muted-foreground mt-1 hover:underline"
             >

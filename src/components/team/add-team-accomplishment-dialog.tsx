@@ -232,15 +232,16 @@ export function AddTeamAccomplishmentDialog({
       return;
     }
 
+    const errors: string[] = [];
+    const successes: string[] = [];
+
     setIsSubmitting(true);
 
+    try {
     const tags = form.tags
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
-
-    const errors: string[] = [];
-    const successes: string[] = [];
 
     // Create accomplishment for each selected member
     for (const member of selectedMembers) {
@@ -285,8 +286,6 @@ export function AddTeamAccomplishmentDialog({
       }
     }
 
-    setIsSubmitting(false);
-
     if (successes.length > 0) {
       celebrateEntry();
       toast.success(`Created ${successes.length} accomplishment${successes.length > 1 ? "s" : ""}!`, {
@@ -300,6 +299,9 @@ export function AddTeamAccomplishmentDialog({
         description: errors.join("; "),
         duration: 8000,
       });
+    }
+    } finally {
+      setIsSubmitting(false);
     }
 
     if (successes.length > 0) {
@@ -486,17 +488,18 @@ export function AddTeamAccomplishmentDialog({
                       </p>
                     ) : (
                       availableMembers.map((member) => (
-                        <div
+                        <label
                           key={`${member.type}-${member.id}`}
+                          htmlFor={`team-member-${member.type}-${member.id}`}
                           className={cn(
                             "flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors",
                             isMemberSelected(member)
                               ? "bg-primary/10 border border-primary/30"
                               : "hover:bg-muted"
                           )}
-                          onClick={() => toggleMember(member)}
                         >
                           <Checkbox
+                            id={`team-member-${member.type}-${member.id}`}
                             checked={isMemberSelected(member)}
                             onCheckedChange={() => toggleMember(member)}
                             aria-label={`Select ${member.name}`}
@@ -523,7 +526,7 @@ export function AddTeamAccomplishmentDialog({
                               </span>
                             )}
                           </div>
-                        </div>
+                        </label>
                       ))
                     )}
                   </div>

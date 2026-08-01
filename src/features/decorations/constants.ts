@@ -121,7 +121,7 @@ export const DECORATION_REASONS: { key: DecorationReason; label: string; descrip
 ];
 
 // Opening sentence templates by award type and reason
-export const OPENING_TEMPLATES: Record<DecorationAwardType, Record<string, string>> = {
+const OPENING_TEMPLATES: Record<DecorationAwardType, Record<string, string>> = {
   afam: {
     meritorious_service: "{rank} {fullName} distinguished {himself/herself} by meritorious service as {dutyTitle}, {unit}.",
     outstanding_achievement: "{rank} {fullName} distinguished {himself/herself} by outstanding achievement as {dutyTitle}, {unit}, from {startDate} to {endDate}.",
@@ -150,7 +150,7 @@ export const OPENING_TEMPLATES: Record<DecorationAwardType, Record<string, strin
 };
 
 // Closing sentence templates by reason
-export const CLOSING_TEMPLATES: Record<DecorationReason | "default", { distinctive: string; singularly_distinctive: string; exceptionally_meritorious: string }> = {
+const CLOSING_TEMPLATES: Record<DecorationReason | "default", { distinctive: string; singularly_distinctive: string; exceptionally_meritorious: string }> = {
   default: {
     distinctive: "The distinctive accomplishments of {shortRank} {lastName} reflect credit upon {himself/herself} and the United States Air Force.",
     singularly_distinctive: "The singularly distinctive accomplishments of {shortRank} {lastName} reflect great credit upon {himself/herself} and the United States Air Force.",
@@ -211,7 +211,7 @@ export const CLOSING_TEMPLATES: Record<DecorationReason | "default", { distincti
  * Common DAF-APPROVED abbreviations that CAN be used:
  * NCO, SNCO, TDY, DoD, ISR, EOD, CBRN, OIC, NCOIC
  */
-export const ABBREVIATIONS_TO_EXPAND: Record<string, string> = {
+const ABBREVIATIONS_TO_EXPAND: Record<string, string> = {
   "USAF": "United States Air Force",
   "USSF": "United States Space Force",
   "DoD": "Department of Defense",

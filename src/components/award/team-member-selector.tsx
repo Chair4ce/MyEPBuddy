@@ -155,7 +155,7 @@ export function TeamMemberSelector({
             aria-label="Search team members"
           />
           {searchQuery && (
-            <button
+            <button type="button"
               onClick={() => setSearchQuery("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label="Clear search"
@@ -242,7 +242,7 @@ export function TeamMemberSelector({
         <span>
           {selectedMemberIds.length} of {memberOptions.length} selected
         </span>
-        <button
+        <button type="button"
           onClick={() => onSelectionChange([])}
           disabled={disabled || selectedMemberIds.length === 0}
           className={cn(
@@ -275,7 +275,7 @@ export function TeamMemberSelector({
                 {member.rank && `${member.rank} `}
                 {member.fullName}
               </span>
-              <button
+              <button type="button"
                 onClick={() => toggleMember(member.id)}
                 disabled={disabled}
                 className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20 disabled:opacity-50"

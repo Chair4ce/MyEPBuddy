@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } from "react";
+import { useMemo, useRef, useEffect, useLayoutEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Rank } from "@/types/database";
@@ -559,7 +559,10 @@ export function HierarchyTreeView({
   // Canvas pan offset (Figma-style — not scroll-based)
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const panRef = useRef(pan);
-  panRef.current = pan;
+
+  useLayoutEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
 
   // Spacebar held for drag mode (disables card clicks)
   const [isSpaceHeld, setIsSpaceHeld] = useState(false);
@@ -1002,7 +1005,7 @@ export function HierarchyTreeView({
         {/* Rank filter buttons - toggle visibility of each rank */}
         <div className="flex items-center gap-1 flex-wrap ">
           {/* Filter mode toggle */}
-          <button
+          <button type="button"
             onClick={() => setFilterMode(prev => prev === "fade" ? "collapse" : "fade")}
             className={cn(
               "px-2 py-1 text-xs rounded-md border transition-colors mr-2",
@@ -1016,7 +1019,7 @@ export function HierarchyTreeView({
             {filterMode === "fade" ? "Fade" : "Collapse"}
           </button>
           <span className="text-xs text-muted-foreground mr-1">Show:</span>
-          <button
+          <button type="button"
             onClick={showAllRanks}
             className={cn(
               "px-2 py-1 text-xs rounded-md border transition-colors",
@@ -1030,7 +1033,7 @@ export function HierarchyTreeView({
           </button>
           {/* NCO rank filters */}
           {[...NCO_FILTER_RANKS].reverse().map((rank) => (
-            <button
+            <button type="button"
               key={rank}
               onClick={() => toggleRankVisibility(rank)}
               className={cn(
@@ -1049,7 +1052,7 @@ export function HierarchyTreeView({
           <span className="text-muted-foreground/50 mx-1">|</span>
           {/* Junior enlisted rank filters */}
           {[...JUNIOR_FILTER_RANKS].reverse().map((rank) => (
-            <button
+            <button type="button"
               key={rank}
               onClick={() => toggleRankVisibility(rank)}
               className={cn(
@@ -1071,6 +1074,7 @@ export function HierarchyTreeView({
       
       <div
         ref={containerRef}
+        role="application"
         className={cn(
           "relative w-full overflow-hidden border border-border/50 rounded-md bg-muted/20 select-none touch-none",
           getCursorClass()
@@ -1082,6 +1086,15 @@ export function HierarchyTreeView({
         onMouseDown={handleMouseDown}
         onMouseEnter={() => { isMouseOverContainer.current = true; }}
         onMouseLeave={() => { isMouseOverContainer.current = false; }}
+        onKeyDown={(e) => {
+          if (e.code === "Space") {
+            e.preventDefault();
+            if (!e.repeat) {
+              isSpaceHeldRef.current = true;
+              setIsSpaceHeld(true);
+            }
+          }
+        }}
         tabIndex={0}
         aria-label="Supervision tree canvas. Hold Space and drag to pan, scroll to move, Ctrl or Cmd scroll to zoom."
       >
@@ -1252,7 +1265,7 @@ export function HierarchyTreeView({
                     pointerEvents: isSpaceHeld || hiddenByCollapse || !isVisible ? "none" : "auto",
                   }}
                 >
-                  <button
+                  <button type="button"
                     className={cn(
                       "flex flex-col items-center justify-center",
                       "px-1.5 py-1 rounded-md border-2 bg-card shadow-sm",
@@ -1286,7 +1299,7 @@ export function HierarchyTreeView({
                   
                   {/* Collapse/expand toggle for members with children (not for junior enlisted) */}
                   {hasChildren && !isJuniorEnlisted(member.rank) && (
-                    <button
+                    <button type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Don't trigger click if spacebar is held (drag mode)

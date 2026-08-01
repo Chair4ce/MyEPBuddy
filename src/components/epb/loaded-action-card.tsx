@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import type { Accomplishment } from "@/types/database";
+import { formatShortMonthYear } from "@/lib/format";
 
 interface LoadedActionCardProps {
   action: Accomplishment;
@@ -51,7 +52,7 @@ export function LoadedActionCard({
     >
       {/* Header - Always visible */}
       <div className="flex items-center gap-2 p-2">
-        <button 
+        <button type="button" 
           className="flex items-center gap-2 flex-1 min-w-0 text-left group"
           onClick={() => setIsExpanded(!isExpanded)}
         >
@@ -86,9 +87,10 @@ export function LoadedActionCard({
             <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
           )}
         </button>
-        <button
+        <button type="button"
           className="inline-flex items-center justify-center rounded-md size-6 shrink-0 text-muted-foreground hover:text-destructive hover:bg-accent transition-colors"
           onClick={onRemove}
+          aria-label="Remove loaded action"
         >
           <X className="size-3" />
         </button>
@@ -115,12 +117,9 @@ export function LoadedActionCard({
           </div>
           <div className="flex items-center justify-between gap-2">
             <Badge variant="secondary" className="text-[10px]">
-              {new Date(action.date).toLocaleDateString("en-US", {
-                month: "short",
-                year: "numeric",
-              })}
+              {formatShortMonthYear(action.date)}
             </Badge>
-            <button
+            <button type="button"
               className="inline-flex items-center justify-center rounded-md h-6 px-2 text-[10px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               onClick={() => handleCopy(actionSummary)}
             >

@@ -40,6 +40,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatShortDate } from "@/lib/format";
 
 interface EPBProgressCardProps {
   rank: Rank | null;
@@ -302,7 +303,7 @@ export function EPBProgressCard({
                         ? "Today" 
                         : nextMilestone.daysFromNow === 1 
                         ? "Tomorrow"
-                        : `In ${nextMilestone.daysFromNow} days`} — {nextMilestone.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        : `In ${nextMilestone.daysFromNow} days`} — {formatShortDate(nextMilestone.date)}
                     </p>
                   </div>
                 </div>
@@ -467,7 +468,7 @@ interface EPBProgressBadgeProps {
   className?: string;
 }
 
-export function EPBProgressBadge({ rank, entries, className }: EPBProgressBadgeProps) {
+function EPBProgressBadge({ rank, entries, className }: EPBProgressBadgeProps) {
   const daysUntil = getDaysUntilCloseout(rank);
   const tier = rank ? RANK_TO_TIER[rank] : null;
 

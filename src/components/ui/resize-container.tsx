@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type ResizeMeasure = "height" | "both";
@@ -24,23 +24,21 @@ export function ResizeContainer({
   const [height, setHeight] = useState<number | null>(null);
   const [width, setWidth] = useState<number | null>(null);
   const [canAnimate, setCanAnimate] = useState(false);
-  const observerRef = useRef<ResizeObserver | null>(null);
+  const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
 
   const contentRef = useCallback((node: HTMLDivElement | null) => {
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-    if (frameRef.current !== null) {
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    }
+    setContentNode(node);
+  }, []);
 
-    if (!node) return;
+  useEffect(() => {
+    if (!contentNode) {
+      setCanAnimate(false);
+      return () => {};
+    }
 
     const measureNode = () => {
-      const rect = node.getBoundingClientRect();
+      const rect = contentNode.getBoundingClientRect();
       setHeight(rect.height);
       if (measure === "both") {
         setWidth(rect.width);
@@ -49,7 +47,7 @@ export function ResizeContainer({
 
     measureNode();
 
-    frameRef.current = requestAnimationFrame(() => {
+    const outerFrame = requestAnimationFrame(() => {
       frameRef.current = requestAnimationFrame(() => {
         setCanAnimate(true);
         frameRef.current = null;
@@ -59,9 +57,17 @@ export function ResizeContainer({
     const observer = new ResizeObserver(() => {
       measureNode();
     });
-    observer.observe(node);
-    observerRef.current = observer;
-  }, [measure]);
+    observer.observe(contentNode);
+
+    return () => {
+      cancelAnimationFrame(outerFrame);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      observer.disconnect();
+    };
+  }, [contentNode, measure]);
 
   const animateBoth = measure === "both" && canAnimate;
 

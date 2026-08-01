@@ -321,7 +321,7 @@ export const QUESTION_CATEGORY_LABELS: Record<ClarifyingQuestion["category"], st
 /**
  * Default clarifying question prompts for the LLM
  */
-export const CLARIFYING_QUESTION_GUIDANCE = `
+const CLARIFYING_QUESTION_GUIDANCE = `
 === OPTIONAL: CLARIFYING QUESTIONS ===
 If the provided information is missing key details that would significantly enhance the statement quality, you may include 1-3 clarifying questions. These are OPTIONAL and non-blocking.
 

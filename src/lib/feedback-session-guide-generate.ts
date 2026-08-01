@@ -201,7 +201,7 @@ export function isGenerateFeedbackType(
 }
 
 /** Narrow FeedbackType for generate (excludes initial). */
-export function assertGeneratePhase(
+function assertGeneratePhase(
   feedbackType: FeedbackType
 ): feedbackType is "midterm" | "final" {
   return feedbackType === "midterm" || feedbackType === "final";

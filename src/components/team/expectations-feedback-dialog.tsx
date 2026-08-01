@@ -110,15 +110,18 @@ export function ExpectationsFeedbackDialog({
     }
     const gen = ++feedbacksLoadGenRef.current;
     setIsLoading(true);
-    const result = await getFeedbacksForMember(
-      subordinateId,
-      teamMemberId,
-      cycleYear
-    );
-    if (gen !== feedbacksLoadGenRef.current) return;
-    setFeedbacks(result.data ?? []);
-    setIsLoading(false);
-    setLoadToken((t) => t + 1);
+    try {
+      const result = await getFeedbacksForMember(
+        subordinateId,
+        teamMemberId,
+        cycleYear
+      );
+      if (gen !== feedbacksLoadGenRef.current) return;
+      setFeedbacks(result.data ?? []);
+      setLoadToken((t) => t + 1);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function loadEvidence() {
@@ -131,21 +134,24 @@ export function ExpectationsFeedbackDialog({
     const gen = ++evidenceLoadGenRef.current;
     setIsLoadingEvidence(true);
     setEvidenceError(null);
-    const result = await getFeedbackEvidenceAccomplishments(
-      subordinateId,
-      teamMemberId,
-      cycleYear
-    );
-    if (gen !== evidenceLoadGenRef.current) return;
-    if (result.error) {
-      setEvidenceError(result.error);
-      setEvidenceItems([]);
-      setEvidenceTruncated(false);
-    } else {
-      setEvidenceItems(result.data);
-      setEvidenceTruncated(result.truncated);
+    try {
+      const result = await getFeedbackEvidenceAccomplishments(
+        subordinateId,
+        teamMemberId,
+        cycleYear
+      );
+      if (gen !== evidenceLoadGenRef.current) return;
+      if (result.error) {
+        setEvidenceError(result.error);
+        setEvidenceItems([]);
+        setEvidenceTruncated(false);
+      } else {
+        setEvidenceItems(result.data);
+        setEvidenceTruncated(result.truncated);
+      }
+    } finally {
+      setIsLoadingEvidence(false);
     }
-    setIsLoadingEvidence(false);
   }
 
   async function loadEpbPackage() {
@@ -157,19 +163,22 @@ export function ExpectationsFeedbackDialog({
     const gen = ++epbLoadGenRef.current;
     setIsLoadingEpb(true);
     setEpbError(null);
-    const result = await getFeedbackEpbPackage(
-      subordinateId,
-      teamMemberId,
-      cycleYear
-    );
-    if (gen !== epbLoadGenRef.current) return;
-    if (result.error) {
-      setEpbError(result.error);
-      setEpbItems([]);
-    } else {
-      setEpbItems(result.data);
+    try {
+      const result = await getFeedbackEpbPackage(
+        subordinateId,
+        teamMemberId,
+        cycleYear
+      );
+      if (gen !== epbLoadGenRef.current) return;
+      if (result.error) {
+        setEpbError(result.error);
+        setEpbItems([]);
+      } else {
+        setEpbItems(result.data);
+      }
+    } finally {
+      setIsLoadingEpb(false);
     }
-    setIsLoadingEpb(false);
   }
 
   function selectStep(step: CycleStep) {
@@ -386,4 +395,4 @@ export function ExpectationsFeedbackDialog({
 }
 
 /** @deprecated Use ExpectationsFeedbackDialog */
-export const SetExpectationsDialog = ExpectationsFeedbackDialog;
+const SetExpectationsDialog = ExpectationsFeedbackDialog;

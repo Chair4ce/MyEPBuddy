@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import type { EPBAssessmentResult, ACAProficiencyLevel, CategoryAssessment } from "@/lib/constants";
 import { ACA_JUNIOR_PROFICIENCY_LEVELS, ACA_SENIOR_PROFICIENCY_LEVELS } from "@/lib/constants";
+import { formatDateTime } from "@/lib/format";
 
 interface EPBAssessmentDialogProps {
   isOpen: boolean;
@@ -294,7 +295,7 @@ export function EPBAssessmentDialog({
                     <ul className="space-y-2">
                       {assessment.recommendations.map((rec, idx) => (
                         <li 
-                          key={idx}
+                          key={`rec-${rec.slice(0, 48)}-${rec.length}`}
                           className="flex items-start gap-2 text-sm text-muted-foreground p-3 bg-muted/50 rounded-lg"
                         >
                           <span className="size-5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 text-xs font-medium mt-0.5">
@@ -311,7 +312,7 @@ export function EPBAssessmentDialog({
               {/* Timestamp */}
               <div className="text-center pt-2">
                 <p className="text-[10px] text-muted-foreground">
-                  Assessment generated {new Date(assessment.timestamp).toLocaleString()}
+                  Assessment generated {formatDateTime(assessment.timestamp)}
                 </p>
               </div>
             </div>

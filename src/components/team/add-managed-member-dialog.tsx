@@ -131,20 +131,22 @@ export function AddManagedMemberDialog({
 
   // Load all chain profiles for parent selection
   useEffect(() => {
-    async function loadChainProfiles() {
+    let cancelled = false;
+
+    void (async () => {
       if (!profile || !open) return;
 
-      // Get all subordinates in the chain
       const { data: chainData } = await (supabase.rpc as Function)("get_subordinate_chain", {
         supervisor_uuid: profile.id,
       }) as { data: { subordinate_id: string; depth: number }[] | null };
 
+      if (cancelled) return;
+
       const profiles: ParentOption[] = [
-        // Self is always first option
-        { 
-          id: `profile:${profile.id}`, 
-          full_name: profile.full_name, 
-          rank: profile.rank, 
+        {
+          id: `profile:${profile.id}`,
+          full_name: profile.full_name,
+          rank: profile.rank,
           depth: 0,
           type: "profile",
         },
@@ -152,25 +154,24 @@ export function AddManagedMemberDialog({
 
       if (chainData && chainData.length > 0) {
         const subordinateIds = chainData.map((c) => c.subordinate_id);
-        
-        // Batch fetch profiles to avoid URI Too Long errors (414)
         const BATCH_SIZE = 50;
         const allProfilesData: Profile[] = [];
-        
+
         for (let i = 0; i < subordinateIds.length; i += BATCH_SIZE) {
           const batch = subordinateIds.slice(i, i + BATCH_SIZE);
           const { data: batchProfiles } = await supabase
             .from("profiles")
             .select("id, full_name, rank")
             .in("id", batch);
-          
+
+          if (cancelled) return;
+
           if (batchProfiles) {
             allProfilesData.push(...(batchProfiles as Profile[]));
           }
         }
 
         for (const p of allProfilesData) {
-          // Only include members who can supervise (SSgt and above, officers, civilians)
           if (p.rank && !SUPERVISOR_RANKS.includes(p.rank)) {
             continue;
           }
@@ -185,21 +186,22 @@ export function AddManagedMemberDialog({
         }
       }
 
-      // Sort by depth then by name
       profiles.sort((a, b) => {
         if (a.depth !== b.depth) return a.depth - b.depth;
         return (a.full_name || "").localeCompare(b.full_name || "");
       });
 
+      if (cancelled) return;
+
       setChainProfiles(profiles);
-      
-      // Default to self as parent
       if (!formData.parentId && profile) {
         setFormData((prev) => ({ ...prev, parentId: `profile:${profile.id}` }));
       }
-    }
+    })();
 
-    loadChainProfiles();
+    return () => {
+      cancelled = true;
+    };
   }, [profile, open, supabase]);
 
   // Check if email matches an existing user

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useProjectsStore } from "@/stores/projects-store";
 import { useUserStore } from "@/stores/user-store";
 import {
@@ -92,29 +92,31 @@ export function ProjectsSidePanel({
 
   const [selectedYear, setSelectedYear] = useState<string>("all");
 
-  // Load projects
-  useEffect(() => {
-    async function loadProjects() {
-      if (!profile) return;
+  const loadProjects = useCallback(async () => {
+    if (!profile) return;
 
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/projects");
-        if (response.ok) {
-          const { projects } = await response.json();
-          setProjects(projects || []);
-        }
-      } catch (error) {
-        console.error("Error loading projects:", error);
-      } finally {
-        setIsLoading(false);
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/projects");
+      if (response.ok) {
+        const { projects } = await response.json();
+        setProjects(projects || []);
       }
+    } catch (error) {
+      console.error("Error loading projects:", error);
+    } finally {
+      setIsLoading(false);
     }
+  }, [profile, setProjects, setIsLoading]);
 
-    if (isOpen) {
-      loadProjects();
-    }
-  }, [profile, isOpen, setProjects, setIsLoading]);
+  const handlePanelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node && isOpen && profile) {
+        void loadProjects();
+      }
+    },
+    [isOpen, profile, loadProjects]
+  );
 
   // Get unique years from projects
   const years = useMemo(() => {
@@ -152,6 +154,7 @@ export function ProjectsSidePanel({
 
   return (
     <div
+      ref={handlePanelRef}
       className={cn(
         "shrink-0 border-l bg-background flex flex-col h-full overflow-hidden transition-[width,opacity] duration-300 ease-out",
         isOpen 

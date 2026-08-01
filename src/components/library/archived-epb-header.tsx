@@ -206,7 +206,7 @@ export function ArchivedEPBHeader({
                 ) : (
                   <div className="space-y-2 max-h-[200px] overflow-y-auto">
                     {subordinates.map((sub) => (
-                      <button
+                      <button type="button"
                         key={sub.id}
                         onClick={() => setSelectedUserId(sub.id)}
                         className={cn(

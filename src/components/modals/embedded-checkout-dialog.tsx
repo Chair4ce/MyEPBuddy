@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { PURCHASE_CREDITS } from "@/lib/billing/constants";
+import { formatInteger } from "@/lib/format";
 
 const STRIPE_CONFIGURED = Boolean(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
@@ -58,7 +59,7 @@ export function EmbeddedCheckoutDialog() {
         {/* Title/description are screen-reader only — the drawer already
             explains the package; this modal is just the payment surface. */}
         <DialogTitle className="sr-only">
-          Buy {purchasedTokens.toLocaleString()} AI tokens
+          Buy {formatInteger(purchasedTokens)} AI tokens
         </DialogTitle>
         <DialogDescription className="sr-only">
           Secure Stripe checkout for purchasing AI tokens. You can also adjust

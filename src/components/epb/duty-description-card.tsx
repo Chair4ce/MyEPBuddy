@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -48,6 +48,7 @@ import {
 } from "./epb-animated-collapse";
 import { animateEpbShellResize } from "./epb-resize-transition";
 import { WordReplacementSlider } from "./word-replacement-slider";
+import { formatDateTime } from "@/lib/format";
 
 /** A single generated batch of revisions kept in short-term session history. */
 interface RevisionBatch {
@@ -164,7 +165,6 @@ export function DutyDescriptionCard({
   const revisePanelRef = useRef<HTMLDivElement>(null);
   const statementAreaRef = useRef<HTMLDivElement>(null);
   const generatedRevisionsResultsRef = useRef<HTMLDivElement>(null);
-  const generatedRevisionsRef = useRef<string[]>([]);
   const zenExitGuardRef = useRef({
     showRevisePanel: false,
     isRevisePanelClosing: false,
@@ -237,13 +237,13 @@ export function DutyDescriptionCard({
     animateEpbShellResize(cardBodyShellRef.current, update, onComplete);
   }, []);
 
-  generatedRevisionsRef.current = generatedRevisions;
-
-  zenExitGuardRef.current = {
-    showRevisePanel,
-    isRevisePanelClosing,
-    isRevisionsResultsClosing,
-  };
+  useLayoutEffect(() => {
+    zenExitGuardRef.current = {
+      showRevisePanel,
+      isRevisePanelClosing,
+      isRevisionsResultsClosing,
+    };
+  }, [showRevisePanel, isRevisePanelClosing, isRevisionsResultsClosing]);
 
   const isUseThisClosing = isRevisePanelClosing || isRevisionsResultsClosing;
 
@@ -267,7 +267,7 @@ export function DutyDescriptionCard({
   }, [setZenModeMpaKey]);
 
   const closeRevisePanelWithScroll = useCallback(() => {
-    const hasRevisions = generatedRevisionsRef.current.length > 0;
+    const hasRevisions = generatedRevisions.length > 0;
 
     const closePanel = () => {
       setIsRevisePanelClosing(true);
@@ -291,7 +291,7 @@ export function DutyDescriptionCard({
 
     scrollStatementIntoView();
     closePanel();
-  }, [scrollStatementIntoView, tryExitZenMode]);
+  }, [generatedRevisions, scrollStatementIntoView, tryExitZenMode]);
 
   const handleCancelRevise = () => {
     const dismissRevisePanel = () => {
@@ -304,7 +304,7 @@ export function DutyDescriptionCard({
       });
     };
 
-    if (generatedRevisionsRef.current.length > 0) {
+    if (generatedRevisions.length > 0) {
       scrollStatementIntoView();
       setIsRevisionsResultsClosing(true);
       setTimeout(dismissRevisePanel, EPB_GENERATED_RESULTS_CLOSE_MS);
@@ -463,11 +463,9 @@ export function DutyDescriptionCard({
           aggressiveness: reviseAggressiveness,
           createdAt: Date.now(),
         };
-        setRevisionHistory((prev) => {
-          const next = [...prev, batch].slice(-MAX_REVISION_HISTORY);
-          setActiveRevisionIndex(next.length - 1);
-          return next;
-        });
+        const nextHistory = [...revisionHistory, batch].slice(-MAX_REVISION_HISTORY);
+        setRevisionHistory(nextHistory);
+        setActiveRevisionIndex(nextHistory.length - 1);
         resizeCardBody(() => setGeneratedRevisions(results), scrollGeneratedRevisionsIntoView);
       } else {
         toast.error("No revisions generated");
@@ -557,7 +555,7 @@ export function DutyDescriptionCard({
       {/* Header */}
       <CardHeader className="pb-3 px-4 sm:px-6">
         <div className="flex items-center justify-between gap-1.5 sm:gap-2">
-          <button
+          <button type="button"
             className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 text-left group"
             onClick={handleToggleCollapse}
           >
@@ -586,7 +584,7 @@ export function DutyDescriptionCard({
           {onToggleComplete && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <button type="button"
                   className={cn(
                     "inline-flex items-center justify-center rounded-md size-6 shrink-0 transition-colors",
                     isComplete
@@ -597,6 +595,7 @@ export function DutyDescriptionCard({
                     e.stopPropagation();
                     onToggleComplete();
                   }}
+                  aria-label={isComplete ? "Mark duty description as incomplete" : "Mark duty description as complete"}
                 >
                   {isComplete ? (
                     <CheckCircle2 className="size-4" />
@@ -614,9 +613,10 @@ export function DutyDescriptionCard({
           {isCollapsed && hasContent && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <button type="button"
                   className="inline-flex items-center justify-center rounded-md size-6 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                   onClick={handleCopy}
+                  aria-label={copied ? "Copied to clipboard" : "Copy duty description to clipboard"}
                 >
                   {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
                 </button>
@@ -671,7 +671,7 @@ export function DutyDescriptionCard({
               </span>
               <div className="flex items-center gap-1">
                 {hasUnsavedChanges && (
-                  <button
+                  <button type="button"
                     onClick={handleReset}
                     className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center"
                   >
@@ -679,7 +679,7 @@ export function DutyDescriptionCard({
                     <span className="hidden sm:inline">Reset</span>
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={handleCopy}
                   disabled={!hasContent}
                   className="h-7 px-2.5 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
@@ -696,7 +696,7 @@ export function DutyDescriptionCard({
             <div className="flex items-center gap-1.5">
               {/* Revise button - only show when there's content */}
               {hasContent && onReviseStatement && (
-                <button
+                <button type="button"
                   onClick={() => {
                     const opening = !showRevisePanel;
                     if (opening) {
@@ -744,7 +744,7 @@ export function DutyDescriptionCard({
               {/* History button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       resizeCardBody(() => {
                         setShowHistoryPanel(!showHistoryPanel);
@@ -759,6 +759,7 @@ export function DutyDescriptionCard({
                         ? "bg-indigo-600 text-white"
                         : "hover:bg-accent hover:text-accent-foreground"
                     )}
+                    aria-label={`Snapshot history${snapshots.length > 0 ? ` (${snapshots.length})` : ""}`}
                   >
                     <History className="size-3.5" />
                   </button>
@@ -771,7 +772,7 @@ export function DutyDescriptionCard({
               {/* Examples button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       resizeCardBody(() => {
                         setShowExamplesPanel(!showExamplesPanel);
@@ -786,6 +787,7 @@ export function DutyDescriptionCard({
                         ? "bg-indigo-600 text-white"
                         : "hover:bg-accent hover:text-accent-foreground"
                     )}
+                    aria-label={`Saved examples${savedExamples.length > 0 ? ` (${savedExamples.length})` : ""}`}
                   >
                     {savedExamples.length > 0 ? (
                       <BookMarked className="size-3.5" />
@@ -802,7 +804,7 @@ export function DutyDescriptionCard({
               {/* Templates button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       resizeCardBody(() => {
                         setShowTemplatesPanel(!showTemplatesPanel);
@@ -830,10 +832,11 @@ export function DutyDescriptionCard({
               {/* Snapshot button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <button type="button"
                     onClick={handleCreateSnapshot}
                     disabled={isCreatingSnapshot || !hasContent}
                     className="size-7 rounded-md inline-flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                    aria-label="Save duty description snapshot"
                   >
                     {isCreatingSnapshot ? (
                       <Loader2 className="size-3.5 animate-spin" />
@@ -869,19 +872,20 @@ export function DutyDescriptionCard({
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <span className="text-[10px] text-muted-foreground">
-                          {new Date(snap.created_at).toLocaleString()}
+                          {formatDateTime(snap.created_at)}
                         </span>
                         <div className="flex items-center gap-1">
-                          <button
+                          <button type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(snap.description_text);
                               toast.success("Copied");
                             }}
                             className="h-5 px-1.5 rounded text-[10px] hover:bg-muted transition-colors"
+                            aria-label="Copy snapshot to clipboard"
                           >
                             <Copy className="size-3" />
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => handleApplySnapshot(snap.description_text)}
                             className="h-5 px-1.5 rounded text-[10px] bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                           >
@@ -911,7 +915,7 @@ export function DutyDescriptionCard({
                 </div>
                 <div className="flex items-center gap-1.5">
                   {hasContent && onSaveTemplate && (
-                    <button
+                    <button type="button"
                       onClick={() => setShowSaveTemplateDialog(true)}
                       className="h-7 px-2.5 rounded-md text-xs border border-indigo-600 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 inline-flex items-center"
                       aria-label="Save as reusable template"
@@ -922,7 +926,7 @@ export function DutyDescriptionCard({
                     </button>
                   )}
                   {hasContent && onSaveExample && (
-                    <button
+                    <button type="button"
                       onClick={handleSaveAsExample}
                       className="h-7 px-2.5 rounded-md text-xs bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center"
                     >
@@ -946,28 +950,30 @@ export function DutyDescriptionCard({
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <span className="text-[10px] text-muted-foreground">
-                          {new Date(example.created_at).toLocaleString()}
+                          {formatDateTime(example.created_at)}
                         </span>
                         <div className="flex items-center gap-1">
-                          <button
+                          <button type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(example.example_text);
                               toast.success("Copied");
                             }}
                             className="h-5 px-1.5 rounded text-[10px] hover:bg-muted transition-colors"
+                            aria-label="Copy example to clipboard"
                           >
                             <Copy className="size-3" />
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => handleApplyExample(example.example_text)}
                             className="h-5 px-1.5 rounded text-[10px] bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                           >
                             Apply
                           </button>
                           {onDeleteExample && (
-                            <button
+                            <button type="button"
                               onClick={() => onDeleteExample(example.id)}
                               className="h-5 px-1.5 rounded text-[10px] hover:bg-destructive/10 text-destructive transition-colors"
+                              aria-label="Delete saved example"
                             >
                               <Trash2 className="size-3" />
                             </button>
@@ -1013,7 +1019,7 @@ export function DutyDescriptionCard({
                   <Wand2 className="size-4" />
                   Revise Current Statement
                 </h4>
-                <button
+                <button type="button"
                   onClick={handleCancelRevise}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
@@ -1044,7 +1050,7 @@ export function DutyDescriptionCard({
               </div>
 
               <div className="flex gap-2">
-                <button
+                <button type="button"
                   onClick={handleRevise}
                   disabled={isRevising || !localText.trim()}
                   className="flex-1 h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors active:scale-[0.98]"
@@ -1108,7 +1114,7 @@ export function DutyDescriptionCard({
                   )}
                   {generatedRevisions.map((version, index) => (
                     <div
-                      key={index}
+                      key={`rev-${version.slice(0, 48)}-${version.length}`}
                       data-epb-revision-item
                       className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
                       style={{ animationDelay: `${index * 100}ms` }}
@@ -1120,7 +1126,7 @@ export function DutyDescriptionCard({
                         <div className="flex items-center gap-1">
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button
+                              <button type="button"
                                 onClick={() => {
                                   navigator.clipboard.writeText(version);
                                   toast.success("Copied to clipboard");
@@ -1146,7 +1152,7 @@ export function DutyDescriptionCard({
                             return (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleSaveRevision(version)}
                                     disabled={saved || saving}
                                     aria-label={saved ? "Saved to your examples" : "Save this revision to your examples"}
@@ -1173,7 +1179,7 @@ export function DutyDescriptionCard({
                           })()}
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button
+                              <button type="button"
                                 onClick={() => handleUseRevision(version, index)}
                                 disabled={isUseThisClosing}
                                 className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"

@@ -10,7 +10,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCreditsStore } from "@/stores/credits-store";
-import { Sparkles } from "lucide-react";
 
 interface UsageIndicatorProps {
   isCollapsed: boolean;
@@ -37,6 +36,10 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
       : "[&>[data-slot=progress-indicator]]:bg-emerald-500";
 
   const label = `${balance} token${balance !== 1 ? "s" : ""} left`;
+  const collapsedCount =
+    balance >= 1000
+      ? `${Math.floor(balance / 1000)}k`
+      : String(balance);
 
   if (isCollapsed) {
     return (
@@ -55,7 +58,14 @@ export function UsageIndicator({ isCollapsed }: UsageIndicatorProps) {
             aria-label={label}
             data-tour="nav-settings-billing"
           >
-            <Sparkles className="size-4" />
+            <span
+              className={cn(
+                "text-xs font-semibold tabular-nums leading-none",
+                balance >= 100 && "text-[10px]",
+              )}
+            >
+              {collapsedCount}
+            </span>
           </Link>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>

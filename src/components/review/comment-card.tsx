@@ -70,6 +70,10 @@ export function CommentCard({
   // Separate state for reason (commentText) when editing replace type
   const [editReasonText, setEditReasonText] = useState(comment.commentText || "");
   
+  const replaceWithId = `comment-${comment.id}-replace`;
+  const reasonId = `comment-${comment.id}-reason`;
+  const editFieldId = `comment-${comment.id}-edit`;
+
   // Determine what we're editing for the label
   const getEditLabel = () => {
     if (comment.isFullRewrite) {
@@ -198,38 +202,39 @@ export function CommentCard({
             <>
               {/* Replace with input */}
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor={replaceWithId} className="text-xs font-medium text-muted-foreground">
                   Replace with
                 </label>
                 <Textarea
+                  id={replaceWithId}
                   value={editReplacementText}
                   onChange={(e) => setEditReplacementText(e.target.value)}
                   className="min-h-[60px] text-sm resize-none"
                   placeholder="Enter replacement text..."
                   autoFocus
-                  aria-label="Replace with"
                 />
               </div>
               {/* Reason input */}
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor={reasonId} className="text-xs font-medium text-muted-foreground">
                   Reason <span className="font-normal">(optional)</span>
                 </label>
                 <Textarea
+                  id={reasonId}
                   value={editReasonText}
                   onChange={(e) => setEditReasonText(e.target.value)}
                   className="min-h-[40px] text-sm resize-none"
                   placeholder="Why this replacement is suggested..."
-                  aria-label="Reason for replacement"
                 />
               </div>
             </>
           ) : (
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label htmlFor={editFieldId} className="text-xs font-medium text-muted-foreground">
                 Edit {getEditLabel()}
               </label>
               <Textarea
+                id={editFieldId}
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 className="min-h-[60px] text-sm resize-none"
@@ -239,7 +244,6 @@ export function CommentCard({
                     : "Enter your feedback..."
                 }
                 autoFocus
-                aria-label={`Edit ${getEditLabel()}`}
               />
             </div>
           )}

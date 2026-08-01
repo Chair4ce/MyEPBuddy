@@ -341,7 +341,9 @@ export function DecorationWorkspaceDialog({
 
   // Load refined statements (finalized statements library) for the ratee
   useEffect(() => {
-    async function loadStatements() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!rateeInfo) return;
 
       const isManualRecipient =
@@ -349,30 +351,36 @@ export function DecorationWorkspaceDialog({
         !rateeInfo.isManagedMember;
 
       if (isManualRecipient) {
+        if (controller.signal.aborted) return;
         setStatements([]);
         return;
       }
 
       if (rateeInfo.isManagedMember) {
-        // For managed members, get their refined statements
         const { data } = await supabase
           .from("refined_statements")
           .select("*")
           .eq("team_member_id", rateeInfo.id)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
         setStatements((data as RefinedStatement[]) || []);
       } else {
-        // For self or linked users, get statements by user_id with no team_member_id
         const { data } = await supabase
           .from("refined_statements")
           .select("*")
           .eq("user_id", rateeInfo.id)
           .is("team_member_id", null)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
         setStatements((data as RefinedStatement[]) || []);
       }
-    }
-    loadStatements();
+    })();
+
+    return () => {
+      controller.abort();
+    };
   }, [rateeInfo, currentShell, shell, supabase]);
 
   // Reset store when dialog closes

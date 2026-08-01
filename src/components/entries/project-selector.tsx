@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useUserStore } from "@/stores/user-store";
 import {
   Select,
@@ -36,24 +36,26 @@ export function ProjectSelector({
   const cycleYear =
     cycleYearProp ?? getActiveCycleYear(profile?.rank as Rank | null);
 
-  useEffect(() => {
-    async function loadProjects() {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/projects?cycle_year=${cycleYear}`);
-        if (response.ok) {
-          const { projects } = await response.json();
-          setProjects(projects || []);
-        }
-      } catch (error) {
-        console.error("Error loading projects:", error);
-      } finally {
-        setIsLoading(false);
+  const loadProjects = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/projects?cycle_year=${cycleYear}`);
+      if (response.ok) {
+        const { projects } = await response.json();
+        setProjects(projects || []);
       }
+    } catch (error) {
+      console.error("Error loading projects:", error);
+    } finally {
+      setIsLoading(false);
     }
-
-    loadProjects();
   }, [cycleYear]);
+
+  const handleSelectOpenChange = (isSelectOpen: boolean) => {
+    if (isSelectOpen) {
+      void loadProjects();
+    }
+  };
 
   if (projects.length === 0 && !isLoading) {
     return null;
@@ -63,6 +65,7 @@ export function ProjectSelector({
     <Select
       value={value || "none"}
       onValueChange={(v) => onChange(v === "none" ? null : v)}
+      onOpenChange={handleSelectOpenChange}
       disabled={disabled || isLoading}
     >
       <SelectTrigger className={className}>

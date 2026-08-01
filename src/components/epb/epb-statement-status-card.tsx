@@ -277,7 +277,7 @@ export function EPBStatementStatusCard({
               const isHLR = mpa.key === "hlr_assessment";
 
               return (
-                <button
+                <button type="button"
                   key={mpa.key}
                   onClick={() => {
                     if (hasStatements) {
@@ -335,7 +335,7 @@ export function EPBStatementStatusCard({
                 </div>
                 <div className="space-y-3 max-h-[300px] overflow-y-auto">
                   {selectedMpaStatements.map((stmt, idx) => (
-                    <div key={idx} className="p-3 rounded-lg border bg-card text-sm">
+                    <div key={`stmt-${stmt.statement.slice(0, 40)}-${stmt.statement.length}`} className="p-3 rounded-lg border bg-card text-sm">
                       <p className="leading-relaxed">{stmt.statement}</p>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t">
                         <span className="text-xs text-muted-foreground">

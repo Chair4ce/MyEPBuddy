@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, isValidElement, cloneElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -226,7 +226,7 @@ export function ActionSelectorSheet({
 
   // Default trigger if none provided - using plain button to avoid ref issues
   const defaultTrigger = (
-    <button className="inline-flex items-center justify-center rounded-md h-8 px-3 text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+    <button type="button" onClick={() => setIsOpen(true)} className="inline-flex items-center justify-center rounded-md h-8 px-3 text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
       <Plus className="size-3.5 mr-1.5" />
       Load Actions
       {selectedIds.length > 0 && (
@@ -240,11 +240,24 @@ export function ActionSelectorSheet({
   // Render trigger with onClick to open dialog
   // This avoids the DialogTrigger asChild ref composition issue
   const triggerElement = trigger || defaultTrigger;
-  const triggerWithClick = (
-    <span onClick={() => setIsOpen(true)} className="cursor-pointer">
-      {triggerElement}
-    </span>
-  );
+  const triggerWithClick = isValidElement(triggerElement)
+    ? cloneElement(
+        triggerElement as React.ReactElement<{
+          onClick?: (e: React.MouseEvent) => void;
+        }>,
+        {
+          onClick: (e: React.MouseEvent) => {
+            const props = (
+              triggerElement as React.ReactElement<{
+                onClick?: (e: React.MouseEvent) => void;
+              }>
+            ).props;
+            props.onClick?.(e);
+            setIsOpen(true);
+          },
+        },
+      )
+    : defaultTrigger;
 
   return (
     <>
@@ -495,7 +508,7 @@ export function ActionSelectorSheet({
                   };
                   
                   return (
-                    <button
+                    <button type="button"
                       key={action.id}
                       onClick={() => toggleSelection(action.id)}
                       className={cn(

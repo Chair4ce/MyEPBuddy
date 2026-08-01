@@ -121,10 +121,32 @@ export function AddAwardDialog({
 
   // Load award catalog on mount
   useEffect(() => {
-    if (open && localCatalog.length === 0) {
-      loadCatalog();
+    if (!open || localCatalog.length > 0) return;
+
+    const controller = new AbortController();
+
+    async function load() {
+      try {
+        const { data, error } = await supabase
+          .from("award_catalog")
+          .select("*")
+          .eq("is_active", true)
+          .order("display_order")
+          .abortSignal(controller.signal);
+
+        if (controller.signal.aborted) return;
+        if (error) throw error;
+        setLocalCatalog(data || []);
+      } catch (error) {
+        console.error("Error loading award catalog:", error);
+      }
     }
-  }, [open]);
+
+    void load();
+    return () => {
+      controller.abort();
+    };
+  }, [open, localCatalog.length, supabase]);
 
   // Reset form when dialog opens/closes
   useEffect(() => {

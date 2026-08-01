@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import { shareEpbShellWithUser } from "@/app/actions/shell-shares";
 import { cn } from "@/lib/utils";
 import {
   Share2,
@@ -68,13 +69,14 @@ export function EPBShellShareDialog({
 
   // Load existing access (shares, supervisors, owner)
   useEffect(() => {
-    async function loadAccess() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!isOpen || !shellId) return;
-      
+
       setIsLoadingAccess(true);
       try {
-        // Load shell to get owner info
-        const { data: shellData } = await supabase
+        const { data: shellData, error: shellError } = await supabase
           .from("epb_shells")
           .select(`
             user_id,
@@ -84,14 +86,9 @@ export function EPBShellShareDialog({
             )
           `)
           .eq("id", shellId)
+          .abortSignal(controller.signal)
           .single();
 
-        const typedShellData = shellData as { user_id: string; created_by: string; owner_profile: Profile } | null;
-        if (typedShellData?.owner_profile) {
-          setShellOwner(typedShellData.owner_profile);
-        }
-
-        // Load explicit shares
         const { data: sharesData, error: sharesError } = await supabase
           .from("epb_shell_shares")
           .select(`
@@ -100,14 +97,11 @@ export function EPBShellShareDialog({
               id, full_name, rank, afsc, email
             )
           `)
-          .eq("shell_id", shellId);
+          .eq("shell_id", shellId)
+          .abortSignal(controller.signal);
 
-        if (sharesError) throw sharesError;
-        setExistingShares((sharesData || []) as (EPBShellShare & { shared_with_profile?: Profile })[]);
-
-        // Load supervisors of the ratee who have access
+        let nextSupervisors: Profile[] = [];
         if (ratee && !ratee.isManagedMember) {
-          // Get the supervision history for real users
           const { data: supervisionData } = await supabase
             .from("supervision_history")
             .select(`
@@ -116,25 +110,36 @@ export function EPBShellShareDialog({
               )
             `)
             .eq("subordinate_id", ratee.id)
-            .is("end_date", null);
+            .is("end_date", null)
+            .abortSignal(controller.signal);
 
           const typedSupervisionData = supervisionData as { supervisor: Profile }[] | null;
           if (typedSupervisionData) {
-            const supervisorProfiles = typedSupervisionData
+            nextSupervisors = typedSupervisionData
               .map((s) => s.supervisor)
               .filter(Boolean);
-            setSupervisors(supervisorProfiles);
           }
         }
-      } catch (error) {
-        console.error("Failed to load access:", error);
+
+        if (controller.signal.aborted) return;
+        if (shellError || sharesError) {
+          console.error("Failed to load access:", shellError ?? sharesError);
+          return;
+        }
+
+        const typedShellData = shellData as { user_id: string; created_by: string; owner_profile: Profile } | null;
+        if (typedShellData?.owner_profile) {
+          setShellOwner(typedShellData.owner_profile);
+        }
+        setExistingShares((sharesData || []) as (EPBShellShare & { shared_with_profile?: Profile })[]);
+        setSupervisors(nextSupervisors);
       } finally {
         setIsLoadingAccess(false);
       }
-    }
+    })();
 
-    loadAccess();
-  }, [shellId, isOpen, ratee, supabase]);
+    return () => controller.abort();
+  }, [shellId, isOpen, ratee?.id, ratee?.isManagedMember, supabase]);
 
   // Build combined access list
   const accessList: AccessUser[] = [];
@@ -231,32 +236,14 @@ export function EPBShellShareDialog({
     }
   };
 
-  // Share with a user
+  // Share with a user (owner_id derived server-side)
   const handleShare = async (userId: string) => {
-    const { data: profile } = await supabase.auth.getUser();
-    if (!profile.user) return;
-
     setIsSharing(userId);
     try {
-      const { data, error } = await supabase
-        .from("epb_shell_shares")
-        .insert({
-          shell_id: shellId,
-          owner_id: profile.user.id,
-          share_type: "user",
-          shared_with_id: userId,
-        } as never)
-        .select(`
-          *,
-          shared_with_profile:profiles!epb_shell_shares_shared_with_id_fkey(
-            id, full_name, rank, afsc, email
-          )
-        `)
-        .single();
+      const result = await shareEpbShellWithUser(shellId, userId);
+      if (!result.ok) throw new Error(result.error);
 
-      if (error) throw error;
-
-      setExistingShares((prev) => [...prev, data as EPBShellShare & { shared_with_profile?: Profile }]);
+      setExistingShares((prev) => [...prev, result.data]);
       setSearchResults((prev) => prev.filter((p) => p.id !== userId));
       setSearchQuery("");
       Analytics.epbShared();

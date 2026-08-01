@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 
 interface UseIdleDetectionOptions {
   timeout: number; // Idle timeout in milliseconds
@@ -37,9 +37,10 @@ export function useIdleDetection({
   const onIdleRef = useRef(onIdle);
   const onActiveRef = useRef(onActive);
 
-  // Keep refs updated
-  onIdleRef.current = onIdle;
-  onActiveRef.current = onActive;
+  useLayoutEffect(() => {
+    onIdleRef.current = onIdle;
+    onActiveRef.current = onActive;
+  }, [onIdle, onActive]);
 
   const resetIdleTimer = useCallback(() => {
     // Clear existing timeout

@@ -43,7 +43,7 @@ export function celebrateEntry() {
 }
 
 // Epic celebration for milestone achievements
-export function celebrateMilestone() {
+function celebrateMilestone() {
   const duration = 3000;
   const animationEnd = Date.now() + duration;
   const defaults = { ...confettiConfig, startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
@@ -124,7 +124,7 @@ export function celebrateCannon() {
 }
 
 // Sparkle effect for smaller achievements
-export function celebrateSparkle() {
+function celebrateSparkle() {
   confetti({
     ...confettiConfig,
     particleCount: 60,
@@ -137,7 +137,7 @@ export function celebrateSparkle() {
 }
 
 // School pride / military-style confetti (red, white, blue)
-export function celebratePatriotic() {
+function celebratePatriotic() {
   const colors = ["#002868", "#bf0a30", "#ffffff"];
   
   confetti({
@@ -199,7 +199,7 @@ export function celebrateFireworks() {
 }
 
 // The ultimate celebration - combines multiple effects
-export function celebrateUltimate() {
+function celebrateUltimate() {
   // Initial burst
   celebrateCannon();
   

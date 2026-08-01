@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -119,16 +119,117 @@ export function useEPBCollaboration(
   const channelRef = useRef<RealtimeChannel | null>(null);
   const colorRef = useRef<string>(getRandomColor());
   const optionsRef = useRef(options);
-  optionsRef.current = options;
 
-  // Clean up channel on unmount
+  useLayoutEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
+  // Subscribe to realtime channel while a session is active
   useEffect(() => {
+    if (!session?.session_code) {
+      return () => {};
+    }
+
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    const channel = supabase
+      .channel(`epb:${session.session_code}`, {
+        config: {
+          presence: {
+            key: profile?.id || "anonymous",
+          },
+        },
+      })
+      .on("presence", { event: "sync" }, () => {
+        const presenceState = channel.presenceState();
+        const online: EPBCollaborator[] = [];
+
+        Object.entries(presenceState).forEach(([oderId, presences]) => {
+          const presence = presences[0] as unknown as {
+            fullName: string;
+            rank: string | null;
+            isHost: boolean;
+            cursor: CursorPosition | null;
+            color: string;
+          } | undefined;
+
+          if (presence) {
+            online.push({
+              id: oderId,
+              fullName: presence.fullName || "Unknown",
+              rank: presence.rank || null,
+              isHost: presence.isHost || false,
+              isOnline: true,
+              cursor: presence.cursor || null,
+              color: presence.color || "#888888",
+            });
+          }
+        });
+
+        setCollaborators(online);
+      })
+      .on("presence", { event: "join" }, ({ key, newPresences }) => {
+        const presence = newPresences[0] as unknown as {
+          fullName: string;
+          rank: string | null;
+          isHost: boolean;
+          color: string;
+        } | undefined;
+
+        if (presence && optionsRef.current.onParticipantJoin) {
+          optionsRef.current.onParticipantJoin({
+            id: key,
+            fullName: presence.fullName || "Unknown",
+            rank: presence.rank || null,
+            isHost: presence.isHost || false,
+            isOnline: true,
+            cursor: null,
+            color: presence.color || "#888888",
+          });
+        }
+      })
+      .on("presence", { event: "leave" }, ({ key }) => {
+        if (optionsRef.current.onParticipantLeave) {
+          optionsRef.current.onParticipantLeave(key);
+        }
+      })
+      .on("broadcast", { event: "state_update" }, ({ payload }) => {
+        if (optionsRef.current.onStateChange && payload.state) {
+          optionsRef.current.onStateChange(payload.state as EPBWorkspaceState);
+        }
+      })
+      .on("broadcast", { event: "session_ended" }, () => {
+        setSession(null);
+        setIsHost(false);
+        setCollaborators([]);
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+          channelRef.current = null;
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({
+            fullName: profile?.full_name || "Unknown",
+            rank: profile?.rank || null,
+            isHost: isHost,
+            cursor: null,
+            color: colorRef.current,
+          });
+        }
+      });
+
+    channelRef.current = channel;
+
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      supabase.removeChannel(channel);
+      if (channelRef.current === channel) {
+        channelRef.current = null;
       }
     };
-  }, [supabase]);
+  }, [session?.id, session?.session_code, profile, supabase, isHost]);
 
   // Check for active sessions on this shell
   const checkForActiveSession = useCallback(async (): Promise<ActiveSessionInfo | null> => {
@@ -185,114 +286,17 @@ export function useEPBCollaboration(
 
   // Check for active session when shell changes
   useEffect(() => {
-    if (shellId && !session) {
-      checkForActiveSession();
-    }
+    if (!shellId || session) return () => {};
+
+    let cancelled = false;
+    void checkForActiveSession().finally(() => {
+      if (cancelled) return;
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [shellId, session, checkForActiveSession]);
-
-  // Subscribe to realtime channel for a session
-  const subscribeToSession = useCallback((sessionId: string, sessionCode: string) => {
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-    }
-
-    const channel = supabase.channel(`epb:${sessionCode}`, {
-      config: {
-        presence: {
-          key: profile?.id || "anonymous",
-        },
-      },
-    });
-
-    // Handle presence (who's online + cursors)
-    channel
-      .on("presence", { event: "sync" }, () => {
-        const presenceState = channel.presenceState();
-        const online: EPBCollaborator[] = [];
-        
-        Object.entries(presenceState).forEach(([oderId, presences]) => {
-          const presence = presences[0] as unknown as { 
-            fullName: string; 
-            rank: string | null;
-            isHost: boolean;
-            cursor: CursorPosition | null;
-            color: string;
-          } | undefined;
-          
-          if (presence) {
-            online.push({
-              id: oderId,
-              fullName: presence.fullName || "Unknown",
-              rank: presence.rank || null,
-              isHost: presence.isHost || false,
-              isOnline: true,
-              cursor: presence.cursor || null,
-              color: presence.color || "#888888",
-            });
-          }
-        });
-        
-        setCollaborators(online);
-      })
-      .on("presence", { event: "join" }, ({ key, newPresences }) => {
-        const presence = newPresences[0] as unknown as { 
-          fullName: string; 
-          rank: string | null;
-          isHost: boolean;
-          color: string;
-        } | undefined;
-        
-        if (presence && optionsRef.current.onParticipantJoin) {
-          optionsRef.current.onParticipantJoin({
-            id: key,
-            fullName: presence.fullName || "Unknown",
-            rank: presence.rank || null,
-            isHost: presence.isHost || false,
-            isOnline: true,
-            cursor: null,
-            color: presence.color || "#888888",
-          });
-        }
-      })
-      .on("presence", { event: "leave" }, ({ key }) => {
-        if (optionsRef.current.onParticipantLeave) {
-          optionsRef.current.onParticipantLeave(key);
-        }
-      });
-
-    // Handle broadcast messages for state sync
-    channel.on("broadcast", { event: "state_update" }, ({ payload }) => {
-      if (optionsRef.current.onStateChange && payload.state) {
-        optionsRef.current.onStateChange(payload.state as EPBWorkspaceState);
-      }
-    });
-
-    // Handle session end broadcast
-    channel.on("broadcast", { event: "session_ended" }, () => {
-      setSession(null);
-      setIsHost(false);
-      setCollaborators([]);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    });
-
-    channel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        // Track presence with cursor support
-        await channel.track({
-          fullName: profile?.full_name || "Unknown",
-          rank: profile?.rank || null,
-          isHost: isHost,
-          cursor: null,
-          color: colorRef.current,
-        });
-      }
-    });
-
-    channelRef.current = channel;
-  }, [profile, supabase, isHost]);
 
   // Create a new collaboration session
   const createSession = useCallback(async (initialState?: Partial<EPBWorkspaceState>): Promise<string | null> => {
@@ -344,9 +348,6 @@ export function useEPBCollaboration(
 
       setSession(epbSession);
       setIsHost(true);
-      
-      // Subscribe to realtime channel
-      subscribeToSession(newSession.id, newSession.session_code);
 
       return newSession.session_code;
     } catch (err) {
@@ -356,7 +357,7 @@ export function useEPBCollaboration(
     } finally {
       setIsLoading(false);
     }
-  }, [profile, shellId, supabase, subscribeToSession]);
+  }, [profile, shellId, supabase]);
 
   // Join an existing session by code (or use active session if no code provided)
   const joinSession = useCallback(async (code?: string): Promise<boolean> => {
@@ -423,9 +424,6 @@ export function useEPBCollaboration(
 
       setSession(epbSession);
       setIsHost(existingSession.host_user_id === profile.id);
-      
-      // Subscribe to realtime channel
-      subscribeToSession(existingSession.id, existingSession.session_code);
 
       // Notify about current state
       if (optionsRef.current.onStateChange && existingSession.workspace_state) {
@@ -440,7 +438,7 @@ export function useEPBCollaboration(
     } finally {
       setIsLoading(false);
     }
-  }, [profile, supabase, subscribeToSession]);
+  }, [profile, supabase]);
 
   // Leave the current session (without ending it)
   const leaveSession = useCallback(async () => {

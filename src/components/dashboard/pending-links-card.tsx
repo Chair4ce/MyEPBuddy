@@ -57,6 +57,7 @@ import { Analytics } from "@/lib/analytics";
 import type { Rank } from "@/types/database";
 import { MPA_ABBREVIATIONS } from "@/lib/constants";
 import { consumePersistedManagedInviteToken } from "@/lib/managed-member-invite-consume";
+import { formatDateDefault } from "@/lib/format";
 
 interface PreviewEntry {
   id: string;
@@ -145,12 +146,16 @@ export function PendingLinksCard() {
   };
 
   useEffect(() => {
-    async function loadPendingLinks() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!profile?.id) return;
 
       setIsLoading(true);
 
-      const consumed = await consumePersistedManagedInviteToken();
+      try {
+        const consumed = await consumePersistedManagedInviteToken();
+        if (controller.signal.aborted) return;
       if (consumed?.success) {
         toast.success(
           consumed.emailMismatch
@@ -173,17 +178,18 @@ export function PendingLinksCard() {
         .select("id, team_member_id, status, data_synced, supervisor_accepted, created_at, snoozed_until")
         .eq("user_id", profile.id)
         .eq("status", "pending")
-        .or("snoozed_until.is.null,snoozed_until.lt." + new Date().toISOString()) as { data: PendingLinkRow[] | null; error: Error | null };
+        .or("snoozed_until.is.null,snoozed_until.lt." + new Date().toISOString())
+        .abortSignal(controller.signal) as { data: PendingLinkRow[] | null; error: Error | null };
 
       if (error) {
         console.error("Error loading pending links:", error);
-        setIsLoading(false);
         return;
       }
 
+      if (controller.signal.aborted) return;
+
       if (!data || data.length === 0) {
         setPendingLinks([]);
-        setIsLoading(false);
         return;
       }
 
@@ -193,7 +199,8 @@ export function PendingLinksCard() {
       const { data: teamMembersData } = await supabase
         .from("team_members")
         .select("id, full_name, email, rank, afsc, supervisor_id")
-        .in("id", teamMemberIds) as { data: TeamMemberRow[] | null; error: Error | null };
+        .in("id", teamMemberIds)
+        .abortSignal(controller.signal) as { data: TeamMemberRow[] | null; error: Error | null };
 
       const teamMembers = teamMembersData || [];
 
@@ -202,7 +209,8 @@ export function PendingLinksCard() {
       const { data: supervisorsData } = await supabase
         .from("profiles")
         .select("id, full_name, rank")
-        .in("id", supervisorIds) as { data: SupervisorRow[] | null; error: Error | null };
+        .in("id", supervisorIds)
+        .abortSignal(controller.signal) as { data: SupervisorRow[] | null; error: Error | null };
 
       const supervisors = supervisorsData || [];
 
@@ -210,12 +218,14 @@ export function PendingLinksCard() {
       const { data: entryCounts } = await supabase
         .from("accomplishments")
         .select("team_member_id")
-        .in("team_member_id", teamMemberIds) as { data: { team_member_id: string | null }[] | null; error: Error | null };
+        .in("team_member_id", teamMemberIds)
+        .abortSignal(controller.signal) as { data: { team_member_id: string | null }[] | null; error: Error | null };
 
       const { data: statementCounts } = await supabase
         .from("refined_statements")
         .select("team_member_id")
-        .in("team_member_id", teamMemberIds) as { data: { team_member_id: string | null }[] | null; error: Error | null };
+        .in("team_member_id", teamMemberIds)
+        .abortSignal(controller.signal) as { data: { team_member_id: string | null }[] | null; error: Error | null };
 
       // Build lookup maps
       const teamMemberMap = new Map(teamMembers.map((tm) => [tm.id, tm]));
@@ -265,11 +275,17 @@ export function PendingLinksCard() {
         };
       });
 
-      setPendingLinks(transformed);
-      setIsLoading(false);
-    }
+      if (controller.signal.aborted) return;
 
-    loadPendingLinks();
+      setPendingLinks(transformed);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
   }, [profile?.id, supabase]);
 
   // Type for RPC calls (until types are regenerated)
@@ -283,23 +299,24 @@ export function PendingLinksCard() {
     setPreviewEntries([]);
     setPreviewStatements([]);
 
-    // Fetch entries
-    const { data: entries } = await supabase
-      .from("accomplishments")
-      .select("id, date, action_verb, details, impact, mpa, cycle_year")
-      .eq("team_member_id", link.team_member_id)
-      .order("date", { ascending: false }) as { data: PreviewEntry[] | null };
+    try {
+      const { data: entries } = await supabase
+        .from("accomplishments")
+        .select("id, date, action_verb, details, impact, mpa, cycle_year")
+        .eq("team_member_id", link.team_member_id)
+        .order("date", { ascending: false }) as { data: PreviewEntry[] | null };
 
-    // Fetch statements
-    const { data: statements } = await supabase
-      .from("refined_statements")
-      .select("id, statement, mpa, cycle_year, created_at")
-      .eq("team_member_id", link.team_member_id)
-      .order("created_at", { ascending: false }) as { data: PreviewStatement[] | null };
+      const { data: statements } = await supabase
+        .from("refined_statements")
+        .select("id, statement, mpa, cycle_year, created_at")
+        .eq("team_member_id", link.team_member_id)
+        .order("created_at", { ascending: false }) as { data: PreviewStatement[] | null };
 
-    setPreviewEntries(entries || []);
-    setPreviewStatements(statements || []);
-    setIsLoadingPreview(false);
+      setPreviewEntries(entries || []);
+      setPreviewStatements(statements || []);
+    } finally {
+      setIsLoadingPreview(false);
+    }
   };
 
   const handleSyncFromPreview = async () => {
@@ -315,6 +332,7 @@ export function PendingLinksCard() {
   const handleSyncData = async (link: PendingLink) => {
     setIsProcessing(true);
 
+    try {
     const { data, error } = await (supabase as unknown as RpcClient).rpc("sync_managed_account_data", {
       link_id: link.id,
     });
@@ -325,7 +343,6 @@ export function PendingLinksCard() {
     } else {
       const result = data as { entries_synced: number; statements_synced: number };
       
-      // If supervisor already accepted, auto-complete
       if (link.supervisor_accepted) {
         await (supabase as unknown as RpcClient).rpc("complete_pending_link", { link_id: link.id });
         Analytics.managedAccountDataSynced();
@@ -339,21 +356,22 @@ export function PendingLinksCard() {
         toast.success("Data synced!", {
           description: `Synced ${result.entries_synced} entries and ${result.statements_synced} statements.`,
         });
-        // Update local state to show next step
         setPendingLinks((prev) =>
           prev.map((l) => (l.id === link.id ? { ...l, data_synced: true } : l))
         );
       }
     }
-
-    setIsProcessing(false);
-    setSelectedLink(null);
-    setActionType(null);
+    } finally {
+      setIsProcessing(false);
+      setSelectedLink(null);
+      setActionType(null);
+    }
   };
 
   const handleAcceptSupervisor = async (link: PendingLink) => {
     setIsProcessing(true);
 
+    try {
     const { data, error } = await (supabase as unknown as RpcClient).rpc("accept_supervisor_from_link", {
       link_id: link.id,
     });
@@ -365,7 +383,6 @@ export function PendingLinksCard() {
       const result = data as { supervisor_name: string };
       const hasData = link.entry_count > 0 || link.statement_count > 0;
       
-      // If no data to sync, auto-complete the link
       if (!hasData) {
         await (supabase as unknown as RpcClient).rpc("complete_pending_link", { link_id: link.id });
         Analytics.managedAccountSupervisorAccepted();
@@ -379,21 +396,22 @@ export function PendingLinksCard() {
         toast.success("Supervisor accepted!", {
           description: `${result.supervisor_name} is now your supervisor. You can now sync their entries.`,
         });
-        // Update local state to show next step
         setPendingLinks((prev) =>
           prev.map((l) => (l.id === link.id ? { ...l, supervisor_accepted: true } : l))
         );
       }
     }
-
-    setIsProcessing(false);
-    setSelectedLink(null);
-    setActionType(null);
+    } finally {
+      setIsProcessing(false);
+      setSelectedLink(null);
+      setActionType(null);
+    }
   };
 
   const handleDismiss = async (link: PendingLink) => {
     setIsProcessing(true);
 
+    try {
     const { error } = await (supabase as unknown as RpcClient).rpc("dismiss_pending_link", {
       link_id: link.id,
     });
@@ -406,30 +424,33 @@ export function PendingLinksCard() {
       toast.info("Link dismissed");
       setPendingLinks((prev) => prev.filter((l) => l.id !== link.id));
     }
-
-    setIsProcessing(false);
-    setSelectedLink(null);
-    setActionType(null);
+    } finally {
+      setIsProcessing(false);
+      setSelectedLink(null);
+      setActionType(null);
+    }
   };
 
   const handleSnooze = async (link: PendingLink) => {
     setIsProcessing(true);
 
-    const { error } = await (supabase as unknown as RpcClient).rpc("snooze_pending_link", {
-      link_id: link.id,
-    });
+    try {
+      const { error } = await (supabase as unknown as RpcClient).rpc("snooze_pending_link", {
+        link_id: link.id,
+      });
 
-    if (error) {
-      console.error("Error snoozing link:", error);
-      toast.error("Failed to snooze", { description: error.message });
-    } else {
-      toast.info("Request snoozed for 7 days");
-      setPendingLinks((prev) => prev.filter((l) => l.id !== link.id));
+      if (error) {
+        console.error("Error snoozing link:", error);
+        toast.error("Failed to snooze", { description: error.message });
+      } else {
+        toast.info("Request snoozed for 7 days");
+        setPendingLinks((prev) => prev.filter((l) => l.id !== link.id));
+      }
+    } finally {
+      setIsProcessing(false);
+      setSelectedLink(null);
+      setActionType(null);
     }
-
-    setIsProcessing(false);
-    setSelectedLink(null);
-    setActionType(null);
   };
 
   const handleComplete = async (link: PendingLink) => {
@@ -488,7 +509,7 @@ export function PendingLinksCard() {
                       {link.team_member.supervisor?.full_name || "Unknown Supervisor"}
                     </span>
                     <p className="text-sm text-muted-foreground">
-                      Created {new Date(link.created_at).toLocaleDateString()}
+                      Created {formatDateDefault(link.created_at)}
                     </p>
                   </div>
                 </div>
@@ -804,7 +825,7 @@ export function PendingLinksCard() {
                             </Badge>
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Calendar className="size-3" />
-                              {new Date(entry.date).toLocaleDateString()}
+                              {formatDateDefault(entry.date)}
                             </div>
                             <Badge variant="secondary" className="text-xs">
                               FY{entry.cycle_year}
@@ -841,7 +862,7 @@ export function PendingLinksCard() {
                               FY{stmt.cycle_year}
                             </Badge>
                             <span className="text-xs text-muted-foreground">
-                              Created {new Date(stmt.created_at).toLocaleDateString()}
+                              Created {formatDateDefault(stmt.created_at)}
                             </span>
                           </div>
                           <p className="text-sm font-mono">{stmt.statement}</p>

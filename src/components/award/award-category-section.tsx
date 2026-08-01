@@ -52,6 +52,7 @@ import type { SectionSlotState } from "@/stores/award-shell-store";
 import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store";
 import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
 import { compressText, normalizeSpaces, getVisualLineSegments, AF1206_LINE_WIDTH_PX, toDisplayText, fromDisplayText } from "@/lib/bullet-fitting";
+import { formatShortDateWithYear } from "@/lib/format";
 
 // ============================================================================
 // Types
@@ -158,7 +159,7 @@ function SourceToggle({
 }) {
   return (
     <div className="flex items-center gap-1 p-1 rounded-md bg-muted/50 border">
-      <button
+      <button type="button"
         onClick={() => onSourceChange("actions")}
         className={cn(
           "flex items-center gap-1.5 py-1 px-2 rounded text-xs transition-all",
@@ -175,7 +176,7 @@ function SourceToggle({
           </Badge>
         )}
       </button>
-      <button
+      <button type="button"
         onClick={() => onSourceChange("custom")}
         className={cn(
           "flex items-center gap-1.5 py-1 px-2 rounded text-xs transition-all",
@@ -606,8 +607,8 @@ function StatementSlotCard({
                   const lineExists = segment.text.trim().length > 0;
                   const isCompact = lineExists && isLineCompressed(i);
                   return (
-                    <button
-                      key={i}
+                    <button type="button"
+                      key={`line-${segment.startIndex}-${segment.endIndex}`}
                       onClick={() => handleToggleLine(i)}
                       disabled={!lineExists}
                       className={cn(
@@ -635,7 +636,7 @@ function StatementSlotCard({
           <span className="text-xs text-muted-foreground">{charCount} chars</span>
           <div className="flex items-center gap-1">
             {hasContent && (
-              <button
+              <button type="button"
                 onClick={handleCopy}
                 className="h-7 px-2 rounded-md text-xs hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center transition-colors"
               >
@@ -657,9 +658,10 @@ function StatementSlotCard({
                   Selected: <span className="font-medium text-foreground">&ldquo;{selectedText.slice(0, 30)}{selectedText.length > 30 ? "..." : ""}&rdquo;</span>
                   <span className="ml-1">({selectedText.length} chars)</span>
                 </p>
-                <button
+                <button type="button"
                   onClick={closeSelectionPopup}
                   className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Close selection popup"
                 >
                   <X className="size-4" />
                 </button>
@@ -667,7 +669,7 @@ function StatementSlotCard({
               
               {/* Revision mode buttons */}
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={() => handleReviseSelection("expand")}
                   disabled={isRevising}
                   className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
@@ -675,7 +677,7 @@ function StatementSlotCard({
                   {isRevising ? <Loader2 className="size-3 animate-spin" /> : <Maximize2 className="size-3" />}
                   Expand
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleReviseSelection("compress")}
                   disabled={isRevising}
                   className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
@@ -683,7 +685,7 @@ function StatementSlotCard({
                   {isRevising ? <Loader2 className="size-3 animate-spin" /> : <Minimize2 className="size-3" />}
                   Compress
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleReviseSelection("general")}
                   disabled={isRevising}
                   className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
@@ -697,9 +699,9 @@ function StatementSlotCard({
               {revisionResults.length > 0 && (
                 <div className="space-y-2 pt-2 border-t">
                   <p className="text-xs text-muted-foreground font-medium">Alternatives:</p>
-                  {revisionResults.map((revision, index) => (
-                    <button
-                      key={index}
+                  {revisionResults.map((revision) => (
+                    <button type="button"
+                      key={`alt-${revision.slice(0, 48)}-${revision.length}`}
                       onClick={() => applyRevision(revision)}
                       className="w-full text-left p-2 rounded-md text-sm border hover:bg-accent hover:border-primary/50 transition-colors"
                     >
@@ -719,7 +721,7 @@ function StatementSlotCard({
       {/* AI Options Bar - below workspace */}
       <div className="flex items-center gap-2 pt-3 mt-3 border-t">
         {/* AI Assist button - when no content, or show "Revise" when has content */}
-        <button
+        <button type="button"
           onClick={() => {
             setShowAiPanel(!showAiPanel);
             setGeneratedSuggestion(null);
@@ -777,6 +779,7 @@ function StatementSlotCard({
                       value={revisionIntensity}
                       onChange={(e) => setRevisionIntensity(parseInt(e.target.value))}
                       className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                      aria-label="Rewrite intensity"
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                       <span>Keep wording</span>
@@ -790,7 +793,7 @@ function StatementSlotCard({
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-medium text-muted-foreground">Target Length:</Label>
                     <div className="flex items-center gap-1 p-0.5 rounded bg-muted/50 border">
-                      <button
+                      <button type="button"
                         onClick={() => onUpdate({ linesPerStatement: 2 })}
                         className={cn(
                           "px-2.5 py-1 rounded text-xs font-medium transition-all duration-200",
@@ -801,7 +804,7 @@ function StatementSlotCard({
                       >
                         2-line (~240 chars)
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onUpdate({ linesPerStatement: 3 })}
                         className={cn(
                           "px-2.5 py-1 rounded text-xs font-medium transition-all duration-200",
@@ -824,7 +827,7 @@ function StatementSlotCard({
             {/* Saved Details Panel - shows persisted Q&A answers */}
             {(slotState.clarifyingAnswers?.length > 0) && (
               <div className="space-y-2">
-                <button
+                <button type="button"
                   onClick={() => setShowSavedDetails(!showSavedDetails)}
                   className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
                 >
@@ -838,7 +841,7 @@ function StatementSlotCard({
                       These details are used in every generation to improve your statement. Click to edit.
                     </p>
                     {slotState.clarifyingAnswers.map((qa: AwardClarifyingAnswer, index: number) => (
-                      <div key={index} className="space-y-1">
+                      <div key={`qa-${qa.question}`} className="space-y-1">
                         <p className="text-xs font-medium text-foreground">{qa.question}</p>
                         {editingAnswerIndex === index ? (
                           <div className="flex items-end gap-2">
@@ -875,7 +878,7 @@ function StatementSlotCard({
                             </Button>
                           </div>
                         ) : (
-                          <button
+                          <button type="button"
                             onClick={() => setEditingAnswerIndex(index)}
                             className="w-full text-left text-xs text-muted-foreground p-2 rounded border border-transparent hover:border-border hover:bg-background transition-colors flex items-start gap-2"
                           >
@@ -933,7 +936,7 @@ function StatementSlotCard({
                     {/* Award period filter toggle */}
                     {hasPeriodDates && (
                       <div className="pb-2 mb-2 border-b">
-                        <button
+                        <button type="button"
                           onClick={() => setFilterByPeriod(!filterByPeriod)}
                           className={cn(
                             "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors",
@@ -944,7 +947,7 @@ function StatementSlotCard({
                         >
                           <CalendarDays className="size-3.5 shrink-0" />
                           <span className="flex-1 text-left">
-                            Award period: {new Date(periodStartDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} – {new Date(periodEndDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            Award period: {formatShortDateWithYear(periodStartDate + "T00:00:00")} – {formatShortDateWithYear(periodEndDate + "T00:00:00")}
                           </span>
                           <span className={cn(
                             "text-[10px] px-1.5 py-0.5 rounded font-medium",
@@ -964,7 +967,7 @@ function StatementSlotCard({
                               : "No actions in this award period"}
                           </p>
                           {filterByPeriod && accomplishments.length > 0 && (
-                            <button
+                            <button type="button"
                               onClick={() => setFilterByPeriod(false)}
                               className="text-xs text-primary hover:underline mt-1"
                             >
@@ -976,7 +979,7 @@ function StatementSlotCard({
                         filteredAccomplishments.map((a) => {
                           const isSelected = selectedActionIds.includes(a.id);
                           return (
-                            <button
+                            <button type="button"
                               key={a.id}
                               onClick={() => {
                                 const newIds = isSelected
@@ -992,7 +995,7 @@ function StatementSlotCard({
                               <div className="flex items-start justify-between gap-2">
                                 <p className="text-sm font-medium">{a.action_verb}</p>
                                 <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-                                  {new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  {formatShortDateWithYear(a.date)}
                                 </span>
                               </div>
                               <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{a.details}</p>
@@ -1021,7 +1024,7 @@ function StatementSlotCard({
                         key={a.id}
                         className="group relative p-2.5 rounded-md border bg-background text-left animate-in fade-in-0 duration-200"
                       >
-                        <button
+                        <button type="button"
                           onClick={() => {
                             onUpdate({ selectedActionIds: selectedActionIds.filter(id => id !== a.id) });
                           }}
@@ -1035,7 +1038,7 @@ function StatementSlotCard({
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium">{a.action_verb}</span>
                               <span className="text-[10px] text-muted-foreground">
-                                {new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                {formatShortDateWithYear(a.date)}
                               </span>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{a.details}</p>
@@ -1106,7 +1109,7 @@ function StatementSlotCard({
               <Label className="text-xs text-muted-foreground">Versions:</Label>
               <div className="inline-flex rounded-md border divide-x">
                 {[1, 2, 3].map((num) => (
-                  <button
+                  <button type="button"
                     key={num}
                     onClick={() => setVersionCount(num)}
                     className={cn(
@@ -1167,7 +1170,7 @@ function StatementSlotCard({
                 </div>
                 {generatedVersions.map((version, index) => (
                   <div
-                    key={index}
+                    key={`ver-${version.slice(0, 48)}-${version.length}`}
                     className="p-3 rounded-lg border bg-background space-y-2 animate-in fade-in-0 duration-200"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
@@ -1176,7 +1179,7 @@ function StatementSlotCard({
                         Version {index + 1}
                       </span>
                       <div className="flex items-center gap-1">
-                        <button
+                        <button type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(version);
                             toast.success("Copied to clipboard");
@@ -1186,7 +1189,7 @@ function StatementSlotCard({
                           <Copy className="size-3 mr-1" />
                           Copy
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleUseVersion(version)}
                           className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center"
                         >

@@ -239,15 +239,15 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
 
         setInitialSystemPrompt(s.award_system_prompt || DEFAULT_AWARD_SYSTEM_PROMPT);
         setInitialStyleGuidelines(s.award_style_guidelines || DEFAULT_AWARD_STYLE_GUIDELINES);
-        setInitialRankVerbs(JSON.parse(JSON.stringify(s.award_rank_verb_progression || DEFAULT_AWARD_RANK_VERBS)));
-        setInitialAbbreviations(JSON.parse(JSON.stringify(s.award_abbreviations || [])));
-        setInitialAcronyms(JSON.parse(JSON.stringify(loadedAcronyms)));
+        setInitialRankVerbs(structuredClone(s.award_rank_verb_progression || DEFAULT_AWARD_RANK_VERBS));
+        setInitialAbbreviations(structuredClone(s.award_abbreviations || []));
+        setInitialAcronyms(structuredClone(loadedAcronyms));
       } else {
         setInitialSystemPrompt(DEFAULT_AWARD_SYSTEM_PROMPT);
         setInitialStyleGuidelines(DEFAULT_AWARD_STYLE_GUIDELINES);
-        setInitialRankVerbs(JSON.parse(JSON.stringify(DEFAULT_AWARD_RANK_VERBS)));
+        setInitialRankVerbs(structuredClone(DEFAULT_AWARD_RANK_VERBS));
         setInitialAbbreviations([]);
-        setInitialAcronyms(JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)));
+        setInitialAcronyms(structuredClone(DEFAULT_ACRONYMS));
       }
     } catch (error) {
       console.error("Failed to load award prompt settings:", error);
@@ -291,9 +291,9 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
 
       setInitialSystemPrompt(systemPrompt);
       setInitialStyleGuidelines(styleGuidelines);
-      setInitialRankVerbs(JSON.parse(JSON.stringify(rankVerbs)));
-      setInitialAbbreviations(JSON.parse(JSON.stringify(abbreviations)));
-      setInitialAcronyms(JSON.parse(JSON.stringify(acronyms)));
+      setInitialRankVerbs(structuredClone(rankVerbs));
+      setInitialAbbreviations(structuredClone(abbreviations));
+      setInitialAcronyms(structuredClone(acronyms));
 
       toast.success("Award prompt settings saved");
     } catch (error) {
@@ -409,13 +409,13 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
               {showResetConfirm ? (
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-muted-foreground hidden sm:inline">Reset prompt?</span>
-                  <button
+                  <button type="button"
                     onClick={handleResetToDefaults}
                     className="inline-flex items-center justify-center rounded-md h-7 px-2 text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
                   >
                     Confirm
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => setShowResetConfirm(false)}
                     className="inline-flex items-center justify-center rounded-md h-7 px-2 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
@@ -423,7 +423,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                   </button>
                 </div>
               ) : (
-                <button
+                <button type="button"
                   onClick={() => setShowResetConfirm(true)}
                   className="inline-flex items-center justify-center rounded-md h-7 px-2 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                   aria-label="Reset prompt to defaults"
@@ -433,7 +433,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                 </button>
               )}
               {hasChanges && (
-                <button
+                <button type="button"
                   onClick={handleSave}
                   disabled={isSaving}
                   className="inline-flex items-center justify-center rounded-md h-7 px-2.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
@@ -600,13 +600,13 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-semibold">{rank}</span>
                                   <div className="flex gap-1">
-                                    <button
+                                    <button type="button"
                                       onClick={() => setEditingRank(null)}
                                       className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors"
                                     >
                                       Cancel
                                     </button>
-                                    <button
+                                    <button type="button"
                                       onClick={() => updateRankVerbEntry(rank)}
                                       className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                                     >
@@ -657,7 +657,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                                     </p>
                                   </div>
                                 </div>
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     setEditingRank(rank);
                                     setEditingVerbs({
@@ -688,7 +688,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                       <Label className="text-xs sm:text-sm font-medium">Award Abbreviations</Label>
                       <p className="text-[10px] text-muted-foreground">{abbreviations.length} defined</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => setShowAddAbbrev(!showAddAbbrev)}
                       className="inline-flex items-center justify-center rounded-md h-7 px-2.5 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
@@ -719,7 +719,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                           onKeyDown={(e) => e.key === "Enter" && handleAddAbbrev()}
                         />
                       </div>
-                      <button
+                      <button type="button"
                         onClick={handleAddAbbrev}
                         disabled={!newAbbrev.word || !newAbbrev.abbreviation}
                         className="h-7 px-3 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0"
@@ -749,7 +749,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                       ) : (
                         filteredAbbreviations.map((abbrev, idx) => (
                           <div
-                            key={`${abbrev.word}-${idx}`}
+                            key={`${abbrev.word}-${abbrev.abbreviation}`}
                             className="flex items-center justify-between gap-1.5 p-1.5 bg-muted/30 rounded group"
                           >
                             <div className="flex items-center gap-1 min-w-0 flex-1 text-xs">
@@ -757,7 +757,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                               <ArrowRight className="size-2.5 text-muted-foreground shrink-0" />
                               <span className="font-mono text-primary truncate">{abbrev.abbreviation}</span>
                             </div>
-                            <button
+                            <button type="button"
                               onClick={() => handleRemoveAbbrev(abbrev.word)}
                               className="size-6 rounded inline-flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all shrink-0"
                               aria-label={`Remove ${abbrev.word}`}
@@ -780,7 +780,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                       <Label className="text-xs sm:text-sm font-medium">Acronyms</Label>
                       <p className="text-[10px] text-muted-foreground">{acronyms.length} approved (shared across EPB &amp; Awards)</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => setShowAddAcronym(!showAddAcronym)}
                       className="inline-flex items-center justify-center rounded-md h-7 px-2.5 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
@@ -811,7 +811,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                           onKeyDown={(e) => e.key === "Enter" && handleAddAcronym()}
                         />
                       </div>
-                      <button
+                      <button type="button"
                         onClick={handleAddAcronym}
                         disabled={!newAcronym.acronym || !newAcronym.definition}
                         className="h-7 px-3 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0"
@@ -848,7 +848,7 @@ export function AwardPromptSettingsModal({ open, onOpenChange, nomineeRank: nomi
                               <span className="font-mono font-semibold text-primary text-xs">{acr.acronym}</span>
                               <span className="text-[10px] text-muted-foreground ml-1.5 break-words">{acr.definition}</span>
                             </div>
-                            <button
+                            <button type="button"
                               onClick={() => handleRemoveAcronym(acr.acronym)}
                               className="size-6 rounded inline-flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all shrink-0"
                               aria-label={`Remove ${acr.acronym}`}

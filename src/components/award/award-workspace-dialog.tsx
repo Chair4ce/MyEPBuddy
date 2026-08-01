@@ -305,18 +305,22 @@ export function AwardWorkspaceDialog({
 
   // Load shell data when dialog opens
   useEffect(() => {
-    async function loadShellData() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!open || !shell) return;
 
       setIsLoadingShell(true);
 
       try {
-        // Fetch shell with sections
         const { data: shellData } = await supabase
           .from("award_shells")
           .select("*, award_shell_sections(*)")
           .eq("id", shell.id)
+          .abortSignal(controller.signal)
           .single();
+
+        if (controller.signal.aborted) return;
 
         if (shellData) {
           const typedShellData = shellData as AwardShell & { award_shell_sections?: AwardShellSection[] };
@@ -356,9 +360,11 @@ export function AwardWorkspaceDialog({
       } finally {
         setIsLoadingShell(false);
       }
-    }
+    })();
 
-    loadShellData();
+    return () => {
+      controller.abort();
+    };
   }, [open, shell, supabase, setCurrentShell, setSections, setIsLoadingShell, setAwardLevel, setAwardCategory, setSentencesPerStatement]);
 
   // Determine nominee info from shell
@@ -407,7 +413,9 @@ export function AwardWorkspaceDialog({
 
   // Load accomplishments for the nominee
   useEffect(() => {
-    async function loadAccomplishments() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!nomineeInfo) return;
 
       if (nomineeInfo.isManagedMember) {
@@ -415,7 +423,9 @@ export function AwardWorkspaceDialog({
           .from("accomplishments")
           .select("*")
           .eq("team_member_id", nomineeInfo.id)
-          .order("date", { ascending: false });
+          .order("date", { ascending: false })
+          .abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
         setAccomplishments((data as Accomplishment[]) || []);
       } else {
         const { data } = await supabase
@@ -423,11 +433,16 @@ export function AwardWorkspaceDialog({
           .select("*")
           .eq("user_id", nomineeInfo.id)
           .is("team_member_id", null)
-          .order("date", { ascending: false });
+          .order("date", { ascending: false })
+          .abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
         setAccomplishments((data as Accomplishment[]) || []);
       }
-    }
-    loadAccomplishments();
+    })();
+
+    return () => {
+      controller.abort();
+    };
   }, [nomineeInfo, supabase]);
 
   // Reset store when dialog closes

@@ -11,6 +11,7 @@ import {
   useOnboardingStore,
   TOUR_DEFINITIONS,
 } from "@/stores/onboarding-store";
+import { useTourStepPositioning } from "@/hooks/use-tour-step-positioning";
 import {
   X,
   ChevronRight,
@@ -135,145 +136,13 @@ export function TourOverlay() {
     setTooltipPosition({ top, left });
   }, [currentStep]);
 
-  // Update positions when step changes or window resizes
-  useEffect(() => {
-    if (!isVisible || !currentStep) return;
-
-    updatePositions();
-
-    const handleResize = () => updatePositions();
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("scroll", handleResize, true);
-
-    // Watch for DOM changes that might affect element positions
-    resizeObserverRef.current = new ResizeObserver(updatePositions);
-    
-    let targetElement: Element | null = null;
-    let autoAdvanceTimeout: ReturnType<typeof setTimeout> | null = null;
-    let mutationObserver: MutationObserver | null = null;
-    
-    if (currentStep.target) {
-      targetElement = document.querySelector(currentStep.target);
-      if (targetElement instanceof HTMLElement) {
-        resizeObserverRef.current.observe(targetElement);
-        // Elevate the target element above the blur overlay
-        targetElement.style.position = "relative";
-        targetElement.style.zIndex = "10000";
-        
-        // Auto-advance when user clicks on action: "click" steps
-        if (currentStep.action === "click") {
-          const handleActionClick = () => {
-            // Clear any existing timeout
-            if (autoAdvanceTimeout) clearTimeout(autoAdvanceTimeout);
-            // Auto-advance after a short delay to let the dialog open
-            autoAdvanceTimeout = setTimeout(() => {
-              nextStep();
-            }, 400);
-          };
-          targetElement.addEventListener("click", handleActionClick, true);
-          
-          // Store for cleanup
-          (targetElement as HTMLElement & { _actionClickHandler?: () => void })._actionClickHandler = handleActionClick;
-        }
-        
-        // Only set up auto-advance if the step has autoAdvance defined
-        if (currentStep.autoAdvance) {
-          const triggerAutoAdvance = () => {
-            // Clear any existing timeout
-            if (autoAdvanceTimeout) clearTimeout(autoAdvanceTimeout);
-            // Auto-advance after a short delay
-            autoAdvanceTimeout = setTimeout(() => {
-              nextStep();
-            }, 600);
-          };
-          
-          // Handle different auto-advance types
-          if (currentStep.autoAdvance === "select" || currentStep.autoAdvance === "any") {
-            // For Radix Select components, track when selection is actually made
-            // by watching for the trigger's data-state to change to "closed" after being "open"
-            let wasOpen = false;
-            const initialText = targetElement.textContent?.trim() || "";
-            
-            mutationObserver = new MutationObserver(() => {
-              if (!targetElement) return;
-              const trigger = targetElement.querySelector("[data-state]") || targetElement;
-              const currentState = trigger.getAttribute("data-state");
-              const currentText = targetElement.textContent?.trim() || "";
-              
-              // Track if dropdown was opened
-              if (currentState === "open") {
-                wasOpen = true;
-              }
-              
-              // Only advance when dropdown closes AND the value changed
-              if (wasOpen && currentState === "closed" && currentText !== initialText) {
-                wasOpen = false;
-                triggerAutoAdvance();
-              }
-            });
-            mutationObserver.observe(targetElement, {
-              childList: true,
-              subtree: true,
-              characterData: true,
-              attributes: true,
-              attributeFilter: ["data-state"],
-            });
-          }
-          
-          if (currentStep.autoAdvance === "input" || currentStep.autoAdvance === "any") {
-            // For input fields, listen for input/change events with capture to catch from child elements
-            const handleInput = () => triggerAutoAdvance();
-            targetElement.addEventListener("input", handleInput, true);
-            targetElement.addEventListener("change", handleInput, true);
-            
-            // Store for cleanup
-            (targetElement as HTMLElement & { _inputHandler?: () => void })._inputHandler = handleInput;
-          }
-          
-          if (currentStep.autoAdvance === "click") {
-            // For click-to-advance, listen for clicks
-            const handleClick = () => triggerAutoAdvance();
-            targetElement.addEventListener("click", handleClick);
-            
-            // Store for cleanup  
-            (targetElement as HTMLElement & { _clickAdvanceHandler?: () => void })._clickAdvanceHandler = handleClick;
-          }
-        }
-        
-        // Store cleanup function
-        (targetElement as HTMLElement & { _tourCleanup?: () => void })._tourCleanup = () => {
-          if (autoAdvanceTimeout) clearTimeout(autoAdvanceTimeout);
-          if (mutationObserver) mutationObserver.disconnect();
-          
-          const el = targetElement as HTMLElement & { 
-            _inputHandler?: () => void;
-            _clickAdvanceHandler?: () => void;
-            _actionClickHandler?: () => void;
-          };
-          if (el._actionClickHandler) targetElement?.removeEventListener("click", el._actionClickHandler, true);
-          if (el._inputHandler) {
-            targetElement?.removeEventListener("input", el._inputHandler, true);
-            targetElement?.removeEventListener("change", el._inputHandler, true);
-          }
-          if (el._clickAdvanceHandler) targetElement?.removeEventListener("click", el._clickAdvanceHandler);
-        };
-      }
-    }
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("scroll", handleResize, true);
-      resizeObserverRef.current?.disconnect();
-      // Reset the target element's z-index when leaving this step
-      if (targetElement instanceof HTMLElement) {
-        targetElement.style.position = "";
-        targetElement.style.zIndex = "";
-        // Call cleanup for event listeners
-        const cleanup = (targetElement as HTMLElement & { _tourCleanup?: () => void })._tourCleanup;
-        if (cleanup) cleanup();
-      }
-    };
-  }, [isVisible, currentStep, updatePositions, nextStep]);
+  useTourStepPositioning({
+    isVisible,
+    currentStep,
+    updatePositions,
+    nextStep,
+    resizeObserverRef,
+  });
 
   // Handle step actions
   const handleNext = useCallback(async () => {
@@ -318,10 +187,9 @@ export function TourOverlay() {
   const isTooltipCentered = currentStep.placement === "center" || !currentStep.target;
 
   const overlayContent = (
-    <div
-      className="fixed inset-0 z-[9999] animate-in fade-in duration-300 pointer-events-none"
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      open
+      className="fixed inset-0 z-[9999] m-0 max-w-none max-h-none w-full h-full border-0 bg-transparent p-0 animate-in fade-in duration-300 pointer-events-none"
       aria-label="Tour guide"
     >
       {/* Subtle blurred backdrop - only for centered/no-target steps */}
@@ -505,17 +373,18 @@ export function TourOverlay() {
 
       {/* Clickable area to close on overlay click */}
       {!hasTarget && (
-        <div
-          className="fixed inset-0 z-[9999]"
+        <button
+          type="button"
+          className="fixed inset-0 z-[9999] border-0 p-0 cursor-default bg-transparent"
+          aria-label="Close tour"
           onClick={(e) => {
-            // Only close if clicking on the overlay, not the tooltip
             if (e.target === e.currentTarget) {
               skipTour();
             }
           }}
         />
       )}
-    </div>
+    </dialog>
   );
 
   return createPortal(overlayContent, document.body);

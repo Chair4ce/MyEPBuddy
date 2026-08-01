@@ -63,6 +63,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatShortDate, formatShortDateWithYear } from "@/lib/format";
 
 function EntriesContent() {
   const searchParams = useSearchParams();
@@ -134,66 +135,64 @@ function EntriesContent() {
 
   // Load accomplishments
   useEffect(() => {
-    async function loadAccomplishments() {
+    const controller = new AbortController();
+    void (async () => {
       if (!profile) return;
 
       setIsLoading(true);
 
-      let query = supabase
-        .from("accomplishments")
-        .select("*")
-        .eq("cycle_year", cycleYear)
-        .order("date", { ascending: false });
+      try {
+        let query = supabase
+          .from("accomplishments")
+          .select("*")
+          .eq("cycle_year", cycleYear)
+          .order("date", { ascending: false });
 
-      // Filter by user type
-      if (isManagedMember && managedMemberId) {
-        // Load entries for managed member
-        query = query.eq("team_member_id", managedMemberId);
-      } else {
-        // Load entries for self or real subordinate
-        const targetUserId = selectedUser === "self" ? profile.id : selectedUser;
-        query = query.eq("user_id", targetUserId).is("team_member_id", null);
-      }
+        if (isManagedMember && managedMemberId) {
+          query = query.eq("team_member_id", managedMemberId);
+        } else {
+          const targetUserId = selectedUser === "self" ? profile.id : selectedUser;
+          query = query.eq("user_id", targetUserId).is("team_member_id", null);
+        }
 
-      if (selectedMPA !== "all") {
-        query = query.eq("mpa", selectedMPA);
-      }
+        if (selectedMPA !== "all") {
+          query = query.eq("mpa", selectedMPA);
+        }
 
-      const { data, error } = await query;
+        const { data, error } = await query.abortSignal(controller.signal);
 
-      if (!error && data) {
-        const typedData = data as unknown as Accomplishment[];
-        setAccomplishments(typedData);
-        
-        // Find entries created by someone other than the owner (supervisor-created)
-        const creatorIds = [...new Set(
-          typedData
-            .filter((a) => a.created_by && a.created_by !== a.user_id)
-            .map((a) => a.created_by)
-        )];
-        
-        if (creatorIds.length > 0) {
-          // Fetch creator profiles
-          const { data: creators } = await supabase
-            .from("profiles")
-            .select("id, full_name, rank")
-            .in("id", creatorIds);
-          
-          if (creators) {
-            type CreatorProfile = { id: string; full_name: string | null; rank: string | null };
-            const profileMap: Record<string, { full_name: string | null; rank: string | null }> = {};
-            (creators as CreatorProfile[]).forEach((c) => {
-              profileMap[c.id] = { full_name: c.full_name, rank: c.rank };
-            });
-            setCreatorProfiles(profileMap);
+        if (!error && data) {
+          const typedData = data as unknown as Accomplishment[];
+          setAccomplishments(typedData);
+
+          const creatorIds = [...new Set(
+            typedData
+              .filter((a) => a.created_by && a.created_by !== a.user_id)
+              .map((a) => a.created_by)
+          )];
+
+          if (creatorIds.length > 0) {
+            const { data: creators } = await supabase
+              .from("profiles")
+              .select("id, full_name, rank")
+              .in("id", creatorIds)
+              .abortSignal(controller.signal);
+
+            if (creators) {
+              type CreatorProfile = { id: string; full_name: string | null; rank: string | null };
+              const profileMap: Record<string, { full_name: string | null; rank: string | null }> = {};
+              (creators as CreatorProfile[]).forEach((c) => {
+                profileMap[c.id] = { full_name: c.full_name, rank: c.rank };
+              });
+              setCreatorProfiles(profileMap);
+            }
           }
         }
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
-    }
-
-    loadAccomplishments();
+    })();
+    return () => controller.abort();
   }, [profile, selectedUser, isManagedMember, managedMemberId, selectedMPA, cycleYear, supabase, setAccomplishments, setIsLoading]);
 
   // Group entries by quarter for quarterly view
@@ -515,7 +514,7 @@ function EntriesContent() {
                     <div>
                       <CardTitle className="text-base">{group.label}</CardTitle>
                       <CardDescription className="text-xs">
-                        {new Date(group.dateRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })} - {new Date(group.dateRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {formatShortDate(group.dateRange.start)} - {formatShortDateWithYear(group.dateRange.end)}
                       </CardDescription>
                     </div>
                   </div>
@@ -559,7 +558,7 @@ function EntriesContent() {
                                 {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
                               </Badge>
                               <span className="text-xs text-muted-foreground">
-                                {new Date(entry.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                {formatShortDate(entry.date)}
                               </span>
                               {/* Score badge - compact for quarterly view (Enlisted only) */}
                               {hasScore && isEnlisted(profile?.rank as Rank) && (
@@ -683,11 +682,7 @@ function EntriesContent() {
                         {mgas.find((m) => m.key === entry.mpa)?.label || entry.mpa}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
-                        {new Date(entry.date).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {formatShortDateWithYear(entry.date)}
                       </span>
                       {/* Show creator badge if entry was created by supervisor */}
                       {entry.created_by && entry.created_by !== entry.user_id && creatorProfiles[entry.created_by] && (

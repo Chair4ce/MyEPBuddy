@@ -52,7 +52,7 @@ export function BulletSpacingControl({
             )}>
               {isCompressed ? "Compressed" : "Expanded"}
             </span>
-            <button
+            <button type="button"
               onClick={onNormalize}
               disabled={!onNormalize}
               className={cn(
@@ -68,7 +68,7 @@ export function BulletSpacingControl({
         ) : (
           <>
             {/* Show compress/expand options */}
-            <button
+            <button type="button"
               onClick={onCompress}
               disabled={!onCompress}
               className={cn(
@@ -81,7 +81,7 @@ export function BulletSpacingControl({
             >
               Compress
             </button>
-            <button
+            <button type="button"
               onClick={onExpand}
               disabled={!onExpand}
               className={cn(

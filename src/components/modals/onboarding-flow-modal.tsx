@@ -46,7 +46,7 @@ export function OnboardingFlowModal({
               key="terms"
               className="animate-in fade-in-0 duration-200 motion-reduce:animate-none"
             >
-              <TermsStep userId={profile.id} />
+              <TermsStep />
             </div>
           )}
           {step === "trial-intro" && (

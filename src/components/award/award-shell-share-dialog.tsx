@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import { shareAwardShellWithUser } from "@/app/actions/shell-shares";
 import { cn } from "@/lib/utils";
 import {
   Share2,
@@ -70,13 +71,14 @@ export function AwardShellShareDialog({
 
   // Load existing access
   useEffect(() => {
-    async function loadAccess() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!isOpen || !shellId) return;
-      
+
       setIsLoadingAccess(true);
       try {
-        // Load shell to get owner info
-        const { data: shellData } = await supabase
+        const { data: shellData, error: shellError } = await supabase
           .from("award_shells")
           .select(`
             user_id,
@@ -86,14 +88,9 @@ export function AwardShellShareDialog({
             )
           `)
           .eq("id", shellId)
+          .abortSignal(controller.signal)
           .single();
 
-        const typedShellData = shellData as { user_id: string; created_by: string; owner_profile: Profile } | null;
-        if (typedShellData?.owner_profile) {
-          setShellOwner(typedShellData.owner_profile);
-        }
-
-        // Load explicit shares
         const { data: sharesData, error: sharesError } = await supabase
           .from("award_shell_shares")
           .select(`
@@ -102,12 +99,10 @@ export function AwardShellShareDialog({
               id, full_name, rank, afsc, email
             )
           `)
-          .eq("shell_id", shellId);
+          .eq("shell_id", shellId)
+          .abortSignal(controller.signal);
 
-        if (sharesError) throw sharesError;
-        setExistingShares((sharesData || []) as (AwardShellShare & { shared_with_profile?: Profile })[]);
-
-        // Load supervisors of the nominee who have access
+        let nextSupervisors: Profile[] = [];
         if (nominee && !nominee.isManagedMember) {
           const { data: supervisionData } = await supabase
             .from("supervision_history")
@@ -117,25 +112,36 @@ export function AwardShellShareDialog({
               )
             `)
             .eq("subordinate_id", nominee.id)
-            .is("end_date", null);
+            .is("end_date", null)
+            .abortSignal(controller.signal);
 
           const typedSupervisionData = supervisionData as { supervisor: Profile }[] | null;
           if (typedSupervisionData) {
-            const supervisorProfiles = typedSupervisionData
+            nextSupervisors = typedSupervisionData
               .map((s) => s.supervisor)
               .filter(Boolean);
-            setSupervisors(supervisorProfiles);
           }
         }
-      } catch (error) {
-        console.error("Failed to load access:", error);
+
+        if (controller.signal.aborted) return;
+        if (shellError || sharesError) {
+          console.error("Failed to load access:", shellError ?? sharesError);
+          return;
+        }
+
+        const typedShellData = shellData as { user_id: string; created_by: string; owner_profile: Profile } | null;
+        if (typedShellData?.owner_profile) {
+          setShellOwner(typedShellData.owner_profile);
+        }
+        setExistingShares((sharesData || []) as (AwardShellShare & { shared_with_profile?: Profile })[]);
+        setSupervisors(nextSupervisors);
       } finally {
         setIsLoadingAccess(false);
       }
-    }
+    })();
 
-    loadAccess();
-  }, [shellId, isOpen, nominee, supabase]);
+    return () => controller.abort();
+  }, [shellId, isOpen, nominee?.id, nominee?.isManagedMember, supabase]);
 
   // Build combined access list
   const accessList: AccessUser[] = [];
@@ -224,40 +230,21 @@ export function AwardShellShareDialog({
     }
   };
 
-  // Share with a user
+  // Share with a user (owner_id derived server-side)
   const handleShare = async (userId: string) => {
     if (!currentUserId) return;
-    
+
     setIsSharing(userId);
     try {
-      const { error } = await supabase
-        .from("award_shell_shares")
-        .insert({
-          shell_id: shellId,
-          owner_id: currentUserId,
-          share_type: "user",
-          shared_with_id: userId,
-        } as never);
+      const result = await shareAwardShellWithUser(shellId, userId);
+      if (!result.ok) throw new Error(result.error);
 
-      if (error) throw error;
-      
       Analytics.awardShared();
       toast.success("Award shell shared successfully");
       setSearchQuery("");
       setSearchResults([]);
-      
-      // Reload shares
-      const { data: sharesData } = await supabase
-        .from("award_shell_shares")
-        .select(`
-          *,
-          shared_with_profile:profiles!award_shell_shares_shared_with_id_fkey(
-            id, full_name, rank, afsc, email
-          )
-        `)
-        .eq("shell_id", shellId);
-      
-      setExistingShares((sharesData || []) as (AwardShellShare & { shared_with_profile?: Profile })[]);
+
+      setExistingShares((prev) => [...prev, result.data]);
     } catch (error) {
       console.error("Share failed:", error);
       toast.error("Failed to share award shell");

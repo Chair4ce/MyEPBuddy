@@ -1,0 +1,15 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": [
+      ".next/**",
+      "supabase/migrations/**",
+      "**/node_modules/**",
+      "coverage/**",
+      "dist/**"
+    ],
+    "tags": [
+      "test-noise"
+    ]
+  }
+}

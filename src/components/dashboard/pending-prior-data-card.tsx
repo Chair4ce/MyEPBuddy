@@ -80,7 +80,9 @@ export function PendingPriorDataCard() {
       return;
     }
 
-    async function loadPendingReviews() {
+    const controller = new AbortController();
+
+    void (async () => {
       setIsLoading(true);
       try {
         const { data, error } = await supabase
@@ -94,22 +96,23 @@ export function PendingPriorDataCard() {
             )
           `)
           .eq("subordinate_id", profile!.id)
-          .eq("status", "pending");
+          .eq("status", "pending")
+          .abortSignal(controller.signal);
 
         if (error) {
           console.error("Error loading pending reviews:", error);
           return;
         }
 
+        if (controller.signal.aborted) return;
+
         setPendingReviews((data as unknown as PendingReview[]) || []);
-      } catch (error) {
-        console.error("Error loading pending reviews:", error);
       } finally {
         setIsLoading(false);
       }
-    }
+    })();
 
-    loadPendingReviews();
+    return () => controller.abort();
   }, [profile, supabase]);
 
   const fetchPreviewData = async (review: PendingReview) => {

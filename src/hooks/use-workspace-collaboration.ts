@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import type { WorkspaceSession, WorkspaceState } from "@/types/database";
@@ -55,24 +55,22 @@ export function useWorkspaceCollaboration(
   
   const channelRef = useRef<RealtimeChannel | null>(null);
   const optionsRef = useRef(options);
-  optionsRef.current = options;
 
-  // Clean up channel on unmount
+  useLayoutEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
+  // Subscribe to realtime channel while a session is active
   useEffect(() => {
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
-    };
-  }, [supabase]);
+    if (!session?.session_code) {
+      return () => {};
+    }
 
-  // Subscribe to realtime channel for a session
-  const subscribeToSession = useCallback((sessionId: string, sessionCode: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
     }
 
-    const channel = supabase.channel(`workspace:${sessionCode}`, {
+    const channel = supabase.channel(`workspace:${session.session_code}`, {
       config: {
         presence: {
           key: profile?.id || "anonymous",
@@ -80,12 +78,11 @@ export function useWorkspaceCollaboration(
       },
     });
 
-    // Handle presence (who's online)
     channel
       .on("presence", { event: "sync" }, () => {
         const presenceState = channel.presenceState();
         const online: CollaboratorPresence[] = [];
-        
+
         Object.entries(presenceState).forEach(([userId, presences]) => {
           const presence = presences[0] as unknown as { fullName: string; email: string; isHost: boolean } | undefined;
           if (presence) {
@@ -98,7 +95,7 @@ export function useWorkspaceCollaboration(
             });
           }
         });
-        
+
         setCollaborators(online);
       })
       .on("presence", { event: "join" }, ({ key, newPresences }) => {
@@ -119,14 +116,12 @@ export function useWorkspaceCollaboration(
         }
       });
 
-    // Handle broadcast messages for state sync
     channel.on("broadcast", { event: "state_update" }, ({ payload }) => {
       if (optionsRef.current.onStateChange && payload.state) {
         optionsRef.current.onStateChange(payload.state as WorkspaceState);
       }
     });
 
-    // Handle session end broadcast
     channel.on("broadcast", { event: "session_ended" }, () => {
       setSession(null);
       setIsHost(false);
@@ -139,7 +134,6 @@ export function useWorkspaceCollaboration(
 
     channel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
-        // Track presence
         await channel.track({
           fullName: profile?.full_name || "Unknown",
           email: profile?.email || "",
@@ -149,7 +143,14 @@ export function useWorkspaceCollaboration(
     });
 
     channelRef.current = channel;
-  }, [profile, supabase, isHost]);
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (channelRef.current === channel) {
+        channelRef.current = null;
+      }
+    };
+  }, [session?.id, session?.session_code, profile, supabase, isHost]);
 
   // Create a new collaboration session
   const createSession = useCallback(async (initialState?: Partial<WorkspaceState>): Promise<string | null> => {
@@ -194,9 +195,6 @@ export function useWorkspaceCollaboration(
 
       setSession(newSession);
       setIsHost(true);
-      
-      // Subscribe to realtime channel
-      subscribeToSession(newSession.id, newSession.session_code);
 
       return newSession.session_code;
     } catch (err) {
@@ -206,7 +204,7 @@ export function useWorkspaceCollaboration(
     } finally {
       setIsLoading(false);
     }
-  }, [profile, supabase, subscribeToSession]);
+  }, [profile, supabase]);
 
   // Join an existing session by code
   const joinSession = useCallback(async (code: string): Promise<boolean> => {
@@ -256,9 +254,6 @@ export function useWorkspaceCollaboration(
 
       setSession(existingSession);
       setIsHost(existingSession.host_user_id === profile.id);
-      
-      // Subscribe to realtime channel
-      subscribeToSession(existingSession.id, existingSession.session_code);
 
       // Notify about current state
       if (optionsRef.current.onStateChange && existingSession.workspace_state) {
@@ -273,7 +268,7 @@ export function useWorkspaceCollaboration(
     } finally {
       setIsLoading(false);
     }
-  }, [profile, supabase, subscribeToSession]);
+  }, [profile, supabase]);
 
   // Leave the current session (without ending it)
   const leaveSession = useCallback(async () => {

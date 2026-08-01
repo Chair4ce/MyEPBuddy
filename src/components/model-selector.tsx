@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { reconcileModelSelection } from "@/lib/ai-models/catalog";
 import { type KeyStatus } from "@/app/actions/api-keys";
 import { useAvailableModels } from "@/hooks/use-available-models";
@@ -91,8 +91,6 @@ export function ModelSelector({
   const keyStatus = externalKeyStatus ?? fetchedKeyStatus;
   const availableModels = models;
   const unavailableModels: typeof models = [];
-  const reconcileRef = useRef<string | null>(null);
-
   const resolvedValue =
     models.length === 0
       ? value
@@ -110,8 +108,7 @@ export function ModelSelector({
       defaultModelId,
       keyStatus ?? undefined,
     );
-    if (reconciled !== value && reconcileRef.current !== reconciled) {
-      reconcileRef.current = reconciled;
+    if (reconciled !== value) {
       queueMicrotask(() => onValueChange(reconciled));
     }
   }
@@ -273,31 +270,29 @@ export function ModelSelector({
                           <p className="text-xs leading-relaxed text-muted-foreground">
                             {model.statementTip}
                           </p>
-
-                          {model.requiresUserKey && !model.usingUserKey && keyStatus && (
-                            <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                              <Key className="size-3 shrink-0" />
-                              <span>
-                                Requires {PROVIDER_LABELS[model.provider]} API key —{" "}
-                                <a
-                                  href="/settings/api-keys"
-                                  className="underline hover:text-amber-700 dark:hover:text-amber-300"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  add in Settings
-                                </a>
-                              </span>
-                            </p>
-                          )}
-                          {model.usingUserKey && (
-                            <p className="text-[11px] text-green-600 dark:text-green-400 flex items-center gap-1">
-                              <Key className="size-3 shrink-0" />
-                              Using your API key
-                            </p>
-                          )}
                         </div>
                       </div>
                     </button>
+                    {model.requiresUserKey && !model.usingUserKey && keyStatus && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 px-2.5 pb-2">
+                        <Key className="size-3 shrink-0" />
+                        <span>
+                          Requires {PROVIDER_LABELS[model.provider]} API key —{" "}
+                          <a
+                            href="/settings/api-keys"
+                            className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                          >
+                            add in Settings
+                          </a>
+                        </span>
+                      </p>
+                    )}
+                    {model.usingUserKey && (
+                      <p className="text-[11px] text-green-600 dark:text-green-400 flex items-center gap-1 px-2.5 pb-2">
+                        <Key className="size-3 shrink-0" />
+                        Using your API key
+                      </p>
+                    )}
                   </div>
                 );
               })

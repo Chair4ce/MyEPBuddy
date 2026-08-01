@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,8 @@ import {
   EPB_SYSTEM_PROMPT_REVISION,
   isLegacyOrUnconfiguredEpbPrompt,
   promptsAreEquivalent,
-  shouldAutoMigrateEpbPrompt,
-  shouldShowEpbPromptUpdateModal,
 } from "@/lib/default-llm-prompts";
+import { useEpbPromptRevisionCheck } from "@/hooks/use-epb-prompt-revision-check";
 
 type LlmPromptRow = {
   base_system_prompt: string;
@@ -113,59 +112,16 @@ export function EpbPromptUpdateModal() {
     [profile, supabase]
   );
 
-  useEffect(() => {
-    if (!profile || hasChecked) return;
-
-    if (!profile.terms_accepted_at) return;
-
-    let cancelled = false;
-
-    async function checkPromptRevision() {
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from("user_llm_settings")
-          .select("base_system_prompt, epb_system_prompt_revision_acknowledged")
-          .eq("user_id", profile!.id)
-          .maybeSingle();
-
-        if (cancelled) return;
-        if (error) throw error;
-        if (!data) {
-          setHasChecked(true);
-          return;
-        }
-
-        const row = data as unknown as LlmPromptRow;
-        const ack = row.epb_system_prompt_revision_acknowledged ?? 0;
-
-        if (shouldAutoMigrateEpbPrompt(ack, row.base_system_prompt)) {
-          await runAutoMigrate(row);
-          setHasChecked(true);
-          return;
-        }
-
-        if (shouldShowEpbPromptUpdateModal(ack, row.base_system_prompt)) {
-          setTimeout(() => {
-            if (!cancelled) setIsOpen(true);
-          }, 800);
-        }
-
-        setHasChecked(true);
-      } catch (error) {
-        console.error("EPB prompt revision check error:", error);
-        setHasChecked(true);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    checkPromptRevision();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [profile, hasChecked, supabase, runAutoMigrate]);
+  useEpbPromptRevisionCheck({
+    profileId: profile?.id,
+    termsAccepted: Boolean(profile?.terms_accepted_at),
+    hasChecked,
+    supabase,
+    runAutoMigrate,
+    setHasChecked,
+    setIsLoading,
+    setIsOpen,
+  });
 
   async function handleCopy() {
     try {

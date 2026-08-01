@@ -266,7 +266,7 @@ export function ReviewSection({
       // Add text before this highlight
       if (start > lastEnd) {
         parts.push(
-          <span key={`text-${idx}`}>{normalizedContent.slice(lastEnd, start)}</span>
+          <span key={`text-${highlight.id}`}>{normalizedContent.slice(lastEnd, start)}</span>
         );
       }
 
@@ -274,10 +274,11 @@ export function ReviewSection({
       const isActive = activeCommentId === highlight.id;
       const isHovered = hoveredCommentId === highlight.id;
       parts.push(
-        <mark
-          key={`highlight-${idx}`}
+        <button
+          type="button"
+          key={`highlight-${highlight.id}`}
           className={cn(
-            "cursor-pointer rounded px-0.5 transition-all",
+            "cursor-pointer rounded px-0.5 transition-all border-0 bg-inherit p-0 font-inherit text-inherit",
             highlight.status === "dismissed" && "bg-muted/50 line-through",
             highlight.suggestionType === "delete" && "bg-destructive/20 text-destructive line-through",
             highlight.suggestionType !== "delete" && (!highlight.status || highlight.status === "pending" || highlight.status === "accepted") && "bg-primary text-primary-foreground",
@@ -286,13 +287,10 @@ export function ReviewSection({
           onClick={() => onCommentClick?.(highlight.id)}
           onMouseEnter={() => onCommentHover?.(highlight.id)}
           onMouseLeave={() => onCommentHover?.(null)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && onCommentClick?.(highlight.id)}
           aria-label={`View comment for: ${highlight.highlightedText}`}
         >
           {normalizedContent.slice(start, end)}
-        </mark>
+        </button>
       );
 
       lastEnd = end;
@@ -340,12 +338,18 @@ export function ReviewSection({
       {/* Content area */}
       <div
         ref={contentRef}
+        role={isEditable ? "textbox" : undefined}
+        aria-readonly={isEditable ? true : undefined}
+        aria-multiline={isEditable ? true : undefined}
+        aria-label={isEditable ? `${sectionLabel} review content` : undefined}
+        tabIndex={isEditable ? 0 : undefined}
         className={cn(
           "text-sm leading-relaxed whitespace-pre-wrap",
           isEditable && "cursor-text select-text"
         )}
-        onMouseDown={handleMouseDown}
-        onTouchEnd={handleTouchEnd}
+        onMouseDown={isEditable ? handleMouseDown : undefined}
+        onTouchEnd={isEditable ? handleTouchEnd : undefined}
+        onKeyDown={isEditable ? () => {} : undefined}
       >
         {renderHighlightedContent()}
       </div>

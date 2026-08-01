@@ -149,8 +149,7 @@ export default function GeneratePage() {
   const selectedRateeStorageKey = profile ? `epb-selected-ratee-${profile.id}` : null;
 
   // Build ratee selector options - filter based on whether user is officer
-  const rateeOptions = [
-    // Only show "self" option if user is not an officer (officers can't generate EPBs for themselves)
+  const rateeOptions = useMemo(() => [
     ...(canGenerateForSelf ? [{
       value: "self",
       label: `Myself (${profile?.rank} ${profile?.full_name})`,
@@ -188,7 +187,7 @@ export default function GeneratePage() {
           isManagedMember: true,
         },
       })),
-  ];
+  ], [canGenerateForSelf, profile?.id, profile?.rank, profile?.full_name, profile?.afsc, subordinates, managedMembers, userIsCivilian]);
 
   const hasTeamRatees = rateeOptions.length > 0;
 
@@ -261,24 +260,23 @@ export default function GeneratePage() {
   useEffect(() => {
     if (!profile) return;
 
-    async function checkChain() {
-      // Check if this user is a subordinate in any team (has at least one supervisor)
+    const controller = new AbortController();
+    void (async () => {
       const { data, error } = await supabase
         .from("teams")
         .select("id")
-        .eq("subordinate_id", profile!.id)
-        .limit(1);
+        .eq("subordinate_id", profile.id)
+        .limit(1)
+        .abortSignal(controller.signal);
 
       if (!error && data && data.length > 0) {
         setHasChain(true);
       } else {
         setHasChain(false);
-        // If they had chain_of_command selected, fall back
-        setWritingStyle(prev => prev === "chain_of_command" ? "personal" : prev);
+        setWritingStyle((prev) => (prev === "chain_of_command" ? "personal" : prev));
       }
-    }
-
-    checkChain();
+    })();
+    return () => controller.abort();
   }, [profile, supabase]);
 
   // Restore selectedRatee from localStorage on mount (fallback for hard refresh / first visit)
@@ -303,23 +301,26 @@ export default function GeneratePage() {
 
   // Load available AFSCs from community statements
   useEffect(() => {
-    async function loadAvailableAfscs() {
+    const controller = new AbortController();
+    void (async () => {
       const { data: communityData } = await supabase
         .from("community_statements")
         .select("afsc")
-        .eq("is_approved", true);
-      
+        .eq("is_approved", true)
+        .abortSignal(controller.signal);
+
       const afscs = new Set<string>();
       communityData?.forEach((d: { afsc: string }) => d.afsc && afscs.add(d.afsc));
-      
+
       setAvailableAfscs(Array.from(afscs).sort());
-    }
-    loadAvailableAfscs();
+    })();
+    return () => controller.abort();
   }, [supabase]);
 
   // Load accomplishments for EPB shell form
   useEffect(() => {
-    async function loadAccomplishments() {
+    const controller = new AbortController();
+    void (async () => {
       if (!selectedRatee || !profile) return;
 
       const entryCycleYear = currentShell?.cycle_year ?? cycleYear;
@@ -336,11 +337,10 @@ export default function GeneratePage() {
         query = query.eq("user_id", selectedRatee.id).is("team_member_id", null);
       }
 
-      const { data } = await query;
+      const { data } = await query.abortSignal(controller.signal);
       setAccomplishments((data as Accomplishment[]) || []);
-    }
-
-    loadAccomplishments();
+    })();
+    return () => controller.abort();
   }, [selectedRatee, profile, currentShell?.cycle_year, cycleYear, supabase]);
 
   async function updateWritingStyle(style: WritingStyle) {
@@ -480,6 +480,7 @@ export default function GeneratePage() {
           {userIsOfficer && (
             <div className="flex items-center p-1 bg-muted rounded-lg">
               <button
+                type="button"
                 onClick={() => setOfficerWorkspaceMode("opb")}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
@@ -495,6 +496,7 @@ export default function GeneratePage() {
                 </span>
               </button>
               <button
+                type="button"
                 onClick={() => setOfficerWorkspaceMode("epb")}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",

@@ -370,8 +370,10 @@ export function AppSidebar({ profile }: AppSidebarProps) {
 
       {/* Mobile overlay */}
       {mobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        <button
+          type="button"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden border-0 p-0 cursor-default"
+          aria-label="Close menu"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -437,7 +439,7 @@ export function AppSidebar({ profile }: AppSidebarProps) {
 
           <ScrollArea className="flex-1 py-4">
             {/* Main navigation */}
-            <nav className="space-y-1 px-3">
+            <nav className="space-y-1 px-3" aria-label="Main navigation">
               {filteredNavItems.map((item) => {
                 const isActive = pathname === item.href;
                 const isLoading = loadingHref === item.href;
@@ -467,7 +469,7 @@ export function AppSidebar({ profile }: AppSidebarProps) {
             </div>
 
             {/* Settings navigation */}
-            <nav className="space-y-1 px-3">
+            <nav className="space-y-1 px-3" aria-label="Settings navigation">
               {filteredSettingsItems.map((item) => {
                 const isActive = pathname === item.href;
                 const isLoading = loadingHref === item.href;

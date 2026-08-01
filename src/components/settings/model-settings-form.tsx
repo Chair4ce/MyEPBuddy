@@ -40,6 +40,7 @@ import {
   PROVIDER_KEY_CONFIGS,
   ProviderKeySection,
 } from "@/components/settings/provider-key-section";
+import { formatDateTime } from "@/lib/format";
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
@@ -115,9 +116,7 @@ export function ModelSettingsForm({
         toast.error("Failed to save model preference");
         await reloadSettings();
       } finally {
-        if (seq === saveSeqRef.current) {
-          setIsSaving(false);
-        }
+        setIsSaving(false);
       }
     },
     [reloadSettings],
@@ -157,16 +156,9 @@ export function ModelSettingsForm({
   }
 
   function toggleModelVisibility(modelId: string, checked: boolean) {
-    let nextPreferences: UserModelPreferences | null = null;
-
-    setPreferences((current) => {
-      nextPreferences = buildNextPreferences(current, modelId, checked);
-      return nextPreferences;
-    });
-
-    if (nextPreferences) {
-      scheduleSave(nextPreferences);
-    }
+    const nextPreferences = buildNextPreferences(preferences, modelId, checked);
+    setPreferences(nextPreferences);
+    scheduleSave(nextPreferences);
   }
 
   async function handleSaveKey(keyName: KeyName, keyValue: string) {
@@ -232,7 +224,7 @@ export function ModelSettingsForm({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
             {catalogSyncedAt && (
               <p className="text-xs text-muted-foreground">
-                Last sync: {new Date(catalogSyncedAt).toLocaleString()}
+                Last sync: {formatDateTime(catalogSyncedAt)}
               </p>
             )}
             {isSaving && (

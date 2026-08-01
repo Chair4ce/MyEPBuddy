@@ -529,7 +529,7 @@ export function fromDisplayText(text: string): string {
  * Optimize multi-line text for 1206 form fitting
  * Compresses spacing to reduce overall width
  */
-export function optimizeMultiLineBullet(
+function optimizeMultiLineBullet(
   text: string,
   targetWidthPx: number = AF1206_LINE_WIDTH_PX
 ): OptimizeResult {
@@ -667,7 +667,7 @@ export const COMMON_ABBREVIATIONS: Record<string, string> = {
 /**
  * Get optimization suggestions for a statement
  */
-export function getOptimizationSuggestions(statement: string): string[] {
+function getOptimizationSuggestions(statement: string): string[] {
   const suggestions: string[] = [];
   const analysis = analyzeTextFit(statement);
   
@@ -708,7 +708,7 @@ export function getOptimizationSuggestions(statement: string): string[] {
 /**
  * Format optimized text for display, showing special spaces visually if needed
  */
-export function visualizeOptimizedText(text: string): string {
+function visualizeOptimizedText(text: string): string {
   return text
     .replace(/\u2006/g, '⋅')  // thin space → middle dot
     .replace(/\u2004/g, '·'); // medium space → bullet

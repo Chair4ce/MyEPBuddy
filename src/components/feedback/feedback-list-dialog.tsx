@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatDateTimeDetailed } from "@/lib/format";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { Loader2, MessageSquare, User, Calendar, ChevronRight } from "lucide-react";
@@ -43,54 +44,40 @@ export function FeedbackListDialog({
   onViewSession,
 }: FeedbackListDialogProps) {
   const [sessions, setSessions] = useState<FeedbackSession[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-
-    async function loadSessions() {
-      setIsLoading(true);
-      try {
-        const response = await fetch(
-          `/api/feedback?shellType=${shellType}&shellId=${shellId}`
-        );
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to load feedback");
-        }
-
-        setSessions(data.sessions || []);
-      } catch (error) {
-        console.error("Load sessions error:", error);
-        toast.error("Failed to load feedback sessions");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadSessions();
-  }, [open, shellType, shellId]);
-
-  const formatDate = (isoString: string) => {
+  const loadSessions = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const date = new Date(isoString);
-      return date.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      });
-    } catch {
-      return isoString;
+      const response = await fetch(
+        `/api/feedback?shellType=${shellType}&shellId=${shellId}`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load feedback");
+      }
+
+      setSessions(data.sessions || []);
+    } catch (error) {
+      console.error("Load sessions error:", error);
+      toast.error("Failed to load feedback sessions");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [shellType, shellId]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    onOpenChange(nextOpen);
+    if (nextOpen) {
+      void loadSessions();
     }
   };
 
   const totalPending = sessions.reduce((sum, s) => sum + (s.pending_count || 0), 0);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -126,7 +113,7 @@ export function FeedbackListDialog({
             <ScrollArea className="h-full max-h-[50vh]">
               <div className="space-y-2 pr-4">
                 {sessions.map((session) => (
-                  <button
+                  <button type="button"
                     key={session.id}
                     className={cn(
                       "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors",
@@ -153,7 +140,7 @@ export function FeedbackListDialog({
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                         <Calendar className="size-3" />
-                        <span>{formatDate(session.submitted_at)}</span>
+                        <span>{formatDateTimeDetailed(session.submitted_at)}</span>
                         <span>•</span>
                         <span>{session.comment_count} comments</span>
                       </div>

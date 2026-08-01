@@ -89,48 +89,58 @@ export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) 
 
   // Load settings on open
   useEffect(() => {
-    async function loadSettings() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!open || !profile) return;
-      
+
       setIsLoading(true);
       try {
-        // Cast to any to handle table not yet in generated types
         const { data, error } = await (supabase
-          .from("war_settings") as any)
+          .from("war_settings") as ReturnType<typeof supabase.from>)
           .select("*")
           .eq("user_id", profile.id)
+          .abortSignal(controller.signal)
           .single();
 
         if (error && error.code !== "PGRST116") {
           console.error("Error loading WAR settings:", error);
           toast.error("Failed to load WAR settings");
+          return;
         }
 
-        if (data) {
+        if (controller.signal.aborted) return;
+
+        const row = data as {
+          id: string;
+          user_id: string;
+          categories: WARSettings["categories"];
+          unit_office_symbol: string | null;
+          synthesis_instructions: string | null;
+        } | null;
+
+        if (row) {
           setSettings({
-            id: data.id,
-            user_id: data.user_id,
-            categories: data.categories || DEFAULT_CATEGORIES,
-            unit_office_symbol: data.unit_office_symbol,
-            synthesis_instructions: data.synthesis_instructions,
+            id: row.id,
+            user_id: row.user_id,
+            categories: row.categories || DEFAULT_CATEGORIES,
+            unit_office_symbol: row.unit_office_symbol,
+            synthesis_instructions: row.synthesis_instructions,
           });
         } else {
-          // Use defaults
           setSettings({
             categories: DEFAULT_CATEGORIES,
             unit_office_symbol: null,
             synthesis_instructions: null,
           });
         }
-      } catch (error) {
-        console.error("Error loading WAR settings:", error);
       } finally {
         setIsLoading(false);
         setHasChanges(false);
       }
-    }
+    })();
 
-    loadSettings();
+    return () => controller.abort();
   }, [open, profile, supabase]);
 
   // Handle save
@@ -302,7 +312,7 @@ export function WARSettingsModal({ open, onOpenChange }: WARSettingsModalProps) 
                 </div>
                 
                 <div className="space-y-2">
-                  {settings.categories
+                  {[...settings.categories]
                     .sort((a, b) => a.order - b.order)
                     .map((category, index) => (
                       <Card key={category.key} className="relative">

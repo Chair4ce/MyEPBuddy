@@ -299,16 +299,17 @@ export function AddProjectAccomplishmentDialog({
       return;
     }
 
+    const errors: string[] = [];
+    const successes: string[] = [];
+    const createdAccomplishmentIds: string[] = [];
+
     setIsSubmitting(true);
 
+    try {
     const tags = form.tags
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
-
-    const errors: string[] = [];
-    const successes: string[] = [];
-    const createdAccomplishmentIds: string[] = [];
 
     // Create accomplishment for each selected member
     for (const member of selectedMembers) {
@@ -365,8 +366,6 @@ export function AddProjectAccomplishmentDialog({
       }
     }
 
-    setIsSubmitting(false);
-
     if (successes.length > 0) {
       celebrateEntry();
       toast.success(`Created ${successes.length} ${successes.length === 1 ? "entry" : "entries"}!`, {
@@ -380,6 +379,9 @@ export function AddProjectAccomplishmentDialog({
         description: errors.join("; "),
         duration: 8000,
       });
+    }
+    } finally {
+      setIsSubmitting(false);
     }
 
     if (successes.length > 0) {
@@ -623,6 +625,7 @@ export function AddProjectAccomplishmentDialog({
                         >
                           {/* Checkbox */}
                           <Checkbox
+                            id={`member-${member.type}-${member.id}`}
                             checked={isSelected}
                             onCheckedChange={() => toggleMember(member)}
                             aria-label={`Select ${member.name}`}
@@ -636,9 +639,9 @@ export function AddProjectAccomplishmentDialog({
                           </Avatar>
 
                           {/* Name */}
-                          <div 
+                          <label
+                            htmlFor={`member-${member.type}-${member.id}`}
                             className="flex-1 min-w-0 cursor-pointer"
-                            onClick={() => toggleMember(member)}
                           >
                             <div className="flex items-center gap-1.5">
                               <span className={cn(
@@ -656,7 +659,7 @@ export function AddProjectAccomplishmentDialog({
                                 </Badge>
                               )}
                             </div>
-                          </div>
+                          </label>
 
                           {/* Role dropdown - only show when selected */}
                           {isSelected && selectedMember && (

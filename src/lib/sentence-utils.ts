@@ -194,7 +194,7 @@ export function combineSentences(sentence1: string, sentence2: string): string {
 /**
  * Calculate how many characters need to be trimmed/added to fit a target
  */
-export function calculateCharacterDelta(
+function calculateCharacterDelta(
   currentLength: number,
   targetMax: number
 ): { delta: number; needsTrimming: boolean; needsExpanding: boolean } {
@@ -209,7 +209,7 @@ export function calculateCharacterDelta(
 /**
  * Estimate if a sentence swap would require AI adaptation
  */
-export function wouldRequireAdaptation(
+function wouldRequireAdaptation(
   incomingSentence: string,
   existingSentence: string,
   targetMax: number

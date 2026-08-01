@@ -93,7 +93,7 @@ Analyze and report on these dimensions:
 5. METRICS PRESENTATION: How quantitative data is woven in (leading position, embedded, trailing). Density of metrics per statement.
 6. FORMALITY LEVEL: Military formality spectrum (clinical/technical vs conversational/energetic).
 7. WORD ECONOMY: How tightly packed the language is. Filler word avoidance. Compression techniques used.
-8. OPENING PATTERNS: How statements typically begin (action verb, role description, context setting).
+8. OPENING PATTERNS: How statements typically begin (action verb, duty description, context setting).
 9. CLOSING PATTERNS: How statements end (impact statement, metric, organizational benefit).
 
 Output format: Write a concise style fingerprint in 150-250 words as a continuous paragraph that another AI can directly use as style guidance. Start with "This author's style is characterized by..." and describe all key patterns naturally.
@@ -150,12 +150,12 @@ interface ChainStyleResult {
  *
  * @returns true if signature was generated/updated, false if skipped (no statements or hash unchanged)
  */
-async function reserveStyleSignatureAppKeyCall(userId: string): Promise<boolean> {
+async function reserveStyleSignatureAppKeyCall(subjectId: string): Promise<boolean> {
   const supabase = await createClient();
   const { data, error } = await (supabase.rpc as Function)(
     "try_record_style_signature_app_call",
     {
-      p_user_id: userId,
+      p_user_id: subjectId,
     },
   ) as { data: boolean | null; error: { message: string } | null };
 
@@ -173,7 +173,7 @@ export type StyleSignatureGenerateResult =
   | "quota_exhausted";
 
 export async function generateStyleSignature(
-  userId: string,
+  subjectId: string,
   targetRank: string,
   targetAfsc: string,
   mpa: StyleMPA,
@@ -191,7 +191,7 @@ export async function generateStyleSignature(
   let archivedQuery = supabase
     .from("refined_statements")
     .select("id, statement, mpa")
-    .eq("user_id", userId)
+    .eq("user_id", subjectId)
     .eq("afsc", targetAfsc)
     .eq("statement_type", "epb")
     .not("source_epb_shell_id", "is", null) // Must come from an archived EPB
@@ -208,7 +208,7 @@ export async function generateStyleSignature(
   let starredQuery = supabase
     .from("refined_statements")
     .select("id, statement, mpa")
-    .eq("user_id", userId)
+    .eq("user_id", subjectId)
     .eq("afsc", targetAfsc)
     .eq("statement_type", "epb")
     .eq("use_as_llm_example", true)
@@ -226,12 +226,12 @@ export async function generateStyleSignature(
     ? supabase
         .from("user_style_examples")
         .select("id, statement_text")
-        .eq("user_id", userId)
+        .eq("user_id", subjectId)
         .limit(5)
     : supabase
         .from("user_style_examples")
         .select("id, statement_text")
-        .eq("user_id", userId)
+        .eq("user_id", subjectId)
         .eq("category", mpa)
         .limit(5);
 
@@ -275,7 +275,7 @@ export async function generateStyleSignature(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: existing } = await (supabase.from("style_signatures") as any)
     .select("id, source_hash, version")
-    .eq("user_id", userId)
+    .eq("user_id", subjectId)
     .eq("target_rank", targetRank)
     .eq("target_afsc", targetAfsc)
     .eq("mpa", mpa)
@@ -296,7 +296,7 @@ export async function generateStyleSignature(
 
   // Style signatures are non-billable; cap app-key usage to prevent abuse.
   if (usingAppKey) {
-    const reserved = await reserveStyleSignatureAppKeyCall(userId);
+    const reserved = await reserveStyleSignatureAppKeyCall(subjectId);
     if (!reserved) {
       return "quota_exhausted";
     }
@@ -345,7 +345,7 @@ export async function generateStyleSignature(
   const { error } = await (supabase.from("style_signatures") as any)
     .upsert(
       {
-        user_id: userId,
+        user_id: subjectId,
         target_rank: targetRank,
         target_afsc: targetAfsc,
         mpa,
@@ -373,7 +373,7 @@ export async function generateStyleSignature(
  *
  * This is a heavier operation - call sparingly (on finalization, manual refresh).
  */
-export async function refreshUserSignatures(userId: string): Promise<{
+export async function refreshUserSignatures(subjectId: string): Promise<{
   generated: number;
   quotaExhausted: boolean;
 }> {
@@ -386,7 +386,7 @@ export async function refreshUserSignatures(userId: string): Promise<{
   const { data: shells } = await supabase
     .from("epb_shells")
     .select("id, user_id, team_member_id")
-    .eq("user_id", userId);
+    .eq("user_id", subjectId);
 
   if (!shells || shells.length === 0) {
     return { generated: 0, quotaExhausted: false };
@@ -413,11 +413,11 @@ export async function refreshUserSignatures(userId: string): Promise<{
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, rank, afsc")
-    .eq("id", userId)
+    .eq("id", subjectId)
     .maybeSingle();
 
   if (profile) {
-    rankAfscByKey.set(`profile:${userId}`, {
+    rankAfscByKey.set(`profile:${subjectId}`, {
       rank: (profile as { rank: string | null; afsc: string | null }).rank,
       afsc: (profile as { rank: string | null; afsc: string | null }).afsc,
     });
@@ -459,7 +459,7 @@ export async function refreshUserSignatures(userId: string): Promise<{
     for (const mpa of VALID_MPAS) {
       try {
         const result = await generateStyleSignature(
-          userId,
+          subjectId,
           rank,
           afsc,
           mpa,
@@ -489,7 +489,7 @@ export async function refreshUserSignatures(userId: string): Promise<{
  * Returns null if no signature exists.
  */
 export async function getUserStyleSignature(
-  userId: string,
+  subjectId: string,
   targetRank: string,
   targetAfsc: string,
   mpa: string
@@ -503,7 +503,7 @@ export async function getUserStyleSignature(
   // Try exact match first
   const { data: exact } = await fromSigs()
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", subjectId)
     .eq("target_rank", targetRank)
     .eq("target_afsc", targetAfsc)
     .eq("mpa", normalizedMpa)
@@ -515,7 +515,7 @@ export async function getUserStyleSignature(
   if (normalizedMpa !== "general") {
     const { data: general } = await fromSigs()
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", subjectId)
       .eq("target_rank", targetRank)
       .eq("target_afsc", targetAfsc)
       .eq("mpa", "general")
@@ -527,7 +527,7 @@ export async function getUserStyleSignature(
   // Fall back to any MPA for this rank+AFSC (most recent)
   const { data: anyMpa } = await fromSigs()
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", subjectId)
     .eq("target_rank", targetRank)
     .eq("target_afsc", targetAfsc)
     .order("updated_at", { ascending: false })
@@ -539,7 +539,7 @@ export async function getUserStyleSignature(
   // Final fallback: any signature for this AFSC regardless of rank
   const { data: anyRank } = await fromSigs()
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", subjectId)
     .eq("target_afsc", targetAfsc)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -559,13 +559,13 @@ export async function getUserStyleSignature(
  * Supabase client. RLS on style_signatures allows reading supervisor signatures
  * via get_supervisor_chain(). No statement text is exposed.
  *
- * @param userId - The user requesting chain style
+ * @param subjectId - The user requesting chain style
  * @param targetRank - Rank of the ratee being written about
  * @param targetAfsc - AFSC of the ratee being written about
  * @param mpa - MPA category key
  */
 export async function getChainStyleSignature(
-  userId: string,
+  subjectId: string,
   targetRank: string,
   targetAfsc: string,
   mpa: string
@@ -575,11 +575,11 @@ export async function getChainStyleSignature(
 
   // Get the user's supervisor chain (ordered by depth)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: chain } = await (supabase.rpc as any)("get_supervisor_chain", { subordinate_uuid: userId });
+  const { data: chain } = await (supabase.rpc as any)("get_supervisor_chain", { subordinate_uuid: subjectId });
 
   if (!chain || (chain as { supervisor_id: string; depth: number }[]).length === 0) {
     // No chain exists - try personal signature as fallback
-    const personal = await getUserStyleSignature(userId, targetRank, targetAfsc, mpa);
+    const personal = await getUserStyleSignature(subjectId, targetRank, targetAfsc, mpa);
     return {
       signature: personal,
       sourceRank: null,
@@ -599,7 +599,7 @@ export async function getChainStyleSignature(
     .in("id", supervisorIds);
 
   if (!supervisorProfiles || supervisorProfiles.length === 0) {
-    const personal = await getUserStyleSignature(userId, targetRank, targetAfsc, mpa);
+    const personal = await getUserStyleSignature(subjectId, targetRank, targetAfsc, mpa);
     return {
       signature: personal,
       sourceRank: null,
@@ -688,7 +688,7 @@ export async function getChainStyleSignature(
   }
 
   // No chain supervisor has a matching signature - fall back to personal
-  const personal = await getUserStyleSignature(userId, targetRank, targetAfsc, mpa);
+  const personal = await getUserStyleSignature(subjectId, targetRank, targetAfsc, mpa);
   return {
     signature: personal,
     sourceRank: null,

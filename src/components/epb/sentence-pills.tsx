@@ -105,7 +105,7 @@ export function SentencePills({
           
           return (
             <div
-              key={index}
+              key={`drop-zone-${mpaKey}-${index}`}
               onDragOver={(e) => handleDragOver(e, index)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, index)}
@@ -152,7 +152,7 @@ export function SentencePills({
         
         return (
           <div
-            key={index}
+            key={`${mpaKey}-s${sentence.index}-${sentence.startPos}`}
             draggable={true}
             onDragStart={(e) => handleDragStart(e, sentence, index)}
             onDragEnd={handleDragEnd}

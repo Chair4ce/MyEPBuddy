@@ -304,7 +304,7 @@ function StatementEditor({
             ) : synonyms.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {synonyms.slice(0, 6).map((s) => (
-                  <button key={s} onClick={() => replaceSynonym(s)} className="px-2 py-0.5 text-xs bg-primary/10 hover:bg-primary/20 rounded">
+                  <button type="button" key={s} onClick={() => replaceSynonym(s)} className="px-2 py-0.5 text-xs bg-primary/10 hover:bg-primary/20 rounded">
                     {s}
                   </button>
                 ))}
@@ -312,7 +312,7 @@ function StatementEditor({
             ) : (
               <p className="text-xs text-muted-foreground">No synonyms found</p>
             )}
-            <button onClick={() => setSelectedText("")} className="text-xs text-muted-foreground mt-1 hover:underline">Dismiss</button>
+            <button type="button" onClick={() => setSelectedText("")} className="text-xs text-muted-foreground mt-1 hover:underline">Dismiss</button>
           </div>
         )}
       </div>
@@ -455,7 +455,7 @@ function MPAWorkspaceCard({
       <CardHeader className={cn("pb-3", !isExpanded && "pb-3")}>
         <div className="flex items-center justify-between gap-3">
           {/* Clickable title area for collapse/expand */}
-          <button
+          <button type="button"
             onClick={toggleExpanded}
             className="flex items-center gap-2 text-left flex-1 min-w-0 hover:opacity-70 transition-opacity"
           >
@@ -533,7 +533,7 @@ function MPAWorkspaceCard({
               <Label className="text-xs">Statements:</Label>
               <div className="flex gap-1">
                 {([1, 2] as const).map((n) => (
-                  <button
+                  <button type="button"
                     key={n}
                     onClick={() => onDataChange({ ...data, statementCount: n })}
                     className={cn(
@@ -599,7 +599,7 @@ function MPAWorkspaceCard({
               <div className="flex justify-end">
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className={cn(
+                    <button type="button" className={cn(
                       "flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border hover:bg-muted/50 transition-colors",
                       getRelevancyColor(data.relevancyScore)
                     )}>

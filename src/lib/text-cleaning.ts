@@ -150,7 +150,7 @@ export function extractCycleYear(text: string): number | null {
 /**
  * Detect MPA from text context
  */
-export function detectMpaFromContext(text: string): string | null {
+function detectMpaFromContext(text: string): string | null {
   const upperText = text.toUpperCase();
   
   for (const { pattern, mpaKey } of MPA_HEADER_PATTERNS) {
@@ -166,7 +166,7 @@ export function detectMpaFromContext(text: string): string | null {
  * Split compound statements (typically 2 sentences) into individual statements
  * EPB statements often have action-result format with 2 sentences
  */
-export function splitStatements(text: string): string[] {
+function splitStatements(text: string): string[] {
   // First, split by obvious statement boundaries
   const statements: string[] = [];
   
@@ -200,7 +200,7 @@ export function splitStatements(text: string): string[] {
 /**
  * Check if text looks like a valid statement (has action verb and result)
  */
-export function isValidStatement(text: string): boolean {
+function isValidStatement(text: string): boolean {
   if (!text || text.length < 50) return false;
   if (text.length > 500) return false;
   
@@ -219,7 +219,7 @@ export function isValidStatement(text: string): boolean {
 /**
  * Clean a single statement text
  */
-export function cleanStatement(text: string): string {
+function cleanStatement(text: string): string {
   let cleaned = cleanText(text);
   
   // Remove leading dashes or bullets

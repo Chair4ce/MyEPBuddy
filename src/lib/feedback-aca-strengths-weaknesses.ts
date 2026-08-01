@@ -152,7 +152,7 @@ export function buildCycleAcaStrengthsWeaknesses(
   };
 }
 
-export function getAcaProficiencyDescription(
+function getAcaProficiencyDescription(
   label: string,
   rateeRank: Rank | string | null
 ): string {

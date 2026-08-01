@@ -225,7 +225,7 @@ export function isEmailDeliveryError(error: string | Error | { message: string }
 /**
  * Get a simple user-friendly message for an auth error
  */
-export function getAuthErrorMessage(error: string | Error | { message: string }): string {
+function getAuthErrorMessage(error: string | Error | { message: string }): string {
   const info = parseAuthError(error);
   return info.action ? `${info.message} ${info.action}` : info.message;
 }

@@ -10,6 +10,7 @@ import {
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
 import { cn } from "@/lib/utils";
+import { formatInteger, formatUsd } from "@/lib/format";
 
 const PRESET_PACKS = [1, 2, 5, 10] as const;
 
@@ -109,7 +110,7 @@ export function TokenPackQuantityPicker({
       </div>
 
       <p id={`${id}-help`} className="text-sm text-muted-foreground">
-        {tokens.toLocaleString()} tokens · ${priceUsd.toLocaleString()} one-time ·{" "}
+        {formatInteger(tokens)} tokens · ${formatUsd(priceUsd)} one-time ·{" "}
         ${PURCHASE_PRICE_USD} per {PURCHASE_CREDITS}
       </p>
     </div>

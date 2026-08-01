@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useRef, useEffect } from "react";
+import { useCallback, useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { 
   useDecorationShellStore, 
   type DecorationSnapshot,
@@ -54,6 +54,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { RefinedStatement } from "@/types/database";
+import { formatDateTime } from "@/lib/format";
 
 interface DecorationCitationEditorProps {
   statements: RefinedStatement[];
@@ -410,7 +411,10 @@ export function DecorationCitationEditor({
   // Ref always points to the latest syncHighlightsLocally — eliminates stale
   // closures when effects fire in different render cycles during page load.
   const syncHighlightsRef = useRef(syncHighlightsLocally);
-  syncHighlightsRef.current = syncHighlightsLocally;
+
+  useLayoutEffect(() => {
+    syncHighlightsRef.current = syncHighlightsLocally;
+  }, [syncHighlightsLocally]);
 
   // Debounce ref for citation text changes
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -992,7 +996,7 @@ export function DecorationCitationEditor({
                       <div key={snap.id} className="p-3 border-b last:border-0 hover:bg-muted/30 transition-colors">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <p className="text-xs text-muted-foreground">
-                            {new Date(snap.created_at).toLocaleString()}
+                            {formatDateTime(snap.created_at)}
                           </p>
                           <Button
                             variant="outline"
@@ -1184,9 +1188,9 @@ export function DecorationCitationEditor({
                             </button>
                             
                             {/* Synonym buttons */}
-                            {synonyms.map((synonym, index) => (
+                            {synonyms.map((synonym) => (
                               <button
-                                key={index}
+                                key={synonym}
                                 type="button"
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => stageSynonym(synonym)}
@@ -1288,9 +1292,9 @@ export function DecorationCitationEditor({
                     <div className="overflow-hidden">
                       <div className="space-y-2 pt-2 border-t">
                         <p className="text-xs text-muted-foreground font-medium">Alternatives:</p>
-                        {revisionResults.map((revision, index) => (
+                        {revisionResults.map((revision) => (
                           <button
-                            key={index}
+                            key={`alt-${revision.slice(0, 48)}-${revision.length}`}
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => applyRevision(revision)}

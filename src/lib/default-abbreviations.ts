@@ -5,7 +5,7 @@ export interface Abbreviation {
 
 // Abbreviations default to empty - users add their own based on their AFSC
 // This gives users full control over word shortening preferences
-export const DEFAULT_ABBREVIATIONS: Abbreviation[] = [];
+const DEFAULT_ABBREVIATIONS: Abbreviation[] = [];
 
 export function formatAbbreviationsList(abbreviations: Abbreviation[]): string {
   return abbreviations

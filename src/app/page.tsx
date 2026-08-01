@@ -134,8 +134,8 @@ export default function LandingPage() {
                     "Multiple AI models to choose from",
                     "Secure, encrypted API key storage",
                     "Real-time streaming generation",
-                  ].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3">
+                  ].map((item) => (
+                    <li key={item} className="flex items-center gap-3">
                       <div className="size-5 rounded-full bg-primary/10 flex items-center justify-center">
                         <Check className="size-3 text-primary" />
                       </div>

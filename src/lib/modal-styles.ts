@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /** Stacking order for blocking / onboarding modals and their portaled children */
-export const MODAL_Z_OVERLAY = "z-[100]";
+const MODAL_Z_OVERLAY = "z-[100]";
 export const MODAL_Z_CONTENT = "z-[100]";
 /** Popovers, selects, and dropdowns rendered inside high-priority modals */
 export const MODAL_Z_POPOVER = "z-[110]";

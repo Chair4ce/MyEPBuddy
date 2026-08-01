@@ -199,7 +199,7 @@ export function reconcileModelSelection(
   return defaultModelId;
 }
 
-export function isModelAllowed(
+function isModelAllowed(
   modelId: string,
   models: AvailableModel[],
   keyStatus?: KeyStatus,

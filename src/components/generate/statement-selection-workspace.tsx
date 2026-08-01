@@ -548,15 +548,17 @@ export function StatementSelectionWorkspace({
                     const mpaLabel = STANDARD_MGAS.find(m => m.key === acc.mpa)?.label || acc.mpa;
                     
                     return (
-                      <div 
-                        key={acc.id} 
+                      <button
+                        key={acc.id}
+                        type="button"
+                        disabled={!selectionMode}
                         onClick={() => handleAccomplishmentClick(acc.id)}
                         className={cn(
-                          "p-3 rounded-lg border cursor-pointer transition-all",
+                          "w-full text-left p-3 rounded-lg border transition-all",
                           inSlot1 && "bg-primary/5 dark:bg-primary/10 border-primary/30 ring-2 ring-primary/40",
                           inSlot2 && "bg-primary/5 dark:bg-primary/10 border-primary/30 ring-2 ring-primary/40",
                           !inSlot1 && !inSlot2 && "bg-card hover:bg-muted/50",
-                          !selectionMode && "cursor-default opacity-70"
+                          selectionMode ? "cursor-pointer" : "cursor-default opacity-70"
                         )}
                       >
                         <div className="flex items-start gap-2">
@@ -570,7 +572,7 @@ export function StatementSelectionWorkspace({
                             <p className="text-sm line-clamp-2">{acc.details}</p>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -618,7 +620,7 @@ export function StatementSelectionWorkspace({
                   {workspaceState.generatedStatement1 && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium flex items-center gap-2">
+                        <label htmlFor="generated-statement-1" className="text-sm font-medium flex items-center gap-2">
                           <Badge className="bg-primary">Statement 1</Badge>
                           <span className="text-xs font-mono text-muted-foreground">
                             {workspaceState.generatedStatement1.length} chars
@@ -639,6 +641,7 @@ export function StatementSelectionWorkspace({
                         </Button>
                       </div>
                       <Textarea
+                        id="generated-statement-1"
                         value={workspaceState.generatedStatement1}
                         onChange={(e) => updateStatement(1, e.target.value)}
                         rows={4}
@@ -650,7 +653,7 @@ export function StatementSelectionWorkspace({
                   {workspaceState.generatedStatement2 && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium flex items-center gap-2">
+                        <label htmlFor="generated-statement-2" className="text-sm font-medium flex items-center gap-2">
                           <Badge className="bg-primary/80">Statement 2</Badge>
                           <span className="text-xs font-mono text-muted-foreground">
                             {workspaceState.generatedStatement2.length} chars
@@ -671,6 +674,7 @@ export function StatementSelectionWorkspace({
                         </Button>
                       </div>
                       <Textarea
+                        id="generated-statement-2"
                         value={workspaceState.generatedStatement2}
                         onChange={(e) => updateStatement(2, e.target.value)}
                         rows={4}
@@ -694,14 +698,14 @@ export function StatementSelectionWorkspace({
                 {/* MPA Assignment & Save */}
                 <div className="p-4 rounded-lg border bg-muted/20 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">Assign to MPA</label>
+                    <label htmlFor="assign-mpa-select" className="text-sm font-medium">Assign to MPA</label>
                     <span className="text-xs text-muted-foreground">Required to save</span>
                   </div>
                   <Select
                     value={workspaceState.selectedMPA}
                     onValueChange={(value) => setWorkspaceState(prev => prev ? { ...prev, selectedMPA: value } : prev)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="assign-mpa-select">
                       <SelectValue placeholder="Select MPA..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -738,7 +742,7 @@ export function StatementSelectionWorkspace({
                           {existingStatements
                             .filter(s => s.mpa === workspaceState.selectedMPA)
                             .map((s, i) => (
-                              <div key={i} className="p-2 bg-white dark:bg-gray-800 rounded border text-xs">
+                              <div key={`existing-${s.statement.slice(0, 40)}-${s.statement.length}`} className="p-2 bg-white dark:bg-gray-800 rounded border text-xs">
                                 <p className="line-clamp-2">{s.statement}</p>
                                 <p className="text-muted-foreground mt-1">
                                   {s.created_by === currentUserId ? "Created by you" : "Created by another user"}

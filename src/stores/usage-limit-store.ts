@@ -7,7 +7,7 @@ interface UsageLimitState {
 }
 
 /** @deprecated Use credits-store for purchase dialog */
-export const useUsageLimitStore = create<UsageLimitState>((set) => ({
+const useUsageLimitStore = create<UsageLimitState>((set) => ({
   isOpen: false,
   openDialog: () => set({ isOpen: true }),
   closeDialog: () => set({ isOpen: false }),

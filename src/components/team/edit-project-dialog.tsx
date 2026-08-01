@@ -315,7 +315,7 @@ export function EditProjectDialog({
                     <div className="space-y-3">
                       {stakeholders.map((stakeholder, index) => (
                         <div
-                          key={index}
+                          key={`stakeholder-${stakeholder.name || "new"}-${stakeholder.title || ""}`}
                           className="p-3 rounded-lg border bg-muted/30 space-y-2"
                         >
                           <div className="flex items-start gap-2">

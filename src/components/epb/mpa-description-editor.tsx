@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable react-refresh/only-export-components -- exports scroll helper alongside panel components */
 import { useCallback, useRef } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore } from "@/stores/epb-shell-store";
@@ -257,11 +258,11 @@ export function MpaDescriptionPanel() {
 }
 
 /** @deprecated Use MpaDescriptionPanel */
-export function MpaDescriptionDrawer() {
+function MpaDescriptionDrawer() {
   return <MpaDescriptionPanel />;
 }
 
 /** @deprecated Use MpaDescriptionToggleButton */
-export function MpaDescriptionEditor({ mpaKey }: MpaDescriptionToggleButtonProps) {
+function MpaDescriptionEditor({ mpaKey }: MpaDescriptionToggleButtonProps) {
   return <MpaDescriptionToggleButton mpaKey={mpaKey} />;
 }

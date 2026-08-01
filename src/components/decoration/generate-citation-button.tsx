@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { reconcileModelSelection } from "@/lib/ai-models/catalog";
 import { useDecorationShellStore } from "@/stores/decoration-shell-store";
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,6 @@ export function GenerateCitationButton({
     "decoration",
     { eager: true },
   );
-  const reconcileRef = useRef<string | null>(null);
-
   const resolvedModel =
     models.length === 0
       ? selectedModel
@@ -49,8 +47,7 @@ export function GenerateCitationButton({
       defaultModelId,
       keyStatus ?? undefined,
     );
-    if (reconciled !== selectedModel && reconcileRef.current !== reconciled) {
-      reconcileRef.current = reconciled;
+    if (reconciled !== selectedModel) {
       queueMicrotask(() => setSelectedModel(reconciled));
     }
   }

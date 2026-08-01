@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { KeyStatus } from "@/app/actions/api-keys";
 import type {
   AvailableModel,
@@ -56,7 +56,6 @@ export function useAvailableModels(
   const [creditsFirstActive, setCreditsFirstActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const eagerInitRef = useRef(false);
 
   const applyToState = useCallback(
     (payload: AvailableModelsPayload) => {
@@ -109,12 +108,10 @@ export function useAvailableModels(
     }
   }, [applyToState]);
 
-  if (options?.eager && !eagerInitRef.current) {
-    eagerInitRef.current = true;
-    queueMicrotask(() => {
-      void load();
-    });
-  }
+  useEffect(() => {
+    if (!options?.eager) return;
+    void load();
+  }, [options?.eager, load]);
 
   return {
     models,

@@ -154,7 +154,7 @@ export function DeleteAwardDialog({
               <div className="max-h-[150px] overflow-y-auto rounded-lg border bg-muted/30 p-2 space-y-1">
                 {statementStats.withContent.map((statement, i) => (
                   <div
-                    key={i}
+                    key={statement.label}
                     className="flex items-center justify-between py-1.5 px-2 rounded bg-card"
                   >
                     <div className="flex items-center gap-2">

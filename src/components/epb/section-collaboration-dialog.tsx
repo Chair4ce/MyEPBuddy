@@ -191,7 +191,7 @@ export function SectionCollaborationDialog({
             <p className="text-sm font-medium">What would you like to do?</p>
             <div className="grid gap-2">
               {/* Join option */}
-              <button
+              <button type="button"
                 onClick={handleJoin}
                 disabled={isJoining}
                 className={cn(
@@ -213,7 +213,7 @@ export function SectionCollaborationDialog({
               </button>
 
               {/* View only option */}
-              <button
+              <button type="button"
                 onClick={() => {
                   onViewOnly();
                   onClose();
@@ -509,7 +509,7 @@ export function EditingIndicator({
   onClick,
 }: EditingIndicatorProps) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs",

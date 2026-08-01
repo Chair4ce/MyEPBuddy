@@ -103,7 +103,7 @@ export function isEnlisted(rank: Rank | string | null): boolean {
 
 // Legacy helper - check if a rank is a military enlisted rank (has EPB)
 // Note: Officers do NOT have EPBs, they have OPBs
-export function isMilitaryEnlisted(rank: Rank | null): boolean {
+function isMilitaryEnlisted(rank: Rank | null): boolean {
   if (!rank) return false;
   return isEnlisted(rank);
 }
@@ -476,7 +476,7 @@ export function getActiveCycleYear(rank: Rank | null): number {
 }
 
 // Get urgency level based on days until closeout
-export function getCloseoutUrgency(daysUntil: number | null): "none" | "low" | "medium" | "high" | "critical" {
+function getCloseoutUrgency(daysUntil: number | null): "none" | "low" | "medium" | "high" | "critical" {
   if (daysUntil === null) return "none";
   if (daysUntil <= 30) return "critical";
   if (daysUntil <= 60) return "high";
@@ -562,7 +562,7 @@ export const AWARD_QUARTERS: { value: AwardQuarter; label: string }[] = [
 ];
 
 // Get quarter from a date
-export function getQuarterFromDate(date: Date): AwardQuarter {
+function getQuarterFromDate(date: Date): AwardQuarter {
   const month = date.getMonth();
   if (month <= 2) return "Q1";
   if (month <= 5) return "Q2";
@@ -716,7 +716,7 @@ export const SPECIAL_AWARDS_CATALOG: SpecialAwardCategory[] = [
 ];
 
 // Flatten all special awards for validation/search
-export function getAllSpecialAwards(): string[] {
+function getAllSpecialAwards(): string[] {
   return SPECIAL_AWARDS_CATALOG.flatMap((category) => category.awards);
 }
 
@@ -971,7 +971,7 @@ export const ACA_SENIOR_PROFICIENCY_LEVELS: { value: ACASeniorProficiencyLevel; 
 ];
 
 // Combined levels for UI display (matches both tiers)
-export const ACA_PROFICIENCY_LEVELS = [
+const ACA_PROFICIENCY_LEVELS = [
   ...ACA_JUNIOR_PROFICIENCY_LEVELS.filter(l => l.value !== "far_exceeds"),
   { 
     value: "far_exceeds" as ACAProficiencyLevel, 
@@ -988,7 +988,7 @@ export const ACA_PROFICIENCY_LEVELS = [
 ];
 
 // Get proficiency levels based on rank tier
-export function getProficiencyLevelsForTier(tier: ACARubricTier) {
+function getProficiencyLevelsForTier(tier: ACARubricTier) {
   return tier === "junior" ? ACA_JUNIOR_PROFICIENCY_LEVELS : ACA_SENIOR_PROFICIENCY_LEVELS;
 }
 
@@ -1543,7 +1543,7 @@ export function formatOPBMPAContext(mpaKey: string): string {
 }
 
 // OPB stratification levels for officers
-export const OPB_STRATIFICATION_LEVELS = [
+const OPB_STRATIFICATION_LEVELS = [
   { value: "top_1", label: "#1 of [X]", description: "Absolute best officer in scope" },
   { value: "top_3", label: "Top 3 of [X]", description: "Among the very best" },
   { value: "top_10_percent", label: "Top 10%", description: "Exceptional performer" },
@@ -1553,7 +1553,7 @@ export const OPB_STRATIFICATION_LEVELS = [
 ] as const;
 
 // OPB-specific action verbs (officer-appropriate)
-export const OPB_ACTION_VERBS = [
+const OPB_ACTION_VERBS = [
   // Strategic leadership
   "Orchestrated", "Spearheaded", "Championed", "Directed", "Commanded",
   // Decision & influence
@@ -1569,7 +1569,7 @@ export const OPB_ACTION_VERBS = [
 ] as const;
 
 // Build OPB statement generation prompt
-export function buildOPBStatementPrompt(
+function buildOPBStatementPrompt(
   mpaKey: string,
   customContext: string,
   officerRank: Rank,
@@ -1630,7 +1630,7 @@ Format as plain text with statements separated by newlines. Do not include bulle
 }
 
 // Build OPB HLR (Higher Level Reviewer) summary prompt
-export function buildOPBHLRPrompt(
+function buildOPBHLRPrompt(
   mpaStatements: Record<string, string>,
   officerRank: Rank,
   dutyDescription?: string,
@@ -1762,10 +1762,10 @@ ACRONYMS REFERENCE:
 export const DEFAULT_OPB_STYLE_GUIDELINES = `EMPHASIZE strategic impact and leadership. Write in active voice showing command presence. Chain impacts: leadership action → organizational result → strategic benefit. Quantify scope: personnel led, budgets managed, organizations influenced. Connect to Air Force priorities and future potential. Demonstrate versatility and PME-readiness. Use standard AF abbreviations.`;
 
 // Helper functions for OPB defaults
-export function getDefaultOPBPrompt(): string {
+function getDefaultOPBPrompt(): string {
   return DEFAULT_OPB_SYSTEM_PROMPT;
 }
 
-export function getDefaultOPBStyleGuidelines(): string {
+function getDefaultOPBStyleGuidelines(): string {
   return DEFAULT_OPB_STYLE_GUIDELINES;
 }

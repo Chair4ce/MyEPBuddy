@@ -13,6 +13,7 @@ import {
 import { LEDGER_PAGE_SIZE } from "@/lib/billing/constants";
 import type { CreditTransaction } from "@/stores/credits-store";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 interface LedgerPagination {
   page: number;
@@ -174,7 +175,7 @@ export function CreditLedgerTable({ refreshKey = 0 }: CreditLedgerTableProps) {
               transactions.map((tx) => (
                 <TableRow key={tx.id}>
                   <TableCell className="text-xs whitespace-nowrap">
-                    {new Date(tx.created_at).toLocaleString()}
+                    {formatDateTime(tx.created_at)}
                   </TableCell>
                   <TableCell className="text-sm">
                     {tx.description || formatTransactionType(tx.type)}

@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { formatLongMonthDay } from "@/lib/format";
 import { hasRankInsignia } from "@/lib/rank-insignia";
 import {
   getStorageAvatarPath,
@@ -86,17 +87,20 @@ export default function SettingsPage() {
 
   // Fetch Google profile picture from auth metadata on mount (only for Google OAuth users)
   useEffect(() => {
-    async function fetchGooglePicture() {
+    let cancelled = false;
+    void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      // Check if user signed in with Google OAuth
-      const isGoogleUser = user?.app_metadata?.provider === "google" || 
+      if (cancelled) return;
+      const isGoogleUser = user?.app_metadata?.provider === "google" ||
         user?.identities?.some((identity) => identity.provider === "google");
-      
+
       if (isGoogleUser && user?.user_metadata?.picture) {
         setGooglePictureUrl(user.user_metadata.picture);
       }
-    }
-    fetchGooglePicture();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [supabase.auth]);
 
   // Check if current avatar is a custom upload (not Google or rank insignia)
@@ -1353,7 +1357,7 @@ function EPBCloseoutCard({ rank }: { rank: Rank | null }) {
             <div>
               <p className="text-sm text-muted-foreground">EPB draft due to immediate supervisor</p>
               <p className="text-2xl font-bold">
-                {submissionDeadline.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, {submissionDeadline.getFullYear()}
+                {formatLongMonthDay(submissionDeadline)}, {submissionDeadline.getFullYear()}
               </p>
               <p className="text-xs text-muted-foreground mt-1">60 days before close-out</p>
             </div>

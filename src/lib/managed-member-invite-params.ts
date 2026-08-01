@@ -2,7 +2,6 @@
 
 export const MANAGED_INVITE_FLAG = "1";
 export const PENDING_LINKS_HASH = "pending-account-links";
-export const MANAGED_INVITE_TOKEN_STORAGE_KEY = "managed_invite_token";
 
 export type ManagedInviteParams = {
   email: string;
@@ -11,6 +10,25 @@ export type ManagedInviteParams = {
   token: string | null;
   isInvite: boolean;
 };
+
+function readManagedInviteFlag(searchParams: URLSearchParams): string | null {
+  for (const [key, value] of searchParams) {
+    if (key === "invite") return value;
+  }
+  return null;
+}
+
+/**
+ * UI prefill hint only — account linking requires server-side invite token validation.
+ */
+export function safeManagedInviteUiHint(
+  searchParams: URLSearchParams,
+  hasIdentityHint: boolean
+): boolean {
+  return (
+    readManagedInviteFlag(searchParams) === MANAGED_INVITE_FLAG && hasIdentityHint
+  );
+}
 
 export function parseManagedInviteParams(
   searchParams: URLSearchParams
@@ -21,9 +39,8 @@ export function parseManagedInviteParams(
   const supervisorName = searchParams.get("from")?.trim() || null;
   const teamMemberId = searchParams.get("tm")?.trim() || null;
   const token = searchParams.get("token")?.trim() || null;
-  const isInvite =
-    searchParams.get("invite") === MANAGED_INVITE_FLAG &&
-    (Boolean(token) || Boolean(email));
+  const hasIdentityHint = Boolean(token) || Boolean(email);
+  const isInvite = safeManagedInviteUiHint(searchParams, hasIdentityHint);
 
   return {
     email,
@@ -86,33 +103,21 @@ export function buildManagedInviteDashboardPath(): string {
   return `/dashboard?invite=${MANAGED_INVITE_FLAG}#${PENDING_LINKS_HASH}`;
 }
 
+/** In-memory only — invite tokens must not persist in web storage (XSS risk). */
+let pendingInviteToken: string | null = null;
+
 export function persistManagedInviteToken(token: string | null | undefined): void {
-  if (typeof window === "undefined") return;
   const value = token?.trim();
   if (!value) return;
-  try {
-    window.sessionStorage.setItem(MANAGED_INVITE_TOKEN_STORAGE_KEY, value);
-  } catch {
-    // ignore quota / private mode
-  }
+  pendingInviteToken = value;
 }
 
 export function readPersistedManagedInviteToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.sessionStorage.getItem(MANAGED_INVITE_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  return pendingInviteToken;
 }
 
 export function clearPersistedManagedInviteToken(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(MANAGED_INVITE_TOKEN_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+  pendingInviteToken = null;
 }
 
 /**

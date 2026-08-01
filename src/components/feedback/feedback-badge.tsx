@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MessageSquare } from "lucide-react";
@@ -22,33 +22,40 @@ export function FeedbackBadge({
 }: FeedbackBadgeProps) {
   const [pendingCount, setPendingCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
-  useEffect(() => {
-    async function loadCount() {
-      try {
-        const response = await fetch(
-          `/api/feedback?shellType=${shellType}&shellId=${shellId}`
-        );
-        const data = await response.json();
+  const loadCount = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/feedback?shellType=${shellType}&shellId=${shellId}`
+      );
+      const data = await response.json();
 
-        if (response.ok && data.sessions) {
-          const sessions = data.sessions as Array<{ pending_count: number; comment_count: number }>;
-          const pending = sessions.reduce((sum, s) => sum + (s.pending_count || 0), 0);
-          const total = sessions.reduce((sum, s) => sum + (s.comment_count || 0), 0);
-          setPendingCount(pending);
-          setTotalCount(total);
-        }
-      } catch (error) {
-        console.error("Load feedback count error:", error);
+      if (response.ok && data.sessions) {
+        const sessions = data.sessions as Array<{ pending_count: number; comment_count: number }>;
+        const pending = sessions.reduce((sum, s) => sum + (s.pending_count || 0), 0);
+        const total = sessions.reduce((sum, s) => sum + (s.comment_count || 0), 0);
+        setPendingCount(pending);
+        setTotalCount(total);
+        setHasLoaded(true);
       }
+    } catch (error) {
+      console.error("Load feedback count error:", error);
     }
+  }, [shellType, shellId]);
 
-    if (shellId) {
-      loadCount();
+  const handlePrefetch = () => {
+    void loadCount();
+  };
+
+  const handleClick = () => {
+    if (!hasLoaded) {
+      void loadCount();
     }
-  }, [shellType, shellId, refreshKey]);
+    onClick();
+  };
 
-  if (totalCount === 0) {
+  if (totalCount === 0 && hasLoaded) {
     return null;
   }
 
@@ -56,7 +63,9 @@ export function FeedbackBadge({
     <Button
       variant="outline"
       size="sm"
-      onClick={onClick}
+      onClick={handleClick}
+      onMouseEnter={handlePrefetch}
+      onFocus={handlePrefetch}
       className={cn("gap-2 relative", className)}
     >
       <MessageSquare className="size-4" />

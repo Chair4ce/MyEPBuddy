@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import { shareDecorationShellWithUser } from "@/app/actions/shell-shares";
 import {
   Share2,
   Search,
@@ -77,13 +78,14 @@ export function DecorationShellShareDialog({
 
   // Load existing access
   useEffect(() => {
-    async function loadAccess() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!isOpen || !shellId) return;
 
       setIsLoadingAccess(true);
       try {
-        // Load shell to get owner info
-        const { data: shellData } = await supabase
+        const { data: shellData, error: shellError } = await supabase
           .from("decoration_shells")
           .select(
             `
@@ -95,18 +97,9 @@ export function DecorationShellShareDialog({
           `
           )
           .eq("id", shellId)
+          .abortSignal(controller.signal)
           .single();
 
-        const typedShellData = shellData as {
-          user_id: string;
-          created_by: string;
-          owner_profile: Profile;
-        } | null;
-        if (typedShellData?.owner_profile) {
-          setShellOwner(typedShellData.owner_profile);
-        }
-
-        // Load explicit shares
         const { data: sharesData, error: sharesError } = await supabase
           .from("decoration_shell_shares")
           .select(
@@ -117,14 +110,10 @@ export function DecorationShellShareDialog({
             )
           `
           )
-          .eq("shell_id", shellId);
+          .eq("shell_id", shellId)
+          .abortSignal(controller.signal);
 
-        if (sharesError) throw sharesError;
-        setExistingShares(
-          (sharesData || []) as (DecorationShellShare & { shared_with_profile?: Profile })[]
-        );
-
-        // Load supervisors of the ratee who have access
+        let nextSupervisors: Profile[] = [];
         if (ratee && !ratee.isManagedMember) {
           const { data: supervisionData } = await supabase
             .from("team_history")
@@ -136,25 +125,42 @@ export function DecorationShellShareDialog({
             `
             )
             .eq("subordinate_id", ratee.id)
-            .is("ended_at", null);
+            .is("ended_at", null)
+            .abortSignal(controller.signal);
 
           const typedSupervisionData = supervisionData as { supervisor: Profile }[] | null;
           if (typedSupervisionData) {
-            const supervisorProfiles = typedSupervisionData
+            nextSupervisors = typedSupervisionData
               .map((s) => s.supervisor)
               .filter(Boolean);
-            setSupervisors(supervisorProfiles);
           }
         }
-      } catch (error) {
-        console.error("Failed to load access:", error);
+
+        if (controller.signal.aborted) return;
+        if (shellError || sharesError) {
+          console.error("Failed to load access:", shellError ?? sharesError);
+          return;
+        }
+
+        const typedShellData = shellData as {
+          user_id: string;
+          created_by: string;
+          owner_profile: Profile;
+        } | null;
+        if (typedShellData?.owner_profile) {
+          setShellOwner(typedShellData.owner_profile);
+        }
+        setExistingShares(
+          (sharesData || []) as (DecorationShellShare & { shared_with_profile?: Profile })[]
+        );
+        setSupervisors(nextSupervisors);
       } finally {
         setIsLoadingAccess(false);
       }
-    }
+    })();
 
-    loadAccess();
-  }, [shellId, isOpen, ratee, supabase]);
+    return () => controller.abort();
+  }, [shellId, isOpen, ratee?.id, ratee?.isManagedMember, supabase]);
 
   // Build combined access list
   const accessList: AccessUser[] = [];
@@ -235,38 +241,16 @@ export function DecorationShellShareDialog({
     }
   };
 
-  // Share with user
+  // Share with user (owner_id derived server-side)
   const handleShare = async (userId: string) => {
     if (!currentUserId) return;
 
     setIsSharing(userId);
     try {
-      const { error } = await supabase.from("decoration_shell_shares").insert({
-        shell_id: shellId,
-        owner_id: currentUserId,
-        share_type: "user",
-        shared_with_id: userId,
-      } as never);
+      const result = await shareDecorationShellWithUser(shellId, userId);
+      if (!result.ok) throw new Error(result.error);
 
-      if (error) throw error;
-
-      // Add to existing shares
-      const sharedUser = searchResults.find((u) => u.id === userId);
-      if (sharedUser) {
-        setExistingShares((prev) => [
-          ...prev,
-          {
-            id: `temp-${Date.now()}`,
-            shell_id: shellId,
-            owner_id: currentUserId,
-            share_type: "user",
-            shared_with_id: userId,
-            created_at: new Date().toISOString(),
-            shared_with_profile: sharedUser,
-          },
-        ]);
-      }
-
+      setExistingShares((prev) => [...prev, result.data]);
       setSearchQuery("");
       setSearchResults([]);
       Analytics.decorationShared();

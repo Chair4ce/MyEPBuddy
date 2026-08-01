@@ -264,6 +264,7 @@ export function SessionGuidePhaseEditor({
     }
 
     setIsSaving(true);
+    try {
     const reviewedIds = isMidtermPhase
       ? cycleAccomplishmentIds
       : (feedback?.reviewed_accomplishment_ids ?? []);
@@ -280,7 +281,6 @@ export function SessionGuidePhaseEditor({
 
     if (result.error || !result.data) {
       toast.error(result.error || "Failed to save session guide");
-      setIsSaving(false);
       return;
     }
 
@@ -325,7 +325,9 @@ export function SessionGuidePhaseEditor({
       isEvidencePhase ? "Settings and feedback guide saved" : "Session guide saved"
     );
     onSaved?.();
-    setIsSaving(false);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleFormat() {
@@ -520,22 +522,25 @@ export function SessionGuidePhaseEditor({
   async function handleDelete() {
     if (!feedback) return;
     setIsDeleting(true);
-    const result = await deleteFeedback(feedback.id);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      syncFeedback(null);
-      if (isEvidencePhase) {
-        updateSessionSettings(defaultTemplate);
-        updateContent("");
+    try {
+      const result = await deleteFeedback(feedback.id);
+      if (result.error) {
+        toast.error(result.error);
       } else {
-        updateContent(defaultTemplate);
+        syncFeedback(null);
+        if (isEvidencePhase) {
+          updateSessionSettings(defaultTemplate);
+          updateContent("");
+        } else {
+          updateContent(defaultTemplate);
+        }
+        toast.success("Session guide deleted");
+        onSaved?.();
       }
-      toast.success("Session guide deleted");
-      onSaved?.();
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
-    setIsDeleting(false);
-    setShowDeleteConfirm(false);
   }
 
   function handleCopy() {

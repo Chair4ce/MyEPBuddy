@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -38,7 +38,7 @@ export interface SectionCollaborator {
 
 export interface JoinRequest {
   oderId: string; // participant record ID in database
-  userId: string;
+  requesterProfileId: string;
   fullName: string;
   rank: string | null;
   requestedAt: string;
@@ -136,27 +136,188 @@ export function useEPBSectionCollaboration(
     onJoinApproved,
     onJoinRejected,
   });
-  optionsRef.current = { 
-    onStateChange, 
-    onParticipantJoin, 
+
+  useLayoutEffect(() => {
+    optionsRef.current = {
+      onStateChange,
+      onParticipantJoin,
+      onParticipantLeave,
+      onJoinRequest,
+      onJoinApproved,
+      onJoinRejected,
+    };
+  }, [
+    onStateChange,
+    onParticipantJoin,
     onParticipantLeave,
     onJoinRequest,
     onJoinApproved,
     onJoinRejected,
-  };
+  ]);
   const activityIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clean up on unmount
+  // Subscribe to realtime channel while a session is active
   useEffect(() => {
-    return () => {
+    if (!session?.session_code) {
+      return () => {};
+    }
+
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    const channel = supabase.channel(`epb-section:${session.session_code}`, {
+      config: {
+        presence: {
+          key: profile?.id || "anonymous",
+        },
+      },
+    });
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const presenceState = channel.presenceState();
+        const online: SectionCollaborator[] = [];
+
+        Object.entries(presenceState).forEach(([oderId, presences]) => {
+          const presence = presences[0] as unknown as {
+            oderId: string;
+            fullName: string;
+            rank: string | null;
+            email: string;
+            isHost: boolean;
+            status: ParticipantStatus;
+          } | undefined;
+          if (presence && (presence.status === "approved" || presence.isHost)) {
+            online.push({
+              id: oderId,
+              oderId: presence.oderId || oderId,
+              fullName: presence.fullName || "Unknown",
+              rank: presence.rank || null,
+              email: presence.email || "",
+              isHost: presence.isHost || false,
+              isOnline: true,
+              status: presence.status || "approved",
+            });
+          }
+        });
+
+        setCollaborators(online);
+      })
+      .on("presence", { event: "join" }, ({ key, newPresences }) => {
+        const presence = newPresences[0] as unknown as {
+          oderId: string;
+          fullName: string;
+          rank: string | null;
+          email: string;
+          isHost: boolean;
+          status: ParticipantStatus;
+        } | undefined;
+        if (presence && presence.status === "approved" && optionsRef.current.onParticipantJoin) {
+          optionsRef.current.onParticipantJoin({
+            id: key,
+            oderId: presence.oderId || key,
+            fullName: presence.fullName || "Unknown",
+            rank: presence.rank || null,
+            email: presence.email || "",
+            isHost: presence.isHost || false,
+            isOnline: true,
+            status: presence.status,
+          });
+        }
+      })
+      .on("presence", { event: "leave" }, ({ key }) => {
+        if (optionsRef.current.onParticipantLeave) {
+          optionsRef.current.onParticipantLeave(key);
+        }
+      });
+
+    channel.on("broadcast", { event: "state_update" }, ({ payload }) => {
+      if (optionsRef.current.onStateChange && payload.state) {
+        optionsRef.current.onStateChange(payload.state as SectionWorkspaceState);
+      }
+    });
+
+    channel.on("broadcast", { event: "join_request" }, ({ payload }) => {
+      const request = payload as JoinRequest;
+      setJoinRequests((prev) => {
+        if (prev.some((r) => r.oderId === request.oderId)) return prev;
+        return [...prev, request];
+      });
+      if (optionsRef.current.onJoinRequest) {
+        optionsRef.current.onJoinRequest(request);
+      }
+    });
+
+    channel.on("broadcast", { event: "join_approved" }, ({ payload }) => {
+      if (payload.oderId === myOderId) {
+        setJoinStatus("approved");
+        if (optionsRef.current.onJoinApproved) {
+          optionsRef.current.onJoinApproved();
+        }
+        channel.track({
+          oderId: myOderId,
+          fullName: profile?.full_name || "Unknown",
+          rank: profile?.rank || null,
+          email: profile?.email || "",
+          isHost: false,
+          status: "approved",
+        });
+      }
+      setJoinRequests((prev) => prev.filter((r) => r.oderId !== payload.oderId));
+    });
+
+    channel.on("broadcast", { event: "join_rejected" }, ({ payload }) => {
+      if (payload.oderId === myOderId) {
+        setJoinStatus("rejected");
+        if (optionsRef.current.onJoinRejected) {
+          optionsRef.current.onJoinRejected();
+        }
+      }
+      setJoinRequests((prev) => prev.filter((r) => r.oderId !== payload.oderId));
+    });
+
+    channel.on("broadcast", { event: "session_ended" }, () => {
+      setSession(null);
+      setIsHost(false);
+      setCollaborators([]);
+      setJoinRequests([]);
+      setJoinStatus(null);
+      setActiveSession(null);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
       if (activityIntervalRef.current) {
         clearInterval(activityIntervalRef.current);
+        activityIntervalRef.current = null;
+      }
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({
+          fullName: profile?.full_name || "Unknown",
+          rank: profile?.rank || null,
+          email: profile?.email || "",
+          isHost: isHost,
+        });
+      }
+    });
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (channelRef.current === channel) {
+        channelRef.current = null;
+      }
+      if (activityIntervalRef.current) {
+        clearInterval(activityIntervalRef.current);
+        activityIntervalRef.current = null;
       }
     };
-  }, [supabase]);
+  }, [session?.id, session?.session_code, profile, supabase, isHost, myOderId]);
 
   // Check for active editing session on this section
   const checkActiveSession = useCallback(async (): Promise<ActiveSessionInfo | null> => {
@@ -207,168 +368,6 @@ export function useEPBSectionCollaboration(
     }
   }, [profile, sectionId, supabase]);
 
-  // Subscribe to realtime channel for a session
-  const subscribeToSession = useCallback(
-    (sessionId: string, sessionCode: string) => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
-
-      const channel = supabase.channel(`epb-section:${sessionCode}`, {
-        config: {
-          presence: {
-            key: profile?.id || "anonymous",
-          },
-        },
-      });
-
-      // Handle presence (who's online) - only show approved participants
-      channel
-        .on("presence", { event: "sync" }, () => {
-          const presenceState = channel.presenceState();
-          const online: SectionCollaborator[] = [];
-
-          Object.entries(presenceState).forEach(([oderId, presences]) => {
-            const presence = presences[0] as unknown as {
-              oderId: string;
-              fullName: string;
-              rank: string | null;
-              email: string;
-              isHost: boolean;
-              status: ParticipantStatus;
-            } | undefined;
-            // Only show approved participants
-            if (presence && (presence.status === "approved" || presence.isHost)) {
-              online.push({
-                id: oderId,
-                oderId: presence.oderId || oderId,
-                fullName: presence.fullName || "Unknown",
-                rank: presence.rank || null,
-                email: presence.email || "",
-                isHost: presence.isHost || false,
-                isOnline: true,
-                status: presence.status || "approved",
-              });
-            }
-          });
-
-          setCollaborators(online);
-        })
-        .on("presence", { event: "join" }, ({ key, newPresences }) => {
-          const presence = newPresences[0] as unknown as {
-            oderId: string;
-            fullName: string;
-            rank: string | null;
-            email: string;
-            isHost: boolean;
-            status: ParticipantStatus;
-          } | undefined;
-          if (presence && presence.status === "approved" && optionsRef.current.onParticipantJoin) {
-            optionsRef.current.onParticipantJoin({
-              id: key,
-              oderId: presence.oderId || key,
-              fullName: presence.fullName || "Unknown",
-              rank: presence.rank || null,
-              email: presence.email || "",
-              isHost: presence.isHost || false,
-              isOnline: true,
-              status: presence.status,
-            });
-          }
-        })
-        .on("presence", { event: "leave" }, ({ key }) => {
-          if (optionsRef.current.onParticipantLeave) {
-            optionsRef.current.onParticipantLeave(key);
-          }
-        });
-
-      // Handle broadcast messages for state sync
-      channel.on("broadcast", { event: "state_update" }, ({ payload }) => {
-        if (optionsRef.current.onStateChange && payload.state) {
-          optionsRef.current.onStateChange(payload.state as SectionWorkspaceState);
-        }
-      });
-
-      // Handle join request broadcast (for hosts)
-      channel.on("broadcast", { event: "join_request" }, ({ payload }) => {
-        const request = payload as JoinRequest;
-        setJoinRequests((prev) => {
-          // Avoid duplicates
-          if (prev.some((r) => r.oderId === request.oderId)) return prev;
-          return [...prev, request];
-        });
-        if (optionsRef.current.onJoinRequest) {
-          optionsRef.current.onJoinRequest(request);
-        }
-      });
-
-      // Handle join approval broadcast (for requesters)
-      channel.on("broadcast", { event: "join_approved" }, ({ payload }) => {
-        if (payload.oderId === myOderId) {
-          setJoinStatus("approved");
-          if (optionsRef.current.onJoinApproved) {
-            optionsRef.current.onJoinApproved();
-          }
-          // Re-track presence with approved status
-          channel.track({
-            oderId: myOderId,
-            fullName: profile?.full_name || "Unknown",
-            rank: profile?.rank || null,
-            email: profile?.email || "",
-            isHost: false,
-            status: "approved",
-          });
-        }
-        // Remove from join requests list
-        setJoinRequests((prev) => prev.filter((r) => r.oderId !== payload.oderId));
-      });
-
-      // Handle join rejection broadcast (for requesters)
-      channel.on("broadcast", { event: "join_rejected" }, ({ payload }) => {
-        if (payload.oderId === myOderId) {
-          setJoinStatus("rejected");
-          if (optionsRef.current.onJoinRejected) {
-            optionsRef.current.onJoinRejected();
-          }
-        }
-        // Remove from join requests list
-        setJoinRequests((prev) => prev.filter((r) => r.oderId !== payload.oderId));
-      });
-
-      // Handle session end broadcast
-      channel.on("broadcast", { event: "session_ended" }, () => {
-        setSession(null);
-        setIsHost(false);
-        setCollaborators([]);
-        setJoinRequests([]);
-        setJoinStatus(null);
-        setActiveSession(null);
-        if (channelRef.current) {
-          supabase.removeChannel(channelRef.current);
-          channelRef.current = null;
-        }
-        if (activityIntervalRef.current) {
-          clearInterval(activityIntervalRef.current);
-          activityIntervalRef.current = null;
-        }
-      });
-
-      channel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({
-            fullName: profile?.full_name || "Unknown",
-            rank: profile?.rank || null,
-            email: profile?.email || "",
-            isHost: isHost,
-          });
-        }
-      });
-
-      channelRef.current = channel;
-    },
-    [profile, supabase, isHost]
-  );
-
   // Start editing (create session)
   const startEditing = useCallback(
     async (initialState?: Partial<SectionWorkspaceState>): Promise<string | null> => {
@@ -386,7 +385,6 @@ export function useEPBSectionCollaboration(
 
       // If we already have our own session, rejoin it
       if (existing?.isOwnSession) {
-        subscribeToSession(existing.sessionId, existing.sessionCode);
         setSession({
           id: existing.sessionId,
           section_id: sectionId,
@@ -436,9 +434,6 @@ export function useEPBSectionCollaboration(
         setSession(typedSession);
         setIsHost(true);
 
-        // Subscribe to realtime channel
-        subscribeToSession(typedSession.id, typedSession.session_code);
-
         // Start activity heartbeat (every 5 minutes)
         activityIntervalRef.current = setInterval(() => {
           supabase
@@ -457,7 +452,7 @@ export function useEPBSectionCollaboration(
         setIsLoading(false);
       }
     },
-    [profile, sectionId, supabase, subscribeToSession, checkActiveSession]
+    [profile, sectionId, supabase, checkActiveSession]
   );
 
   // Request to join an existing session (requires host approval)
@@ -515,7 +510,6 @@ export function useEPBSectionCollaboration(
           if (existingParticipant.status === "approved") {
             setSession(typedSession);
             setMyOderId(oderId);
-            subscribeToSession(typedSession.id, typedSession.session_code);
             return true;
           }
         } else {
@@ -538,9 +532,6 @@ export function useEPBSectionCollaboration(
         setSession(typedSession);
         setMyOderId(oderId);
 
-        // Subscribe to realtime channel to listen for approval
-        subscribeToSession(typedSession.id, typedSession.session_code);
-
         // Broadcast join request to host
         if (channelRef.current) {
           await channelRef.current.send({
@@ -548,7 +539,7 @@ export function useEPBSectionCollaboration(
             event: "join_request",
             payload: {
               oderId,
-              userId: profile.id,
+              requesterProfileId: profile.id,
               fullName: profile.full_name || "Unknown",
               rank: profile.rank || null,
               requestedAt: new Date().toISOString(),
@@ -578,7 +569,7 @@ export function useEPBSectionCollaboration(
         setIsLoading(false);
       }
     },
-    [profile, supabase, subscribeToSession, activeSession]
+    [profile, supabase, activeSession]
   );
 
   // Approve a join request (host only)

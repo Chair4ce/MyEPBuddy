@@ -36,6 +36,7 @@ import {
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatDateDefault, formatDateRange, formatMonthYear, formatShortDateWithYear, formatWeekRange } from "@/lib/format";
 
 interface WARReportCategory {
   key: string;
@@ -82,17 +83,20 @@ export function WARHistoryModal({
 
   // Load reports on open
   useEffect(() => {
-    async function loadReports() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!open || !profile) return;
 
       setIsLoading(true);
       try {
-        const { data, error } = await (supabase
-          .from("war_reports") as any)
+        const { data, error } = await supabase
+          .from("war_reports")
           .select("*")
           .eq("user_id", profile.id)
           .order("week_start", { ascending: false })
-          .limit(100);
+          .limit(100)
+          .abortSignal(controller.signal);
 
         if (error) {
           console.error("Error loading WAR reports:", error);
@@ -100,15 +104,15 @@ export function WARHistoryModal({
           return;
         }
 
+        if (controller.signal.aborted) return;
+
         setReports(data || []);
-      } catch (error) {
-        console.error("Error loading WAR reports:", error);
       } finally {
         setIsLoading(false);
       }
-    }
+    })();
 
-    loadReports();
+    return () => controller.abort();
   }, [open, profile, supabase]);
 
   // Filter reports by search query
@@ -118,16 +122,8 @@ export function WARHistoryModal({
     const query = searchQuery.toLowerCase();
     return reports.filter((report) => {
       // Search in date range
-      const weekStart = new Date(report.week_start).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const weekEnd = new Date(report.week_end).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+      const weekStart = formatShortDateWithYear(report.week_start);
+      const weekEnd = formatShortDateWithYear(report.week_end);
       if (weekStart.toLowerCase().includes(query) || weekEnd.toLowerCase().includes(query)) {
         return true;
       }
@@ -154,22 +150,6 @@ export function WARHistoryModal({
       return false;
     });
   }, [reports, searchQuery]);
-
-  // Format date range for display
-  const formatDateRange = (start: string, end: string) => {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const startStr = startDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-    const endStr = endDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    return `${startStr} - ${endStr}`;
-  };
 
   // Get week number from date
   const getWeekNumber = (dateStr: string) => {
@@ -212,7 +192,7 @@ export function WARHistoryModal({
       const lines: string[] = [];
       
       lines.push("WEEKLY ACTIVITY REPORT");
-      lines.push(`Date: ${formatDateRange(report.week_start, report.week_end)}`);
+      lines.push(`Date: ${formatWeekRange(report.week_start, report.week_end)}`);
       if (report.unit_office_symbol) {
         lines.push(`Unit: ${report.unit_office_symbol}`);
       }
@@ -268,8 +248,7 @@ export function WARHistoryModal({
     Array.from(groupMap.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .forEach(([key, reports]) => {
-        const date = new Date(reports[0].week_start);
-        const label = date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        const label = formatMonthYear(reports[0].week_start, "long");
         groups.push({ key, label, reports });
       });
 
@@ -365,7 +344,7 @@ export function WARHistoryModal({
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <p className="font-medium text-sm">
-                                        Week of {formatDateRange(report.week_start, report.week_end)}
+                                        Week of {formatWeekRange(report.week_start, report.week_end)}
                                       </p>
                                       {report.unit_office_symbol && (
                                         <Badge variant="outline" className="text-xs">
@@ -380,7 +359,7 @@ export function WARHistoryModal({
                                       </span>
                                       <span className="flex items-center gap-1">
                                         <Clock className="size-3" />
-                                        {new Date(report.updated_at).toLocaleDateString()}
+                                        {formatDateDefault(report.updated_at)}
                                       </span>
                                     </div>
 

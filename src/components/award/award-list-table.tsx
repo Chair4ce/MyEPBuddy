@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AWARD_LEVELS, AWARD_CATEGORIES, AWARD_WIN_LEVELS } from "@/lib/constants";
 import type { Profile, ManagedMember, AwardLevel, AwardCategory, AwardPeriodType, AwardWinLevel } from "@/types/database";
+import { formatDateDefault } from "@/lib/format";
 
 // ============================================================================
 // Types
@@ -79,6 +80,23 @@ interface AwardListTableProps {
 
 type SortField = "name" | "level" | "category" | "updated" | "progress" | "year";
 type SortOrder = "asc" | "desc";
+
+function SortIcon({
+  field,
+  sortField,
+  sortOrder,
+}: {
+  field: SortField;
+  sortField: SortField;
+  sortOrder: SortOrder;
+}) {
+  if (sortField !== field) return null;
+  return sortOrder === "asc" ? (
+    <ChevronUp className="size-3 ml-1" />
+  ) : (
+    <ChevronDown className="size-3 ml-1" />
+  );
+}
 
 // ============================================================================
 // Helper Functions
@@ -229,15 +247,6 @@ export function AwardListTable({
     }
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null;
-    return sortOrder === "asc" ? (
-      <ChevronUp className="size-3 ml-1" />
-    ) : (
-      <ChevronDown className="size-3 ml-1" />
-    );
-  };
-
   // Loading state
   if (isLoading) {
     return (
@@ -379,7 +388,7 @@ export function AwardListTable({
         </TableCell>
         <TableCell>
           <span className="text-xs text-muted-foreground">
-            {new Date(award.updated_at).toLocaleDateString()}
+            {formatDateDefault(award.updated_at)}
           </span>
         </TableCell>
         <TableCell>
@@ -426,7 +435,7 @@ export function AwardListTable({
                     onClick={() => handleSort("name")}
                   >
                     <div className="flex items-center">
-                      Nominee <SortIcon field="name" />
+                      Nominee <SortIcon field="name" sortField={sortField} sortOrder={sortOrder} />
                     </div>
                   </TableHead>
                   <TableHead
@@ -434,7 +443,7 @@ export function AwardListTable({
                     onClick={() => handleSort("year")}
                   >
                     <div className="flex items-center">
-                      Period <SortIcon field="year" />
+                      Period <SortIcon field="year" sortField={sortField} sortOrder={sortOrder} />
                     </div>
                   </TableHead>
                   <TableHead
@@ -442,7 +451,7 @@ export function AwardListTable({
                     onClick={() => handleSort("level")}
                   >
                     <div className="flex items-center">
-                      Level <SortIcon field="level" />
+                      Level <SortIcon field="level" sortField={sortField} sortOrder={sortOrder} />
                     </div>
                   </TableHead>
                   <TableHead
@@ -450,7 +459,7 @@ export function AwardListTable({
                     onClick={() => handleSort("category")}
                   >
                     <div className="flex items-center">
-                      Category <SortIcon field="category" />
+                      Category <SortIcon field="category" sortField={sortField} sortOrder={sortOrder} />
                     </div>
                   </TableHead>
                   <TableHead
@@ -458,7 +467,7 @@ export function AwardListTable({
                     onClick={() => handleSort("progress")}
                   >
                     <div className="flex items-center">
-                      Progress <SortIcon field="progress" />
+                      Progress <SortIcon field="progress" sortField={sortField} sortOrder={sortOrder} />
                     </div>
                   </TableHead>
                   <TableHead>Created By</TableHead>
@@ -467,7 +476,7 @@ export function AwardListTable({
                     onClick={() => handleSort("updated")}
                   >
                     <div className="flex items-center">
-                      Updated <SortIcon field="updated" />
+                      Updated <SortIcon field="updated" sortField={sortField} sortOrder={sortOrder} />
                     </div>
                   </TableHead>
                   <TableHead className="w-[100px]"></TableHead>

@@ -72,7 +72,7 @@ export async function checkAndTrackUsage(
   const supabase = await createClient();
 
   const tracking: TokenTrackingContext = {
-    userId,
+    subjectId: userId,
     action,
     usingDefaultKey: usingDefault,
   };

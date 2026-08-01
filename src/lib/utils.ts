@@ -5,15 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDate(date: Date | string): string {
-  return new Date(date).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+export { formatShortDateWithYear as formatDate } from "@/lib/format";
 
-export function truncateText(text: string, maxLength: number): string {
+function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 3) + "...";
 }
@@ -27,7 +21,7 @@ export function getCharacterCountColor(count: number, max: number): string {
   return "text-orange-300"; // More than 40 away - needs more
 }
 
-export function sleep(ms: number): Promise<void> {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -114,7 +108,7 @@ export function getLastName(entity: NameFields | null | undefined): string {
  * Get just the surname (last word of name) for military format.
  * Useful for "SSgt Smith" format where middle names should be excluded.
  */
-export function getSurname(entity: NameFields | null | undefined): string {
+function getSurname(entity: NameFields | null | undefined): string {
   if (!entity) return "";
   
   // If we have last_name, get the last word (in case it includes middle name)
@@ -187,7 +181,7 @@ export function getInitials(entity: NameFields | null | undefined): string {
  * Parse a full name string into first and last name components.
  * Used for migrating legacy data or handling user input.
  */
-export function parseFullName(fullName: string | null | undefined): { firstName: string; lastName: string } {
+function parseFullName(fullName: string | null | undefined): { firstName: string; lastName: string } {
   if (!fullName) {
     return { firstName: "", lastName: "" };
   }

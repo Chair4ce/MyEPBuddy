@@ -42,6 +42,14 @@ import {
 } from "lucide-react";
 import { ENTRY_MGAS, SUPERVISOR_RANKS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, ENLISTED_RANKS, OFFICER_RANKS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import {
+  formatDayOnly,
+  formatMonthOnly,
+  formatMonthYear,
+  formatShortDate,
+  formatDateRange,
+  formatTimeAgo,
+} from "@/lib/format";
 import type { AwardQuarter } from "@/types/database";
 import { AccomplishmentDetailDialog } from "./accomplishment-detail-dialog";
 import { WARSettingsModal } from "./war-settings-modal";
@@ -499,26 +507,6 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     setDialogOpen(true);
   };
 
-  const formatTimeAgo = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
   // Get unique team members for filter dropdown
   const uniqueMembers = useMemo(() => {
     const membersMap = new Map<string, { id: string; name: string; rank: Rank | null }>();
@@ -673,8 +661,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
       if (!groups.has(monthKey)) {
         groups.set(monthKey, {
           key: monthKey,
-          label: date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-          shortLabel: date.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+          label: formatMonthYear(entry.date, "long"),
+          shortLabel: formatMonthYear(entry.date, "short"),
           entries: [],
         });
       }
@@ -731,8 +719,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         if (!monthMap.has(monthKey)) {
           monthMap.set(monthKey, {
             key: monthKey,
-            label: date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-            shortLabel: date.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+            label: formatMonthYear(entry.date, "long"),
+            shortLabel: formatMonthYear(entry.date, "short"),
             entries: [],
           });
         }
@@ -755,6 +743,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     endDate: Date;
     label: string; // e.g., "Week of Jan 20-26"
     entries: FeedAccomplishment[];
+    isCurrentWeek: boolean;
   }
 
   // Helper to get ISO week number and year
@@ -802,6 +791,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
     const groups: Map<string, WeekGroup> = new Map();
     const now = new Date();
     const currentWeekBounds = getWeekBounds(now);
+    const currentWeekInfo = getISOWeekInfo(now);
+    const currentWeekKey = `${currentWeekInfo.year}-W${String(currentWeekInfo.week).padStart(2, "0")}`;
     
     // Create week groups from the filtered entries
     weeklyFilteredAccomplishments.forEach((entry) => {
@@ -811,8 +802,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
       
       if (!groups.has(weekKey)) {
         const bounds = getWeekBounds(entryDate);
-        const startMonth = bounds.start.toLocaleDateString("en-US", { month: "short" });
-        const endMonth = bounds.end.toLocaleDateString("en-US", { month: "short" });
+        const startMonth = formatMonthOnly(bounds.start);
+        const endMonth = formatMonthOnly(bounds.end);
         const startDay = bounds.start.getDate();
         const endDay = bounds.end.getDate();
         
@@ -829,17 +820,16 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
           endDate: bounds.end,
           label,
           entries: [],
+          isCurrentWeek: weekKey === currentWeekKey,
         });
       }
       groups.get(weekKey)!.entries.push(entry);
     });
 
     // Also add the current week if it doesn't have entries (so users can see it)
-    const currentWeekInfo = getISOWeekInfo(now);
-    const currentWeekKey = `${currentWeekInfo.year}-W${String(currentWeekInfo.week).padStart(2, "0")}`;
     if (!groups.has(currentWeekKey)) {
-      const startMonth = currentWeekBounds.start.toLocaleDateString("en-US", { month: "short" });
-      const endMonth = currentWeekBounds.end.toLocaleDateString("en-US", { month: "short" });
+      const startMonth = formatMonthOnly(currentWeekBounds.start);
+      const endMonth = formatMonthOnly(currentWeekBounds.end);
       const startDay = currentWeekBounds.start.getDate();
       const endDay = currentWeekBounds.end.getDate();
       const label = startMonth === endMonth
@@ -854,6 +844,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
         endDate: currentWeekBounds.end,
         label,
         entries: [],
+        isCurrentWeek: true,
       });
     }
 
@@ -1016,13 +1007,13 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                       {ENLISTED_RANKS.map((rank) => {
                         const hasEntries = availableRanks.some((r) => r.value === rank.value);
                         return (
-                          <div
+                          <label
                             key={rank.value}
+                            htmlFor={`rank-${rank.value}`}
                             className={cn(
                               "flex items-center space-x-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer",
                               !hasEntries && "opacity-50"
                             )}
-                            onClick={() => toggleRank(rank.value)}
                           >
                             <Checkbox
                               id={`rank-${rank.value}`}
@@ -1030,18 +1021,15 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                               onCheckedChange={() => toggleRank(rank.value)}
                               aria-label={`Filter by ${rank.value}`}
                             />
-                            <Label
-                              htmlFor={`rank-${rank.value}`}
-                              className="text-sm cursor-pointer flex-1"
-                            >
+                            <span className="text-sm cursor-pointer flex-1">
                               {rank.value}
-                            </Label>
+                            </span>
                             {hasEntries && (
                               <span className="text-xs text-muted-foreground">
                                 {feedAccomplishments.filter((a) => a.author_rank === rank.value).length}
                               </span>
                             )}
-                          </div>
+                          </label>
                         );
                       })}
                       
@@ -1052,13 +1040,13 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                       {OFFICER_RANKS.map((rank) => {
                         const hasEntries = availableRanks.some((r) => r.value === rank.value);
                         return (
-                          <div
+                          <label
                             key={rank.value}
+                            htmlFor={`rank-${rank.value}`}
                             className={cn(
                               "flex items-center space-x-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer",
                               !hasEntries && "opacity-50"
                             )}
-                            onClick={() => toggleRank(rank.value)}
                           >
                             <Checkbox
                               id={`rank-${rank.value}`}
@@ -1066,18 +1054,15 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                               onCheckedChange={() => toggleRank(rank.value)}
                               aria-label={`Filter by ${rank.value}`}
                             />
-                            <Label
-                              htmlFor={`rank-${rank.value}`}
-                              className="text-sm cursor-pointer flex-1"
-                            >
+                            <span className="text-sm cursor-pointer flex-1">
                               {rank.value}
-                            </Label>
+                            </span>
                             {hasEntries && (
                               <span className="text-xs text-muted-foreground">
                                 {feedAccomplishments.filter((a) => a.author_rank === rank.value).length}
                               </span>
                             )}
-                          </div>
+                          </label>
                         );
                       })}
                     </div>
@@ -1233,15 +1218,8 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
               </div>
             ) : (
               <>
-                {weekGroups.map((weekGroup) => {
-                  const isCurrentWeek = (() => {
-                    const now = new Date();
-                    const currentWeekInfo = getISOWeekInfo(now);
-                    return weekGroup.year === currentWeekInfo.year && weekGroup.weekNumber === currentWeekInfo.week;
-                  })();
-                  
-                  return (
-                    <Card key={weekGroup.key} className={cn(isCurrentWeek && "border-primary/50")}>
+                {weekGroups.map((weekGroup) => (
+                  <Card key={weekGroup.key} className={cn(weekGroup.isCurrentWeek && "border-primary/50")}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
@@ -1256,7 +1234,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                             <div>
                               <div className="flex items-center gap-2">
                                 <p className="font-medium text-sm">Week of {weekGroup.label}</p>
-                                {isCurrentWeek && (
+                                {weekGroup.isCurrentWeek && (
                                   <Badge variant="secondary" className="text-xs">Current</Badge>
                                 )}
                               </div>
@@ -1340,8 +1318,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                         )}
                       </CardContent>
                     </Card>
-                  );
-                })}
+                ))}
                 
                 {/* Load More Button */}
                 {hasMoreWeeksToLoad && (
@@ -1389,7 +1366,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                       <div>
                         <p className="font-medium text-sm">{group.label}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(group.dateRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })} - {new Date(group.dateRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          {formatDateRange(group.dateRange.start, group.dateRange.end)}
                         </p>
                       </div>
                     </div>
@@ -1460,7 +1437,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                     <FeedAuthorInsignia rank={acc.author_rank} />
                                     <div className="flex items-center gap-2 justify-end flex-1 basis-0 shrink-0">
                                       <span className="text-xs text-muted-foreground">
-                                        {new Date(acc.date).toLocaleDateString("en-US", { day: "numeric" })}
+                                        {formatDayOnly(acc.date)}
                                       </span>
                                       <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
                                     </div>
@@ -1560,9 +1537,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                                   </Badge>
                                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                                     <Calendar className="size-3" />
-                                    {new Date(acc.date).toLocaleDateString("en-US", {
-                                      day: "numeric",
-                                    })}
+                                    {formatDayOnly(acc.date)}
                                   </span>
                                   {(acc.unresolved_comment_count ?? 0) > 0 && (
                                     <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">

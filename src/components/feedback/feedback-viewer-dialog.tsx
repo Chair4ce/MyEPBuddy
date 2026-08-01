@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { formatShortDateWithYear } from "@/lib/format";
 import { toast } from "@/components/ui/sonner";
 import { cn, normalizeText } from "@/lib/utils";
 import { 
@@ -198,71 +199,87 @@ export function FeedbackViewerDialog({
     commentId: string;
   } | null>(null);
 
-  // Load sessions list
-  useEffect(() => {
-    if (!open) return;
+  const loadSessionsList = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/feedback?shellType=${shellType}&shellId=${shellId}`
+      );
+      const data = await response.json();
 
-    async function loadSessions() {
-      try {
-        const response = await fetch(
-          `/api/feedback?shellType=${shellType}&shellId=${shellId}`
-        );
-        const data = await response.json();
-
-        if (response.ok && data.sessions) {
-          setSessions(data.sessions);
-          if (!currentSessionId && data.sessions.length > 0) {
-            setCurrentSessionId(data.sessions[0].id);
-          }
-        }
-      } catch (error) {
-        console.error("Load sessions error:", error);
+      if (response.ok && data.sessions) {
+        setSessions(data.sessions);
+        return data.sessions as FeedbackSession[];
       }
+    } catch (error) {
+      console.error("Load sessions error:", error);
     }
+    return [];
+  }, [shellType, shellId]);
 
-    loadSessions();
-  }, [open, shellType, shellId, currentSessionId]);
+  const loadCommentsForSession = useCallback(async (sessionIdToLoad: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/feedback/${sessionIdToLoad}`);
+      const data = await response.json();
 
-  // Update current session when prop changes
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load comments");
+      }
+
+      setComments(data.comments || []);
+      setContentSnapshot(data.contentSnapshot || null);
+
+      const allSections = new Set<string>();
+      (data.comments || []).forEach((c: FeedbackComment) => {
+        allSections.add(c.section_key);
+      });
+      setExpandedSections(allSections);
+    } catch (error) {
+      console.error("Load comments error:", error);
+      toast.error("Failed to load comments");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      onOpenChange(nextOpen);
+      if (!nextOpen) return;
+
+      void (async () => {
+        const loadedSessions = await loadSessionsList();
+        const initialSessionId =
+          sessionId ?? currentSessionId ?? loadedSessions[0]?.id ?? null;
+        if (initialSessionId) {
+          setCurrentSessionId(initialSessionId);
+          await loadCommentsForSession(initialSessionId);
+        }
+      })();
+    },
+    [
+      onOpenChange,
+      loadSessionsList,
+      loadCommentsForSession,
+      sessionId,
+      currentSessionId,
+    ]
+  );
+
+  const handleSessionChange = useCallback(
+    (nextSessionId: string) => {
+      setCurrentSessionId(nextSessionId);
+      void loadCommentsForSession(nextSessionId);
+    },
+    [loadCommentsForSession]
+  );
+
+  // Sync session id from props without fetching
   useEffect(() => {
     if (sessionId) {
       setCurrentSessionId(sessionId);
     }
   }, [sessionId]);
-
-  // Load comments for current session
-  useEffect(() => {
-    if (!open || !currentSessionId) return;
-
-    async function loadComments() {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/feedback/${currentSessionId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to load comments");
-        }
-
-        setComments(data.comments || []);
-        setContentSnapshot(data.contentSnapshot || null);
-        
-        // Auto-expand all sections so user can review all feedback
-        const allSections = new Set<string>();
-        (data.comments || []).forEach((c: FeedbackComment) => {
-          allSections.add(c.section_key);
-        });
-        setExpandedSections(allSections);
-      } catch (error) {
-        console.error("Load comments error:", error);
-        toast.error("Failed to load comments");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadComments();
-  }, [open, currentSessionId]);
 
   // Handle accept/dismiss
   const handleUpdateStatus = useCallback(async (commentId: string, status: "accepted" | "dismissed") => {
@@ -343,18 +360,6 @@ export function FeedbackViewerDialog({
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
 
-  const formatDate = (isoString: string) => {
-    try {
-      return new Date(isoString).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    } catch {
-      return isoString;
-    }
-  };
-
   // Group comments by section
   const commentsBySection = useMemo(() => {
     const grouped: Record<string, FeedbackComment[]> = {};
@@ -381,7 +386,7 @@ export function FeedbackViewerDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="!max-w-5xl w-[90vw] h-[85vh] flex flex-col p-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
@@ -398,7 +403,7 @@ export function FeedbackViewerDialog({
               </DialogTitle>
               {currentSession && (
                 <p className="text-sm text-muted-foreground mt-1">
-                  {formatDate(currentSession.submitted_at)}
+                  {formatShortDateWithYear(currentSession.submitted_at)}
                 </p>
               )}
             </div>
@@ -409,7 +414,7 @@ export function FeedbackViewerDialog({
             <div className="mt-3">
               <Select
                 value={currentSessionId || ""}
-                onValueChange={setCurrentSessionId}
+                onValueChange={handleSessionChange}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select feedback session" />
@@ -446,7 +451,7 @@ export function FeedbackViewerDialog({
                   return (
                     <div key={sectionKey} className="border rounded-lg overflow-hidden">
                       {/* Section header */}
-                      <button
+                      <button type="button"
                         onClick={() => toggleSection(sectionKey)}
                         className="w-full px-4 py-3 flex items-center justify-between bg-muted/50 hover:bg-muted/70 transition-colors text-left"
                       >
@@ -601,7 +606,7 @@ function CollapsibleStatement({
 
   return (
     <div>
-      <button
+      <button type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2"
       >

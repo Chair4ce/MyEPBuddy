@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable react-refresh/only-export-components -- re-exports toast helper alongside Toaster */
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, toast } from "sonner";
 import { useEffect, useState } from "react";

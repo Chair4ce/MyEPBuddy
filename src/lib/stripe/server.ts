@@ -38,7 +38,7 @@ export function getAppUrl(): string {
 }
 
 export async function getOrCreateStripeCustomer(
-  userId: string,
+  accountSubjectId: string,
   email: string,
 ): Promise<string> {
   const supabase = createAdminClient();
@@ -54,7 +54,7 @@ export async function getOrCreateStripeCustomer(
   })
     .from("stripe_customers")
     .select("stripe_customer_id")
-    .eq("user_id", userId)
+    .eq("user_id", accountSubjectId)
     .maybeSingle();
 
   if (existing?.stripe_customer_id) {
@@ -64,7 +64,7 @@ export async function getOrCreateStripeCustomer(
   const stripe = getStripe();
   const customer = await stripe.customers.create({
     email,
-    metadata: { user_id: userId },
+    metadata: { user_id: accountSubjectId },
   });
 
   const { error } = await (supabase as unknown as {
@@ -72,7 +72,7 @@ export async function getOrCreateStripeCustomer(
       insert: (row: Record<string, string>) => Promise<{ error: { code?: string; message: string } | null }>;
     };
   }).from("stripe_customers").insert({
-    user_id: userId,
+    user_id: accountSubjectId,
     stripe_customer_id: customer.id,
   });
 

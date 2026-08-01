@@ -469,7 +469,7 @@ const MAX_CONCURRENT_ENFORCEMENTS = 3;
  * Enforce character limits on multiple statements with controlled concurrency.
  * Processes statements in batches to prevent overwhelming the API.
  */
-export async function enforceCharacterLimitsMultiple(
+async function enforceCharacterLimitsMultiple(
   statements: string[],
   config: CharacterVerificationConfig
 ): Promise<EnforcementResult[]> {
@@ -491,7 +491,7 @@ export async function enforceCharacterLimitsMultiple(
  * Quick pre-check to determine if enforcement is even needed.
  * Use this before calling enforceCharacterLimits to skip unnecessary API calls.
  */
-export function shouldAttemptEnforcement(
+function shouldAttemptEnforcement(
   statement: string,
   targetMax: number,
   targetMin?: number
@@ -520,7 +520,7 @@ export function shouldAttemptEnforcement(
  * Build enhanced generation prompt that emphasizes character requirements
  * This is injected into generation prompts to improve first-pass accuracy
  */
-export function buildCharacterEmphasisPrompt(
+function buildCharacterEmphasisPrompt(
   targetMin: number,
   targetMax: number,
   mode: "expand" | "compress" | "generate" = "generate"
@@ -568,7 +568,7 @@ TO REMOVE CHARACTERS:
 /**
  * Quick check if a statement is within acceptable range
  */
-export function isWithinRange(
+function isWithinRange(
   statement: string,
   targetMax: number,
   targetMin?: number
@@ -581,7 +581,7 @@ export function isWithinRange(
 /**
  * Calculate how far off a statement is from the target
  */
-export function getCharacterDeficit(
+function getCharacterDeficit(
   statement: string,
   targetMax: number,
   targetMin?: number

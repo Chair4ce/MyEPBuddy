@@ -178,7 +178,7 @@ export function buildFewShotExamples(context: StyleContext, label: string = "EXA
  * Apply learned style context to revision parameters
  * Returns adjusted parameters based on user preferences
  */
-export function applyStyleToRevisionParams(
+function applyStyleToRevisionParams(
   context: StyleContext,
   requestedAggressiveness?: number,
   requestedFillToMax?: boolean

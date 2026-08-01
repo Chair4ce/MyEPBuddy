@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useRealtimeCursors, type RemoteCursor } from "@/hooks/use-realtime-cursors";
 
 // Individual cursor component
-export function Cursor({
+function Cursor({
   className,
   style,
   color,
@@ -140,7 +140,7 @@ export function RealtimeCursors({
 }
 
 // Cursor indicator showing who's editing which MPA
-export function CursorMpaIndicator({
+function CursorMpaIndicator({
   cursors,
   mpaKey,
 }: {

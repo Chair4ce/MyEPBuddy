@@ -162,14 +162,14 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
         setAbbreviations(s.abbreviations || []);
         setInitialSystemPrompt(resolveStoredSystemPrompt(s.base_system_prompt));
         setInitialStyleGuidelines(resolveStoredStyleGuidelines(s.style_guidelines));
-        setInitialRankVerbs(JSON.parse(JSON.stringify(s.rank_verb_progression)));
-        setInitialAcronyms(JSON.parse(JSON.stringify(loadedAcronyms)));
-        setInitialAbbreviations(JSON.parse(JSON.stringify(s.abbreviations || [])));
+        setInitialRankVerbs(structuredClone(s.rank_verb_progression));
+        setInitialAcronyms(structuredClone(loadedAcronyms));
+        setInitialAbbreviations(structuredClone(s.abbreviations || []));
       } else {
         setInitialSystemPrompt(DEFAULT_EPB_SYSTEM_PROMPT);
         setInitialStyleGuidelines(DEFAULT_EPB_STYLE_GUIDELINES);
-        setInitialRankVerbs(JSON.parse(JSON.stringify(DEFAULT_RANK_VERBS)));
-        setInitialAcronyms(JSON.parse(JSON.stringify(DEFAULT_ACRONYMS)));
+        setInitialRankVerbs(structuredClone(DEFAULT_RANK_VERBS));
+        setInitialAcronyms(structuredClone(DEFAULT_ACRONYMS));
         setInitialAbbreviations([]);
       }
     } catch (error) {
@@ -214,9 +214,9 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
 
       setInitialSystemPrompt(systemPrompt);
       setInitialStyleGuidelines(styleGuidelines);
-      setInitialRankVerbs(JSON.parse(JSON.stringify(rankVerbs)));
-      setInitialAcronyms(JSON.parse(JSON.stringify(acronyms)));
-      setInitialAbbreviations(JSON.parse(JSON.stringify(abbreviations)));
+      setInitialRankVerbs(structuredClone(rankVerbs));
+      setInitialAcronyms(structuredClone(acronyms));
+      setInitialAbbreviations(structuredClone(abbreviations));
 
       toast.success("Prompt settings saved");
     } catch (error) {
@@ -333,13 +333,13 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
               {showResetConfirm ? (
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-muted-foreground hidden sm:inline">Reset prompt?</span>
-                  <button
+                  <button type="button"
                     onClick={handleResetToDefaults}
                     className="inline-flex items-center justify-center rounded-md h-7 px-2 text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
                   >
                     Confirm
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => setShowResetConfirm(false)}
                     className="inline-flex items-center justify-center rounded-md h-7 px-2 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
@@ -347,7 +347,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                   </button>
                 </div>
               ) : (
-                <button
+                <button type="button"
                   onClick={() => setShowResetConfirm(true)}
                   className="inline-flex items-center justify-center rounded-md h-7 px-2 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                   aria-label="Reset prompt to defaults"
@@ -357,7 +357,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                 </button>
               )}
               {hasChanges && (
-                <button
+                <button type="button"
                   onClick={handleSave}
                   disabled={isSaving}
                   className="inline-flex items-center justify-center rounded-md h-7 px-2.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
@@ -524,13 +524,13 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-semibold">{rank}</span>
                                   <div className="flex gap-1">
-                                    <button
+                                    <button type="button"
                                       onClick={() => setEditingRank(null)}
                                       className="h-6 px-2 rounded text-[10px] hover:bg-muted transition-colors"
                                     >
                                       Cancel
                                     </button>
-                                    <button
+                                    <button type="button"
                                       onClick={() => updateRankVerbEntry(rank)}
                                       className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                                     >
@@ -581,7 +581,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                                     </p>
                                   </div>
                                 </div>
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     setEditingRank(rank);
                                     setEditingVerbs({
@@ -612,7 +612,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                       <Label className="text-xs sm:text-sm font-medium">Abbreviations</Label>
                       <p className="text-[10px] text-muted-foreground">{abbreviations.length} defined</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => setShowAddAbbrev(!showAddAbbrev)}
                       className="inline-flex items-center justify-center rounded-md h-7 px-2.5 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
@@ -643,7 +643,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                           onKeyDown={(e) => e.key === "Enter" && handleAddAbbrev()}
                         />
                       </div>
-                      <button
+                      <button type="button"
                         onClick={handleAddAbbrev}
                         disabled={!newAbbrev.word || !newAbbrev.abbreviation}
                         className="h-7 px-3 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0"
@@ -673,7 +673,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                       ) : (
                         filteredAbbreviations.map((abbrev, idx) => (
                           <div
-                            key={`${abbrev.word}-${idx}`}
+                            key={`${abbrev.word}-${abbrev.abbreviation}`}
                             className="flex items-center justify-between gap-1.5 p-1.5 bg-muted/30 rounded group"
                           >
                             <div className="flex items-center gap-1 min-w-0 flex-1 text-xs">
@@ -681,7 +681,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                               <ArrowRight className="size-2.5 text-muted-foreground shrink-0" />
                               <span className="font-mono text-primary truncate">{abbrev.abbreviation}</span>
                             </div>
-                            <button
+                            <button type="button"
                               onClick={() => handleRemoveAbbrev(abbrev.word)}
                               className="size-6 rounded inline-flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all shrink-0"
                               aria-label={`Remove ${abbrev.word}`}
@@ -704,7 +704,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                       <Label className="text-xs sm:text-sm font-medium">Acronyms</Label>
                       <p className="text-[10px] text-muted-foreground">{acronyms.length} approved</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => setShowAddAcronym(!showAddAcronym)}
                       className="inline-flex items-center justify-center rounded-md h-7 px-2.5 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
@@ -735,7 +735,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                           onKeyDown={(e) => e.key === "Enter" && handleAddAcronym()}
                         />
                       </div>
-                      <button
+                      <button type="button"
                         onClick={handleAddAcronym}
                         disabled={!newAcronym.acronym || !newAcronym.definition}
                         className="h-7 px-3 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0"
@@ -772,7 +772,7 @@ export function PromptSettingsModal({ open, onOpenChange, rateeRank: rateeRankPr
                               <span className="font-mono font-semibold text-primary text-xs">{acr.acronym}</span>
                               <span className="text-[10px] text-muted-foreground ml-1.5 break-words">{acr.definition}</span>
                             </div>
-                            <button
+                            <button type="button"
                               onClick={() => handleRemoveAcronym(acr.acronym)}
                               className="size-6 rounded inline-flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all shrink-0"
                               aria-label={`Remove ${acr.acronym}`}

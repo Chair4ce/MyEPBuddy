@@ -5,22 +5,31 @@
  * Provides record locking so only one user can edit an MPA at a time
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import type { EPBSectionLock } from "@/types/database";
 
-function useDebouncedCallback<T extends (...args: never[]) => void>(fn: T, delay: number): T {
+function useDebouncedCallback<T extends (...args: never[]) => void>(fn: T, delay: number): T & { cancel: () => void } {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+
+  useLayoutEffect(() => {
+    fnRef.current = fn;
+  }, [fn]);
 
   return useMemo(() => {
     const debounced = (...args: Parameters<T>) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => fnRef.current(...args as never[]), delay);
     };
-    return debounced as unknown as T;
+    debounced.cancel = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    return debounced as unknown as T & { cancel: () => void };
   }, [delay]);
 }
 
@@ -93,7 +102,7 @@ export function useSectionLocks({
   useEffect(() => {
     if (!shellId || !enabled) {
       setLocks({});
-      return;
+      return () => {};
     }
 
     fetchLocks();
@@ -115,6 +124,7 @@ export function useSectionLocks({
       .subscribe();
 
     return () => {
+      debouncedFetchLocks.cancel();
       supabase.removeChannel(channel);
     };
   }, [shellId, enabled, supabase, fetchLocks, debouncedFetchLocks]);

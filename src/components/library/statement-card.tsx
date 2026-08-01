@@ -30,6 +30,7 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { StarRating, StarRatingDisplay } from "@/components/library/star-rating";
 import type { RefinedStatement, SharedStatementView, CommunityStatement, StatementShare } from "@/types/database";
+import { formatDateDefault } from "@/lib/format";
 
 interface BaseStatementCardProps {
   mpaLabel: string;
@@ -148,7 +149,7 @@ export function StatementCard(props: StatementCardProps) {
             {/* Footer with date and actions */}
             <div className="flex items-center justify-between gap-2 pt-1">
               <p className="text-xs text-muted-foreground shrink-0">
-                Saved {new Date(statement.created_at).toLocaleDateString()}
+                Saved {formatDateDefault(statement.created_at)}
               </p>
               <div className="flex gap-0.5 sm:gap-1 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <Button

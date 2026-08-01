@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useOPBShellStore, type OPBWorkspaceMode } from "@/stores/opb-shell-store";
 import type { OPBShellSection, OPBShellSnapshot, Accomplishment } from "@/types/database";
+import { formatDateTime } from "@/lib/format";
 
 interface OPBSectionCardProps {
   mpaKey: string;
@@ -253,7 +254,7 @@ export function OPBSectionCard({
           {/* Mode toggles */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
-              <button
+              <button type="button"
                 onClick={() => setMode("view")}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
@@ -265,7 +266,7 @@ export function OPBSectionCard({
                 <Eye className="size-3.5 inline-block mr-1" />
                 View
               </button>
-              <button
+              <button type="button"
                 onClick={() => setMode("edit")}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
@@ -277,7 +278,7 @@ export function OPBSectionCard({
                 <Edit2 className="size-3.5 inline-block mr-1" />
                 Edit
               </button>
-              <button
+              <button type="button"
                 onClick={() => setMode("ai-assist")}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
@@ -348,7 +349,7 @@ export function OPBSectionCard({
               {/* Load from Accomplishments */}
               {relevantAccomplishments.length > 0 && (
                 <div>
-                  <button
+                  <button type="button"
                     onClick={() => setShowAccomplishments(!showAccomplishments)}
                     className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
                   >
@@ -412,10 +413,11 @@ export function OPBSectionCard({
 
               {/* Custom Context */}
               <div>
-                <label className="text-sm font-medium mb-1.5 block">
+                <label htmlFor="opb-additional-context" className="text-sm font-medium mb-1.5 block">
                   Additional Context (optional)
                 </label>
                 <textarea
+                  id="opb-additional-context"
                   value={customContext}
                   onChange={(e) => setCustomContext(e.target.value)}
                   placeholder="Add any additional details, metrics, or specific guidance..."
@@ -540,7 +542,7 @@ export function OPBSectionCard({
                         </Tooltip>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(snapshot.created_at).toLocaleString()}
+                        {formatDateTime(snapshot.created_at)}
                       </p>
                     </div>
                   ))}

@@ -58,9 +58,11 @@ export default async function ManagedInviteEmailPreviewPage() {
             <p className="font-medium text-white">New user</p>
             <p>Subject: {newUser.subject}</p>
           </div>
-          <div
-            className="bg-[#141414]"
-            dangerouslySetInnerHTML={{ __html: newUser.html }}
+          <iframe
+            title="New user invite email preview"
+            srcDoc={newUser.html}
+            sandbox=""
+            className="block w-full min-h-[520px] border-0 bg-[#141414]"
           />
         </section>
 
@@ -69,9 +71,11 @@ export default async function ManagedInviteEmailPreviewPage() {
             <p className="font-medium text-white">Existing user</p>
             <p>Subject: {existingUser.subject}</p>
           </div>
-          <div
-            className="bg-[#141414]"
-            dangerouslySetInnerHTML={{ __html: existingUser.html }}
+          <iframe
+            title="Existing user invite email preview"
+            srcDoc={existingUser.html}
+            sandbox=""
+            className="block w-full min-h-[520px] border-0 bg-[#141414]"
           />
         </section>
       </div>

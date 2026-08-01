@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import type { FeedAccomplishment } from "@/stores/team-feed-store";
+import { formatWeekRange } from "@/lib/format";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,11 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ENTRY_MGAS, DEFAULT_APP_MODEL_ID } from "@/lib/constants";
+
+function formatReportDateRange(start: Date | null, end: Date | null): string {
+  if (!start || !end) return "";
+  return formatWeekRange(start, end);
+}
 
 interface WARCategory {
   key: string;
@@ -133,21 +139,6 @@ export function WARViewModal({
   const [addingToCategory, setAddingToCategory] = useState<string | null>(null);
   const [newItemValue, setNewItemValue] = useState("");
 
-  // Format date range for display
-  const formatDateRange = useCallback((start: Date | null, end: Date | null) => {
-    if (!start || !end) return "";
-    const startStr = start.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-    const endStr = end.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    return `${startStr} - ${endStr}`;
-  }, []);
-
   // Reset state when modal closes
   useEffect(() => {
     if (!open) {
@@ -159,82 +150,6 @@ export function WARViewModal({
       setAddingToCategory(null);
     }
   }, [open]);
-
-  // Load existing report or generate new one
-  useEffect(() => {
-    async function loadOrGenerate() {
-      if (!open || !profile) return;
-      
-      // If no week data and no existing report, show error
-      if (!weekStart && !weekEnd && !existingReportId) {
-        setError("No week data provided");
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Check if there's an existing saved report for this week
-        if (existingReportId) {
-          await loadExistingReport(existingReportId);
-        } else if (weekStart && weekEnd) {
-          // Check for existing report for this week
-          const { data: existingReport } = await (supabase
-            .from("war_reports") as any)
-            .select("*")
-            .eq("user_id", profile.id)
-            .eq("week_start", weekStart.toISOString().split("T")[0])
-            .eq("week_end", weekEnd.toISOString().split("T")[0])
-            .single();
-
-          if (existingReport) {
-            // Load existing report
-            setSavedReportId(existingReport.id);
-            setReport({
-              header: {
-                date_range: formatDateRange(new Date(existingReport.week_start), new Date(existingReport.week_end)),
-                unit_office_symbol: existingReport.unit_office_symbol,
-                prepared_by: existingReport.prepared_by,
-              },
-              categories: existingReport.content.categories || [],
-            });
-          } else if (entries.length > 0) {
-            // Load settings and generate new report
-            const { data: settingsData } = await (supabase
-              .from("war_settings") as any)
-              .select("*")
-              .eq("user_id", profile.id)
-              .single();
-
-            const userSettings: WARSettings = settingsData
-              ? {
-                  categories: settingsData.categories || DEFAULT_CATEGORIES,
-                  unit_office_symbol: settingsData.unit_office_symbol,
-                  synthesis_instructions: settingsData.synthesis_instructions,
-                }
-              : {
-                  categories: DEFAULT_CATEGORIES,
-                  unit_office_symbol: null,
-                  synthesis_instructions: null,
-                };
-
-            setSettings(userSettings);
-            await generateWAR(userSettings);
-          } else {
-            setError("No entries for this week to generate a report from.");
-          }
-        }
-      } catch (err) {
-        console.error("Error loading WAR:", err);
-        setError("Failed to load report. Please try again.");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadOrGenerate();
-  }, [open, profile, weekStart, weekEnd, entries.length, existingReportId, supabase, formatDateRange]);
 
   // Load an existing report by ID
   const loadExistingReport = async (reportId: string) => {
@@ -251,7 +166,7 @@ export function WARViewModal({
     setSavedReportId(data.id);
     setReport({
       header: {
-        date_range: formatDateRange(new Date(data.week_start), new Date(data.week_end)),
+        date_range: formatReportDateRange(new Date(data.week_start), new Date(data.week_end)),
         unit_office_symbol: data.unit_office_symbol,
         prepared_by: data.prepared_by,
       },
@@ -349,6 +264,89 @@ export function WARViewModal({
       setIsGenerating(false);
     }
   };
+
+  const loadOrGenerate = useCallback(async () => {
+    if (!profile) return;
+
+    if (!weekStart && !weekEnd && !existingReportId) {
+      setError("No week data provided");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      if (existingReportId) {
+        await loadExistingReport(existingReportId);
+      } else if (weekStart && weekEnd) {
+        const { data: existingReport } = await (supabase
+          .from("war_reports") as any)
+          .select("*")
+          .eq("user_id", profile.id)
+          .eq("week_start", weekStart.toISOString().split("T")[0])
+          .eq("week_end", weekEnd.toISOString().split("T")[0])
+          .single();
+
+        if (existingReport) {
+          setSavedReportId(existingReport.id);
+          setReport({
+            header: {
+              date_range: formatReportDateRange(new Date(existingReport.week_start), new Date(existingReport.week_end)),
+              unit_office_symbol: existingReport.unit_office_symbol,
+              prepared_by: existingReport.prepared_by,
+            },
+            categories: existingReport.content.categories || [],
+          });
+        } else if (entries.length > 0) {
+          const { data: settingsData } = await (supabase
+            .from("war_settings") as any)
+            .select("*")
+            .eq("user_id", profile.id)
+            .single();
+
+          const userSettings: WARSettings = settingsData
+            ? {
+                categories: settingsData.categories || DEFAULT_CATEGORIES,
+                unit_office_symbol: settingsData.unit_office_symbol,
+                synthesis_instructions: settingsData.synthesis_instructions,
+              }
+            : {
+                categories: DEFAULT_CATEGORIES,
+                unit_office_symbol: null,
+                synthesis_instructions: null,
+              };
+
+          setSettings(userSettings);
+          await generateWAR(userSettings);
+        } else {
+          setError("No entries for this week to generate a report from.");
+        }
+      }
+    } catch (err) {
+      console.error("Error loading WAR:", err);
+      setError("Failed to load report. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    profile,
+    weekStart,
+    weekEnd,
+    existingReportId,
+    entries.length,
+    supabase,
+  ]);
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      onOpenChange(nextOpen);
+      if (nextOpen) {
+        void loadOrGenerate();
+      }
+    },
+    [onOpenChange, loadOrGenerate]
+  );
 
   // Save report to database
   const handleSave = async () => {
@@ -558,7 +556,7 @@ export function WARViewModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl !max-h-[90vh] !flex !flex-col overflow-hidden p-0">
         <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
           <div className="flex items-center justify-between">
@@ -575,7 +573,7 @@ export function WARViewModal({
               <DialogDescription className="flex items-center gap-4 mt-1">
                 <span className="flex items-center gap-1.5">
                   <Calendar className="size-3.5" />
-                  {formatDateRange(weekStart, weekEnd)}
+                  {formatReportDateRange(weekStart, weekEnd)}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Users className="size-3.5" />

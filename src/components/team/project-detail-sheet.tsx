@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { ENTRY_MGAS } from "@/lib/constants";
+import { formatDateDefault, formatInteger } from "@/lib/format";
 
 interface ProjectDetailSheetProps {
   open: boolean;
@@ -75,27 +76,29 @@ export function ProjectDetailSheet({
   const [isLoading, setIsLoading] = useState(false);
   const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
 
-  // Load accomplishments when project changes
-  useEffect(() => {
-    async function loadAccomplishments() {
-      if (!project || !open) return;
+  const loadAccomplishments = useCallback(async () => {
+    if (!project || !open) return;
 
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/projects/${project.id}`);
-        if (response.ok) {
-          const { accomplishments } = await response.json();
-          setAccomplishments(accomplishments || []);
-        }
-      } catch (error) {
-        console.error("Error loading accomplishments:", error);
-      } finally {
-        setIsLoading(false);
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/projects/${project.id}`);
+      if (response.ok) {
+        const { accomplishments } = await response.json();
+        setAccomplishments(accomplishments || []);
       }
+    } catch (error) {
+      console.error("Error loading accomplishments:", error);
+    } finally {
+      setIsLoading(false);
     }
-
-    loadAccomplishments();
   }, [project, open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    onOpenChange(nextOpen);
+    if (nextOpen && project) {
+      void loadAccomplishments();
+    }
+  };
 
   if (!project) return null;
 
@@ -153,7 +156,7 @@ export function ProjectDetailSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
         className="w-full sm:w-[600px] sm:max-w-[600px] p-0 flex flex-col"
@@ -254,7 +257,7 @@ export function ProjectDetailSheet({
                     <div className="flex items-center gap-2">
                       <Users className="size-4 text-muted-foreground" />
                       <span className="text-sm">
-                        {project.metrics.people_impacted.toLocaleString()} people
+                        {formatInteger(project.metrics.people_impacted)} people
                         impacted
                       </span>
                     </div>
@@ -274,7 +277,7 @@ export function ProjectDetailSheet({
                     <div className="space-y-2">
                       {project.key_stakeholders.map((stakeholder, index) => (
                         <div
-                          key={index}
+                          key={`stakeholder-${stakeholder.name}-${stakeholder.title || ""}`}
                           className="flex items-start gap-2 text-sm"
                         >
                           <UserCircle className="size-4 text-muted-foreground mt-0.5" />
@@ -407,7 +410,7 @@ export function ProjectDetailSheet({
                                   </Badge>
                                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                                     <Calendar className="size-3" />
-                                    {new Date(acc.date).toLocaleDateString()}
+                                    {formatDateDefault(acc.date)}
                                   </span>
                                 </div>
                                 <p className="text-sm font-medium">

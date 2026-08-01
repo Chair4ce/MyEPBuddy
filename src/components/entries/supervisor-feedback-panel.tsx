@@ -36,6 +36,7 @@ import type { Profile, SupervisorFeedback } from "@/types/database";
 import { getMyReceivedFeedbacks } from "@/app/actions/supervisor-feedbacks";
 import { getFeedbackTypeLabel } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { formatDateDefault, formatMonthYear } from "@/lib/format";
 
 interface SupervisorWithData {
   profile: Profile;
@@ -49,17 +50,11 @@ interface SupervisorFeedbackPanelProps {
   trigger?: React.ReactNode;
 }
 
-function formatDateRange(start?: string, end?: string | null): string {
+function formatSupervisionDateRange(start?: string, end?: string | null): string {
   if (!start) return "Unknown";
-  const startDate = new Date(start).toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
+  const startDate = formatMonthYear(start, "short");
   if (!end) return `${startDate} - Present`;
-  const endDate = new Date(end).toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
+  const endDate = formatMonthYear(end, "short");
   return `${startDate} - ${endDate}`;
 }
 
@@ -203,9 +198,7 @@ export function SupervisorFeedbackPanel({ trigger }: SupervisorFeedbackPanelProp
       if (requestId !== loadRequestIdRef.current) return;
       console.error("Error loading supervisor data:", error);
     } finally {
-      if (requestId === loadRequestIdRef.current) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   }
 
@@ -286,7 +279,7 @@ export function SupervisorFeedbackPanel({ trigger }: SupervisorFeedbackPanelProp
                       supervisor={sup}
                       isExpanded={expandedSupervisors.has(sup.profile.id)}
                       onToggle={() => toggleSupervisor(sup.profile.id)}
-                      formatDateRange={formatDateRange}
+                      formatDateRange={formatSupervisionDateRange}
                     />
                   ))}
                 </div>
@@ -307,7 +300,7 @@ export function SupervisorFeedbackPanel({ trigger }: SupervisorFeedbackPanelProp
                       supervisor={sup}
                       isExpanded={expandedSupervisors.has(sup.profile.id)}
                       onToggle={() => toggleSupervisor(sup.profile.id)}
-                      formatDateRange={formatDateRange}
+                      formatDateRange={formatSupervisionDateRange}
                     />
                   ))}
                 </div>
@@ -374,7 +367,7 @@ function SupervisorCard({
                 </div>
                 <CardDescription className="text-xs flex items-center gap-1">
                   <Calendar className="size-3" />
-                  {formatDateRange(
+                  {formatSupervisionDateRange(
                     supervisor.supervisionStart,
                     supervisor.supervisionEnd
                   )}
@@ -426,7 +419,7 @@ function SupervisorCard({
                       {fb.shared_at && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Eye className="size-3" />
-                          Shared {new Date(fb.shared_at).toLocaleDateString()}
+                          Shared {formatDateDefault(fb.shared_at)}
                         </span>
                       )}
                     </div>

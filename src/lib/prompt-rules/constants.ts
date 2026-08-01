@@ -13,7 +13,7 @@ export type PromptRuleContext = (typeof PROMPT_RULE_CONTEXTS)[number];
 export const MAX_RULES_PER_CONTEXT = 25;
 export const MAX_RULE_TEXT_LENGTH = 500;
 
-export const PROMPT_RULE_CONTEXT_LABELS: Record<PromptRuleContext, string> = {
+const PROMPT_RULE_CONTEXT_LABELS: Record<PromptRuleContext, string> = {
   epb: "EPB Statements",
   award: "Awards",
   decoration: "Decorations",

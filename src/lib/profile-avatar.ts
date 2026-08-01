@@ -27,7 +27,7 @@ export function getStorageAvatarPath(
   return avatarUrl.split("/avatars/")[1]?.split("?")[0] ?? null;
 }
 
-export function hasProfilePhoto(
+function hasProfilePhoto(
   avatarUrl: string | null | undefined
 ): boolean {
   return Boolean(avatarUrl);

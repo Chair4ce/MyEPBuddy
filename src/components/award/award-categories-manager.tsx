@@ -301,7 +301,7 @@ export function AwardCategoriesManager({
       {/* Category Pills */}
       <div className="flex flex-wrap gap-1.5">
         {categories.map((category) => (
-          <button
+          <button type="button"
             key={category.id}
             onClick={() => onSelectCategory(category.category_key)}
             className={cn(

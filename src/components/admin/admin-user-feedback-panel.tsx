@@ -31,12 +31,11 @@ const FILTERS: { value: StatusFilter; label: string }[] = [
 
 const MAX_REPLY_LENGTH = 5000;
 
+import { formatMediumDateTime } from "@/lib/format";
+
 function formatDate(iso: string | null): string {
   if (!iso) return "Unknown date";
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatMediumDateTime(iso);
 }
 
 function truncate(text: string, max = 140): string {

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useUserStore } from "@/stores/user-store";
-import { createClient } from "@/lib/supabase/client";
 import {
   AlertDialogDescription,
   AlertDialogFooter,
@@ -48,11 +47,7 @@ const OPSEC_ITEMS = [
   "Data entered is stored in third-party cloud infrastructure — treat all input as publicly accessible",
 ] as const;
 
-interface TermsStepProps {
-  userId: string;
-}
-
-export function TermsStep({ userId }: TermsStepProps) {
+export function TermsStep() {
   const [isChecked, setIsChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { setProfile, profile, setTermsAcceptedThisSession } = useUserStore();
@@ -65,27 +60,30 @@ export function TermsStep({ userId }: TermsStepProps) {
       return;
     }
 
+    if (!profile?.id) {
+      toast.error("Unable to verify your session. Please refresh and try again.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const supabase = createClient();
-      const acceptedAt = new Date().toISOString();
+      const response = await fetch("/api/onboarding/accept-terms", {
+        method: "POST",
+      });
 
-      const { error } = await supabase
-        .from("profiles")
-        .update({ terms_accepted_at: acceptedAt } as never)
-        .eq("id", userId);
-
-      if (error) throw error;
-
-      if (profile) {
-        setProfile({ ...profile, terms_accepted_at: acceptedAt });
+      if (!response.ok) {
+        throw new Error("Failed to save acceptance");
       }
 
+      const body = (await response.json()) as { termsAcceptedAt: string };
+      const acceptedAt = body.termsAcceptedAt;
+
+      setProfile({ ...profile, terms_accepted_at: acceptedAt });
       setTermsAcceptedThisSession(true);
 
       try {
-        sessionStorage.setItem(getTermsSessionKey(userId), "true");
+        sessionStorage.setItem(getTermsSessionKey(profile.id), "true");
       } catch {
         // sessionStorage may be unavailable
       }

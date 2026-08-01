@@ -196,7 +196,7 @@ export async function deleteAccomplishment(id: string) {
   return { success: true };
 }
 
-export async function getAccomplishments(
+async function getAccomplishments(
   userId: string,
   cycleYear: number
 ) {
@@ -217,7 +217,7 @@ export async function getAccomplishments(
   return { data: data as unknown as Accomplishment[] };
 }
 
-export async function getAccomplishmentsByMPA(
+async function getAccomplishmentsByMPA(
   userId: string,
   cycleYear: number,
   mpa: string

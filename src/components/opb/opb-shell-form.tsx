@@ -79,20 +79,20 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
   useEffect(() => {
     if (!profile) return;
 
-    async function loadAccomplishments() {
-      if (!profile) return;
+    const controller = new AbortController();
+    void (async () => {
       const { data, error } = await supabase
         .from("accomplishments")
         .select("*")
         .eq("user_id", profile.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .abortSignal(controller.signal);
 
       if (!error && data) {
         setAccomplishments(data as Accomplishment[]);
       }
-    }
-
-    loadAccomplishments();
+    })();
+    return () => controller.abort();
   }, [profile, supabase]);
 
   // Initialize officer info from profile
@@ -111,11 +111,10 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
   useEffect(() => {
     if (!profile) return;
 
-    async function loadShell() {
+    const controller = new AbortController();
+    void (async () => {
       setIsLoadingShell(true);
       try {
-        // Check for existing shell
-        if (!profile) return;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: existing, error } = await (supabase as any)
           .from("opb_shells")
@@ -126,6 +125,7 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
           .eq("user_id", profile.id)
           .eq("cycle_year", cycleYear)
           .eq("status", "active")
+          .abortSignal(controller.signal)
           .single();
 
         if (error && error.code !== "PGRST116") {
@@ -137,15 +137,13 @@ export function OPBShellForm({ cycleYear, model }: OPBShellFormProps) {
         if (existing) {
           setCurrentShell(existing as OPBShell);
         } else {
-          // No shell exists, prompt to create
           setCurrentShell(null);
         }
       } finally {
         setIsLoadingShell(false);
       }
-    }
-
-    loadShell();
+    })();
+    return () => controller.abort();
   }, [profile, cycleYear, supabase, setCurrentShell, setIsLoadingShell]);
 
   // Create new OPB shell

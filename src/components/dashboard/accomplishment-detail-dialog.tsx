@@ -72,6 +72,11 @@ import {
 } from "@/app/actions/accomplishment-comments";
 import type { AccomplishmentCommentWithAuthor, ChainMember } from "@/types/database";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
+import {
+  formatCommentTimeAgo,
+  formatCreatedAgo,
+  formatWeekdayShortDate,
+} from "@/lib/format";
 
 interface AccomplishmentDetailDialogProps {
   accomplishment: FeedAccomplishment | null;
@@ -172,13 +177,41 @@ export function AccomplishmentDetailDialog({
 
   // Load comments and chain members when dialog opens
   useEffect(() => {
-    if (open && accomplishment) {
-      loadComments();
-      loadChainMembers();
-      // Reset visibility selection
-      setSelectedVisibleTo([]);
-      setShowVisibilitySelect(false);
-    }
+    if (!open || !accomplishment) return;
+
+    let cancelled = false;
+    setSelectedVisibleTo([]);
+    setShowVisibilitySelect(false);
+
+    void (async () => {
+      setIsLoadingComments(true);
+      try {
+        const result = await getAccomplishmentComments(accomplishment.id);
+        if (cancelled) return;
+        if (result.data) {
+          setComments(result.data);
+        }
+      } finally {
+        setIsLoadingComments(false);
+      }
+    })();
+
+    void (async () => {
+      setIsLoadingChainMembers(true);
+      try {
+        const result = await getAccomplishmentChainMembers(accomplishment.id);
+        if (cancelled) return;
+        if (result.data) {
+          setChainMembers(result.data);
+        }
+      } finally {
+        setIsLoadingChainMembers(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, accomplishment?.id]);
 
   // Reset edit state when accomplishment changes
@@ -200,21 +233,27 @@ export function AccomplishmentDetailDialog({
   async function loadComments() {
     if (!accomplishment) return;
     setIsLoadingComments(true);
-    const result = await getAccomplishmentComments(accomplishment.id);
-    if (result.data) {
-      setComments(result.data);
+    try {
+      const result = await getAccomplishmentComments(accomplishment.id);
+      if (result.data) {
+        setComments(result.data);
+      }
+    } finally {
+      setIsLoadingComments(false);
     }
-    setIsLoadingComments(false);
   }
 
   async function loadChainMembers() {
     if (!accomplishment) return;
     setIsLoadingChainMembers(true);
-    const result = await getAccomplishmentChainMembers(accomplishment.id);
-    if (result.data) {
-      setChainMembers(result.data);
+    try {
+      const result = await getAccomplishmentChainMembers(accomplishment.id);
+      if (result.data) {
+        setChainMembers(result.data);
+      }
+    } finally {
+      setIsLoadingChainMembers(false);
     }
-    setIsLoadingChainMembers(false);
   }
 
   async function handleSubmitEdit() {
@@ -232,61 +271,66 @@ export function AccomplishmentDetailDialog({
     }
     
     setIsSubmitting(true);
-    const tags = editForm.tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
+    try {
+      const tags = editForm.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
 
-    const result = await updateAccomplishment(accomplishment.id, {
-      date: editForm.date,
-      action_verb: editForm.action_verb,
-      details: editForm.details,
-      impact: editForm.impact,
-      metrics: editForm.metrics || null,
-      mpa: editForm.mpa,
-      tags,
-    });
-
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success("Accomplishment updated");
-      setIsEditing(false);
-      onAccomplishmentUpdated?.(accomplishment.id, {
-        ...editForm,
+      const result = await updateAccomplishment(accomplishment.id, {
+        date: editForm.date,
+        action_verb: editForm.action_verb,
+        details: editForm.details,
+        impact: editForm.impact,
         metrics: editForm.metrics || null,
+        mpa: editForm.mpa,
         tags,
       });
-      // Background PII/CUI scan (defense-in-depth)
-      fetch("/api/scan-entry", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accomplishmentId: accomplishment.id }),
-      }).catch(() => {});
+
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Accomplishment updated");
+        setIsEditing(false);
+        onAccomplishmentUpdated?.(accomplishment.id, {
+          ...editForm,
+          metrics: editForm.metrics || null,
+          tags,
+        });
+        fetch("/api/scan-entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accomplishmentId: accomplishment.id }),
+        }).catch(() => {});
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   }
 
   async function handleSubmitComment() {
     if (!accomplishment || !newComment.trim()) return;
 
     setIsSubmittingComment(true);
-    const visibleTo = selectedVisibleTo.length > 0 ? selectedVisibleTo : null;
-    const result = await createAccomplishmentComment(accomplishment.id, newComment.trim(), visibleTo);
-    
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      setNewComment("");
-      setSelectedVisibleTo([]);
-      setShowVisibilitySelect(false);
-      await loadComments();
-      setTimeout(() => {
-        commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
-      toast.success(visibleTo ? "Private comment sent" : "Comment added");
+    try {
+      const visibleTo = selectedVisibleTo.length > 0 ? selectedVisibleTo : null;
+      const result = await createAccomplishmentComment(accomplishment.id, newComment.trim(), visibleTo);
+      
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        setNewComment("");
+        setSelectedVisibleTo([]);
+        setShowVisibilitySelect(false);
+        await loadComments();
+        setTimeout(() => {
+          commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+        toast.success(visibleTo ? "Private comment sent" : "Comment added");
+      }
+    } finally {
+      setIsSubmittingComment(false);
     }
-    setIsSubmittingComment(false);
   }
 
   // Toggle a user in the visibility list
@@ -323,29 +367,6 @@ export function AccomplishmentDetailDialog({
   const mpaLabel =
     ENTRY_MGAS.find((m) => m.key === accomplishment.mpa)?.label ||
     accomplishment.mpa;
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-    return `${Math.floor(diffDays / 365)} years ago`;
-  };
 
   const unresolvedCount = comments.filter((c) => !c.is_resolved).length;
 
@@ -574,11 +595,11 @@ export function AccomplishmentDetailDialog({
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <Calendar className="size-3.5" />
-                    <span>{formatDate(accomplishment.date)}</span>
+                    <span>{formatWeekdayShortDate(accomplishment.date)}</span>
                   </div>
                   <span className="text-muted-foreground/40">•</span>
                   <span className="text-muted-foreground">
-                    {formatTimeAgo(accomplishment.created_at)}
+                    {formatCreatedAgo(accomplishment.created_at)}
                   </span>
                   <span className="text-muted-foreground/40">•</span>
                   <Badge variant="secondary" className="font-medium text-xs">
@@ -671,8 +692,8 @@ export function AccomplishmentDetailDialog({
                         Tags
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
-                        {accomplishment.tags.map((tag, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">
+                        {accomplishment.tags.map((tag) => (
+                          <Badge key={tag} variant="outline" className="text-xs">
                             {tag}
                           </Badge>
                         ))}
@@ -937,22 +958,6 @@ function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentIte
   const isPrivate = comment.visible_to && comment.visible_to.length > 0;
   const isInVisibleTo = isPrivate && currentUserId && comment.visible_to?.includes(currentUserId);
   
-  const formatCommentDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
-
   return (
     <div
       className={`group rounded-lg border p-2.5 sm:p-3 transition-colors ${
@@ -1001,7 +1006,7 @@ function CommentItem({ comment, currentUserId, onResolve, onDelete }: CommentIte
               )}
               <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                 <Clock className="size-3" />
-                {formatCommentDate(comment.created_at)}
+                {formatCommentTimeAgo(comment.created_at)}
               </span>
               {comment.is_resolved && (
                 <Badge variant="outline" className="text-xs gap-1 text-muted-foreground h-5 px-1">

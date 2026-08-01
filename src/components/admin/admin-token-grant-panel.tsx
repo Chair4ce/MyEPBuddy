@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import {
-  type AdminGrantCreditsResult,
+  getAdminGrantTargetCount,
+  grantAdminCredits,
+  grantAdminCreditsToAll,
+  searchAdminGrantUsers,
+} from "@/app/actions/admin-token-grant";
+import {
   type AdminGrantSearchUser,
   formatGrantUserLabel,
   parseGrantAmount,
@@ -27,11 +31,11 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { Gift, Loader2, Search, UserRound, Users } from "lucide-react";
+import { formatInteger } from "@/lib/format";
 
 type GrantTarget = "individual" | "all";
 
 export function AdminTokenGrantPanel() {
-  const supabase = createClient();
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [target, setTarget] = useState<GrantTarget>("individual");
@@ -56,18 +60,15 @@ export function AdminTokenGrantPanel() {
 
       setIsSearching(true);
       try {
-        const { data, error } = await (supabase.rpc as Function)("admin_search_users", {
-          p_query: trimmed,
-          p_limit: 10,
-        });
+        const result = await searchAdminGrantUsers(trimmed);
 
-        if (error) {
-          toast.error(error.message);
+        if (!result.ok) {
+          toast.error(result.error);
           setSearchResults([]);
           return;
         }
 
-        setSearchResults((data ?? []) as AdminGrantSearchUser[]);
+        setSearchResults(result.data);
       } catch {
         toast.error("Failed to search users");
         setSearchResults([]);
@@ -75,7 +76,7 @@ export function AdminTokenGrantPanel() {
         setIsSearching(false);
       }
     },
-    [supabase],
+    [],
   );
 
   const handleSearchChange = (value: string) => {
@@ -97,21 +98,20 @@ export function AdminTokenGrantPanel() {
   const loadTargetCount = useCallback(async () => {
     setIsLoadingTargetCount(true);
     try {
-      const { data, error } = await (supabase.rpc as Function)("admin_grant_target_count");
-      if (error) {
-        toast.error(error.message);
+      const result = await getAdminGrantTargetCount();
+      if (!result.ok) {
+        toast.error(result.error);
         return null;
       }
-      const count = typeof data === "number" ? data : 0;
-      setTargetCount(count);
-      return count;
+      setTargetCount(result.data);
+      return result.data;
     } catch {
       toast.error("Failed to load user count");
       return null;
     } finally {
       setIsLoadingTargetCount(false);
     }
-  }, [supabase]);
+  }, []);
 
   const handleTargetChange = (value: GrantTarget) => {
     setTarget(value);
@@ -135,19 +135,19 @@ export function AdminTokenGrantPanel() {
 
     setIsGranting(true);
     try {
-      const { data, error } = await (supabase.rpc as Function)("admin_grant_credits", {
-        p_user_ids: [selectedUser.id],
-        p_amount: amount,
-        p_note: note.trim() || null,
+      const result = await grantAdminCredits({
+        userIds: [selectedUser.id],
+        amount,
+        note: note.trim() || null,
       });
 
-      if (error) {
-        toast.error(error.message);
+      if (!result.ok) {
+        toast.error(result.error);
         return;
       }
 
-      const result = data as AdminGrantCreditsResult;
-      const newBalance = result.users?.[0]?.new_balance;
+      const grantResult = result.data;
+      const newBalance = grantResult.users?.[0]?.new_balance;
 
       toast.success(
         `Granted ${amount} tokens to ${formatGrantUserLabel(selectedUser)}${
@@ -165,19 +165,19 @@ export function AdminTokenGrantPanel() {
   const grantToAll = async (amount: number) => {
     setIsGranting(true);
     try {
-      const { data, error } = await (supabase.rpc as Function)("admin_grant_credits_all", {
-        p_amount: amount,
-        p_note: note.trim() || null,
+      const result = await grantAdminCreditsToAll({
+        amount,
+        note: note.trim() || null,
       });
 
-      if (error) {
-        toast.error(error.message);
+      if (!result.ok) {
+        toast.error(result.error);
         return;
       }
 
-      const result = data as AdminGrantCreditsResult;
+      const grantResult = result.data;
       toast.success(
-        `Granted ${amount} tokens to ${result.granted_count} users (${result.total_tokens} total).`,
+        `Granted ${amount} tokens to ${grantResult.granted_count} users (${grantResult.total_tokens} total).`,
       );
       resetGrantForm();
       setConfirmAllOpen(false);
@@ -356,6 +356,7 @@ export function AdminTokenGrantPanel() {
                       <button
                         type="button"
                         role="option"
+                        aria-selected={false}
                         className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={() => {
                           setSelectedUser(user);
@@ -401,7 +402,7 @@ export function AdminTokenGrantPanel() {
                   {" "}
                   Total tokens issued:{" "}
                   <strong className="font-medium text-foreground tabular-nums">
-                    {totalTokensForAll.toLocaleString()}
+                    {formatInteger(totalTokensForAll)}
                   </strong>
                   .
                 </>
@@ -483,7 +484,7 @@ export function AdminTokenGrantPanel() {
                   <p>
                     Total tokens issued:{" "}
                     <strong className="text-foreground tabular-nums">
-                      {totalTokensForAll.toLocaleString()}
+                      {formatInteger(totalTokensForAll)}
                     </strong>
                     .
                   </p>

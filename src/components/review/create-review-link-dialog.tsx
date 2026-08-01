@@ -24,6 +24,7 @@ import {
   Users,
   AlertTriangle,
 } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 interface ContentSection {
   key: string;  // mpa key for EPB, category key for Award, or 'citation' for Decoration
@@ -211,7 +212,7 @@ export function CreateReviewLinkDialog({
 
   const formatExpiresAt = (isoString: string) => {
     try {
-      return new Date(isoString).toLocaleString();
+      return formatDateTime(isoString);
     } catch {
       return isoString;
     }

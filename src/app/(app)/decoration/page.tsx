@@ -90,6 +90,7 @@ import type {
   ManagedMember,
   Rank,
 } from "@/types/database";
+import { formatDateDefault } from "@/lib/format";
 
 // ============================================================================
 // Types
@@ -237,14 +238,15 @@ export default function DecorationPage() {
   // Load Decorations
   // ============================================================================
 
-  const loadDecorations = useCallback(async () => {
+  const loadDecorations = useCallback(async (signal: AbortSignal) => {
     if (!profile) return;
 
     try {
       const { data: shellsData, error } = await supabase
         .from("decoration_shells")
         .select("*")
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .abortSignal(signal);
 
       if (error) {
         console.error("Error loading decoration shells:", error);
@@ -268,6 +270,7 @@ export default function DecorationPage() {
                 .from("team_members")
                 .select("*")
                 .eq("id", shell.team_member_id)
+                .abortSignal(signal)
                 .single();
               if (memberData) {
                 ownerTeamMember = memberData as unknown as ManagedMember;
@@ -288,6 +291,7 @@ export default function DecorationPage() {
                   .from("profiles")
                   .select("*")
                   .eq("id", shell.user_id)
+                  .abortSignal(signal)
                   .single();
                 if (profileData) {
                   ownerProfile = profileData as unknown as Profile;
@@ -308,6 +312,7 @@ export default function DecorationPage() {
                 .from("profiles")
                 .select("*")
                 .eq("id", shell.created_by)
+                .abortSignal(signal)
                 .single();
               if (creatorData) {
                 creatorProfile = creatorData as unknown as Profile;
@@ -333,12 +338,16 @@ export default function DecorationPage() {
 
   // Initial load
   useEffect(() => {
-    async function init() {
+    const controller = new AbortController();
+    void (async () => {
       setIsLoading(true);
-      await loadDecorations();
-      setIsLoading(false);
-    }
-    init();
+      try {
+        await loadDecorations(controller.signal);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+    return () => controller.abort();
   }, [loadDecorations]);
 
   // ============================================================================
@@ -347,9 +356,12 @@ export default function DecorationPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadDecorations();
-    setIsRefreshing(false);
-    toast.success("Decorations refreshed");
+    try {
+      await loadDecorations(new AbortController().signal);
+      toast.success("Decorations refreshed");
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleRateeChange = (value: string) => {
@@ -493,7 +505,7 @@ export default function DecorationPage() {
         setShowWorkspaceDialog(true);
       }
 
-      await loadDecorations();
+      await loadDecorations(new AbortController().signal);
     } catch (error) {
       console.error("Error creating decoration:", error);
       const message = error instanceof Error ? error.message : "Failed to create decoration";
@@ -662,7 +674,7 @@ export default function DecorationPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right text-sm text-muted-foreground">
-                        {new Date(decoration.updated_at).toLocaleDateString()}
+                        {formatDateDefault(decoration.updated_at)}
                       </TableCell>
                     </TableRow>
                   );
@@ -962,7 +974,7 @@ export default function DecorationPage() {
           open={showWorkspaceDialog}
           onOpenChange={setShowWorkspaceDialog}
           shell={selectedDecoration}
-          onSaved={loadDecorations}
+          onSaved={() => void loadDecorations(new AbortController().signal)}
         />
       )}
     </div>

@@ -61,65 +61,63 @@ export function ShareStatementDialog({
 
   // Load existing shares when statement changes
   useEffect(() => {
-    if (statement && open) {
-      loadExistingShares();
-    }
-  }, [statement?.id, open]);
+    const controller = new AbortController();
 
-  async function loadExistingShares() {
-    if (!statement) return;
-    setIsLoading(true);
+    void (async () => {
+      if (!statement || !open) return;
 
-    try {
-      // Load team + user shares from statement_shares
-      const { data } = await supabase
-        .from("statement_shares")
-        .select("*")
-        .eq("statement_id", statement.id);
+      setIsLoading(true);
 
-      const shares = (data || []) as StatementShare[];
-      setExistingShares(shares);
-
-      // Set UI state based on existing shares
-      setShareWithTeam(shares.some((s) => s.share_type === "team"));
-
-      // Check if already shared to community (lives in community_statements table)
-      const { data: communityCheck } = await supabase
-        .from("community_statements")
-        .select("id")
-        .eq("source_statement_id", statement.id)
-        .eq("contributor_id", profile?.id || "")
-        .limit(1);
-
-      const isCommunityShared = (communityCheck || []).length > 0;
-      setShareWithCommunity(isCommunityShared);
-
-      // Synthesize a "community" share entry so hasChanges detection works
-      if (isCommunityShared) {
-        setExistingShares((prev) => [
-          ...prev,
-          { id: "community-placeholder", statement_id: statement.id, owner_id: profile?.id || "", share_type: "community" as const, shared_with_id: null, created_at: "" },
-        ]);
-      }
-
-      // Load user details for individual shares
-      const userShares = shares.filter((s) => s.share_type === "user" && s.shared_with_id);
-      if (userShares.length > 0) {
-        const { data: users } = await supabase
-          .from("profiles")
+      try {
+        const { data } = await supabase
+          .from("statement_shares")
           .select("*")
-          .in("id", userShares.map((s) => s.shared_with_id!));
-        setSelectedUsers((users || []) as Profile[]);
-      } else {
-        setSelectedUsers([]);
+          .eq("statement_id", statement.id)
+          .abortSignal(controller.signal);
+
+        const { data: communityCheck } = await supabase
+          .from("community_statements")
+          .select("id")
+          .eq("source_statement_id", statement.id)
+          .eq("contributor_id", profile?.id || "")
+          .limit(1)
+          .abortSignal(controller.signal);
+
+        let nextSelectedUsers: Profile[] = [];
+        const shares = (data || []) as StatementShare[];
+        const userShares = shares.filter((s) => s.share_type === "user" && s.shared_with_id);
+        if (userShares.length > 0) {
+          const { data: users } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", userShares.map((s) => s.shared_with_id!))
+            .abortSignal(controller.signal);
+
+          nextSelectedUsers = (users || []) as Profile[];
+        }
+
+        if (controller.signal.aborted) return;
+
+        const isCommunityShared = (communityCheck || []).length > 0;
+        setExistingShares(shares);
+        setShareWithTeam(shares.some((s) => s.share_type === "team"));
+        setShareWithCommunity(isCommunityShared);
+
+        if (isCommunityShared) {
+          setExistingShares((prev) => [
+            ...prev,
+            { id: "community-placeholder", statement_id: statement.id, owner_id: profile?.id || "", share_type: "community" as const, shared_with_id: null, created_at: "" },
+          ]);
+        }
+
+        setSelectedUsers(nextSelectedUsers);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error loading shares:", error);
-      toast.error("Failed to load sharing settings");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    })();
+
+    return () => controller.abort();
+  }, [statement?.id, open, profile?.id, supabase]);
 
   async function searchUsers(query: string) {
     if (query.length < 2) {

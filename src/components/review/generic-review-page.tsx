@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, use, useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,50 +19,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-interface Section {
-  key: string;
-  label: string;
-  content: string;
-}
-
-interface ReviewData {
-  shellType: string;
-  shellId: string;
-  rateeName: string;
-  rateeRank?: string;
-  linkLabel?: string | null;
-  isAnonymous: boolean;
-  title?: string;
-  cycleYear?: number;
-  dutyDescription?: string;
-  sections: Section[] | null;
-}
-
-type ReviewStep = "loading" | "error" | "name" | "review" | "submitting" | "success";
+import {
+  getStorageKey,
+  loadReviewPageData,
+  type ReviewData,
+  type ReviewStep,
+  type StoredProgress,
+} from "@/lib/review-page-data";
 
 interface GenericReviewPageProps {
   token: string;
   shellTypeLabel: string;
 }
 
-// LocalStorage key for persisting review progress
-const getStorageKey = (token: string) => `review_progress_${token}`;
-
-interface StoredProgress {
-  reviewerName: string;
-  reviewerNameSource: "label" | "provided" | "generated";
-  comments: CommentData[];
-  step: ReviewStep;
+function ReviewPageLoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="size-8 animate-spin text-muted-foreground" />
+    </div>
+  );
 }
 
-export function GenericReviewPage({ token, shellTypeLabel }: GenericReviewPageProps) {
-  const [step, setStep] = useState<ReviewStep>("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [reviewData, setReviewData] = useState<ReviewData | null>(null);
-  const [reviewerName, setReviewerName] = useState("");
-  const [reviewerNameSource, setReviewerNameSource] = useState<"label" | "provided" | "generated">("provided");
-  const [comments, setComments] = useState<CommentData[]>([]);
+function GenericReviewPageContent({ token, shellTypeLabel }: GenericReviewPageProps) {
+  const loaded = use(loadReviewPageData(token));
+  const [step, setStep] = useState<ReviewStep>(loaded.initialStep);
+  const [error, setError] = useState<string | null>(loaded.error);
+  const [reviewData, setReviewData] = useState<ReviewData | null>(
+    loaded.error ? null : loaded.reviewData
+  );
+  const [reviewerName, setReviewerName] = useState(loaded.initialReviewerName);
+  const [reviewerNameSource, setReviewerNameSource] = useState<
+    "label" | "provided" | "generated"
+  >(loaded.initialReviewerNameSource);
+  const [comments, setComments] = useState<CommentData[]>(loaded.initialComments);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -72,86 +61,6 @@ export function GenericReviewPage({ token, shellTypeLabel }: GenericReviewPagePr
     label: string;
     content: string;
   } | null>(null);
-
-  // Load review data
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const response = await fetch(`/api/review/${token}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          setError(data.error || "Failed to load review data");
-          setStep("error");
-          return;
-        }
-
-        // Normalize sections format
-        const normalizedSections: Section[] = [];
-        
-        if (data.shellType === "epb" && data.sections) {
-          // EPB has mpa/statement_text format
-          for (const section of data.sections) {
-            normalizedSections.push({
-              key: section.mpa,
-              label: {
-                executing_mission: "Executing the Mission",
-                leading_people: "Leading People",
-                managing_resources: "Managing Resources",
-                improving_unit: "Improving the Unit",
-                hlr_assessment: "HLR Assessment",
-              }[section.mpa as string] || section.mpa,
-              content: section.statement_text || "",
-            });
-          }
-        } else if (data.sections) {
-          // Award/Decoration have key/label/content format
-          for (const section of data.sections) {
-            normalizedSections.push({
-              key: section.key,
-              label: section.label,
-              content: section.content || "",
-            });
-          }
-        }
-
-        setReviewData({
-          ...data,
-          sections: normalizedSections,
-        });
-
-        // Try to restore saved progress from localStorage
-        try {
-          const savedProgress = localStorage.getItem(getStorageKey(token));
-          if (savedProgress) {
-            const progress: StoredProgress = JSON.parse(savedProgress);
-            if (progress.reviewerName) {
-              setReviewerName(progress.reviewerName);
-              setReviewerNameSource(progress.reviewerNameSource);
-            }
-            if (progress.comments && progress.comments.length > 0) {
-              setComments(progress.comments);
-            }
-            // If we have a name and were in review step, go directly to review
-            if (progress.reviewerName && progress.step === "review") {
-              setStep("review");
-              return;
-            }
-          }
-        } catch (e) {
-          console.warn("Failed to restore review progress:", e);
-        }
-
-        setStep("name");
-      } catch (err) {
-        console.error("Load error:", err);
-        setError("Failed to load review data");
-        setStep("error");
-      }
-    }
-
-    loadData();
-  }, [token]);
 
   // Save progress to localStorage whenever it changes
   useEffect(() => {
@@ -578,4 +487,12 @@ export function GenericReviewPage({ token, shellTypeLabel }: GenericReviewPagePr
   }
 
   return null;
+}
+
+export function GenericReviewPage(props: GenericReviewPageProps) {
+  return (
+    <Suspense fallback={<ReviewPageLoadingFallback />}>
+      <GenericReviewPageContent {...props} />
+    </Suspense>
+  );
 }

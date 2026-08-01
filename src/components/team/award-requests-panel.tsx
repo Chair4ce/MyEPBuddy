@@ -40,6 +40,7 @@ import {
   User,
   ChevronRight,
 } from "lucide-react";
+import { formatDateDefault } from "@/lib/format";
 
 interface AwardRequestsPanelProps {
   requests: AwardRequest[];
@@ -301,7 +302,7 @@ export function AwardRequestsPanel({
                       <Label className="text-xs text-muted-foreground">Date</Label>
                       <p className="font-medium">
                         {selectedRequest.coin_date &&
-                          new Date(selectedRequest.coin_date).toLocaleDateString()}
+                          formatDateDefault(selectedRequest.coin_date)}
                       </p>
                     </div>
                     {selectedRequest.coin_description && (
@@ -364,7 +365,7 @@ export function AwardRequestsPanel({
                       {selectedRequest.requester.rank} {selectedRequest.requester.full_name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(selectedRequest.created_at).toLocaleDateString()}
+                      {formatDateDefault(selectedRequest.created_at)}
                     </p>
                   </div>
                 )}

@@ -268,23 +268,18 @@ export default function AwardPage() {
   // Load Awards
   // ============================================================================
 
-  const loadAwards = useCallback(async () => {
+  const loadAwards = useCallback(async (signal: AbortSignal) => {
     if (!profile) return;
 
     try {
-      // Fetch all award shells visible to this user (all years).
-      // RLS policies (067 + 071) grant visibility for:
-      // - Own shells & shells the user created
-      // - Full subordinate chain via get_subordinate_chain (any depth)
-      // - Managed members of anyone in the chain
-      // - Shared shells
       const { data: shellsData, error } = await supabase
         .from("award_shells")
         .select(`
           *,
           award_shell_sections(id, statement_text)
         `)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .abortSignal(signal);
 
       if (error) {
         console.error("Error loading award shells:", error);
@@ -326,7 +321,8 @@ export default function AwardPage() {
         const { data: fetched } = await supabase
           .from("profiles")
           .select("*")
-          .in("id", [...missingProfileIds]);
+          .in("id", [...missingProfileIds])
+          .abortSignal(signal);
         for (const p of (fetched || []) as unknown as Profile[]) {
           knownProfiles.set(p.id, p);
         }
@@ -337,7 +333,8 @@ export default function AwardPage() {
         const { data: fetched } = await supabase
           .from("team_members")
           .select("*")
-          .in("id", [...missingMemberIds]);
+          .in("id", [...missingMemberIds])
+          .abortSignal(signal);
         for (const m of (fetched || []) as unknown as ManagedMember[]) {
           knownMembers.set(m.id, m);
         }
@@ -399,12 +396,16 @@ export default function AwardPage() {
 
   // Initial load
   useEffect(() => {
-    async function init() {
+    const controller = new AbortController();
+    void (async () => {
       setIsLoading(true);
-      await loadAwards();
-      setIsLoading(false);
-    }
-    init();
+      try {
+        await loadAwards(controller.signal);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+    return () => controller.abort();
   }, [loadAwards]);
 
   // ============================================================================
@@ -427,9 +428,12 @@ export default function AwardPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadAwards();
-    setIsRefreshing(false);
-    toast.success("Awards refreshed");
+    try {
+      await loadAwards(new AbortController().signal);
+      toast.success("Awards refreshed");
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleNomineeChange = (value: string) => {
@@ -577,7 +581,7 @@ export default function AwardPage() {
       setCreateAwardTitle("");
       
       // Refresh the list
-      await loadAwards();
+      await loadAwards(new AbortController().signal);
 
       // Open the new award in the workspace dialog
       if (newShell) {
@@ -636,12 +640,12 @@ export default function AwardPage() {
       setSelectedAward(null);
       resetAwardStore();
       // Refresh to get updated progress
-      loadAwards();
+      loadAwards(new AbortController().signal);
     }
   };
 
   const handleAwardSaved = () => {
-    loadAwards();
+    loadAwards(new AbortController().signal);
   };
 
   // ============================================================================

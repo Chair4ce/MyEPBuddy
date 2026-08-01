@@ -7,7 +7,7 @@ import type { SupervisorExpectation } from "@/types/database";
 /**
  * Get expectation for a specific subordinate/team member for a given cycle year
  */
-export async function getExpectation(
+async function getExpectation(
   subordinateId: string | null,
   teamMemberId: string | null,
   cycleYear: number
@@ -70,7 +70,7 @@ export async function getExpectation(
  * Expectations are supervisor-private; ratees only see shared feedback session guides.
  * Kept for call-site compatibility — always returns an empty list.
  */
-export async function getMyExpectations(
+async function getMyExpectations(
   _cycleYear?: number
 ): Promise<{ data: SupervisorExpectation[]; error: string | null }> {
   return { data: [], error: null };
@@ -79,7 +79,7 @@ export async function getMyExpectations(
 /**
  * Get all expectations set by the current user (as supervisor)
  */
-export async function getExpectationsBySupervisor(
+async function getExpectationsBySupervisor(
   cycleYear?: number
 ): Promise<{ data: SupervisorExpectation[]; error: string | null }> {
   const supabase = await createClient();
@@ -158,7 +158,7 @@ export async function setExpectation(
 /**
  * Delete an expectation
  */
-export async function deleteExpectation(
+async function deleteExpectation(
   expectationId: string
 ): Promise<{ success: boolean; error: string | null }> {
   const supabase = await createClient();

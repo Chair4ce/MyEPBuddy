@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Analytics } from "@/lib/analytics";
 import { billableFetch, fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
@@ -272,19 +272,25 @@ export function EPBShellForm({
     syncRemoteState(state.sections, state.collapsedSections);
   }, [syncRemoteState]);
 
-  // Page-level collaboration hook - only active when multi-user mode is ON
-  const collaboration = useEPBCollaboration({
+  const onParticipantJoin = useCallback((participant: import("@/hooks/use-epb-collaboration").EPBCollaborator) => {
+    toast.success(`${participant.rank ? participant.rank + " " : ""}${participant.fullName} joined`, {
+      description: "You can now collaborate in real-time",
+    });
+  }, []);
+
+  const onParticipantLeave = useCallback((_participantId: string) => {
+    toast.info("A collaborator left the session");
+  }, []);
+
+  const collaborationOptions = useMemo(() => ({
     shellId: isMultiUserMode ? (currentShell?.id || null) : null,
     onStateChange: handleRemoteStateChange,
-    onParticipantJoin: useCallback((participant: import("@/hooks/use-epb-collaboration").EPBCollaborator) => {
-      toast.success(`${participant.rank ? participant.rank + " " : ""}${participant.fullName} joined`, {
-        description: "You can now collaborate in real-time",
-      });
-    }, []),
-    onParticipantLeave: useCallback((_participantId: string) => {
-      toast.info("A collaborator left the session");
-    }, []),
-  });
+    onParticipantJoin,
+    onParticipantLeave,
+  }), [isMultiUserMode, currentShell?.id, handleRemoteStateChange, onParticipantJoin, onParticipantLeave]);
+
+  // Page-level collaboration hook - only active when multi-user mode is ON
+  const collaboration = useEPBCollaboration(collaborationOptions);
 
   // Ref to track the last broadcast (to avoid duplicate broadcasts)
   const lastBroadcastRef = useRef<string>("");
@@ -706,9 +712,9 @@ export function EPBShellForm({
     
     if (initializedFor !== profile.id) return;
     
-    // Abort flag to cancel this load if selectedRatee changes
-    let aborted = false;
+    const controller = new AbortController();
     
+    void (async () => {
     async function loadRateeShellHistory() {
       if (!selectedRatee) return;
 
@@ -720,8 +726,9 @@ export function EPBShellForm({
         historyQuery = historyQuery.eq("user_id", selectedRatee.id).is("team_member_id", null);
       }
 
-      const { data: historyData } = await historyQuery;
-      if (!aborted && historyData) {
+      const { data: historyData } = await historyQuery.abortSignal(controller.signal);
+      if (controller.signal.aborted) return;
+      if (historyData) {
         setRateeShellCycleYears(
           (historyData as { cycle_year: number }[]).map((row) => row.cycle_year),
         );
@@ -751,11 +758,9 @@ export function EPBShellForm({
           query = query.eq("user_id", selectedRatee.id).is("team_member_id", null);
         }
 
-        // Get the most recent active shell (there should only be one)
-        const { data, error } = await query.limit(1).maybeSingle();
+        const { data, error } = await query.limit(1).abortSignal(controller.signal).maybeSingle();
         
-        // Check if this load was aborted (user switched to another ratee)
-        if (aborted) return;
+        if (controller.signal.aborted) return;
 
         if (error) {
           console.error("Error loading shell:", error);
@@ -765,22 +770,20 @@ export function EPBShellForm({
           const shellData = data as EPBShell & { sections: EPBShellSection[] };
           setCurrentShell(shellData);
           
-          // Check abort again before loading related data
-          if (aborted) return;
+          if (controller.signal.aborted) return;
           
-          // Load snapshots for each section
           const sectionIds = (shellData.sections || []).map((s) => s.id);
           if (sectionIds.length > 0) {
             const { data: snapshotData } = await supabase
               .from("epb_shell_snapshots")
               .select("*")
               .in("section_id", sectionIds)
-              .order("created_at", { ascending: false });
+              .order("created_at", { ascending: false })
+              .abortSignal(controller.signal);
             
-            if (aborted) return;
+            if (controller.signal.aborted) return;
             
             if (snapshotData) {
-              // Group by section_id
               const snapshotsBySection: Record<string, EPBShellSnapshot[]> = {};
               (snapshotData as EPBShellSnapshot[]).forEach((snap) => {
                 if (!snapshotsBySection[snap.section_id]) {
@@ -793,17 +796,16 @@ export function EPBShellForm({
               });
             }
             
-            // Load saved examples for each section
             const { data: examplesData } = await supabase
               .from("epb_saved_examples")
               .select("*")
               .in("section_id", sectionIds)
-              .order("created_at", { ascending: false });
+              .order("created_at", { ascending: false })
+              .abortSignal(controller.signal);
             
-            if (aborted) return;
+            if (controller.signal.aborted) return;
             
             if (examplesData) {
-              // Group by section_id
               const examplesBySection: Record<string, EPBSavedExample[]> = {};
               (examplesData as EPBSavedExample[]).forEach((example) => {
                 if (!examplesBySection[example.section_id]) {
@@ -817,49 +819,47 @@ export function EPBShellForm({
             }
           }
           
-          if (aborted) return;
+          if (controller.signal.aborted) return;
           
-          // Load duty description snapshots
           const { data: dutySnapshots } = await supabase
             .from("epb_duty_description_snapshots")
             .select("*")
             .eq("shell_id", shellData.id)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false })
+            .abortSignal(controller.signal);
           
-          if (aborted) return;
+          if (controller.signal.aborted) return;
           
           if (dutySnapshots) {
             setDutyDescriptionSnapshots(dutySnapshots as DutyDescriptionSnapshot[]);
           }
           
-          // Load duty description examples
           const { data: dutyExamples } = await supabase
             .from("epb_duty_description_examples")
             .select("*")
             .eq("shell_id", shellData.id)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false })
+            .abortSignal(controller.signal);
           
-          if (aborted) return;
+          if (controller.signal.aborted) return;
           
           if (dutyExamples) {
             setDutyDescriptionExamples(dutyExamples as DutyDescriptionExample[]);
           }
           
-          // Load duty description templates (user-owned, not shell-specific)
-          // Guard against profile being null during async operation
           if (!profile) return;
           
           const { data: templates } = await supabase
             .from("duty_description_templates")
             .select("*")
             .eq("user_id", profile.id)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false })
+            .abortSignal(controller.signal);
           
-          if (aborted) return;
+          if (controller.signal.aborted) return;
           
           if (templates) {
             setDutyDescriptionTemplates(templates as DutyDescriptionTemplate[]);
-            // Extract unique labels for autocomplete
             const offices = new Set<string>();
             const roles = new Set<string>();
             const ranks = new Set<string>();
@@ -878,21 +878,19 @@ export function EPBShellForm({
           setCurrentShell(null);
         }
       } catch (error) {
-        if (!aborted) {
+        if (!controller.signal.aborted) {
           console.error("Failed to load shell:", error);
         }
       } finally {
-        if (!aborted) {
-          setIsLoadingShell(false);
-        }
+        setIsLoadingShell(false);
       }
     }
 
-    loadShell();
+    await loadShell();
+    })();
     
-    // Cleanup: abort this load if effect re-runs (selectedRatee changed)
     return () => {
-      aborted = true;
+      controller.abort();
     };
   }, [initializedFor, selectedRatee, cycleYear, profile, supabase, setCurrentShell, setIsLoadingShell, setSnapshots, setSavedExamples]);
 
@@ -1020,7 +1018,9 @@ export function EPBShellForm({
 
   // Load awards/coins for the selected ratee (for HLR award integration)
   useEffect(() => {
-    async function loadRateeAwards() {
+    const controller = new AbortController();
+
+    void (async () => {
       if (!selectedRatee || !profile) {
         setRateeAwards([]);
         return;
@@ -1031,7 +1031,10 @@ export function EPBShellForm({
           .from("awards")
           .select("*")
           .eq("recipient_team_member_id", selectedRatee.id)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .abortSignal(controller.signal);
+
+        if (controller.signal.aborted) return;
 
         if (data) {
           const awards = data as unknown as RawAwardRecord[];
@@ -1044,7 +1047,10 @@ export function EPBShellForm({
           .from("awards")
           .select("*")
           .eq("recipient_profile_id", selectedRatee.id)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .abortSignal(controller.signal);
+
+        if (controller.signal.aborted) return;
 
         if (data) {
           const awards = data as unknown as RawAwardRecord[];
@@ -1053,9 +1059,9 @@ export function EPBShellForm({
           setRateeAwards([]);
         }
       }
-    }
+    })();
 
-    loadRateeAwards();
+    return () => controller.abort();
   }, [selectedRatee, profile, supabase]);
 
   const handleCreateShell = async (explicitCycleYear?: number) => {
