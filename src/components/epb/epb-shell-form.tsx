@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Analytics } from "@/lib/analytics";
-import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { billableFetch, fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { Badge } from "@/components/ui/badge";
@@ -533,7 +533,7 @@ export function EPBShellForm({
         const targetS1 = targetIndex === 0 ? sourceSentence.text : (targetOtherSentence?.text || "");
         const targetS2 = targetIndex === 1 ? sourceSentence.text : (targetOtherSentence?.text || "");
         
-        const response = await fetch("/api/adapt-sentence", {
+        const response = await billableFetch("/api/adapt-sentence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -600,7 +600,7 @@ export function EPBShellForm({
 
       // Always send BOTH to AI for resizing when swapping
       const [sourceResponse, targetResponse] = await Promise.all([
-        fetch("/api/adapt-sentence", {
+        billableFetch("/api/adapt-sentence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -611,7 +611,7 @@ export function EPBShellForm({
             preserveSentenceIndex: sourceIndex,
           }),
         }),
-        fetch("/api/adapt-sentence", {
+        billableFetch("/api/adapt-sentence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1611,7 +1611,7 @@ export function EPBShellForm({
 
     try {
       // One billable request returns up to versionCount alternatives (1 credit total)
-      const response = await fetch("/api/generate", {
+      const response = await billableFetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1835,7 +1835,7 @@ export function EPBShellForm({
     setAssessmentResult(null);
     
     try {
-      const response = await fetch("/api/assess-epb", {
+      const response = await billableFetch("/api/assess-epb", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

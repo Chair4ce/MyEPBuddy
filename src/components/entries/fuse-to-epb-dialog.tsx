@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
+import { billableFetch } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -384,7 +385,7 @@ export function FuseToEpbDialog({
         .join("\n\n");
 
       // Same as /epb multi-version generate: one request, one credit, N alternatives
-      const response = await fetch("/api/generate", {
+      const response = await billableFetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
