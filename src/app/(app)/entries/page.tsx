@@ -34,11 +34,19 @@ import { EntryCard } from "@/components/entries/entry-card";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
 import { FuseToEpbBar } from "@/components/entries/fuse-to-epb-bar";
 import { FuseToEpbDialog } from "@/components/entries/fuse-to-epb-dialog";
+import { GenerateEpbDialog } from "@/components/entries/generate-epb-dialog";
 import { TagFilterPopover } from "@/components/entries/tag-filter-popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
-import { Plus, Filter, FileText, LayoutList, CalendarDays } from "lucide-react";
+import { evaluateEpbGenerationReadiness } from "@/lib/epb-generation-readiness";
+import { Plus, Filter, FileText, LayoutList, CalendarDays, Sparkles } from "lucide-react";
 import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import { EPBProgressCard } from "@/components/epb/epb-progress-card";
 import { SupervisorFeedbackPanel } from "@/components/entries/supervisor-feedback-panel";
@@ -76,6 +84,7 @@ function EntriesContent() {
     () => new Set()
   );
   const [fuseDialogOpen, setFuseDialogOpen] = useState(false);
+  const [generateEpbOpen, setGenerateEpbOpen] = useState(false);
   
   const supabase = createClient();
   // Cycle year is computed from the user's rank and SCOD
@@ -308,6 +317,13 @@ function EntriesContent() {
     isEnlisted(fuseRatee.rank) &&
     selectedAccomplishments.length > 0;
 
+  // Full-EPB generation readiness (content-based; the plan step selects entries).
+  const epbReadiness = useMemo(
+    () => evaluateEpbGenerationReadiness(accomplishments, { rank: rateeRank }),
+    [accomplishments, rateeRank]
+  );
+  const showGenerateEpb = !!fuseRatee && isEnlisted(fuseRatee.rank);
+
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
@@ -351,6 +367,29 @@ function EntriesContent() {
         </div>
         <div className="flex items-center gap-2">
           <SupervisorFeedbackPanel />
+          {showGenerateEpb && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant="outline"
+                      disabled={!epbReadiness.canGenerate}
+                      onClick={() => setGenerateEpbOpen(true)}
+                    >
+                      <Sparkles className="size-4 mr-2" />
+                      Generate EPB
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!epbReadiness.canGenerate && epbReadiness.reasons.length > 0 && (
+                  <TooltipContent className="max-w-xs">
+                    {epbReadiness.reasons.join(" ")}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="size-4 mr-2" />
             New Entry
@@ -648,6 +687,15 @@ function EntriesContent() {
           onOpenChange={setFuseDialogOpen}
           accomplishments={selectedAccomplishments}
           ratee={fuseRatee}
+        />
+      )}
+
+      {generateEpbOpen && fuseRatee && (
+        <GenerateEpbDialog
+          open={generateEpbOpen}
+          onOpenChange={setGenerateEpbOpen}
+          ratee={fuseRatee}
+          readiness={epbReadiness}
         />
       )}
     </div>
