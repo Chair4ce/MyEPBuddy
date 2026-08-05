@@ -2,11 +2,29 @@ import { describe, it, expect } from "vitest";
 import {
   planToEditable,
   editableToMpaSelections,
+  editableFromRecords,
   buildMpaCustomContext,
   combineVersions,
   extractVersionArrays,
 } from "../generate-epb-run";
 import type { EpbPlan, PlanAccomplishmentRecord } from "../plan-epb";
+
+function record(
+  id: string,
+  taggedMpa: string
+): PlanAccomplishmentRecord {
+  return {
+    id,
+    taggedMpa,
+    action_verb: "Led",
+    details: "did a thing",
+    impact: null,
+    metrics: null,
+    overallScore: null,
+    primaryMpa: null,
+    mpaRelevancy: null,
+  };
+}
 
 describe("planToEditable + editableToMpaSelections", () => {
   const plan: EpbPlan = {
@@ -46,6 +64,23 @@ describe("planToEditable + editableToMpaSelections", () => {
     editable.executing_mission.enabled = false;
     editable.leading_people.groups = [[]];
     expect(editableToMpaSelections(editable)).toHaveLength(0);
+  });
+});
+
+describe("editableFromRecords", () => {
+  it("groups pre-selected records by tagged MPA (one group each)", () => {
+    const editable = editableFromRecords([
+      record("a", "executing_mission"),
+      record("b", "executing_mission"),
+      record("c", "leading_people"),
+      record("d", "miscellaneous"), // non-core → excluded
+    ]);
+    expect(Object.keys(editable).sort()).toEqual([
+      "executing_mission",
+      "leading_people",
+    ]);
+    expect(editable.executing_mission.groups).toEqual([["a", "b"]]);
+    expect(editable.leading_people.enabled).toBe(true);
   });
 });
 

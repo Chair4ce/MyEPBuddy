@@ -51,6 +51,7 @@ import { createEpbShell } from "@/lib/epb-shell-create";
 import {
   buildMpaCustomContext,
   combineVersions,
+  editableFromRecords,
   editableToMpaSelections,
   extractVersionArrays,
   mpaLabel,
@@ -59,10 +60,15 @@ import {
   type EditablePlan,
   type MpaRunStatus,
 } from "@/lib/generate-epb-run";
-import type { EpbPlan, PlanAccomplishmentRecord } from "@/lib/plan-epb";
+import {
+  toPlanRecords,
+  type EpbPlan,
+  type PlanAccomplishmentRecord,
+} from "@/lib/plan-epb";
 import type { EpbGenerationReadiness } from "@/lib/epb-generation-readiness";
 import { Analytics } from "@/lib/analytics";
 import type {
+  Accomplishment,
   EPBShell,
   EPBShellSection,
   Rank,
@@ -99,6 +105,12 @@ export interface GenerateEpbDialogProps {
   onOpenChange: (open: boolean) => void;
   ratee: SelectedRatee;
   readiness: EpbGenerationReadiness;
+  /** Pre-selected accomplishments from /entries — skips the AI selection step. */
+  preselected?: Accomplishment[];
+  /** Active shell (fetched by the opener) so we can gate the duty workbench. */
+  initialShell?: ShellWithSections | null;
+  /** Existing duty description text (from the active shell), for the preflight. */
+  initialDutyDescription?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -110,6 +122,9 @@ export function GenerateEpbDialog({
   onOpenChange,
   ratee,
   readiness,
+  preselected,
+  initialShell,
+  initialDutyDescription,
 }: GenerateEpbDialogProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -117,20 +132,34 @@ export function GenerateEpbDialog({
   const { setSelectedRatee, setSectionCollapsed, collapseAll } =
     useEPBShellStore();
 
+  const preselectedRecords = preselected?.length
+    ? toPlanRecords(preselected)
+    : [];
+  const isPreselected = preselectedRecords.length > 0;
+  const dutyProvided = initialDutyDescription !== undefined;
+
   const [step, setStep] = useState<DialogStep>("preflight");
-  const [records, setRecords] = useState<PlanAccomplishmentRecord[]>([]);
-  const [editable, setEditable] = useState<EditablePlan>({});
+  const [records, setRecords] = useState<PlanAccomplishmentRecord[]>(
+    () => preselectedRecords
+  );
+  const [editable, setEditable] = useState<EditablePlan>(() =>
+    isPreselected ? editableFromRecords(preselectedRecords) : {}
+  );
   const [rationaleByMpa, setRationaleByMpa] = useState<Record<string, string>>(
     {}
   );
-  const [activeShell, setActiveShell] = useState<ShellWithSections | null>(null);
+  const [activeShell, setActiveShell] = useState<ShellWithSections | null>(
+    initialShell ?? null
+  );
   const [conflictPolicy, setConflictPolicy] =
     useState<ConflictPolicy>("overwrite");
   const [runStatus, setRunStatus] = useState<Record<string, MpaRunStatus>>({});
   const [errorMessage, setErrorMessage] = useState("");
-  const [showDuty, setShowDuty] = useState(false);
-  const [dutyDraft, setDutyDraft] = useState("");
-  const [dutyLoaded, setDutyLoaded] = useState(false);
+  const [showDuty, setShowDuty] = useState(
+    () => (initialDutyDescription ?? "").trim() === "" && dutyProvided
+  );
+  const [dutyDraft, setDutyDraft] = useState(() => initialDutyDescription ?? "");
+  const [dutyLoaded, setDutyLoaded] = useState(dutyProvided);
   const [dutyLoading, setDutyLoading] = useState(false);
   const [dutyGenerating, setDutyGenerating] = useState(false);
 
@@ -579,6 +608,18 @@ export function GenerateEpbDialog({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7">
               <div className="flex flex-col gap-5">
+                {isPreselected && (
+                  <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 sm:p-5">
+                    <p className="text-sm font-medium">
+                      Using your {preselectedRecords.length} selected accomplishment
+                      {preselectedRecords.length === 1 ? "" : "s"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                      We&apos;ll skip AI selection and generate straight from these,
+                      grouped by their performance area.
+                    </p>
+                  </div>
+                )}
                 <div className="rounded-xl border bg-muted/20 p-4 sm:p-5">
                   <button
                     type="button"
@@ -642,7 +683,7 @@ export function GenerateEpbDialog({
                               ) : (
                                 <Sparkles className="mr-1.5 size-3.5" />
                               )}
-                              Improve with AI
+                              Revise with AI
                               <TokenCostBadge cost={1} compact className="ml-1.5" />
                             </Button>
                             <span className="text-xs text-muted-foreground tabular-nums">
@@ -692,15 +733,34 @@ export function GenerateEpbDialog({
               <Button variant="outline" className="h-10 px-5" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAnalyze} className={cn("h-10 px-5", motionPressOnly)}>
-                <Sparkles className="mr-2 size-4" />
-                Analyze accomplishments
-                <TokenCostBadge
-                  cost={1}
-                  compact
-                  className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
-                />
-              </Button>
+              {isPreselected ? (
+                <Button
+                  onClick={handleGenerate}
+                  disabled={selections.length === 0}
+                  className={cn("h-10 px-5", motionPressOnly)}
+                >
+                  <Sparkles className="mr-2 size-4" />
+                  Generate my EPB
+                  <TokenCostBadge
+                    cost={generateCost}
+                    compact
+                    className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
+                  />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleAnalyze}
+                  className={cn("h-10 px-5", motionPressOnly)}
+                >
+                  <Sparkles className="mr-2 size-4" />
+                  Analyze accomplishments
+                  <TokenCostBadge
+                    cost={1}
+                    compact
+                    className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
+                  />
+                </Button>
+              )}
             </DialogFooter>
           </>
         )}

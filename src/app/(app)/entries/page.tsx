@@ -55,7 +55,12 @@ import type { SelectedRatee } from "@/stores/epb-shell-store";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { Accomplishment, AwardQuarter } from "@/types/database";
+import type {
+  Accomplishment,
+  AwardQuarter,
+  EPBShell,
+  EPBShellSection,
+} from "@/types/database";
 import { formatShortDate, formatShortDateWithYear } from "@/lib/format";
 
 function EntriesContent() {
@@ -85,6 +90,11 @@ function EntriesContent() {
   );
   const [fuseDialogOpen, setFuseDialogOpen] = useState(false);
   const [generateEpbOpen, setGenerateEpbOpen] = useState(false);
+  const [genEpbShell, setGenEpbShell] = useState<
+    (EPBShell & { sections: EPBShellSection[] }) | null
+  >(null);
+  const [genEpbDuty, setGenEpbDuty] = useState("");
+  const [genEpbLoading, setGenEpbLoading] = useState(false);
   
   const supabase = createClient();
   // Cycle year is computed from the user's rank and SCOD
@@ -324,6 +334,34 @@ function EntriesContent() {
   );
   const showGenerateEpb = !!fuseRatee && isEnlisted(fuseRatee.rank);
 
+  // Fetch the ratee's active shell (for the duty-description preflight) before
+  // opening the Generate EPB dialog, so we can auto-open the workbench if empty.
+  async function openGenerateEpb() {
+    if (!fuseRatee) return;
+    setGenEpbLoading(true);
+    try {
+      let query = supabase
+        .from("epb_shells")
+        .select(`*, sections:epb_shell_sections(*)`)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false });
+      query = fuseRatee.isManagedMember
+        ? query.eq("team_member_id", fuseRatee.id)
+        : query.eq("user_id", fuseRatee.id).is("team_member_id", null);
+      const { data } = await query.limit(1).maybeSingle();
+      const shell =
+        (data as (EPBShell & { sections: EPBShellSection[] }) | null) ?? null;
+      setGenEpbShell(shell);
+      setGenEpbDuty(shell?.duty_description ?? "");
+    } catch {
+      setGenEpbShell(null);
+      setGenEpbDuty("");
+    } finally {
+      setGenEpbLoading(false);
+      setGenerateEpbOpen(true);
+    }
+  }
+
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
@@ -374,8 +412,8 @@ function EntriesContent() {
                   <span className="inline-flex">
                     <Button
                       variant="outline"
-                      disabled={!epbReadiness.canGenerate}
-                      onClick={() => setGenerateEpbOpen(true)}
+                      disabled={!epbReadiness.canGenerate || genEpbLoading}
+                      onClick={openGenerateEpb}
                     >
                       <Sparkles className="size-4 mr-2" />
                       Generate EPB
@@ -696,6 +734,13 @@ function EntriesContent() {
           onOpenChange={setGenerateEpbOpen}
           ratee={fuseRatee}
           readiness={epbReadiness}
+          preselected={
+            selectedAccomplishments.length > 0
+              ? selectedAccomplishments
+              : undefined
+          }
+          initialShell={genEpbShell}
+          initialDutyDescription={genEpbDuty}
         />
       )}
     </div>

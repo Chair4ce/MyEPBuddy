@@ -57,6 +57,29 @@ export function planToEditable(plan: EpbPlan): EditablePlan {
 }
 
 /**
+ * Build an editable plan directly from pre-selected accomplishment records,
+ * grouping by each entry's tagged MPA (one sentence group per MPA). Used when
+ * the user already picked accomplishments on /entries and skips AI selection.
+ */
+export function editableFromRecords(
+  records: PlanAccomplishmentRecord[]
+): EditablePlan {
+  const byMpa: Record<string, string[]> = {};
+  for (const record of records) {
+    if (!isAcaMpaKey(record.taggedMpa)) continue;
+    (byMpa[record.taggedMpa] ??= []).push(record.id);
+  }
+  const editable: EditablePlan = {};
+  for (const mpaKey of ACA_PORTFOLIO_MPA_KEYS) {
+    const ids = byMpa[mpaKey];
+    if (ids && ids.length > 0) {
+      editable[mpaKey] = { enabled: true, groups: [ids] };
+    }
+  }
+  return editable;
+}
+
+/**
  * Reduce the editable plan to per-MPA generation selections: enabled MPAs with
  * at least one non-empty group, unioned ids, and sentence count = number of
  * non-empty groups (capped at two).
