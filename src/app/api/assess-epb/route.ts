@@ -74,6 +74,7 @@ export async function POST(request: Request) {
       user_id: string;
       created_by: string;
       duty_description: string;
+      cycle_year: number | null;
       sections: EPBShellSection[];
     }
     
@@ -84,6 +85,7 @@ export async function POST(request: Request) {
         user_id,
         created_by,
         duty_description,
+        cycle_year,
         sections:epb_shell_sections(mpa, statement_text, is_complete)
       `)
       .eq("id", shellId)
@@ -240,7 +242,36 @@ export async function POST(request: Request) {
       assessment.formUsed = assessment.rubricTier === "senior" ? "AF Form 932" : "AF Form 931";
     }
 
-    return cacheBillableJson(billableCtx, { assessment }, usageCheck);
+    // Persist a permanent record of this assessment attached to the shell.
+    // Non-fatal: if the insert fails, still return the assessment to the user.
+    let assessmentId: string | null = null;
+    try {
+      const { data: saved, error: saveError } = await supabase
+        .from("epb_assessments")
+        .insert({
+          shell_id: shellId,
+          user_id: shell.user_id,
+          created_by: user.id,
+          rank: rateeRank,
+          afsc: rateeAfsc,
+          model,
+          cycle_year: shell.cycle_year ?? null,
+          overall_strength: assessment.overallStrength,
+          form_used: assessment.formUsed,
+          assessment,
+        } as never)
+        .select("id")
+        .single();
+      if (saveError) {
+        console.error("Failed to persist EPB assessment:", saveError);
+      } else {
+        assessmentId = (saved as { id: string } | null)?.id ?? null;
+      }
+    } catch (persistError) {
+      console.error("Error persisting EPB assessment:", persistError);
+    }
+
+    return cacheBillableJson(billableCtx, { assessment, assessmentId }, usageCheck);
   } catch (error) {
     if (billableCtx) {
       return handleBillableLLMError(error, "POST /api/assess-epb", modelId, billableCtx);

@@ -42,6 +42,10 @@ import {
 import { CyclePeriodLabel } from "@/components/evaluation/cycle-period-label";
 import type { EPBAssessmentResult } from "@/lib/constants";
 import { EPBAssessmentDialog } from "./epb-assessment-dialog";
+import {
+  EpbAssessmentHistoryDialog,
+  type EpbAssessmentRecord,
+} from "./epb-assessment-history-dialog";
 import { ArchiveEPBDialog } from "./archive-epb-dialog";
 import {
   FileText,
@@ -56,6 +60,7 @@ import {
   Archive,
   AlertTriangle,
   Rows2,
+  History,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { createEpbShell } from "@/lib/epb-shell-create";
@@ -188,6 +193,11 @@ export function EPBShellForm({
   const [showAssessmentDialog, setShowAssessmentDialog] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<EPBAssessmentResult | null>(null);
+
+  // EPB Assessment history (permanent records attached to the shell)
+  const [showAssessmentHistory, setShowAssessmentHistory] = useState(false);
+  const [assessmentHistory, setAssessmentHistory] = useState<EpbAssessmentRecord[]>([]);
+  const [isLoadingAssessmentHistory, setIsLoadingAssessmentHistory] = useState(false);
   
   // EPB Archive state
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
@@ -1820,6 +1830,28 @@ export function EPBShellForm({
     }
   }, [currentShell, selectedRatee]);
 
+  // Open the permanent assessment history for this shell (fetch on demand).
+  const handleOpenAssessmentHistory = useCallback(async () => {
+    if (!currentShell) return;
+    setIsLoadingAssessmentHistory(true);
+    setShowAssessmentHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from("epb_assessments")
+        .select("*")
+        .eq("shell_id", currentShell.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setAssessmentHistory((data ?? []) as unknown as EpbAssessmentRecord[]);
+    } catch (error) {
+      console.error("Failed to load assessment history:", error);
+      toast.error("Failed to load assessment history");
+      setAssessmentHistory([]);
+    } finally {
+      setIsLoadingAssessmentHistory(false);
+    }
+  }, [currentShell, supabase]);
+
   // Loading state
   if (isLoadingShell) {
     return (
@@ -2068,6 +2100,30 @@ export function EPBShellForm({
             </TooltipContent>
           </Tooltip>
         )}
+
+        {/* Assessment History Button */}
+        {currentShell && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenAssessmentHistory}
+                className="h-8 px-3 text-sm gap-1.5"
+              >
+                <History className="size-3.5" />
+                <span className="hidden sm:inline">History</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[280px]">
+              <p className="font-medium text-xs">Assessment history</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                View every saved AI performance review for this EPB and reopen the
+                full report.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
         
         {/* Archive EPB Button - Only show for active shells with content */}
         {currentShell && currentShell.status !== 'archived' && (
@@ -2240,6 +2296,14 @@ export function EPBShellForm({
         onClose={() => setShowAssessmentDialog(false)}
         assessment={assessmentResult}
         isLoading={isAssessing}
+      />
+
+      {/* EPB Assessment History */}
+      <EpbAssessmentHistoryDialog
+        open={showAssessmentHistory}
+        onOpenChange={setShowAssessmentHistory}
+        assessments={assessmentHistory}
+        isLoading={isLoadingAssessmentHistory}
       />
 
       {/* EPB Archive Dialog */}
