@@ -21,6 +21,7 @@ import { parseAuthError } from "@/lib/auth-errors";
 import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
 import { ResizeContainer } from "@/components/ui/resize-container";
+import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
 
 function ForgotPasswordContent() {
   const [email, setEmail] = useState("");
@@ -46,7 +47,10 @@ function ForgotPasswordContent() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        // Origin only: the recovery email template appends `/auth/confirm?...`
+        // to `{{ .RedirectTo }}`, and the confirm route sends recovery links to
+        // /reset-password. This keeps the link on the requesting origin.
+        redirectTo: getAuthEmailRedirectBase(),
       });
 
       if (error) {
