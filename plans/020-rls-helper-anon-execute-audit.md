@@ -15,9 +15,10 @@
 - **Priority**: P2
 - **Effort**: S
 - **Risk**: LOW
-- **Depends on**: none (migration 210 on branch `cursor/fix-chain-fn-execute-grants-dd9a` already restores the known PUBLIC-policy helpers)
+- **Depends on**: none
 - **Category**: security / migration
 - **Planned at**: commit `9e64823`, 2026-08-05
+- **Status note**: DONE — maintainer confirmed migration 210 pushed successfully (2026-08-05)
 
 ## Why this matters
 
