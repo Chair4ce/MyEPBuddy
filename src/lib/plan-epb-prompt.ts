@@ -37,6 +37,8 @@ export interface BuildPlanEpbPromptArgs {
   records: PlanAccomplishmentRecord[];
   rateeRank: Rank | string | null;
   rateeAfsc?: string | null;
+  /** Ratee duty description — context for how accomplishments map to the role. */
+  dutyDescription?: string | null;
   /** True when the input is one of several chunks (selection still per-MPA). */
   isChunked?: boolean;
 }
@@ -47,7 +49,7 @@ export interface BuildPlanEpbPromptArgs {
  * a single statement sentence. Returns strict JSON only.
  */
 export function buildPlanEpbPrompt(args: BuildPlanEpbPromptArgs): string {
-  const { records, rateeRank, rateeAfsc, isChunked } = args;
+  const { records, rateeRank, rateeAfsc, dutyDescription, isChunked } = args;
   const tier = getRubricTierForRank(rateeRank);
   const tierNote =
     tier === "senior"
@@ -58,13 +60,17 @@ export function buildPlanEpbPrompt(args: BuildPlanEpbPromptArgs): string {
     .map((record, index) => `[#${index + 1}]\n${formatRecord(record)}`)
     .join("\n\n");
 
+  const dutyBlock = dutyDescription?.trim()
+    ? `\nDUTY DESCRIPTION (use to judge relevance and MPA fit):\n${dutyDescription.trim()}\n`
+    : "";
+
   return `You are an expert U.S. Air Force EPB writer planning which accomplishments to turn into performance statements.
 
 RATEE
 - Rank: ${rateeRank ?? "unknown"}
 - AFSC: ${rateeAfsc ?? "unknown"}
 - ${tierNote}
-
+${dutyBlock}
 CORE MPAS (only these):
 ${mpaReference()}
 

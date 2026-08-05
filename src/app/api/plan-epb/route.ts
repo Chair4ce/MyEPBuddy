@@ -40,6 +40,7 @@ interface PlanEpbRequest {
   rateeAfsc?: string;
   cycleYear: number;
   model?: string;
+  dutyDescription?: string;
 }
 
 function parsePlanJson(text: string, validIds: Set<string>): EpbPlan {
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
       rateeAfsc,
       cycleYear,
       model = DEFAULT_APP_MODEL_ID,
+      dutyDescription,
     } = body;
 
     if (!rateeId || !rateeRank || !cycleYear) {
@@ -172,6 +174,7 @@ export async function POST(request: Request) {
           records: chunk,
           rateeRank,
           rateeAfsc,
+          dutyDescription,
           isChunked: chunks.length > 1,
         });
         const { text } = await generateText({

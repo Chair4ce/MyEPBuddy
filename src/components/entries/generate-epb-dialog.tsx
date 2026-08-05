@@ -81,7 +81,12 @@ import {
   X,
 } from "lucide-react";
 
-type DialogStep = "preflight" | "planning" | "review" | "generating" | "error";
+type DialogStep =
+  | "preflight"
+  | "planning"
+  | "review"
+  | "generating"
+  | "error";
 
 type ShellWithSections = EPBShell & { sections: EPBShellSection[] };
 
@@ -127,6 +132,7 @@ export function GenerateEpbDialog({
   const [dutyDraft, setDutyDraft] = useState("");
   const [dutyLoaded, setDutyLoaded] = useState(false);
   const [dutyLoading, setDutyLoading] = useState(false);
+  const [dutyGenerating, setDutyGenerating] = useState(false);
 
   const model = getStoredModelPreference(EPB_MODEL_PREFERENCE_STORAGE_KEY);
   const writingStyle: WritingStyle =
@@ -156,6 +162,7 @@ export function GenerateEpbDialog({
     setDutyDraft("");
     setDutyLoaded(false);
     setDutyLoading(false);
+    setDutyGenerating(false);
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -209,27 +216,79 @@ export function GenerateEpbDialog({
     setActiveShell({ ...shell, duty_description: value });
   };
 
+  // Polish the drafted duty description with AI (rephrase only — same duty-safe
+  // path the workspace uses; requires a seed so scope is never fabricated).
+  const handleImproveDuty = async () => {
+    const seed = dutyDraft.trim();
+    if (!seed) {
+      toast.error("Write a short duty description first, then improve it.");
+      return;
+    }
+    setDutyGenerating(true);
+    try {
+      const response = await billableFetch("/api/revise-selection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullStatement: seed,
+          selectedText: seed,
+          selectionStart: 0,
+          selectionEnd: seed.length,
+          model,
+          mode: "general",
+          isDutyDescription: true,
+          versionCount: 1,
+          rateeRank: ratee.rank,
+          rateeAfsc: ratee.afsc,
+          writingStyle,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (handleUsageLimitResponse(errorData)) return;
+        throw new Error(errorData.error || "Could not improve duty description");
+      }
+
+      const data = (await response.json()) as { revisions?: string[] };
+      const improved = data.revisions?.[0]?.trim();
+      if (!improved) {
+        toast.error("No improved version returned — try again.");
+        return;
+      }
+      setDutyDraft(improved.slice(0, MAX_DUTY_DESCRIPTION_CHARACTERS));
+      toast.success("Duty description improved");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to improve duty description"
+      );
+    } finally {
+      setDutyGenerating(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!profile) return;
     setStep("planning");
     setErrorMessage("");
     try {
       const cycleYear = getActiveCycleYear(ratee.rank as Rank | null);
-      const [shell, response] = await Promise.all([
-        findActiveShell().catch(() => null),
-        billableFetch("/api/plan-epb", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rateeId: ratee.id,
-            isManagedMember: Boolean(ratee.isManagedMember),
-            rateeRank: ratee.rank,
-            rateeAfsc: ratee.afsc,
-            cycleYear,
-            model,
-          }),
+      const shell = await findActiveShell().catch(() => null);
+      setActiveShell(shell);
+      const dutyDescription = dutyDraft.trim() || shell?.duty_description || "";
+      const response = await billableFetch("/api/plan-epb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateeId: ratee.id,
+          isManagedMember: Boolean(ratee.isManagedMember),
+          rateeRank: ratee.rank,
+          rateeAfsc: ratee.afsc,
+          cycleYear,
+          model,
+          dutyDescription,
         }),
-      ]);
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -354,7 +413,10 @@ export function GenerateEpbDialog({
           ratee,
           profileId: profile.id,
         });
-        if (result.status === "active_exists" || result.status === "archived_conflict") {
+        if (
+          result.status === "active_exists" ||
+          result.status === "archived_conflict"
+        ) {
           throw new Error(
             "Could not open an EPB shell for this cycle. Open EPB to resolve, then retry."
           );
@@ -386,7 +448,6 @@ export function GenerateEpbDialog({
         const mpaRecords = selection.accomplishmentIds
           .map((id) => recordsById.get(id))
           .filter((r): r is PlanAccomplishmentRecord => !!r);
-        const customContext = buildMpaCustomContext(mpaRecords);
 
         const response = await billableFetch("/api/generate", {
           method: "POST",
@@ -400,7 +461,7 @@ export function GenerateEpbDialog({
             model,
             writingStyle,
             selectedMPAs: [selection.mpaKey],
-            customContext,
+            customContext: buildMpaCustomContext(mpaRecords),
             customContextOptions: { statementCount: selection.sentenceCount },
             dutyDescription,
             accomplishments: mpaRecords.map((r) => ({
@@ -436,42 +497,43 @@ export function GenerateEpbDialog({
         }
 
         const section = shell.sections?.find((s) => s.mpa === selection.mpaKey);
-        if (section) {
-          // Stage all versions for one-tap swap in the workspace.
-          await supabase.from("epb_saved_examples").insert(
-            versions.map((statement) => ({
-              shell_id: shell!.id,
-              section_id: section.id,
-              mpa: selection.mpaKey,
-              statement_text: statement,
-              created_by: profile.id,
-              created_by_name: profile.full_name,
-              created_by_rank: profile.rank,
-              note: "Generated by Generate EPB",
-            })) as never
-          );
-
-          const conflictStage =
-            conflictPolicy === "stage" &&
-            isSubstantialEpbStatement(existingMpaText.get(selection.mpaKey));
-
-          if (conflictStage) {
-            setRunStatus((prev) => ({ ...prev, [selection.mpaKey]: "staged" }));
-          } else {
-            await supabase
-              .from("epb_shell_sections")
-              .update({
-                statement_text: versions[0],
-                last_edited_by: profile.id,
-                updated_at: new Date().toISOString(),
-              } as never)
-              .eq("id", section.id);
-            setRunStatus((prev) => ({ ...prev, [selection.mpaKey]: "done" }));
-          }
-          if (!firstCompleted) firstCompleted = selection.mpaKey;
-        } else {
+        if (!section) {
           setRunStatus((prev) => ({ ...prev, [selection.mpaKey]: "failed" }));
+          continue;
         }
+
+        // Stage all versions for one-tap swap in the workspace.
+        await supabase.from("epb_saved_examples").insert(
+          versions.map((statement) => ({
+            shell_id: shell!.id,
+            section_id: section.id,
+            mpa: selection.mpaKey,
+            statement_text: statement,
+            created_by: profile.id,
+            created_by_name: profile.full_name,
+            created_by_rank: profile.rank,
+            note: "Generated by Generate EPB",
+          })) as never
+        );
+
+        const conflictStage =
+          conflictPolicy === "stage" &&
+          isSubstantialEpbStatement(existingMpaText.get(selection.mpaKey));
+
+        if (conflictStage) {
+          setRunStatus((prev) => ({ ...prev, [selection.mpaKey]: "staged" }));
+        } else {
+          await supabase
+            .from("epb_shell_sections")
+            .update({
+              statement_text: versions[0],
+              last_edited_by: profile.id,
+              updated_at: new Date().toISOString(),
+            } as never)
+            .eq("id", section.id);
+          setRunStatus((prev) => ({ ...prev, [selection.mpaKey]: "done" }));
+        }
+        if (!firstCompleted) firstCompleted = selection.mpaKey;
       } catch {
         setRunStatus((prev) => ({ ...prev, [selection.mpaKey]: "failed" }));
       }
@@ -481,8 +543,7 @@ export function GenerateEpbDialog({
 
     Analytics.generateCompleted(model, 0, runSelections.length);
 
-    const anySuccess = firstCompleted != null;
-    if (anySuccess) {
+    if (firstCompleted != null) {
       toast.success("EPB generated — opening your workspace");
       navigateToEpb(firstCompleted);
     } else {
@@ -567,14 +628,33 @@ export function GenerateEpbDialog({
                             aria-label="Duty description"
                             className={motionInputFocus}
                           />
-                          <p className="mt-1 text-right text-xs text-muted-foreground tabular-nums">
-                            {dutyDraft.length}/{MAX_DUTY_DESCRIPTION_CHARACTERS}
-                          </p>
+                          <div className="mt-1 flex items-center justify-between gap-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className={cn("h-8", motionPressOnly)}
+                              disabled={dutyGenerating || !dutyDraft.trim()}
+                              onClick={handleImproveDuty}
+                            >
+                              {dutyGenerating ? (
+                                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="mr-1.5 size-3.5" />
+                              )}
+                              Improve with AI
+                              <TokenCostBadge cost={1} compact className="ml-1.5" />
+                            </Button>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {dutyDraft.length}/{MAX_DUTY_DESCRIPTION_CHARACTERS}
+                            </span>
+                          </div>
                         </>
                       )}
-                      <p className="mt-1 text-xs text-muted-foreground leading-snug">
-                        Saved to this EPB and used as context when writing every
-                        statement.
+                      <p className="mt-2 text-xs text-muted-foreground leading-snug">
+                        Draft a short duty description, then improve it with AI
+                        (rephrase only — no invented scope). Saved to this EPB and
+                        used as context when writing every statement.
                       </p>
                     </div>
                   ) : (
