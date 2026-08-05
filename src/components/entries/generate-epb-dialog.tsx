@@ -395,8 +395,7 @@ export function GenerateEpbDialog({
   const chipLabel = (id: string): string => {
     const r = recordsById.get(id);
     if (!r) return id;
-    const detail = r.details.length > 42 ? `${r.details.slice(0, 42)}…` : r.details;
-    return `${r.action_verb} — ${detail}`;
+    return `${r.action_verb} — ${r.details}`;
   };
 
   const navigateToEpb = (firstMpa: string | null) => {
@@ -908,14 +907,16 @@ export function GenerateEpbDialog({
                                 {group.map((id) => (
                                   <span
                                     key={id}
-                                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs"
+                                    className="flex w-full items-start gap-1.5 rounded-md border bg-background px-2 py-1 text-xs"
                                   >
-                                    <span className="truncate">{chipLabel(id)}</span>
+                                    <span className="min-w-0 flex-1 whitespace-normal break-words leading-snug">
+                                      {chipLabel(id)}
+                                    </span>
                                     <button
                                       type="button"
                                       onClick={() => removeId(mpaKey, groupIdx, id)}
                                       aria-label={`Remove ${chipLabel(id)}`}
-                                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                                      className="mt-0.5 shrink-0 text-muted-foreground hover:text-destructive"
                                     >
                                       <X className="size-3" />
                                     </button>
