@@ -37,6 +37,7 @@ import {
   parseManagedInviteParams,
   persistManagedInviteToken,
 } from "@/lib/managed-member-invite-params";
+import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
 
 function getLastMagicLinkRequest(email: string): number | null {
   if (typeof window === "undefined") return null;
@@ -135,7 +136,9 @@ function LoginPageContent() {
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}${postAuthPath}`,
+          // Origin only: the email template appends `/auth/confirm?...` to
+          // `{{ .RedirectTo }}` so preview deployments return to their own URL.
+          emailRedirectTo: getAuthEmailRedirectBase(),
           shouldCreateUser: false,
         },
       });

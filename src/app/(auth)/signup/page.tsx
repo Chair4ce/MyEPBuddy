@@ -33,6 +33,7 @@ import {
   parseManagedInviteParams,
   persistManagedInviteToken,
 } from "@/lib/managed-member-invite-params";
+import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
 
 function SignupPageContent() {
   const searchParams = useSearchParams();
@@ -86,7 +87,10 @@ function SignupPageContent() {
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+          // Origin only: the confirmation email template appends
+          // `/auth/confirm?...` to `{{ .RedirectTo }}` so the link returns to
+          // the deployment that sent it (e.g. a Vercel preview).
+          emailRedirectTo: getAuthEmailRedirectBase(),
           data: {
             full_name: fullName,
             first_name: firstName.trim(),
