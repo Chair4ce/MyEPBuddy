@@ -658,6 +658,55 @@ Then create the template files in `supabase/templates/`.
 
 ---
 
+## Multi-environment / Preview Deployments (Vercel)
+
+The token-hash templates (**Magic Link**, **Confirm Signup**, **Password Reset**)
+must **not** hardcode `{{ .SiteURL }}` for the confirmation link. `{{ .SiteURL }}`
+is the single, fixed project Site URL (production), so a link requested from a
+Vercel preview deployment would still point at production.
+
+Instead, base the link on `{{ .RedirectTo }}` (the per-request origin the client
+passes as `emailRedirectTo` / `redirectTo`) and fall back to `{{ .SiteURL }}`:
+
+```html
+<!-- Magic Link -->
+<a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=/dashboard">Sign In</a>
+
+<!-- Confirm Signup -->
+<a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/dashboard">Confirm Email</a>
+
+<!-- Password Reset -->
+<a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Reset Password</a>
+```
+
+The client passes the **origin only** (e.g. `https://<preview>.vercel.app`) as
+`emailRedirectTo` — see `getAuthEmailRedirectBase()` in
+`src/lib/auth/email-redirect.ts` — and the template appends `/auth/confirm?...`.
+The canonical templates live in `supabase/templates/*.html`.
+
+For `{{ .RedirectTo }}` to be honored, the origin must be allow-listed:
+
+1. **Supabase Dashboard → Authentication → URL Configuration**
+   - **Site URL:** keep production (`https://www.myepbuddy.com`). Wildcards are
+     not allowed here and it is only used as the fallback.
+   - **Redirect URLs:** add wildcards (one entry each, not one per branch):
+     - `https://*-oaiken-projects.vercel.app`
+     - `https://*-oaiken-projects.vercel.app/**` (covers pathed redirects such as
+       the Google OAuth `/auth/callback`)
+     - keep `https://www.myepbuddy.com/**` (and `https://myepbuddy.com/**` if used)
+   - A `*` matches across hyphens but not `.`/`/`, so the wildcard covers both the
+     `...-git-<branch>-...` and `...-<hash>-...` preview host forms.
+   - **Security:** scope the wildcard to your Vercel team domain
+     (`-oaiken-projects.vercel.app`). Do **not** use a bare
+     `https://*.vercel.app/**`, which would allow any Vercel app as a redirect
+     target (open-redirect risk).
+2. **Supabase Dashboard → Authentication → Email Templates:** paste the updated
+   Magic Link / Confirm Signup / Reset Password bodies above. The hosted project's
+   templates are separate from `supabase/config.toml` (which only configures the
+   local stack), so this dashboard step is required for preview/production.
+
+---
+
 ## Important Notes
 
 1. **Logo URL**: The templates use `{{ .SiteURL }}/icon.svg`. Make sure your logo is publicly accessible.
