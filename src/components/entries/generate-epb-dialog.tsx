@@ -24,17 +24,24 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import { cn } from "@/lib/utils";
 import {
+  motionChevronOpen,
   motionEnter,
   motionEnterDurList,
+  motionEnterDurNormal,
+  motionInputFocus,
   motionListEnterStagger,
   motionPressOnly,
   motionSurfaceCard,
 } from "@/lib/motion/classes";
-import { getActiveCycleYear } from "@/lib/constants";
+import {
+  getActiveCycleYear,
+  MAX_DUTY_DESCRIPTION_CHARACTERS,
+} from "@/lib/constants";
 import {
   EPB_MODEL_PREFERENCE_STORAGE_KEY,
   getStoredModelPreference,
@@ -65,6 +72,8 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ClipboardList,
   FileWarning,
   Loader2,
   Plus,
@@ -114,6 +123,10 @@ export function GenerateEpbDialog({
     useState<ConflictPolicy>("overwrite");
   const [runStatus, setRunStatus] = useState<Record<string, MpaRunStatus>>({});
   const [errorMessage, setErrorMessage] = useState("");
+  const [showDuty, setShowDuty] = useState(false);
+  const [dutyDraft, setDutyDraft] = useState("");
+  const [dutyLoaded, setDutyLoaded] = useState(false);
+  const [dutyLoading, setDutyLoading] = useState(false);
 
   const model = getStoredModelPreference(EPB_MODEL_PREFERENCE_STORAGE_KEY);
   const writingStyle: WritingStyle =
@@ -139,6 +152,10 @@ export function GenerateEpbDialog({
     setConflictPolicy("overwrite");
     setRunStatus({});
     setErrorMessage("");
+    setShowDuty(false);
+    setDutyDraft("");
+    setDutyLoaded(false);
+    setDutyLoading(false);
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -158,6 +175,38 @@ export function GenerateEpbDialog({
       : query.eq("user_id", ratee.id).is("team_member_id", null);
     const { data } = await query.limit(1).maybeSingle();
     return (data as ShellWithSections | null) ?? null;
+  };
+
+  const handleToggleDuty = async () => {
+    const next = !showDuty;
+    setShowDuty(next);
+    if (next && !dutyLoaded) {
+      setDutyLoading(true);
+      try {
+        const shell = await findActiveShell();
+        if (shell) setActiveShell(shell);
+        setDutyDraft(shell?.duty_description ?? "");
+      } catch {
+        // best-effort: user can still type a duty description
+      } finally {
+        setDutyLoaded(true);
+        setDutyLoading(false);
+      }
+    }
+  };
+
+  const persistDutyDescription = async (shell: ShellWithSections) => {
+    if (!profile) return;
+    const value = dutyDraft.trim();
+    if (value === (shell.duty_description ?? "").trim()) return;
+    await supabase
+      .from("epb_shells")
+      .update({
+        duty_description: value,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", shell.id);
+    setActiveShell({ ...shell, duty_description: value });
   };
 
   const handleAnalyze = async () => {
@@ -321,6 +370,13 @@ export function GenerateEpbDialog({
       }
     }
 
+    try {
+      await persistDutyDescription(shell);
+    } catch {
+      // non-fatal: fall back to the in-memory duty description below
+    }
+    const dutyDescription = dutyDraft.trim() || (shell.duty_description ?? "");
+
     const cycleYear = getActiveCycleYear(ratee.rank as Rank | null);
     let firstCompleted: string | null = null;
 
@@ -346,6 +402,7 @@ export function GenerateEpbDialog({
             selectedMPAs: [selection.mpaKey],
             customContext,
             customContextOptions: { statementCount: selection.sentenceCount },
+            dutyDescription,
             accomplishments: mpaRecords.map((r) => ({
               id: r.id,
               mpa: selection.mpaKey,
@@ -462,13 +519,72 @@ export function GenerateEpbDialog({
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7">
               <div className="flex flex-col gap-5">
                 <div className="rounded-xl border bg-muted/20 p-4 sm:p-5">
-                  <p className="text-sm font-semibold">Before you start</p>
-                  <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-                    Filling out the duty description first gives the AI better
-                    context for higher-quality statements. You can add it on the
-                    EPB workspace. Higher-Level Reviewer (HLR) is generated
-                    separately after you&apos;re happy with the MPAs.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={handleToggleDuty}
+                    aria-expanded={showDuty}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 text-left",
+                      motionPressOnly
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ClipboardList className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="text-sm font-semibold">
+                        Duty description{" "}
+                        <span className="font-normal text-muted-foreground">
+                          (optional — improves quality)
+                        </span>
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={cn("size-4 text-muted-foreground", motionChevronOpen)}
+                      data-open={showDuty}
+                    />
+                  </button>
+
+                  {showDuty ? (
+                    <div className={cn("mt-3", motionEnter, motionEnterDurNormal)}>
+                      {dutyLoading ? (
+                        <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin" />
+                          Loading current duty description…
+                        </div>
+                      ) : (
+                        <>
+                          <Textarea
+                            value={dutyDraft}
+                            onChange={(e) =>
+                              setDutyDraft(
+                                e.target.value.slice(
+                                  0,
+                                  MAX_DUTY_DESCRIPTION_CHARACTERS
+                                )
+                              )
+                            }
+                            rows={4}
+                            placeholder="e.g., Serves as NCOIC of a 12-person section; responsible for $2M in network assets supporting 500+ users across the wing."
+                            aria-label="Duty description"
+                            className={motionInputFocus}
+                          />
+                          <p className="mt-1 text-right text-xs text-muted-foreground tabular-nums">
+                            {dutyDraft.length}/{MAX_DUTY_DESCRIPTION_CHARACTERS}
+                          </p>
+                        </>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                        Saved to this EPB and used as context when writing every
+                        statement.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                      Adding a duty description first gives the AI better context
+                      for higher-quality statements. Higher-Level Reviewer (HLR)
+                      is generated separately after you&apos;re happy with the
+                      MPAs.
+                    </p>
+                  )}
                 </div>
 
                 {readiness.warnings.length > 0 && (
