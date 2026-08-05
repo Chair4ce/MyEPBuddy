@@ -21,6 +21,7 @@ export const DEFAULT_KEY_MODEL = DEFAULT_APP_MODEL_ID;
 
 export type BillableAction =
   | "generate"
+  | "plan_epb"
   | "revise_selection"
   | "generate_war"
   | "generate_award"

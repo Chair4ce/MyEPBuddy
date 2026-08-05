@@ -129,7 +129,7 @@ export default function DashboardPage() {
           </>
         ) : (
           <Button variant="outline" asChild>
-            <Link href="/epb">
+            <Link href="/entries">
               <Sparkles className="size-4 mr-2" />
               Generate EPB
             </Link>

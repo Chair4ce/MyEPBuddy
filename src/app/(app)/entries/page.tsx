@@ -34,11 +34,19 @@ import { EntryCard } from "@/components/entries/entry-card";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
 import { FuseToEpbBar } from "@/components/entries/fuse-to-epb-bar";
 import { FuseToEpbDialog } from "@/components/entries/fuse-to-epb-dialog";
+import { GenerateEpbDialog } from "@/components/entries/generate-epb-dialog";
 import { TagFilterPopover } from "@/components/entries/tag-filter-popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
-import { Plus, Filter, FileText, LayoutList, CalendarDays } from "lucide-react";
+import { evaluateEpbGenerationReadiness } from "@/lib/epb-generation-readiness";
+import { Plus, Filter, FileText, LayoutList, CalendarDays, Sparkles } from "lucide-react";
 import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import { EPBProgressCard } from "@/components/epb/epb-progress-card";
 import { SupervisorFeedbackPanel } from "@/components/entries/supervisor-feedback-panel";
@@ -47,7 +55,12 @@ import type { SelectedRatee } from "@/stores/epb-shell-store";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { Accomplishment, AwardQuarter } from "@/types/database";
+import type {
+  Accomplishment,
+  AwardQuarter,
+  EPBShell,
+  EPBShellSection,
+} from "@/types/database";
 import { formatShortDate, formatShortDateWithYear } from "@/lib/format";
 
 function EntriesContent() {
@@ -76,6 +89,12 @@ function EntriesContent() {
     () => new Set()
   );
   const [fuseDialogOpen, setFuseDialogOpen] = useState(false);
+  const [generateEpbOpen, setGenerateEpbOpen] = useState(false);
+  const [genEpbShell, setGenEpbShell] = useState<
+    (EPBShell & { sections: EPBShellSection[] }) | null
+  >(null);
+  const [genEpbDuty, setGenEpbDuty] = useState("");
+  const [genEpbLoading, setGenEpbLoading] = useState(false);
   
   const supabase = createClient();
   // Cycle year is computed from the user's rank and SCOD
@@ -308,6 +327,41 @@ function EntriesContent() {
     isEnlisted(fuseRatee.rank) &&
     selectedAccomplishments.length > 0;
 
+  // Full-EPB generation readiness (content-based; the plan step selects entries).
+  const epbReadiness = useMemo(
+    () => evaluateEpbGenerationReadiness(accomplishments, { rank: rateeRank }),
+    [accomplishments, rateeRank]
+  );
+  const showGenerateEpb = !!fuseRatee && isEnlisted(fuseRatee.rank);
+
+  // Fetch the ratee's active shell (for the duty-description preflight) before
+  // opening the Generate EPB dialog, so we can auto-open the workbench if empty.
+  async function openGenerateEpb() {
+    if (!fuseRatee) return;
+    setGenEpbLoading(true);
+    try {
+      let query = supabase
+        .from("epb_shells")
+        .select(`*, sections:epb_shell_sections(*)`)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false });
+      query = fuseRatee.isManagedMember
+        ? query.eq("team_member_id", fuseRatee.id)
+        : query.eq("user_id", fuseRatee.id).is("team_member_id", null);
+      const { data } = await query.limit(1).maybeSingle();
+      const shell =
+        (data as (EPBShell & { sections: EPBShellSection[] }) | null) ?? null;
+      setGenEpbShell(shell);
+      setGenEpbDuty(shell?.duty_description ?? "");
+    } catch {
+      setGenEpbShell(null);
+      setGenEpbDuty("");
+    } finally {
+      setGenEpbLoading(false);
+      setGenerateEpbOpen(true);
+    }
+  }
+
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
@@ -351,6 +405,29 @@ function EntriesContent() {
         </div>
         <div className="flex items-center gap-2">
           <SupervisorFeedbackPanel />
+          {showGenerateEpb && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant="outline"
+                      disabled={!epbReadiness.canGenerate || genEpbLoading}
+                      onClick={openGenerateEpb}
+                    >
+                      <Sparkles className="size-4 mr-2" />
+                      Generate EPB
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!epbReadiness.canGenerate && epbReadiness.reasons.length > 0 && (
+                  <TooltipContent className="max-w-xs">
+                    {epbReadiness.reasons.join(" ")}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="size-4 mr-2" />
             New Entry
@@ -648,6 +725,22 @@ function EntriesContent() {
           onOpenChange={setFuseDialogOpen}
           accomplishments={selectedAccomplishments}
           ratee={fuseRatee}
+        />
+      )}
+
+      {generateEpbOpen && fuseRatee && (
+        <GenerateEpbDialog
+          open={generateEpbOpen}
+          onOpenChange={setGenerateEpbOpen}
+          ratee={fuseRatee}
+          readiness={epbReadiness}
+          preselected={
+            selectedAccomplishments.length > 0
+              ? selectedAccomplishments
+              : undefined
+          }
+          initialShell={genEpbShell}
+          initialDutyDescription={genEpbDuty}
         />
       )}
     </div>
