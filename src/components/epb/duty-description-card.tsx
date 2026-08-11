@@ -553,7 +553,7 @@ export function DutyDescriptionCard({
       onFocusCapture={!isCollapsed ? enterZenMode : undefined}
       onBlurCapture={!isCollapsed ? tryExitZenMode : undefined}
       className={cn(
-        "transition-all duration-300 ease-in-out overflow-hidden scroll-mt-20 gap-3 sm:gap-4 py-3 sm:py-5",
+        "transition-[box-shadow,border-color,background-color] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden scroll-mt-20 gap-3 sm:gap-4 py-3 sm:py-5",
         "border-primary-300/30 dark:border-primary-700/30 bg-background dark:bg-muted/30",
         hasUnsavedChanges && "ring-1 ring-amber-400/50",
         isComplete && "border-green-500/30 bg-green-50/30 dark:bg-green-900/10",

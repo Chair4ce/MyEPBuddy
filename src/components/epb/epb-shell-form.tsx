@@ -152,36 +152,36 @@ export function EPBShellForm({
   
   // Feature flag for collaboration
   const isCollaborationEnabled = epbConfig?.enable_collaboration ?? false;
-  const {
-    selectedRatee,
-    setSelectedRatee,
-    currentShell,
-    setCurrentShell,
-    sections,
-    updateSection,
-    sectionStates,
-    snapshots,
-    setSnapshots,
-    addSnapshot,
-    savedExamples,
-    setSavedExamples,
-    addSavedExample,
-    removeSavedExample,
-    collapsedSections,
-    toggleSectionCollapsed,
-    expandAll,
-    collapseAll,
-    splitViewSections,
-    toggleSplitView,
-    setAllSplitView,
-    syncRemoteState,
-    isLoadingShell,
-    setIsLoadingShell,
-    isCreatingShell,
-    setIsCreatingShell,
-    loadVersion,
-    zenModeMpaKey,
-  } = useEPBShellStore();
+
+  // Selective store subscriptions — a bare useEPBShellStore() re-rendered this
+  // entire form (and every MPA card) on every isDirty/draft flip while typing.
+  const selectedRatee = useEPBShellStore((s) => s.selectedRatee);
+  const setSelectedRatee = useEPBShellStore((s) => s.setSelectedRatee);
+  const currentShell = useEPBShellStore((s) => s.currentShell);
+  const setCurrentShell = useEPBShellStore((s) => s.setCurrentShell);
+  const sections = useEPBShellStore((s) => s.sections);
+  const updateSection = useEPBShellStore((s) => s.updateSection);
+  const snapshots = useEPBShellStore((s) => s.snapshots);
+  const setSnapshots = useEPBShellStore((s) => s.setSnapshots);
+  const addSnapshot = useEPBShellStore((s) => s.addSnapshot);
+  const savedExamples = useEPBShellStore((s) => s.savedExamples);
+  const setSavedExamples = useEPBShellStore((s) => s.setSavedExamples);
+  const addSavedExample = useEPBShellStore((s) => s.addSavedExample);
+  const removeSavedExample = useEPBShellStore((s) => s.removeSavedExample);
+  const collapsedSections = useEPBShellStore((s) => s.collapsedSections);
+  const toggleSectionCollapsed = useEPBShellStore((s) => s.toggleSectionCollapsed);
+  const expandAll = useEPBShellStore((s) => s.expandAll);
+  const collapseAll = useEPBShellStore((s) => s.collapseAll);
+  const splitViewSections = useEPBShellStore((s) => s.splitViewSections);
+  const toggleSplitView = useEPBShellStore((s) => s.toggleSplitView);
+  const setAllSplitView = useEPBShellStore((s) => s.setAllSplitView);
+  const syncRemoteState = useEPBShellStore((s) => s.syncRemoteState);
+  const isLoadingShell = useEPBShellStore((s) => s.isLoadingShell);
+  const setIsLoadingShell = useEPBShellStore((s) => s.setIsLoadingShell);
+  const isCreatingShell = useEPBShellStore((s) => s.isCreatingShell);
+  const setIsCreatingShell = useEPBShellStore((s) => s.setIsCreatingShell);
+  const loadVersion = useEPBShellStore((s) => s.loadVersion);
+  const zenModeMpaKey = useEPBShellStore((s) => s.zenModeMpaKey);
 
   const [rateeAwards, setRateeAwards] = useState<AwardSelection[]>([]);
 
@@ -311,39 +311,49 @@ export function EPBShellForm({
   // Ref to track the last broadcast (to avoid duplicate broadcasts)
   const lastBroadcastRef = useRef<string>("");
 
-  // Broadcast local state changes when in a collaboration session
-  // Debounced to avoid excessive broadcasts
+  // Broadcast local state changes when in a collaboration session.
+  // Subscribe outside React render so draft/isDirty flips don't re-render this form.
   useEffect(() => {
     if (!collaboration.isInSession) return;
-    if (isReceivingRemoteRef.current) {
-      isReceivingRemoteRef.current = false;
-      return;
-    }
-    
-    // Build sections state from current section states
-    const sectionsData: Record<string, { draftText: string; mode: string }> = {};
-    Object.entries(sectionStates).forEach(([mpa, state]) => {
-      sectionsData[mpa] = {
-        draftText: state.draftText,
-        mode: state.mode,
-      };
-    });
-    
-    // Create a hash to check if state actually changed
-    const stateHash = JSON.stringify({ sections: sectionsData, collapsedSections });
-    if (stateHash === lastBroadcastRef.current) return;
-    lastBroadcastRef.current = stateHash;
-    
-    // Debounce the broadcast
-    const timer = setTimeout(() => {
-      collaboration.broadcastState({
-        sections: sectionsData,
-        collapsedSections,
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const broadcastFromStore = () => {
+      if (isReceivingRemoteRef.current) {
+        isReceivingRemoteRef.current = false;
+        return;
+      }
+
+      const { sectionStates: states, collapsedSections: collapsed } =
+        useEPBShellStore.getState();
+      const sectionsData: Record<string, { draftText: string; mode: string }> = {};
+      Object.entries(states).forEach(([mpa, state]) => {
+        sectionsData[mpa] = {
+          draftText: state.draftText,
+          mode: state.mode,
+        };
       });
-    }, 100);
-    
-    return () => clearTimeout(timer);
-  }, [collaboration, sectionStates, collapsedSections]);
+
+      const stateHash = JSON.stringify({ sections: sectionsData, collapsedSections: collapsed });
+      if (stateHash === lastBroadcastRef.current) return;
+      lastBroadcastRef.current = stateHash;
+
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        collaboration.broadcastState({
+          sections: sectionsData,
+          collapsedSections: collapsed,
+        });
+      }, 100);
+    };
+
+    broadcastFromStore();
+    const unsub = useEPBShellStore.subscribe(broadcastFromStore);
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
+  }, [collaboration]);
 
   // Idle detection - 15 minutes timeout
   const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -982,7 +992,8 @@ export function EPBShellForm({
 
             // Also update the section state's draftText so the textarea reflects changes
             // But only if the user is not currently editing that section
-            const currentSectionState = sectionStates[updatedSection.mpa];
+            const currentSectionState =
+              useEPBShellStore.getState().sectionStates[updatedSection.mpa];
             if (!currentSectionState?.isDirty) {
               useEPBShellStore.getState().updateSectionState(updatedSection.mpa, {
                 draftText: updatedSection.statement_text,
