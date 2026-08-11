@@ -1,4 +1,5 @@
 import { ENTRY_MGAS } from "@/lib/constants";
+import { assignEpbSentenceGroups } from "@/lib/assign-epb-sentences";
 import {
   ACA_PORTFOLIO_MPA_KEYS,
   type AcaPortfolioMpaKey,
@@ -29,6 +30,11 @@ export interface MpaSelection {
   mpaKey: AcaPortfolioMpaKey;
   /** Unique accomplishment ids across all groups for this MPA. */
   accomplishmentIds: string[];
+  /**
+   * Per-sentence accomplishment groups (preserves combine boundaries for
+   * customContext / customContext2).
+   */
+  groups: string[][];
   /** 1 or 2 — drives statementCount for /api/generate. */
   sentenceCount: 1 | 2;
 }
@@ -57,32 +63,19 @@ export function planToEditable(plan: EpbPlan): EditablePlan {
 }
 
 /**
- * Build an editable plan directly from pre-selected accomplishment records,
- * grouping by each entry's tagged MPA (one sentence group per MPA). Used when
- * the user already picked accomplishments on /entries and skips AI selection.
+ * Build an editable plan from accomplishment records using score-based
+ * home claims + stash/pop cross-fill (up to two sentences per MPA).
  */
 export function editableFromRecords(
   records: PlanAccomplishmentRecord[]
 ): EditablePlan {
-  const byMpa: Record<string, string[]> = {};
-  for (const record of records) {
-    if (!isAcaMpaKey(record.taggedMpa)) continue;
-    (byMpa[record.taggedMpa] ??= []).push(record.id);
-  }
-  const editable: EditablePlan = {};
-  for (const mpaKey of ACA_PORTFOLIO_MPA_KEYS) {
-    const ids = byMpa[mpaKey];
-    if (ids && ids.length > 0) {
-      editable[mpaKey] = { enabled: true, groups: [ids] };
-    }
-  }
-  return editable;
+  return planToEditable(assignEpbSentenceGroups(records));
 }
 
 /**
  * Reduce the editable plan to per-MPA generation selections: enabled MPAs with
- * at least one non-empty group, unioned ids, and sentence count = number of
- * non-empty groups (capped at two).
+ * at least one non-empty group, preserved group boundaries, and sentence count
+ * = number of non-empty groups (capped at two).
  */
 export function editableToMpaSelections(editable: EditablePlan): MpaSelection[] {
   const selections: MpaSelection[] = [];
@@ -107,10 +100,31 @@ export function editableToMpaSelections(editable: EditablePlan): MpaSelection[] 
     selections.push({
       mpaKey,
       accomplishmentIds: ids,
+      groups: nonEmptyGroups.map((g) => [...g]),
       sentenceCount: nonEmptyGroups.length >= 2 ? 2 : 1,
     });
   }
   return selections;
+}
+
+/** Build customContext (+ optional customContext2) from per-sentence groups. */
+export function buildGroupedMpaContexts(
+  groups: string[][],
+  recordsById: Map<string, PlanAccomplishmentRecord>
+): { customContext: string; customContext2?: string } {
+  const resolve = (ids: string[]) =>
+    ids
+      .map((id) => recordsById.get(id))
+      .filter((r): r is PlanAccomplishmentRecord => !!r);
+
+  const first = buildMpaCustomContext(resolve(groups[0] ?? []));
+  if (groups.length < 2) {
+    return { customContext: first };
+  }
+  const second = buildMpaCustomContext(resolve(groups[1] ?? []));
+  return second
+    ? { customContext: first, customContext2: second }
+    : { customContext: first };
 }
 
 /**

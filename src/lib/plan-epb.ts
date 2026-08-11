@@ -11,11 +11,11 @@ import type {
 /**
  * Data contract for the "Generate EPB" planning step.
  *
- * The LLM inspects every cycle accomplishment (with its ACA scores) and returns,
- * per core MPA, up to two "sentence groups". Each group is the set of
- * accomplishments to combine into ONE statement sentence. This is where the
- * "combine like accomplishments even if individually low-scoring" intelligence
- * lives — we do not pattern-match on the server.
+ * Score-based assignment (`assignEpbSentenceGroups`) inspects every cycle
+ * accomplishment (with its ACA relevancy scores) and returns, per core MPA, up
+ * to two "sentence groups". Each group is the set of accomplishments to combine
+ * into ONE statement sentence. Related action verbs are combined so metrics can
+ * accumulate; leftovers are stashed for cross-MPA fill.
  */
 
 /** Max accomplishments per LLM planning chunk (keeps payloads well under limits). */
