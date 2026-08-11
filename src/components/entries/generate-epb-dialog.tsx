@@ -49,9 +49,8 @@ import {
 import { isSubstantialEpbStatement } from "@/lib/fuse-to-epb";
 import { createEpbShell } from "@/lib/epb-shell-create";
 import {
-  buildMpaCustomContext,
+  buildGroupedMpaContexts,
   combineVersions,
-  editableFromRecords,
   editableToMpaSelections,
   extractVersionArrays,
   mpaLabel,
@@ -142,9 +141,7 @@ export function GenerateEpbDialog({
   const [records, setRecords] = useState<PlanAccomplishmentRecord[]>(
     () => preselectedRecords
   );
-  const [editable, setEditable] = useState<EditablePlan>(() =>
-    isPreselected ? editableFromRecords(preselectedRecords) : {}
-  );
+  const [editable, setEditable] = useState<EditablePlan>(() => ({}));
   const [rationaleByMpa, setRationaleByMpa] = useState<Record<string, string>>(
     {}
   );
@@ -316,6 +313,9 @@ export function GenerateEpbDialog({
           cycleYear,
           model,
           dutyDescription,
+          ...(isPreselected
+            ? { accomplishmentIds: preselectedRecords.map((r) => r.id) }
+            : {}),
         }),
       });
 
@@ -477,6 +477,11 @@ export function GenerateEpbDialog({
           .map((id) => recordsById.get(id))
           .filter((r): r is PlanAccomplishmentRecord => !!r);
 
+        const { customContext, customContext2 } = buildGroupedMpaContexts(
+          selection.groups,
+          recordsById
+        );
+
         const response = await billableFetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -489,8 +494,11 @@ export function GenerateEpbDialog({
             model,
             writingStyle,
             selectedMPAs: [selection.mpaKey],
-            customContext: buildMpaCustomContext(mpaRecords),
-            customContextOptions: { statementCount: selection.sentenceCount },
+            customContext,
+            customContextOptions: {
+              statementCount: selection.sentenceCount,
+              ...(customContext2 ? { customContext2 } : {}),
+            },
             dutyDescription,
             accomplishments: mpaRecords.map((r) => ({
               id: r.id,
@@ -596,12 +604,13 @@ export function GenerateEpbDialog({
             <DialogHeader className="shrink-0 space-y-2 border-b px-6 py-5 pr-12 sm:px-8 sm:py-6">
               <DialogTitle className="text-xl">Generate EPB</DialogTitle>
               <DialogDescription id="generate-epb-desc" className="text-sm leading-relaxed">
-                AI reviews all cycle accomplishments for{" "}
+                We rank accomplishments for{" "}
                 <span className="font-medium text-foreground">
                   {ratee.rank} {ratee.fullName || "this member"}
                 </span>{" "}
-                and drafts statements for each performance area. You&apos;ll
-                review its selection before anything is generated.
+                by MPA fit scores, then AI groups the same efforts together
+                (even when wording differs) so metrics can accumulate — up to
+                two sentences per performance area.
               </DialogDescription>
             </DialogHeader>
 
@@ -614,8 +623,9 @@ export function GenerateEpbDialog({
                       {preselectedRecords.length === 1 ? "" : "s"}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-                      We&apos;ll skip AI selection and generate straight from these,
-                      grouped by their performance area.
+                      AI will decide which describe the same effort (combine +
+                      accumulate metrics) vs distinct work (separate sentences),
+                      then fill gaps across performance areas using MPA fit scores.
                     </p>
                   </div>
                 )}
@@ -732,34 +742,18 @@ export function GenerateEpbDialog({
               <Button variant="outline" className="h-10 px-5" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              {isPreselected ? (
-                <Button
-                  onClick={handleGenerate}
-                  disabled={selections.length === 0}
-                  className={cn("h-10 px-5", motionPressOnly)}
-                >
-                  <Sparkles className="mr-2 size-4" />
-                  Generate my EPB
-                  <TokenCostBadge
-                    cost={generateCost}
-                    compact
-                    className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
-                  />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleAnalyze}
-                  className={cn("h-10 px-5", motionPressOnly)}
-                >
-                  <Sparkles className="mr-2 size-4" />
-                  Analyze accomplishments
-                  <TokenCostBadge
-                    cost={1}
-                    compact
-                    className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
-                  />
-                </Button>
-              )}
+              <Button
+                onClick={handleAnalyze}
+                className={cn("h-10 px-5", motionPressOnly)}
+              >
+                <Sparkles className="mr-2 size-4" />
+                Plan my EPB
+                <TokenCostBadge
+                  cost={1}
+                  compact
+                  className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
+                />
+              </Button>
             </DialogFooter>
           </>
         )}
@@ -769,8 +763,8 @@ export function GenerateEpbDialog({
             <DialogHeader className="shrink-0 space-y-2 border-b px-6 py-5 pr-12 sm:px-8 sm:py-6">
               <DialogTitle className="text-xl">Selecting your best work</DialogTitle>
               <DialogDescription>
-                Analyzing accomplishments and grouping the ones that combine
-                into stronger statements…
+                Ranking by MPA fit, then grouping the same efforts together so
+                related metrics can accumulate…
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16">
@@ -782,10 +776,11 @@ export function GenerateEpbDialog({
         {step === "review" && (
           <>
             <DialogHeader className="shrink-0 space-y-2 border-b px-6 py-5 pr-12 sm:px-8 sm:py-6">
-              <DialogTitle className="text-xl">Review the AI&apos;s selection</DialogTitle>
+              <DialogTitle className="text-xl">Review the selection</DialogTitle>
               <DialogDescription className="text-sm leading-relaxed">
-                Each sentence group becomes one statement (like accomplishments
-                are combined). Remove or add entries, or turn off an area.
+                Each sentence group becomes one statement. Entries in the same
+                group are treated as one effort (metrics accumulate). Different
+                groups stay separate — up to two sentences per area.
               </DialogDescription>
             </DialogHeader>
 

@@ -12,15 +12,18 @@ import type { Accomplishment, EPBShellSection, Rank } from "@/types/database";
 /**
  * Gate + guidance for the one-shot "Generate EPB" flow.
  *
- * This is intentionally content-based (not "1-2 selected per MPA"): the LLM
- * planning step decides the real per-sentence selection and combinations. Here
- * we only stop obviously-too-thin runs and surface non-blocking cautions.
+ * Content-based only — we do **not** require 2 labeled entries per MPA.
+ * Score-based assignment can cross-fill empty labeled areas from leftovers that
+ * scored well on that MPA. Here we only stop obviously-too-thin runs.
  */
 
-/** At least this many core MPAs must have >= 1 entry to attempt a full EPB. */
-export const MIN_ELIGIBLE_MPAS = 2;
 /** At least this many ACA-tagged entries across the cycle. */
 export const MIN_TOTAL_ACA_ENTRIES = 3;
+/**
+ * @deprecated Kept for tests/import compatibility. Cross-fill means we no longer
+ * require labeled coverage across multiple MPAs to attempt generation.
+ */
+export const MIN_ELIGIBLE_MPAS = 1;
 
 export interface MpaReadiness {
   mpaKey: AcaPortfolioMpaKey;
@@ -120,23 +123,19 @@ export function evaluateEpbGenerationReadiness(
     );
   }
 
-  if (eligibleMpaKeys.length < MIN_ELIGIBLE_MPAS) {
-    reasons.push(
-      `Cover at least ${MIN_ELIGIBLE_MPAS} performance areas before generating (currently ${eligibleMpaKeys.length}).`
-    );
-  }
-
   const warnings: string[] = [];
   const emptyMpas = ACA_PORTFOLIO_MPA_KEYS.filter(
     (key) => perMpa[key].entryCount === 0
   );
   if (emptyMpas.length > 0) {
     warnings.push(
-      `No entries for ${emptyMpas
+      `No entries tagged for ${emptyMpas
         .map((key) => perMpa[key].label)
-        .join(", ")} — ${
-        emptyMpas.length === 1 ? "that section" : "those sections"
-      } will be left blank.`
+        .join(", ")} — Generate EPB will try to fill ${
+        emptyMpas.length === 1 ? "it" : "them"
+      } from accomplishments that scored well on ${
+        emptyMpas.length === 1 ? "that area" : "those areas"
+      }.`
     );
   }
 

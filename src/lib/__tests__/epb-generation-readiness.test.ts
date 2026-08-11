@@ -83,16 +83,18 @@ describe("evaluateEpbGenerationReadiness", () => {
     );
   });
 
-  it("blocks when fewer than the minimum MPAs are covered", () => {
+  it("allows a single labeled MPA when enough entries exist for cross-fill", () => {
     const result = evaluateEpbGenerationReadiness([
       assessed("executing_mission", 80),
       assessed("executing_mission", 75),
       assessed("executing_mission", 70),
     ]);
-    expect(result.canGenerate).toBe(false);
-    expect(result.reasons.join(" ")).toContain(
-      `at least ${MIN_ELIGIBLE_MPAS} performance areas`
-    );
+    expect(result.canGenerate).toBe(true);
+    expect(result.reasons).toHaveLength(0);
+    expect(result.warnings.join(" ")).toMatch(/No entries tagged/i);
+    // Compatibility export still documents the floor, but labeled multi-MPA
+    // coverage is no longer a hard gate (MIN_ELIGIBLE_MPAS === 1).
+    expect(MIN_ELIGIBLE_MPAS).toBe(1);
   });
 
   it("allows generation with coverage across MPAs", () => {

@@ -164,5 +164,7 @@ describe("buildPlanEpbPrompt", () => {
     expect(prompt).toContain("AF Form 932"); // senior tier note
     expect(prompt).toContain('"mpaKey"');
     expect(prompt).toContain("STRICT JSON");
+    expect(prompt).toMatch(/DO NOT USE VERB MATCHING/i);
+    expect(prompt).toContain("USO");
   });
 });

@@ -18,19 +18,25 @@ import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { normalizeStewardshipImpact } from "@/lib/stewardship-impact";
-import { buildPlanEpbPrompt } from "@/lib/plan-epb-prompt";
 import {
-  chunkForPlanning,
-  mergeChunkPlans,
+  allocateEpbCandidatePools,
+  poolsToFallbackPlan,
+} from "@/lib/assign-epb-sentences";
+import { buildGroupEpbPrompt } from "@/lib/plan-epb-prompt";
+import {
   sanitizePlan,
   toPlanRecords,
-  trimMergedPlan,
   type EpbPlan,
   type PlanAccomplishmentRecord,
 } from "@/lib/plan-epb";
+import { ACA_PORTFOLIO_MPA_KEYS } from "@/lib/cycle-portfolio";
 import type { Accomplishment, Rank } from "@/types/database";
 
-// Planning fires one LLM call per chunk; allow generous time for large cycles.
+/**
+ * Hybrid EPB planning:
+ * 1) Score-based candidate pools per MPA (home + stash/pop cross-fill)
+ * 2) LLM groups each pool by action→result→impact similarity (not verb match)
+ */
 export const maxDuration = 90;
 
 interface PlanEpbRequest {
@@ -41,12 +47,40 @@ interface PlanEpbRequest {
   cycleYear: number;
   model?: string;
   dutyDescription?: string;
+  /** When set, only these accomplishment ids are considered (preselect on /entries). */
+  accomplishmentIds?: string[];
 }
 
-function parsePlanJson(text: string, validIds: Set<string>): EpbPlan {
+function parseGroupJson(text: string, validIds: Set<string>): EpbPlan {
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("No JSON found in planning response");
+  if (!match) throw new Error("No JSON found in grouping response");
   return sanitizePlan(JSON.parse(match[0]), validIds);
+}
+
+/** Drop any id the model moved outside its allocated pool. */
+function constrainPlanToPools(
+  plan: EpbPlan,
+  pools: Record<string, string[]>
+): EpbPlan {
+  const allowed = new Map(
+    ACA_PORTFOLIO_MPA_KEYS.map((key) => [key, new Set(pools[key] ?? [])])
+  );
+  return {
+    mpas: plan.mpas
+      .map((selection) => {
+        const allow = allowed.get(selection.mpaKey);
+        if (!allow) return null;
+        const sentences = selection.sentences
+          .map((s) => ({
+            ...s,
+            accomplishmentIds: s.accomplishmentIds.filter((id) => allow.has(id)),
+          }))
+          .filter((s) => s.accomplishmentIds.length > 0);
+        if (sentences.length === 0) return null;
+        return { ...selection, sentences };
+      })
+      .filter((s): s is NonNullable<typeof s> => !!s),
+  };
 }
 
 export async function POST(request: Request) {
@@ -70,6 +104,7 @@ export async function POST(request: Request) {
       cycleYear,
       model = DEFAULT_APP_MODEL_ID,
       dutyDescription,
+      accomplishmentIds,
     } = body;
 
     if (!rateeId || !rateeRank || !cycleYear) {
@@ -85,8 +120,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Load the ratee's cycle accomplishments. RLS restricts rows to those the
-    // caller may read, so this doubles as the authorization check.
     let query = supabase
       .from("accomplishments")
       .select("*")
@@ -103,7 +136,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const accomplishments = (rows ?? []) as Accomplishment[];
+    let accomplishments = (rows ?? []) as Accomplishment[];
+    if (accomplishmentIds?.length) {
+      const allow = new Set(accomplishmentIds);
+      accomplishments = accomplishments.filter((a) => allow.has(a.id));
+    }
+
     const records: PlanAccomplishmentRecord[] = toPlanRecords(accomplishments);
     if (records.length === 0) {
       return NextResponse.json(
@@ -112,20 +150,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // Block before any data reaches the LLM if PII/CUI is detected.
+    const pools = allocateEpbCandidatePools(records);
+    const poolIds = new Set(
+      ACA_PORTFOLIO_MPA_KEYS.flatMap((key) => pools[key])
+    );
+    if (poolIds.size === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Could not select statements from these accomplishments. Add or strengthen entries and try again.",
+        },
+        { status: 422 }
+      );
+    }
+
     const scan = scanAccomplishmentsForLLM(
-      accomplishments.map((a) => {
-        const stewardship = normalizeStewardshipImpact(a.stewardship_impact);
-        return {
-          details: a.details,
-          impact: a.impact,
-          metrics: a.metrics,
-          stewardship_time: stewardship.time,
-          stewardship_money: stewardship.money,
-          stewardship_resources: stewardship.resources,
-          stewardship_outcome: stewardship.outcome,
-        };
-      })
+      accomplishments
+        .filter((a) => poolIds.has(a.id))
+        .map((a) => {
+          const stewardship = normalizeStewardshipImpact(a.stewardship_impact);
+          return {
+            details: a.details,
+            impact: a.impact,
+            metrics: a.metrics,
+            stewardship_time: stewardship.time,
+            stewardship_money: stewardship.money,
+            stewardship_resources: stewardship.resources,
+            stewardship_outcome: stewardship.outcome,
+          };
+        })
     );
     if (scan.blocked) {
       return NextResponse.json(
@@ -165,46 +218,41 @@ export async function POST(request: Request) {
       usageCheck.tracking
     );
 
-    const validIds = new Set(records.map((r) => r.id));
-    const chunks = chunkForPlanning(records);
+    const recordsById = new Map(records.map((r) => [r.id, r] as const));
+    const prompt = buildGroupEpbPrompt({
+      pools,
+      recordsById,
+      rateeRank,
+      rateeAfsc,
+      dutyDescription,
+    });
 
-    const chunkPlans = await Promise.all(
-      chunks.map(async (chunk) => {
-        const prompt = buildPlanEpbPrompt({
-          records: chunk,
-          rateeRank,
-          rateeAfsc,
-          dutyDescription,
-          isChunked: chunks.length > 1,
-        });
-        const { text } = await generateText({
-          model: modelProvider,
-          prompt,
-          temperature: 0.2,
-          maxOutputTokens: 2000,
-        });
-        return parsePlanJson(text, validIds);
-      })
-    );
-
-    const merged = mergeChunkPlans(chunkPlans);
-    const scoreById = new Map(
-      records.map((r) => [r.id, r.overallScore ?? 0] as const)
-    );
-    const plan = trimMergedPlan(merged, scoreById);
+    let plan: EpbPlan;
+    try {
+      const { text } = await generateText({
+        model: modelProvider,
+        prompt,
+        temperature: 0.2,
+        maxOutputTokens: 2000,
+      });
+      plan = constrainPlanToPools(parseGroupJson(text, poolIds), pools);
+    } catch {
+      // LLM unavailable / bad JSON — still return a usable score-ranked plan.
+      plan = poolsToFallbackPlan(pools, records);
+    }
 
     if (plan.mpas.length === 0) {
       return refundAndError(
         billableCtx,
         {
           error:
-            "The planner could not select statements from these accomplishments. Add or strengthen entries and try again.",
+            "The planner could not group statements from these accomplishments. Add or strengthen entries and try again.",
         },
         { status: 422 }
       );
     }
 
-    return cacheBillableJson(billableCtx, { plan, records }, usageCheck);
+    return cacheBillableJson(billableCtx, { plan, records, pools }, usageCheck);
   } catch (error) {
     if (billableCtx) {
       return handleBillableLLMError(

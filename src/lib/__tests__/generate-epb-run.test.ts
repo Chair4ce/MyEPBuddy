@@ -4,14 +4,29 @@ import {
   editableToMpaSelections,
   editableFromRecords,
   buildMpaCustomContext,
+  buildGroupedMpaContexts,
   combineVersions,
   extractVersionArrays,
 } from "../generate-epb-run";
 import type { EpbPlan, PlanAccomplishmentRecord } from "../plan-epb";
+import type { AccomplishmentMPARelevancy } from "@/types/database";
+
+function rel(
+  executing_mission: number,
+  leading_people: number
+): AccomplishmentMPARelevancy {
+  return {
+    executing_mission,
+    leading_people,
+    managing_resources: 20,
+    improving_unit: 20,
+  };
+}
 
 function record(
   id: string,
-  taggedMpa: string
+  taggedMpa: string,
+  extras: Partial<PlanAccomplishmentRecord> = {}
 ): PlanAccomplishmentRecord {
   return {
     id,
@@ -20,9 +35,10 @@ function record(
     details: "did a thing",
     impact: null,
     metrics: null,
-    overallScore: null,
-    primaryMpa: null,
+    overallScore: 70,
+    primaryMpa: taggedMpa,
     mpaRelevancy: null,
+    ...extras,
   };
 }
 
@@ -50,13 +66,15 @@ describe("planToEditable + editableToMpaSelections", () => {
     expect(editable.leading_people.groups).toEqual([["d"]]);
   });
 
-  it("unions ids and derives sentence count from non-empty groups", () => {
+  it("preserves groups and derives sentence count from non-empty groups", () => {
     const selections = editableToMpaSelections(planToEditable(plan));
     const em = selections.find((s) => s.mpaKey === "executing_mission")!;
     expect(em.accomplishmentIds).toEqual(["a", "b", "c"]);
+    expect(em.groups).toEqual([["a", "b"], ["c"]]);
     expect(em.sentenceCount).toBe(2);
     const lp = selections.find((s) => s.mpaKey === "leading_people")!;
     expect(lp.sentenceCount).toBe(1);
+    expect(lp.groups).toEqual([["d"]]);
   });
 
   it("skips disabled MPAs and empty groups", () => {
@@ -68,19 +86,27 @@ describe("planToEditable + editableToMpaSelections", () => {
 });
 
 describe("editableFromRecords", () => {
-  it("groups pre-selected records by tagged MPA (one group each)", () => {
+  it("assigns up to two sentence groups via score-based planning", () => {
     const editable = editableFromRecords([
-      record("a", "executing_mission"),
-      record("b", "executing_mission"),
-      record("c", "leading_people"),
+      record("a", "executing_mission", {
+        action_verb: "Led",
+        mpaRelevancy: rel(90, 20),
+      }),
+      record("b", "executing_mission", {
+        action_verb: "Built",
+        mpaRelevancy: rel(85, 20),
+      }),
+      record("c", "leading_people", {
+        action_verb: "Mentored",
+        mpaRelevancy: rel(20, 80),
+      }),
       record("d", "miscellaneous"), // non-core → excluded
     ]);
-    expect(Object.keys(editable).sort()).toEqual([
-      "executing_mission",
-      "leading_people",
-    ]);
-    expect(editable.executing_mission.groups).toEqual([["a", "b"]]);
+    expect(editable.executing_mission.groups).toHaveLength(2);
+    expect(editable.executing_mission.groups[0]).toEqual(["a"]);
+    expect(editable.executing_mission.groups[1]).toEqual(["b"]);
     expect(editable.leading_people.enabled).toBe(true);
+    expect(editable.leading_people.groups).toEqual([["c"]]);
   });
 });
 
@@ -102,6 +128,49 @@ describe("buildMpaCustomContext", () => {
     expect(buildMpaCustomContext(records)).toBe(
       "Led: migration. Impact: zero downtime. Metrics: 50 servers"
     );
+  });
+
+  it("prefixes multi-entry groups with cumulative-effort instructions", () => {
+    const text = buildMpaCustomContext([
+      record("a", "executing_mission", {
+        action_verb: "Volunteered",
+        details: "at the USO for 4 hours",
+        metrics: "4 hrs",
+      }),
+      record("b", "executing_mission", {
+        action_verb: "Spent",
+        details: "4 hours serving veterans at the USO",
+        metrics: "4 hrs",
+      }),
+    ]);
+    expect(text).toContain("SAME CUMULATIVE EFFORT");
+    expect(text).toContain("ACCUMULATE metrics");
+    expect(text).toContain("Volunteered: at the USO for 4 hours");
+    expect(text).toContain("Spent: 4 hours serving veterans at the USO");
+  });
+});
+
+describe("buildGroupedMpaContexts", () => {
+  it("splits sentence groups into customContext and customContext2", () => {
+    const byId = new Map(
+      [
+        record("a", "executing_mission", {
+          action_verb: "Led",
+          details: "first",
+        }),
+        record("b", "executing_mission", {
+          action_verb: "Built",
+          details: "second",
+        }),
+      ].map((r) => [r.id, r] as const)
+    );
+    expect(buildGroupedMpaContexts([["a"], ["b"]], byId)).toEqual({
+      customContext: "Led: first",
+      customContext2: "Built: second",
+    });
+    expect(buildGroupedMpaContexts([["a"]], byId)).toEqual({
+      customContext: "Led: first",
+    });
   });
 });
 
