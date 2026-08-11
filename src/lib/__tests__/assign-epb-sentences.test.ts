@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
+  allocateEpbCandidatePools,
   assignEpbSentenceGroups,
-  clusterByActionVerb,
+  MAX_CANDIDATES_PER_MPA,
   MIN_CROSS_FILL_RELEVANCY,
+  poolsToFallbackPlan,
   relevancyForMpa,
+  TARGET_CANDIDATES_PER_MPA,
   UNASSESSED_HOME_RELEVANCY,
 } from "../assign-epb-sentences";
 import type { PlanAccomplishmentRecord } from "../plan-epb";
@@ -60,130 +63,47 @@ describe("relevancyForMpa", () => {
   });
 });
 
-describe("clusterByActionVerb", () => {
-  it("groups same verbs and ranks clusters by best MPA fit", () => {
-    const clusters = clusterByActionVerb(
-      [
-        record({ id: "1", action_verb: "Led", mpaRelevancy: rel(60, 10) }),
-        record({ id: "2", action_verb: "Led", mpaRelevancy: rel(80, 10) }),
-        record({ id: "3", action_verb: "Built", mpaRelevancy: rel(95, 10) }),
-      ],
-      "executing_mission"
+describe("allocateEpbCandidatePools", () => {
+  it("keeps strongest home candidates and stashes overflow for cross-fill", () => {
+    const many = Array.from({ length: MAX_CANDIDATES_PER_MPA + 3 }, (_, i) =>
+      record({
+        id: `em${i}`,
+        action_verb: i % 2 === 0 ? "Volunteered" : "Spent",
+        details:
+          i % 2 === 0
+            ? `Volunteered at the USO for 4 hours day ${i}`
+            : `Spent 4 hours serving veterans at the USO day ${i}`,
+        mpaRelevancy: rel(95 - i, 50 + (i % 3)),
+        overallScore: 95 - i,
+      })
     );
-    expect(clusters).toHaveLength(2);
-    expect(clusters[0]!.map((r) => r.id)).toEqual(["3"]);
-    expect(clusters[1]!.map((r) => r.id)).toEqual(["2", "1"]);
-  });
-});
+    // LP needs fill from EM leftovers that score well for LP
+    const lpHome = record({
+      id: "lp1",
+      taggedMpa: "leading_people",
+      action_verb: "Mentored",
+      primaryMpa: "leading_people",
+      mpaRelevancy: rel(20, 80),
+    });
 
-describe("assignEpbSentenceGroups", () => {
-  it("takes the two strongest distinct ARIs for a rich MPA and stashes the rest", () => {
-    // User example: 5 EM entries — best distinct verbs become 2 sentences.
-    const plan = assignEpbSentenceGroups([
-      record({
-        id: "1",
-        action_verb: "Managed",
-        mpaRelevancy: rel(60, 45),
-        overallScore: 60,
-      }),
-      record({
-        id: "2",
-        action_verb: "Led",
-        mpaRelevancy: rel(78, 50),
-        overallScore: 78,
-      }),
-      record({
-        id: "3",
-        action_verb: "Built",
-        mpaRelevancy: rel(88, 55),
-        overallScore: 88,
-      }),
-      record({
-        id: "4",
-        action_verb: "Tracked",
-        mpaRelevancy: rel(40, 30),
-        overallScore: 40,
-      }),
-      record({
-        id: "5",
-        action_verb: "Directed",
-        mpaRelevancy: rel(90, 70),
-        overallScore: 90,
-      }),
-    ]);
-
-    const em = plan.mpas.find((m) => m.mpaKey === "executing_mission")!;
-    expect(em.sentences).toHaveLength(2);
-    expect(em.sentences[0]!.accomplishmentIds).toEqual(["5"]);
-    expect(em.sentences[1]!.accomplishmentIds).toEqual(["3"]);
-
-    // Leftovers with strong Leading People fit fill that empty MPA.
-    const lp = plan.mpas.find((m) => m.mpaKey === "leading_people");
-    expect(lp).toBeDefined();
-    expect(lp!.sentences.length).toBeGreaterThanOrEqual(1);
-    const lpIds = lp!.sentences.flatMap((s) => s.accomplishmentIds);
-    expect(lpIds).toContain("2"); // 50% LP — above cross-fill floor
-    expect(lpIds).not.toContain("5");
-    expect(lpIds).not.toContain("3");
+    const pools = allocateEpbCandidatePools([...many, lpHome]);
+    expect(pools.executing_mission).toHaveLength(MAX_CANDIDATES_PER_MPA);
+    expect(pools.leading_people.length).toBeGreaterThanOrEqual(
+      TARGET_CANDIDATES_PER_MPA
+    );
+    expect(pools.leading_people).toContain("lp1");
+    // Cross-filled from stash (overflow beyond MAX)
+    const cross = pools.leading_people.filter((id) => id !== "lp1");
+    expect(cross.length).toBeGreaterThan(0);
+    for (const id of cross) {
+      expect(pools.executing_mission).not.toContain(id);
+    }
   });
 
-  it("combines cumulative same-verb home entries into one sentence then pops stash for the second", () => {
-    const plan = assignEpbSentenceGroups([
-      // Leading People: two cumulative "Mentored" entries → 1 sentence
-      record({
-        id: "lp1",
-        taggedMpa: "leading_people",
-        action_verb: "Mentored",
-        primaryMpa: "leading_people",
-        mpaRelevancy: rel(30, 82),
-        overallScore: 82,
-      }),
-      record({
-        id: "lp2",
-        taggedMpa: "leading_people",
-        action_verb: "Mentored",
-        primaryMpa: "leading_people",
-        mpaRelevancy: rel(25, 75),
-        overallScore: 75,
-      }),
-      // Executing Mission leftovers that also score well for Leading People
+  it("does not cross-fill below the normal floor when desperate is not needed", () => {
+    const pools = allocateEpbCandidatePools([
       record({
         id: "em1",
-        action_verb: "Led",
-        mpaRelevancy: rel(92, 68),
-        overallScore: 92,
-      }),
-      record({
-        id: "em2",
-        action_verb: "Built",
-        mpaRelevancy: rel(85, 62),
-        overallScore: 85,
-      }),
-      record({
-        id: "em3",
-        action_verb: "Directed",
-        mpaRelevancy: rel(80, 58),
-        overallScore: 80,
-      }),
-    ]);
-
-    const lp = plan.mpas.find((m) => m.mpaKey === "leading_people")!;
-    expect(lp.sentences).toHaveLength(2);
-    expect(lp.sentences[0]!.accomplishmentIds.sort()).toEqual(["lp1", "lp2"]);
-    // EM home claims took em1+em2; leftover em3 (still ≥ cross-fill floor for LP) fills sentence 2
-    expect(lp.sentences[1]!.accomplishmentIds).toEqual(["em3"]);
-
-    const em = plan.mpas.find((m) => m.mpaKey === "executing_mission")!;
-    expect(em.sentences).toHaveLength(2);
-    expect(em.sentences[0]!.accomplishmentIds).toEqual(["em1"]);
-    expect(em.sentences[1]!.accomplishmentIds).toEqual(["em2"]);
-  });
-
-  it("does not cross-fill with weak relevancy below the floor", () => {
-    const plan = assignEpbSentenceGroups([
-      record({
-        id: "em1",
-        action_verb: "Led",
         mpaRelevancy: rel(90, MIN_CROSS_FILL_RELEVANCY - 1),
       }),
       record({
@@ -191,54 +111,14 @@ describe("assignEpbSentenceGroups", () => {
         action_verb: "Built",
         mpaRelevancy: rel(85, 10),
       }),
-      record({
-        id: "em3",
-        action_verb: "Directed",
-        mpaRelevancy: rel(80, 5),
-      }),
     ]);
-
-    expect(plan.mpas.map((m) => m.mpaKey)).toEqual(["executing_mission"]);
-    expect(
-      plan.mpas.find((m) => m.mpaKey === "executing_mission")!.sentences
-    ).toHaveLength(2);
+    expect(pools.executing_mission.sort()).toEqual(["em1", "em2"]);
+    expect(pools.leading_people).toEqual([]);
   });
 
-  it("desperately fills a second sentence when stash scores between 25 and 39", () => {
-    const plan = assignEpbSentenceGroups([
-      record({
-        id: "lp1",
-        taggedMpa: "leading_people",
-        action_verb: "Mentored",
-        primaryMpa: "leading_people",
-        mpaRelevancy: rel(20, 80),
-      }),
-      record({
-        id: "em1",
-        action_verb: "Led",
-        mpaRelevancy: rel(95, 20),
-      }),
-      record({
-        id: "em2",
-        action_verb: "Built",
-        mpaRelevancy: rel(90, 20),
-      }),
-      record({
-        id: "em3",
-        action_verb: "Directed",
-        mpaRelevancy: rel(70, 35), // below normal floor, above desperate
-      }),
-    ]);
-
-    const lp = plan.mpas.find((m) => m.mpaKey === "leading_people")!;
-    expect(lp.sentences).toHaveLength(2);
-    expect(lp.sentences[0]!.accomplishmentIds).toEqual(["lp1"]);
-    expect(lp.sentences[1]!.accomplishmentIds).toEqual(["em3"]);
-  });
-
-  it("uses each accomplishment at most once", () => {
-    const plan = assignEpbSentenceGroups([
-      record({ id: "a", action_verb: "Led", mpaRelevancy: rel(90, 88) }),
+  it("uses each accomplishment at most once across pools", () => {
+    const pools = allocateEpbCandidatePools([
+      record({ id: "a", mpaRelevancy: rel(90, 88) }),
       record({ id: "b", action_verb: "Built", mpaRelevancy: rel(70, 65) }),
       record({ id: "c", action_verb: "Drove", mpaRelevancy: rel(60, 55) }),
       record({
@@ -248,9 +128,56 @@ describe("assignEpbSentenceGroups", () => {
         mpaRelevancy: rel(40, 80),
       }),
     ]);
-    const allIds = plan.mpas.flatMap((m) =>
-      m.sentences.flatMap((s) => s.accomplishmentIds)
-    );
+    const allIds = Object.values(pools).flat();
     expect(new Set(allIds).size).toBe(allIds.length);
+  });
+});
+
+describe("poolsToFallbackPlan / assignEpbSentenceGroups", () => {
+  it("falls back to top-score singleton groups without verb clustering", () => {
+    // Same verb, different efforts — fallback must NOT merge by verb.
+    const records = [
+      record({
+        id: "uso",
+        action_verb: "Volunteered",
+        details: "Volunteered at the USO for 4 hours",
+        mpaRelevancy: rel(90, 20),
+        overallScore: 90,
+      }),
+      record({
+        id: "pt",
+        action_verb: "Volunteered",
+        details: "Volunteered to lead squadron PT for 12 Airmen",
+        mpaRelevancy: rel(80, 20),
+        overallScore: 80,
+      }),
+      record({
+        id: "net",
+        action_verb: "Led",
+        details: "Led network migration",
+        mpaRelevancy: rel(70, 20),
+        overallScore: 70,
+      }),
+    ];
+    const plan = assignEpbSentenceGroups(records);
+    const em = plan.mpas.find((m) => m.mpaKey === "executing_mission")!;
+    expect(em.sentences).toHaveLength(2);
+    expect(em.sentences[0]!.accomplishmentIds).toEqual(["uso"]);
+    expect(em.sentences[1]!.accomplishmentIds).toEqual(["pt"]);
+    // Third stays out of fallback (only 2 sentences) — not verb-merged into either
+    expect(
+      em.sentences.flatMap((s) => s.accomplishmentIds)
+    ).not.toContain("net");
+  });
+
+  it("poolsToFallbackPlan mirrors assignEpbSentenceGroups", () => {
+    const records = [
+      record({ id: "a", mpaRelevancy: rel(90, 20) }),
+      record({ id: "b", action_verb: "Built", mpaRelevancy: rel(80, 20) }),
+    ];
+    const pools = allocateEpbCandidatePools(records);
+    expect(poolsToFallbackPlan(pools, records)).toEqual(
+      assignEpbSentenceGroups(records)
+    );
   });
 });

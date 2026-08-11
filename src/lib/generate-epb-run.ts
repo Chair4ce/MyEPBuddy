@@ -130,17 +130,21 @@ export function buildGroupedMpaContexts(
 /**
  * Fused free-text for one MPA's selected accomplishments — matches the format
  * the single-statement fuse flow sends as `customContext` to /api/generate.
+ * When multiple records are present, instruct the model to treat them as one
+ * cumulative effort and accumulate metrics (hours, dollars, counts).
  */
 export function buildMpaCustomContext(
   records: PlanAccomplishmentRecord[]
 ): string {
-  return records
+  const body = records
     .map((r) => {
       const impact = r.impact ? `. Impact: ${r.impact}` : "";
       const metrics = r.metrics ? `. Metrics: ${r.metrics}` : "";
       return `${r.action_verb}: ${r.details}${impact}${metrics}`;
     })
     .join("\n\n");
+  if (records.length <= 1) return body;
+  return `SAME CUMULATIVE EFFORT — rewrite as ONE statement and ACCUMULATE metrics (hours, dollars, counts) across the entries below:\n\n${body}`;
 }
 
 /**

@@ -129,6 +129,25 @@ describe("buildMpaCustomContext", () => {
       "Led: migration. Impact: zero downtime. Metrics: 50 servers"
     );
   });
+
+  it("prefixes multi-entry groups with cumulative-effort instructions", () => {
+    const text = buildMpaCustomContext([
+      record("a", "executing_mission", {
+        action_verb: "Volunteered",
+        details: "at the USO for 4 hours",
+        metrics: "4 hrs",
+      }),
+      record("b", "executing_mission", {
+        action_verb: "Spent",
+        details: "4 hours serving veterans at the USO",
+        metrics: "4 hrs",
+      }),
+    ]);
+    expect(text).toContain("SAME CUMULATIVE EFFORT");
+    expect(text).toContain("ACCUMULATE metrics");
+    expect(text).toContain("Volunteered: at the USO for 4 hours");
+    expect(text).toContain("Spent: 4 hours serving veterans at the USO");
+  });
 });
 
 describe("buildGroupedMpaContexts", () => {

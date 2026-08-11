@@ -11,11 +11,10 @@ import type {
 /**
  * Data contract for the "Generate EPB" planning step.
  *
- * Score-based assignment (`assignEpbSentenceGroups`) inspects every cycle
- * accomplishment (with its ACA relevancy scores) and returns, per core MPA, up
- * to two "sentence groups". Each group is the set of accomplishments to combine
- * into ONE statement sentence. Related action verbs are combined so metrics can
- * accumulate; leftovers are stashed for cross-MPA fill.
+ * Score-based allocation picks candidate ids per MPA (home + stash/pop). An LLM
+ * then groups those candidates into up to two sentence groups by judging
+ * action → result → impact similarity (NOT action_verb string equality), so
+ * cumulative efforts can merge and accumulate metrics.
  */
 
 /** Max accomplishments per LLM planning chunk (keeps payloads well under limits). */

@@ -48,7 +48,7 @@ Default selection after the smart two-sentence / stash-pop ship (`bb577bd`). Des
 
 Recommended order: **020 → 022** (parallel OK) → **021** → **023**.
 
-**Considered and rejected / fixed in-branch:** desperate fill only for empty MPAs (widened to underfilled); phantom credit debit on Plan my EPB (`/api/plan-epb` removed from `BILLABLE_API_PATHS`).
+**Considered and rejected / fixed in-branch:** desperate fill only for empty MPAs (widened to underfilled); phantom credit debit on Plan my EPB (re-billed only when LLM grouping runs); **verb-string clustering for combine/split** (users aren't consistent — LLM judges action→result→impact similarity instead; scores only allocate candidate pools).
 
 ### Auth signup/login series (prior pass — complete)
 

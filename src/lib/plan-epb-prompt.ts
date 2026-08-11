@@ -1,9 +1,13 @@
 import { ENTRY_MGAS, getRubricTierForRank } from "@/lib/constants";
-import { ACA_PORTFOLIO_MPA_KEYS } from "@/lib/cycle-portfolio";
+import {
+  ACA_PORTFOLIO_MPA_KEYS,
+  type AcaPortfolioMpaKey,
+} from "@/lib/cycle-portfolio";
 import {
   PLAN_MAX_SENTENCES_PER_MPA,
   type PlanAccomplishmentRecord,
 } from "@/lib/plan-epb";
+import type { EpbCandidatePools } from "@/lib/assign-epb-sentences";
 import type { Rank } from "@/types/database";
 
 function mpaReference(): string {
@@ -33,79 +37,123 @@ function formatRecord(record: PlanAccomplishmentRecord): string {
   return lines.map((l) => `  ${l}`).join("\n");
 }
 
-export interface BuildPlanEpbPromptArgs {
-  records: PlanAccomplishmentRecord[];
+export interface BuildGroupEpbPromptArgs {
+  pools: EpbCandidatePools;
+  recordsById: Map<string, PlanAccomplishmentRecord>;
   rateeRank: Rank | string | null;
   rateeAfsc?: string | null;
-  /** Ratee duty description — context for how accomplishments map to the role. */
   dutyDescription?: string | null;
-  /** True when the input is one of several chunks (selection still per-MPA). */
-  isChunked?: boolean;
 }
 
 /**
- * Prompt for the EPB planning step. The model selects the strongest
- * accomplishments per core MPA and groups the ones that should be COMBINED into
- * a single statement sentence. Returns strict JSON only.
+ * Prompt for the EPB *grouping* step. Candidate ids per MPA are already chosen
+ * by score-based allocation. The model only decides which entries describe the
+ * SAME action→result→impact effort (combine + accumulate metrics) vs distinct
+ * efforts (separate sentences). Never use action_verb equality as the rule.
  */
-export function buildPlanEpbPrompt(args: BuildPlanEpbPromptArgs): string {
-  const { records, rateeRank, rateeAfsc, dutyDescription, isChunked } = args;
+export function buildGroupEpbPrompt(args: BuildGroupEpbPromptArgs): string {
+  const { pools, recordsById, rateeRank, rateeAfsc, dutyDescription } = args;
   const tier = getRubricTierForRank(rateeRank);
   const tierNote =
     tier === "senior"
       ? "This ratee is a senior NCO (AF Form 932) — weight scope, leadership, and unit-level impact."
       : "This ratee is junior enlisted (AF Form 931) — weight job proficiency, initiative, and quantified results.";
 
-  const recordBlock = records
-    .map((record, index) => `[#${index + 1}]\n${formatRecord(record)}`)
+  const poolBlocks = ACA_PORTFOLIO_MPA_KEYS.filter(
+    (key) => pools[key].length > 0
+  )
+    .map((mpaKey) => {
+      const label = ENTRY_MGAS.find((m) => m.key === mpaKey)?.label ?? mpaKey;
+      const entries = pools[mpaKey]
+        .map((id, index) => {
+          const record = recordsById.get(id);
+          if (!record) return null;
+          return `[${mpaKey} #${index + 1}]\n${formatRecord(record)}`;
+        })
+        .filter(Boolean)
+        .join("\n\n");
+      return `=== POOL: ${mpaKey} (${label}) ===\n${entries}`;
+    })
     .join("\n\n");
 
   const dutyBlock = dutyDescription?.trim()
-    ? `\nDUTY DESCRIPTION (use to judge relevance and MPA fit):\n${dutyDescription.trim()}\n`
+    ? `\nDUTY DESCRIPTION (context only):\n${dutyDescription.trim()}\n`
     : "";
 
-  return `You are an expert U.S. Air Force EPB writer planning which accomplishments to turn into performance statements.
+  return `You are an expert U.S. Air Force EPB writer. Candidate accomplishments are ALREADY assigned to each Major Performance Area (MPA). Your only job is to group them into at most ${PLAN_MAX_SENTENCES_PER_MPA} performance STATEMENT sentences per MPA.
 
 RATEE
 - Rank: ${rateeRank ?? "unknown"}
 - AFSC: ${rateeAfsc ?? "unknown"}
 - ${tierNote}
 ${dutyBlock}
-CORE MPAS (only these):
+CORE MPAS:
 ${mpaReference()}
 
-YOUR TASK
-For each core MPA, choose the accomplishments that will produce the strongest 1-2 performance statements, and GROUP the accomplishments that should be combined into a single sentence.
+HOW TO JUDGE "SAME EFFORT" (CRITICAL — DO NOT USE VERB MATCHING)
+Compare action → result → impact (and metrics). Ignore whether action_verb strings match.
+
+COMBINE into ONE sentence group when entries describe the SAME recurring / cumulative effort, even if wording or verbs differ. Example:
+- "Volunteered at the USO for 4 hours on this day"
+- "Spent 4 hours serving veterans at the USO" (different day)
+→ SAME effort → one group; downstream writing should accumulate to ~8 hours and tell one story.
+
+KEEP SEPARATE (different sentence groups) when efforts are substantively different even if they share a verb. Example:
+- "Led squadron PT sessions…" vs "Led a network migration…" → different efforts → two groups.
+
+METRIC RULE
+When combining, note in rationale that metrics should accumulate (hours, dollars, counts). Do not invent metrics that are not present.
 
 SELECTION RULES
-1. Prioritize higher overall_score and higher mpa_relevancy for the target MPA, but DO NOT simply filter by score.
-2. Combine "like" accomplishments (same effort/initiative recurring across the cycle) into ONE sentence group so their metrics accumulate (man-hours, dollars saved, counts). A low-scoring entry on its own can be valuable when combined.
-3. A sentence group may contain a single accomplishment when it stands strongly on its own.
-4. Prefer the accomplishment's tagged_mpa, but you may place an entry under its primary_mpa when relevancy clearly favors it.
-5. Output at most ${PLAN_MAX_SENTENCES_PER_MPA} sentence groups per MPA. Omit an MPA entirely if nothing fits.
-6. Only use accomplishment ids from the list below. Never invent ids.
-${
-  isChunked
-    ? "7. This is a partial batch of the ratee's accomplishments; select from what is provided. Results are merged later."
-    : ""
-}
+1. Output at most ${PLAN_MAX_SENTENCES_PER_MPA} sentence groups per MPA.
+2. Prefer the strongest overall_score / mpa_relevancy entries for that MPA when choosing which efforts become the two sentences.
+3. A sentence group may be a single id when it stands alone.
+4. You may omit weaker pool ids entirely (leave them unused) — do not force every candidate into a sentence.
+5. Only use ids listed in that MPA's pool. Never invent ids. Never move an id to another MPA.
+6. Omit an MPA from the output if its pool cannot produce a useful statement.
 
-ACCOMPLISHMENTS
-${recordBlock}
+CANDIDATE POOLS
+${poolBlocks}
 
 OUTPUT
 Return STRICT JSON only, no prose, matching exactly:
 {
   "mpas": [
     {
-      "mpaKey": "<one of the core MPA keys>",
+      "mpaKey": "<one of the core MPA keys that has a pool>",
       "sentences": [
         {
           "accomplishmentIds": ["<id>", "..."],
-          "rationale": "<one short line on why these, and why combined>"
+          "rationale": "<why same/different effort; mention metric accumulation if combining>"
         }
       ]
     }
   ]
 }`;
 }
+
+/** @deprecated Prefer buildGroupEpbPrompt after score-based allocation. */
+export function buildPlanEpbPrompt(args: {
+  records: PlanAccomplishmentRecord[];
+  rateeRank: Rank | string | null;
+  rateeAfsc?: string | null;
+  dutyDescription?: string | null;
+  isChunked?: boolean;
+}): string {
+  const pools = Object.fromEntries(
+    ACA_PORTFOLIO_MPA_KEYS.map((key) => [
+      key,
+      args.records.filter((r) => r.taggedMpa === key).map((r) => r.id),
+    ])
+  ) as EpbCandidatePools;
+  const recordsById = new Map(args.records.map((r) => [r.id, r] as const));
+  return buildGroupEpbPrompt({
+    pools,
+    recordsById,
+    rateeRank: args.rateeRank,
+    rateeAfsc: args.rateeAfsc,
+    dutyDescription: args.dutyDescription,
+  });
+}
+
+export type { AcaPortfolioMpaKey };
