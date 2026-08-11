@@ -460,11 +460,12 @@ export default function GeneratePage() {
 
   return (
     <div
-      className="w-full pb-10 sm:pb-12 overflow-x-auto"
+      className="w-full pb-10 sm:pb-12"
       onPointerDownCapture={handleEpbZenPointerDown}
     >
-      <div className="flex items-start justify-center gap-4 lg:gap-6 xl:gap-8 min-w-min w-full">
-        <div className="space-y-6 sm:space-y-8 min-w-0 w-full max-w-7xl shrink-0">
+      {/* Cards + MPA description panel share max-w-7xl so mid widths don't overflow/clip left */}
+      <div className="mx-auto flex w-full min-w-0 max-w-7xl items-start gap-4 lg:gap-6 xl:gap-8">
+        <div className="min-w-0 flex-1 space-y-6 sm:space-y-8">
       <div className={cn("space-y-4 sm:space-y-5", getEpbZenChromeClassName(zenModeMpaKey))}>
       {/* Page Header with Title and Share Button */}
       <div className="flex items-center justify-between gap-4 min-w-0 pt-0.5">
