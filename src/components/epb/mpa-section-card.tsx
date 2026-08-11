@@ -987,7 +987,6 @@ export function MPASectionCard({
 
   const handleGenerate = async () => {
     updateSectionState(section.mpa, { isGenerating: true });
-    setGeneratedStatements([]);
     setStatementFormattingViolations(undefined);
     try {
       // Combine action IDs from both statements
@@ -1018,6 +1017,8 @@ export function MPASectionCard({
         clarifyingContext,
       });
       if (results.length > 0) {
+        // Solid appear: swap results in place (no clear→remount fade). Height
+        // tween locks before paint so the card grows without a flash/jerk.
         setStatementFormattingViolations(formattingViolations);
         resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
       } else {
@@ -1120,7 +1121,6 @@ export function MPASectionCard({
     }
     Analytics.statementRevisionStarted(section.mpa);
     setIsRevising(true);
-    setGeneratedRevisions([]);
     setRevisionFormattingViolations(undefined);
     try {
       const boosterCtx = await prepareImpactBoosterForRun();
@@ -1145,6 +1145,8 @@ export function MPASectionCard({
         const nextHistory = [...revisionHistory, batch].slice(-MAX_REVISION_HISTORY);
         setRevisionHistory(nextHistory);
         setActiveRevisionIndex(nextHistory.length - 1);
+        // Solid appear: keep prior results until the new set swaps in; height
+        // tween locks before paint so the list does not flash/jerk.
         setRevisionFormattingViolations(formattingViolations);
         resizeCardBody(() => setGeneratedRevisions(revisions), scrollGeneratedRevisionsIntoView);
       } else {
@@ -1970,7 +1972,7 @@ export function MPASectionCard({
                 >
                   <div
                     ref={generatedRevisionsResultsRef}
-                    className="space-y-4 pt-4 border-t animate-in fade-in-0 duration-300"
+                    className="space-y-4 pt-4 border-t"
                   >
                     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                       <h5 className="text-xs font-medium text-muted-foreground">
@@ -2022,8 +2024,7 @@ export function MPASectionCard({
                       <div
                         key={`rev-${revision.slice(0, 48)}-${revision.length}`}
                         data-epb-revision-item
-                        className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
-                        style={{ animationDelay: `${index * 100}ms` }}
+                        className="p-4 rounded-lg border bg-background space-y-2.5"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
@@ -2404,7 +2405,7 @@ export function MPASectionCard({
                   <div
                     ref={generatedStatementsResultsRef}
                     className={cn(
-                      "space-y-4 pt-4 border-t animate-in fade-in-0 duration-300",
+                      "space-y-4 pt-4 border-t",
                       isStatementsResultsClosing && "pointer-events-none"
                     )}
                   >
@@ -2426,8 +2427,7 @@ export function MPASectionCard({
                       <div
                         key={`stmt-${statement.slice(0, 48)}-${statement.length}`}
                         data-epb-statement-item
-                        className="p-4 rounded-lg border bg-background space-y-2.5 animate-in fade-in-0 duration-200"
-                        style={{ animationDelay: `${index * 100}ms` }}
+                        className="p-4 rounded-lg border bg-background space-y-2.5"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">

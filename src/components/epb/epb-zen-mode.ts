@@ -11,7 +11,7 @@ export const EPB_ZEN_FOCUS_ATTR = "data-epb-zen-focus";
 /** Marks the MPA description reference panel (stays sharp while editing an MPA) */
 export const EPB_ZEN_PANEL_ATTR = "data-epb-zen-panel";
 
-/** Clear zen blur when the user clicks/taps outside the focused card (and panel, if applicable). */
+/** Clear zen focus when the user clicks/taps outside the focused card (and panel, if applicable). */
 export function handleEpbZenPointerDown(event: ReactPointerEvent<HTMLElement>) {
   const { zenModeMpaKey, mpaDescriptionDrawerOpen, setZenModeMpaKey } =
     useEPBShellStore.getState();
@@ -29,9 +29,12 @@ export function handleEpbZenPointerDown(event: ReactPointerEvent<HTMLElement>) {
   setZenModeMpaKey(null);
 }
 
-/** Subtle blur + darken for non-focused content during zen writing mode */
-export const EPB_ZEN_DIMMED =
-  "blur-[2px] brightness-[0.78] saturate-[0.88] opacity-85 transition-[filter,opacity] duration-300 ease-out";
+/**
+ * Previously dimmed + blurred non-focused chrome during zen writing mode.
+ * Blur/dim removed — keep the focused card elevation only; dimmed is a no-op class
+ * so call sites can stay stable without reintroducing page blur.
+ */
+export const EPB_ZEN_DIMMED = "";
 
 /** Elevated, sharp card while user is writing in this MPA */
 export const EPB_ZEN_FOCUSED =

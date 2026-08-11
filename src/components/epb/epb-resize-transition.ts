@@ -12,6 +12,9 @@ function runEpbHeightTween(
   onComplete?: () => void
 ) {
   if (startHeight === endHeight) {
+    shell.style.height = "";
+    shell.style.overflow = "";
+    shell.classList.remove("epb-t-resize");
     onComplete?.();
     return;
   }
@@ -35,6 +38,9 @@ function runEpbHeightTween(
 /**
  * Smoothly resizes a shell element when its child content swaps (e.g. split ↔ combined).
  * Uses explicit height tweening; requires `.epb-t-resize` in globals.css.
+ *
+ * Locks height + overflow *before* the DOM swap so new content never paints at full
+ * natural height then snaps back (that flash/jerk was visible on generate/revise).
  */
 export function animateEpbShellResize(
   shell: HTMLDivElement | null,
@@ -48,6 +54,8 @@ export function animateEpbShellResize(
   }
 
   const startHeight = shell.offsetHeight;
+  shell.style.height = `${startHeight}px`;
+  shell.style.overflow = "hidden";
 
   flushSync(onSwap);
 
@@ -75,6 +83,8 @@ export async function animateEpbShellResizeAfter(
   }
 
   const startHeight = shell.offsetHeight;
+  shell.style.height = `${startHeight}px`;
+  shell.style.overflow = "hidden";
   await update();
 
   requestAnimationFrame(() => {
