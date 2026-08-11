@@ -204,6 +204,38 @@ describe("assignEpbSentenceGroups", () => {
     ).toHaveLength(2);
   });
 
+  it("desperately fills a second sentence when stash scores between 25 and 39", () => {
+    const plan = assignEpbSentenceGroups([
+      record({
+        id: "lp1",
+        taggedMpa: "leading_people",
+        action_verb: "Mentored",
+        primaryMpa: "leading_people",
+        mpaRelevancy: rel(20, 80),
+      }),
+      record({
+        id: "em1",
+        action_verb: "Led",
+        mpaRelevancy: rel(95, 20),
+      }),
+      record({
+        id: "em2",
+        action_verb: "Built",
+        mpaRelevancy: rel(90, 20),
+      }),
+      record({
+        id: "em3",
+        action_verb: "Directed",
+        mpaRelevancy: rel(70, 35), // below normal floor, above desperate
+      }),
+    ]);
+
+    const lp = plan.mpas.find((m) => m.mpaKey === "leading_people")!;
+    expect(lp.sentences).toHaveLength(2);
+    expect(lp.sentences[0]!.accomplishmentIds).toEqual(["lp1"]);
+    expect(lp.sentences[1]!.accomplishmentIds).toEqual(["em3"]);
+  });
+
   it("uses each accomplishment at most once", () => {
     const plan = assignEpbSentenceGroups([
       record({ id: "a", action_verb: "Led", mpaRelevancy: rel(90, 88) }),

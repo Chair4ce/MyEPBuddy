@@ -21,7 +21,7 @@ import {
 
 /** Minimum mpa_relevancy to borrow a stashed entry into another MPA. */
 export const MIN_CROSS_FILL_RELEVANCY = 40;
-/** Last-resort cross-fill floor when an MPA would otherwise stay empty. */
+/** Last-resort cross-fill floor when an MPA still needs another sentence. */
 export const MIN_DESPERATE_CROSS_FILL_RELEVANCY = 25;
 /** Synthetic home score when an entry has never been assessed. */
 export const UNASSESSED_HOME_RELEVANCY = 55;
@@ -201,11 +201,13 @@ export function assignEpbSentenceGroups(
     takeFromStash(mpaKey, need, MIN_CROSS_FILL_RELEVANCY);
   }
 
-  // Pass 3 — desperate fill for still-empty MPAs at a lower score floor.
+  // Pass 3 — desperate fill for still-underfilled MPAs at a lower score floor
+  // (covers both empty areas and MPAs stuck at a single sentence).
   for (const mpaKey of ACA_PORTFOLIO_MPA_KEYS) {
     const current = byMpa.get(mpaKey) ?? [];
-    if (current.length > 0) continue;
-    takeFromStash(mpaKey, PLAN_MAX_SENTENCES_PER_MPA, MIN_DESPERATE_CROSS_FILL_RELEVANCY);
+    const need = PLAN_MAX_SENTENCES_PER_MPA - current.length;
+    if (need <= 0) continue;
+    takeFromStash(mpaKey, need, MIN_DESPERATE_CROSS_FILL_RELEVANCY);
   }
 
   return {

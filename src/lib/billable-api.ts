@@ -3,7 +3,6 @@ import { useCreditsStore } from "@/stores/credits-store";
 /** POST endpoints that consume a prepaid AI call (default-key users). */
 export const BILLABLE_API_PATHS = [
   "/api/generate",
-  "/api/plan-epb",
   "/api/revise-selection",
   "/api/generate-war",
   "/api/generate-award",

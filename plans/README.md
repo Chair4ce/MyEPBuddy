@@ -35,6 +35,21 @@ Recommended order: **005 → 006 → 007 → 008** (DONE). Hardening wave: **009
 
 **Supervisor session contract:** Initial = private expectations guide (Format → Save → Copy/Print/Share). Midterm/Final = private ACA settings + evidence list → Generate outline brief (`content`) → Save → Copy/Print; Share only the guide for in-app ratees. Never auto-share. Never predict promotion/stratification.
 
+### Generate EPB score-based assignment (PR #17 follow-ups)
+
+Default selection after the smart two-sentence / stash-pop ship (`bb577bd`). Desperate underfill + non-billable `/api/plan-epb` were fixed in-branch; these plans cover remaining leverage.
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 020  | Allocate stashed leftovers by best MPA fit (not ACA key order) | P1 | M | — | TODO |
+| 021  | Soft-home claims when tagged MPA fit is clearly wrong | P2 | M | 020 soft | TODO |
+| 022  | Unassessed cross-fill policy + show empty MPAs in review | P2 | S | — | TODO |
+| 023  | Retire unused LLM plan-epb helpers | P3 | S | PR #17 merge confidence | TODO |
+
+Recommended order: **020 → 022** (parallel OK) → **021** → **023**.
+
+**Considered and rejected / fixed in-branch:** desperate fill only for empty MPAs (widened to underfilled); phantom credit debit on Plan my EPB (`/api/plan-epb` removed from `BILLABLE_API_PATHS`).
+
 ### Auth signup/login series (prior pass — complete)
 
 | Plan | Title | Priority | Effort | Depends on | Status |

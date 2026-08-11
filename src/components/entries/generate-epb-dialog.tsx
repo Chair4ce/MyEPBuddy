@@ -305,7 +305,7 @@ export function GenerateEpbDialog({
       const shell = await findActiveShell().catch(() => null);
       setActiveShell(shell);
       const dutyDescription = dutyDraft.trim() || shell?.duty_description || "";
-      const response = await billableFetch("/api/plan-epb", {
+      const response = await fetch("/api/plan-epb", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -314,8 +314,6 @@ export function GenerateEpbDialog({
           rateeRank: ratee.rank,
           rateeAfsc: ratee.afsc,
           cycleYear,
-          model,
-          dutyDescription,
         }),
       });
 
