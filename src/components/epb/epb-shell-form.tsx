@@ -1176,7 +1176,8 @@ export function EPBShellForm({
     const matches = scanStatementText(text);
     if (matches.length > 0) {
       toast.error(getScanSummary(matches), { duration: 10000 });
-      return;
+      // Throw so callers (autosave) do not advance lastSaved / clear isDirty
+      throw new Error("Statement blocked by sensitive-data scan");
     }
 
     const { error } = await supabase

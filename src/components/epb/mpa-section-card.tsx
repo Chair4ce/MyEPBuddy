@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue, startTransition } from "react";
 // IMPORTANT: Not using shadcn Button, Switch, Progress, Label to avoid Radix ref composition issues
 // Using native HTML elements instead
 import { Badge } from "@/components/ui/badge";
@@ -367,11 +367,12 @@ export function MPASectionCard({
 }: MPASectionCardProps) {
   const { mpa, isHLR, maxChars } = getMPAInfo(section.mpa);
   
-  // Subscribe to the specific section state from the store
-  const sectionStates = useEPBShellStore((s) => s.sectionStates);
-  const storedState = sectionStates[section.mpa];
+  // Subscribe to this MPA's section state only — avoid re-rendering every card
+  // when a sibling's draft/dirty flips (paste/keystroke perf).
+  const state = useEPBShellStore(
+    (s) => s.sectionStates[section.mpa] ?? DEFAULT_SECTION_STATE
+  );
   const updateSectionState = useEPBShellStore((s) => s.updateSectionState);
-  const initializeSectionState = useEPBShellStore((s) => s.initializeSectionState);
   const setFocusedMpaKey = useEPBShellStore((s) => s.setFocusedMpaKey);
   const mpaDescriptionDrawerOpen = useEPBShellStore((s) => s.mpaDescriptionDrawerOpen);
   const zenModeMpaKey = useEPBShellStore((s) => s.zenModeMpaKey);
@@ -379,9 +380,6 @@ export function MPASectionCard({
   
   // Use local ref for autosave timer to avoid Zustand updates on every keystroke
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Use stored state or defaults
-  const state = storedState || DEFAULT_SECTION_STATE;
   
   const [copied, setCopied] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -622,6 +620,11 @@ export function MPASectionCard({
   // LOCAL state for textarea - initialized from section prop (source of truth)
   // This prevents constant re-renders during typing which causes ref composition loops
   const [localText, setLocalText] = useState(section.statement_text || "");
+  // Latest text for stale-autosave checks (avoids closing over a stale localText)
+  const localTextRef = useRef(localText);
+  localTextRef.current = localText;
+  // Defer expensive parse/pill work so paste/typing stays responsive
+  const deferredText = useDeferredValue(localText);
   
   // Track if user is currently focused on the textarea
   const [isEditing, setIsEditing] = useState(false);
@@ -712,23 +715,31 @@ export function MPASectionCard({
   );
 
   // Sync local text with section.statement_text when it changes (from shell load or realtime)
-  // This is the source of truth - always sync unless user is actively editing
+  // Protect with isEditing (covers split view + unified textarea) — NOT textareaRef focus,
+  // which fails in split view and lets stale autosave / realtime wipe in-progress edits.
   useEffect(() => {
-    const isFocused = document.activeElement === textareaRef.current;
-    if (!isFocused) {
-      setLocalText(section.statement_text || "");
-      initializeSectionState(section.mpa, section.statement_text || "");
-      lastSavedRef.current = section.statement_text || "";
-    }
-  }, [section.statement_text, section.mpa, initializeSectionState]);
+    if (isEditing) return;
+    // Also protect unsaved local divergence (user typed, autosave of older text just landed)
+    if (localTextRef.current !== lastSavedRef.current) return;
+
+    const incoming = section.statement_text || "";
+    setLocalText(incoming);
+    // Patch draft only — do NOT re-initialize the whole section UI state
+    updateSectionState(section.mpa, {
+      draftText: incoming,
+      isDirty: false,
+    });
+    lastSavedRef.current = incoming;
+  }, [section.statement_text, section.mpa, isEditing, updateSectionState]);
 
   // Also sync when state.draftText changes from external sources (AI generation, collaboration)
   useEffect(() => {
-    const isFocused = document.activeElement === textareaRef.current;
-    if (!isFocused && state.draftText !== localText) {
+    if (isEditing) return;
+    if (state.isDirty) return;
+    if (state.draftText !== localTextRef.current) {
       setLocalText(state.draftText);
     }
-  }, [state.draftText]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.draftText, state.isDirty, isEditing]);
 
   // Autosave functionality
   const performAutosave = useCallback(async (text: string) => {
@@ -739,8 +750,16 @@ export function MPASectionCard({
     setIsAutosaving(true);
     try {
       await onSave(text);
+      // Advance last-saved to what we wrote. Keep dirty if the user typed further.
       lastSavedRef.current = text;
-      updateSectionState(section.mpa, { isDirty: false });
+      if (localTextRef.current === text) {
+        updateSectionState(section.mpa, { isDirty: false });
+      } else {
+        updateSectionState(section.mpa, {
+          draftText: localTextRef.current,
+          isDirty: true,
+        });
+      }
     } catch (error) {
       console.error("Autosave failed:", error);
     } finally {
@@ -818,12 +837,12 @@ export function MPASectionCard({
   // Ref for collaboration sync timer
   const collabSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle text change - UPDATE LOCAL STATE ONLY normally
-  // In collaboration mode, also debounce sync to Zustand for real-time sharing
+  // Handle text change — keep localText snappy; mark dirty so remote sync can't wipe edits.
+  // Collab still debounces the full draft payload; solo only flips isDirty (cheap).
   const handleTextChange = (value: string) => {
     setLocalText(value);
-    
-    // In collaboration mode, debounce sync to Zustand (300ms)
+    const dirty = value !== section.statement_text;
+
     if (isCollaborating) {
       if (collabSyncTimerRef.current) {
         clearTimeout(collabSyncTimerRef.current);
@@ -831,10 +850,19 @@ export function MPASectionCard({
       collabSyncTimerRef.current = setTimeout(() => {
         updateSectionState(section.mpa, {
           draftText: value,
-          isDirty: value !== section.statement_text,
+          isDirty: dirty,
         });
         collabSyncTimerRef.current = null;
       }, 300);
+      return;
+    }
+
+    // Solo: mark dirty immediately for realtime/visibility protection without
+    // rewriting draftText on every keystroke (draft syncs on blur).
+    if (dirty !== state.isDirty) {
+      startTransition(() => {
+        updateSectionState(section.mpa, { isDirty: dirty });
+      });
     }
   };
 
@@ -956,6 +984,8 @@ export function MPASectionCard({
   // Reset to saved version
   const handleReset = () => {
     Analytics.statementReset(section.mpa);
+    setLocalText(section.statement_text || "");
+    lastSavedRef.current = section.statement_text || "";
     updateSectionState(section.mpa, {
       draftText: section.statement_text,
       isDirty: false,
@@ -1071,13 +1101,14 @@ export function MPASectionCard({
 
   // Prefer real statement text (editor or latest generated draft) — never
   // placeholder labels from usesTwoStatements before sentences exist.
+  // Use deferred text so paste/typing isn't blocked by parseStatement work.
   const impactBoosterSourceText = (() => {
-    if (localText.trim()) return localText;
+    if (deferredText.trim()) return deferredText;
     if (generatedStatements[0]?.trim()) return generatedStatements[0];
     return "";
   })();
 
-  const impactBoosterSentencePreviews = (() => {
+  const impactBoosterSentencePreviews = useMemo(() => {
     if (!impactBoosterSourceText.trim()) return null;
     const parsed = parseStatement(impactBoosterSourceText);
     if (!parsed.hasTwoSentences || parsed.sentences.length < 2) return null;
@@ -1085,7 +1116,7 @@ export function MPASectionCard({
       1: parsed.sentences[0].text,
       2: parsed.sentences[1].text,
     };
-  })();
+  }, [impactBoosterSourceText]);
 
   /** Open split view when Impact Booster expands and the editor has two sentences. */
   const handleImpactBoosterExpanded = (expanded: boolean) => {
@@ -1453,8 +1484,8 @@ export function MPASectionCard({
                     onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
                     draggedSentence={draggedSentence}
                     isClosing={isSplitViewClosing}
-                    onFocus={enterZenMode}
-                    onBlur={tryExitZenMode}
+                    onFocus={handleTextFocus}
+                    onBlur={handleTextBlur}
                   />
                 ) : (
                   <div className="relative">
@@ -1475,7 +1506,7 @@ export function MPASectionCard({
                     {/* Drop overlay - shows when dragging a sentence from another MPA */}
                     {!isHLR && !isLockedByOther && (
                       <SentenceDropOverlay
-                        statementText={localText}
+                        statementText={deferredText}
                         mpaKey={section.mpa}
                         draggedSentence={draggedSentence ?? null}
                         onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
@@ -1493,10 +1524,10 @@ export function MPASectionCard({
                       {charCount}/{maxChars}
                     </span>
                     
-                    {/* Inline Sentence Pills for drag-drop swap */}
-                    {!isHLR && (hasContent || draggedSentence) && (
+                    {/* Inline Sentence Pills for drag-drop swap — deferred text keeps paste snappy */}
+                    {!isHLR && ((deferredText.trim().length > 0) || draggedSentence) && (
                       <SentencePills
-                        statementText={localText}
+                        statementText={deferredText}
                         mpaKey={section.mpa}
                         mpaLabel={mpa?.label || section.mpa}
                         maxChars={maxChars}

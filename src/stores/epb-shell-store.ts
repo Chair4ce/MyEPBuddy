@@ -451,13 +451,14 @@ export const useEPBShellStore = create<EPBShellState>((set, get) => ({
     set({ collapsedSections }),
 
   // Sync remote state from collaboration - updates section drafts and collapsed state
+  // Skip dirty / in-progress sections so a peer's stale broadcast can't wipe local edits.
   syncRemoteState: (remoteSections, remoteCollapsedSections) =>
     set((state) => {
       const newSectionStates = { ...state.sectionStates };
       
-      // Update each section's draft text and mode from remote
       Object.entries(remoteSections).forEach(([mpa, remote]) => {
         const existing = newSectionStates[mpa] || getDefaultSectionState();
+        if (existing.isDirty) return;
         newSectionStates[mpa] = {
           ...existing,
           draftText: remote.draftText,
