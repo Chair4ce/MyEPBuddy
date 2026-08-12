@@ -1030,6 +1030,7 @@ export type Database = {
           scod_date: string
           show_prompt_editors: boolean
           signup_trial_credits: number
+          default_key_rpm: number
           style_guidelines: string
           updated_at: string
         }
@@ -1045,6 +1046,7 @@ export type Database = {
           scod_date?: string
           show_prompt_editors?: boolean
           signup_trial_credits?: number
+          default_key_rpm?: number
           style_guidelines?: string
           updated_at?: string
         }
@@ -1060,6 +1062,7 @@ export type Database = {
           scod_date?: string
           show_prompt_editors?: boolean
           signup_trial_credits?: number
+          default_key_rpm?: number
           style_guidelines?: string
           updated_at?: string
         }

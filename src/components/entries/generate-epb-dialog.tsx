@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
@@ -65,7 +65,6 @@ import {
 import { Analytics } from "@/lib/analytics";
 import type {
   Accomplishment,
-  AccomplishmentAssessmentScores,
   EPBShell,
   EPBShellSection,
   Rank,
@@ -91,8 +90,8 @@ type DialogStep =
 type ShellWithSections = EPBShell & { sections: EPBShellSection[] };
 
 const VERSION_COUNT = 3;
-/** Pace between MPA generations to stay under the burst limit (5 / 60s). */
-const PACING_MS = 1200;
+/** Pace between MPA generations under the shared default-key pool (~50/min alone). */
+const PACING_MS = 1_200;
 
 export interface GenerateEpbDialogProps {
   open: boolean;
@@ -126,9 +125,6 @@ export function GenerateEpbDialog({
   const storeAccomplishments = useAccomplishmentsStore(
     (s) => s.accomplishments
   );
-  const updateAccomplishment = useAccomplishmentsStore(
-    (s) => s.updateAccomplishment
-  );
   const { setSelectedRatee, setSectionCollapsed, collapseAll } =
     useEPBShellStore();
 
@@ -137,9 +133,12 @@ export function GenerateEpbDialog({
     : [];
   const isPreselected = preselectedRecords.length > 0;
   const dutyProvided = initialDutyDescription !== undefined;
-  const assessmentPool = isPreselected
-    ? (preselected ?? [])
-    : storeAccomplishments;
+  /** Prefer live store rows so background assess updates the cost badge + plan gate. */
+  const assessmentPool = useMemo(() => {
+    if (!isPreselected) return storeAccomplishments;
+    const byId = new Map(storeAccomplishments.map((a) => [a.id, a]));
+    return (preselected ?? []).map((a) => byId.get(a.id) ?? a);
+  }, [isPreselected, preselected, storeAccomplishments]);
   const pendingAssessmentIds = entriesNeedingAssessment(assessmentPool);
 
   const [step, setStep] = useState<DialogStep>("preflight");
@@ -199,52 +198,6 @@ export function GenerateEpbDialog({
     setDutyLoaded(false);
     setDutyLoading(false);
     setDutyGenerating(false);
-  };
-
-  /** Score missing/stale ACA entries so plan-epb can use MPA fit. Soft-fails per entry. */
-  const ensureFreshAssessments = async (pool: Accomplishment[]) => {
-    const ids = entriesNeedingAssessment(pool);
-    if (ids.length === 0) return true;
-
-    setAssessProgress({ done: 0, total: ids.length });
-    for (let i = 0; i < ids.length; i++) {
-      const accomplishmentId = ids[i]!;
-      try {
-        const response = await billableFetch("/api/assess-accomplishment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accomplishmentId }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          if (handleUsageLimitResponse(errorData)) {
-            setAssessProgress(null);
-            return false;
-          }
-        } else {
-          const { assessment, assessed_at, model } = await response.json();
-          const assessedAtNext =
-            typeof assessed_at === "string"
-              ? assessed_at
-              : new Date().toISOString();
-          updateAccomplishment(accomplishmentId, {
-            assessment_scores: assessment as AccomplishmentAssessmentScores,
-            assessed_at: assessedAtNext,
-            assessment_model: model,
-            updated_at: assessedAtNext,
-          });
-        }
-      } catch (error) {
-        console.error("Pre-plan assessment failed:", error);
-      }
-
-      setAssessProgress({ done: i + 1, total: ids.length });
-      if (i < ids.length - 1) await sleep(PACING_MS);
-    }
-
-    setAssessProgress(null);
-    return true;
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -353,13 +306,13 @@ export function GenerateEpbDialog({
     if (!profile) return;
     setStep("planning");
     setErrorMessage("");
+    // Indeterminate progress while server scores + plans in one request.
+    setAssessProgress(
+      pendingAssessmentIds.length > 0
+        ? { done: 0, total: pendingAssessmentIds.length }
+        : null,
+    );
     try {
-      const assessedOk = await ensureFreshAssessments(assessmentPool);
-      if (!assessedOk) {
-        setStep("preflight");
-        return;
-      }
-
       const cycleYear = getActiveCycleYear(ratee.rank as Rank | null);
       const shell = await findActiveShell().catch(() => null);
       setActiveShell(shell);
@@ -384,16 +337,20 @@ export function GenerateEpbDialog({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (handleUsageLimitResponse(errorData)) {
+          setAssessProgress(null);
           setStep("preflight");
           return;
         }
-        throw new Error(errorData.error || "Planning failed");
+        throw new Error(
+          (errorData as { error?: string }).error || "Planning failed",
+        );
       }
 
       const data = (await response.json()) as {
         plan: EpbPlan;
         records: PlanAccomplishmentRecord[];
       };
+      setAssessProgress(null);
       setActiveShell(shell);
       setRecords(data.records ?? []);
       setEditable(planToEditable(data.plan));
@@ -402,13 +359,16 @@ export function GenerateEpbDialog({
           data.plan.mpas.map((m) => [
             m.mpaKey,
             m.sentences.map((s) => s.rationale).filter(Boolean).join(" · "),
-          ])
-        )
+          ]),
+        ),
       );
       setStep("review");
     } catch (error) {
+      setAssessProgress(null);
       setErrorMessage(
-        error instanceof Error ? error.message : "Failed to analyze accomplishments"
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze accomplishments",
       );
       setStep("error");
     }
@@ -614,8 +574,14 @@ export function GenerateEpbDialog({
   };
 
   const generateCost = selections.length;
-  /** Plan step (1) plus any auto-assessments still needed. */
-  const planActionCost = 1 + pendingAssessmentIds.length;
+  /** One Plan click bundles any needed scoring server-side (no per-entry burst). */
+  const planActionCost = 1;
+  const planCostDetail =
+    pendingAssessmentIds.length > 0
+      ? `1 token — includes scoring ${pendingAssessmentIds.length} unassessed ${
+          pendingAssessmentIds.length === 1 ? "entry" : "entries"
+        }`
+      : "1 token to plan your EPB";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -652,6 +618,21 @@ export function GenerateEpbDialog({
                       accumulate metrics) vs distinct work (separate sentences),
                       then fill gaps across performance areas using MPA fit scores.
                     </p>
+                    {pendingAssessmentIds.length > 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                        Plan will score{" "}
+                        <span className="font-medium text-foreground">
+                          {pendingAssessmentIds.length}
+                        </span>{" "}
+                        unassessed{" "}
+                        {pendingAssessmentIds.length === 1 ? "entry" : "entries"}{" "}
+                        as part of this one action.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                        All selected entries are already scored.
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="rounded-xl border bg-muted/20 p-4 sm:p-5">
@@ -782,6 +763,7 @@ export function GenerateEpbDialog({
                 Plan my EPB
                 <TokenCostBadge
                   cost={planActionCost}
+                  detail={planCostDetail}
                   compact
                   className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
                 />
@@ -795,12 +777,14 @@ export function GenerateEpbDialog({
             <DialogHeader className="shrink-0 space-y-2 border-b px-6 py-5 pr-12 sm:px-8 sm:py-6">
               <DialogTitle className="text-xl">
                 {assessProgress
-                  ? "Scoring your entries"
+                  ? "Scoring & selecting"
                   : "Selecting your best work"}
               </DialogTitle>
               <DialogDescription>
                 {assessProgress
-                  ? `Assessing ${assessProgress.done} of ${assessProgress.total} so MPA fit can guide selection…`
+                  ? `Scoring ${assessProgress.total} unassessed ${
+                      assessProgress.total === 1 ? "entry" : "entries"
+                    }, then ranking by MPA fit…`
                   : "Ranking by MPA fit, then grouping the same efforts together so related metrics can accumulate…"}
               </DialogDescription>
             </DialogHeader>
@@ -809,13 +793,13 @@ export function GenerateEpbDialog({
               {assessProgress && (
                 <p
                   className={cn(
-                    "text-sm text-muted-foreground tabular-nums",
+                    "text-sm text-muted-foreground",
                     motionEnter,
                     motionEnterFade
                   )}
                   aria-live="polite"
                 >
-                  {assessProgress.done}/{assessProgress.total}
+                  This can take a bit when many entries need scoring
                 </p>
               )}
             </div>

@@ -41,6 +41,22 @@ Recommended order: **005 → 006 → 007 → 008** (DONE). Hardening wave: **009
 
 **Supervisor session contract:** Initial = private expectations guide (Format → Save → Copy/Print/Share). Midterm/Final = private ACA settings + evidence list → Generate outline brief (`content`) → Save → Copy/Print; Share only the guide for in-app ratees. Never auto-share. Never predict promotion/stratification.
 
+### Entries bulk paste → Generate EPB (2026-08)
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 025  | Bulk paste follow-ups (assess throttle, batch create, partial-save UX) | P2 | M | feature landed | TODO |
+
+Feature path: New Entry ▾ → Bulk paste → extract API → review/combine → save → Generate EPB preselected. See [025-bulk-paste-epb-followups.md](025-bulk-paste-epb-followups.md).
+
+### Default-key global bandwidth (2026-08)
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 026  | Bandwidth follow-ups (contention retry, ops visibility, formula drift) | P2 | S–M | migration 212 | TODO |
+
+Shipped: global token bucket + fair share in `consume_credit`; admin `default_key_rpm` (default 60); BYOK stays 5/60. See [026-default-key-bandwidth-followups.md](026-default-key-bandwidth-followups.md).
+
 ### Generate EPB score-based assignment (PR #17 follow-ups)
 
 Default selection after the smart two-sentence / stash-pop ship (`bb577bd`). Desperate underfill + non-billable `/api/plan-epb` were fixed in-branch; these plans cover remaining leverage.

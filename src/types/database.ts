@@ -170,6 +170,11 @@ export interface EPBConfig {
   enable_prompt_rules: boolean;
   /** AI call credits granted once at signup (new accounts only). */
   signup_trial_credits: number;
+  /**
+   * Shared default-key requests per minute (global token bucket).
+   * Alone users get the full budget; concurrent users share fairly.
+   */
+  default_key_rpm: number;
   updated_at: string;
 }
 

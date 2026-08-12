@@ -164,7 +164,7 @@ CRITICAL RULES:
 9. Do NOT use bullet points or numbered lists
 10. Do NOT end with a period (system adds one when combining)
 11. Output ONLY the statement text, no quotes or explanation
-12. BANNED FORMATTING: NEVER use "w/", "w/o", "b/c", "--", or ";" — write "with"/"without"/"because" and use commas
+12. BANNED FORMATTING: NEVER use "w/", "w/o", "b/c", "--", "—", ";", "<", or ">" — write "with"/"without"/"because", use commas, and write "under"/"over" for comparisons
 
 CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})`,
       user.id,

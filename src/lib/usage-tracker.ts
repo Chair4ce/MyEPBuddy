@@ -34,6 +34,7 @@ export type BillableAction =
   | "generate_feedback_session_guide"
   | "revise_feedback_session_guide"
   | "parse_bulk_statements"
+  | "extract_accomplishments"
   | "adapt_sentence"
   | "synonyms"
   | "combine"

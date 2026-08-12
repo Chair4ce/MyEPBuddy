@@ -30,14 +30,22 @@ import {
   type PlanAccomplishmentRecord,
 } from "@/lib/plan-epb";
 import { ACA_PORTFOLIO_MPA_KEYS } from "@/lib/cycle-portfolio";
+import { entriesNeedingAssessment } from "@/lib/epb-generation-readiness";
+import {
+  mapWithConcurrency,
+  runAccomplishmentAssessment,
+} from "@/lib/run-accomplishment-assessment";
 import type { Accomplishment, Rank } from "@/types/database";
 
 /**
  * Hybrid EPB planning:
- * 1) Score-based candidate pools per MPA (home + stash/pop cross-fill)
- * 2) LLM groups each pool by action→result→impact similarity (not verb match)
+ * 1) Score any unassessed entries (bundled into this one billable click)
+ * 2) Score-based candidate pools per MPA (home + stash/pop cross-fill)
+ * 3) LLM groups each pool by action→result→impact similarity (not verb match)
  */
-export const maxDuration = 90;
+export const maxDuration = 300;
+
+const BUNDLED_ASSESS_CONCURRENCY = 4;
 
 interface PlanEpbRequest {
   rateeId: string;
@@ -142,43 +150,26 @@ export async function POST(request: Request) {
       accomplishments = accomplishments.filter((a) => allow.has(a.id));
     }
 
-    const records: PlanAccomplishmentRecord[] = toPlanRecords(accomplishments);
-    if (records.length === 0) {
+    if (accomplishments.length === 0) {
       return NextResponse.json(
         { error: "No accomplishments found for this ratee and cycle." },
         { status: 400 }
       );
     }
 
-    const pools = allocateEpbCandidatePools(records);
-    const poolIds = new Set(
-      ACA_PORTFOLIO_MPA_KEYS.flatMap((key) => pools[key])
-    );
-    if (poolIds.size === 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Could not select statements from these accomplishments. Add or strengthen entries and try again.",
-        },
-        { status: 422 }
-      );
-    }
-
     const scan = scanAccomplishmentsForLLM(
-      accomplishments
-        .filter((a) => poolIds.has(a.id))
-        .map((a) => {
-          const stewardship = normalizeStewardshipImpact(a.stewardship_impact);
-          return {
-            details: a.details,
-            impact: a.impact,
-            metrics: a.metrics,
-            stewardship_time: stewardship.time,
-            stewardship_money: stewardship.money,
-            stewardship_resources: stewardship.resources,
-            stewardship_outcome: stewardship.outcome,
-          };
-        })
+      accomplishments.map((a) => {
+        const stewardship = normalizeStewardshipImpact(a.stewardship_impact);
+        return {
+          details: a.details,
+          impact: a.impact,
+          metrics: a.metrics,
+          stewardship_time: stewardship.time,
+          stewardship_money: stewardship.money,
+          stewardship_resources: stewardship.resources,
+          stewardship_outcome: stewardship.outcome,
+        };
+      })
     );
     if (scan.blocked) {
       return NextResponse.json(
@@ -200,6 +191,8 @@ export async function POST(request: Request) {
     const replayed = await getReplayedBillableResponse(billableCtx);
     if (replayed) return replayed;
 
+    // One click → one billable action. Unassessed scoring is bundled (no extra
+    // burst slots / client round-trips).
     const usageCheck = await checkAndTrackUsage(
       user.id,
       "plan_epb",
@@ -217,6 +210,75 @@ export async function POST(request: Request) {
       userKeys,
       usageCheck.tracking
     );
+
+    const pendingIds = new Set(entriesNeedingAssessment(accomplishments));
+    if (pendingIds.size > 0) {
+      const pending = accomplishments.filter((a) => pendingIds.has(a.id));
+      await mapWithConcurrency(
+        pending,
+        BUNDLED_ASSESS_CONCURRENCY,
+        async (accomplishment) => {
+          try {
+            const assessment = await runAccomplishmentAssessment({
+              accomplishment,
+              rateeRank,
+              userId: user.id,
+              model: modelProvider,
+              assessmentModelId: usageCheck.effectiveModel,
+            });
+            if (!assessment) return;
+
+            const assessedAt = new Date().toISOString();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: updateError } = await (supabase as any)
+              .from("accomplishments")
+              .update({
+                assessment_scores: assessment,
+                assessed_at: assessedAt,
+                assessment_model: usageCheck.effectiveModel,
+                updated_at: assessedAt,
+              })
+              .eq("id", accomplishment.id);
+
+            if (updateError) {
+              console.error(
+                "Bundled plan assess save failed:",
+                accomplishment.id,
+                updateError,
+              );
+              return;
+            }
+
+            accomplishment.assessment_scores = assessment;
+            accomplishment.assessed_at = assessedAt;
+            accomplishment.assessment_model = usageCheck.effectiveModel;
+            accomplishment.updated_at = assessedAt;
+          } catch (error) {
+            console.error(
+              "Bundled plan assess failed:",
+              accomplishment.id,
+              error,
+            );
+          }
+        },
+      );
+    }
+
+    const records: PlanAccomplishmentRecord[] = toPlanRecords(accomplishments);
+    const pools = allocateEpbCandidatePools(records);
+    const poolIds = new Set(
+      ACA_PORTFOLIO_MPA_KEYS.flatMap((key) => pools[key])
+    );
+    if (poolIds.size === 0) {
+      return refundAndError(
+        billableCtx,
+        {
+          error:
+            "Could not select statements from these accomplishments. Add or strengthen entries and try again.",
+        },
+        { status: 422 }
+      );
+    }
 
     const recordsById = new Map(records.map((r) => [r.id, r] as const));
     const prompt = buildGroupEpbPrompt({

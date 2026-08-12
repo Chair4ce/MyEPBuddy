@@ -212,8 +212,9 @@ ${styleGuidance}
 ${fewShotExamples}
 
 **FORBIDDEN PUNCTUATION (DO NOT USE UNDER ANY CIRCUMSTANCES):**
-- Em-dashes: -- (ABSOLUTELY NEVER use these)
+- Em-dashes: -- or — (ABSOLUTELY NEVER use these)
 - Semicolons: ;
+- Comparison symbols: < or > (write "under 24 hrs" / "over 90%")
 
 **USE ONLY:** Commas (,) and "and"/"&" to connect clauses
 
@@ -274,9 +275,10 @@ ${verbsToAvoid.map(v => `- "${v}"`).join("\n")}
 ${availableVerbs.slice(0, 20).join(", ")}
 
 **FORBIDDEN PUNCTUATION (DO NOT USE UNDER ANY CIRCUMSTANCES):**
-- Em-dashes: -- (ABSOLUTELY NEVER use these)
+- Em-dashes: -- or — (ABSOLUTELY NEVER use these)
 - Semicolons: ;
 - Slashes: /
+- Comparison symbols: < or > (write "under 24 hrs" / "over 90%")
 
 **USE ONLY:** Commas (,) to connect clauses
 

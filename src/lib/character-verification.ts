@@ -25,7 +25,8 @@ const MAX_ABSOLUTE_RETRIES = 3;
 /** Minimum improvement (in chars) required to continue retrying */
 const MIN_IMPROVEMENT_THRESHOLD = 5;
 
-/** If within this many chars of target, consider "close enough" and stop */
+/** If within this many chars UNDER the min target, consider "close enough" and stop.
+ * Never used to accept statements that are still OVER the max. */
 const CLOSE_ENOUGH_THRESHOLD = 15;
 
 /** Maximum times direction can flip (under→over→under) before stopping */
@@ -250,8 +251,11 @@ export async function enforceCharacterLimits(
     };
   }
   
-  // Check if already "close enough" - avoid API calls for minor deviations
-  if (Math.abs(validation.charsToAdjust) <= CLOSE_ENOUGH_THRESHOLD) {
+  // Check if already "close enough" UNDER the min — never accept over-max as close enough
+  if (
+    validation.varianceDirection === "under" &&
+    Math.abs(validation.charsToAdjust) <= CLOSE_ENOUGH_THRESHOLD
+  ) {
     return {
       statement: currentStatement,
       attempts: 0,
@@ -305,10 +309,13 @@ export async function enforceCharacterLimits(
         break;
       }
       
-      // SAFETY CHECK 2: Close enough threshold
+      // SAFETY CHECK 2: Close enough threshold — only when still UNDER min
       const currentDeficit = Math.abs(validation.charsToAdjust);
-      if (currentDeficit <= CLOSE_ENOUGH_THRESHOLD) {
-        console.log(`[CharVerify] Within close-enough threshold (${currentDeficit} chars off), stopping`);
+      if (
+        validation.varianceDirection === "under" &&
+        currentDeficit <= CLOSE_ENOUGH_THRESHOLD
+      ) {
+        console.log(`[CharVerify] Within close-enough threshold (${currentDeficit} chars under), stopping`);
         stopReason = "close_enough";
         break;
       }

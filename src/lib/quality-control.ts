@@ -71,7 +71,7 @@ export function detectMalformedStatement(statement: string): {
   }
 
   if (hasBannedFormatting(statement)) {
-    issues.push("Contains banned formatting (w/, w/o, b/c, --, or ;)");
+    issues.push("Contains banned formatting (w/, w/o, b/c, --, —, <, >, or ;)");
   }
   
   // Check for incomplete ending (doesn't end with period or proper punctuation)
@@ -178,7 +178,7 @@ export function replaceBannedWords(statement: string): string {
     });
   }
   
-  // Banned formatting (w/, w/o, b/c, --, ;) — shared detector/replacer
+  // Banned formatting (w/, w/o, b/c, --, —, <, >, ;) — shared detector/replacer
   result = applyDeterministicBannedFormattingFixes(result).text;
   
   return result.trim();
@@ -543,7 +543,8 @@ You must be OBJECTIVE and PRECISE. Count characters exactly.
 - "w/" → write "with"
 - "w/o" → write "without"
 - "b/c" → write "because"
-- "--" or ";" → use commas
+- "--" / "—" or ";" → use commas
+- "<" / ">" → write "under" / "over" (e.g. "under 24 hrs", "over 90%")
 
 CRITICAL: Output ONLY valid JSON. No explanations outside the JSON structure.`;
 }

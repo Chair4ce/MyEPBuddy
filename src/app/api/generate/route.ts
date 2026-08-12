@@ -822,13 +822,13 @@ The primary impact MUST emphasize RESOURCE EFFICIENCY. Frame around:
         const combinedLimit = stmtCount === 2 ? effectiveMaxChars - 2 : effectiveMaxChars; // Leave room for separator
         const charLimitPerStatement = stmtCount === 2 ? Math.floor(combinedLimit / 2) : effectiveMaxChars;
         const charLimitText = stmtCount === 2 
-          ? `**WORD COUNT (COUNT YOUR WORDS!):**
-- Each statement: EXACTLY 26-28 WORDS
-- Both combined: 52-56 WORDS total
-- After writing, COUNT - if over 28 words, DELETE until 27
-- Example (27 words): "Led 5-mbr team to overhaul network, installed 47 servers across 3 sites, slashed downtime 90%, saved $2.3M, bolstering readiness."
-- Abbreviations: hrs, mos, wks, sq, &`
-          : `TARGET: Statement should be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters.`;
+          ? `**HARD CHARACTER BUDGET (COUNT CHARACTERS, NOT WORDS):**
+- Statement 1 + Statement 2 COMBINED must be ≤ ${combinedLimit} characters (they share one ${effectiveMaxChars}-char box)
+- Aim ~${charLimitPerStatement} chars each (letters, spaces, punctuation all count)
+- After writing, COUNT the combined length. If over ${combinedLimit}, DELETE until it fits
+- Prefer dense abbreviations: hrs, mos, wks, sq, mbrs, ops, &
+- Example (~170 chars): "Led 5-mbr team overhauling network, installed 47 servers across 3 sites, slashed downtime 90%, saved $2.3M, boosting readiness."`
+          : `TARGET: Statement should be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters. HARD MAX: ${effectiveMaxChars}.`;
         
         // Set multi-statement flag for QC when generating 2 statements
         if (stmtCount === 2) {
@@ -1340,6 +1340,9 @@ Output ONLY the statement text, no quotes or JSON.`;
         // Each statement should be ~half the max chars since they'll be joined
         const perStatementTarget = Math.floor((effectiveMaxChars - 2) / mpaAccomplishments.length);
         const isMultiAccomplishment = mpaAccomplishments.length > 1;
+        const packageMax = isMultiAccomplishment
+          ? effectiveMaxChars - 2
+          : effectiveMaxChars;
         
         isMultiStatementGeneration = isMultiAccomplishment;
 
@@ -1347,18 +1350,16 @@ Output ONLY the statement text, no quotes or JSON.`;
 
 RATEE: ${rateeRank} | AFSC: ${rateeAfsc || "N/A"}
 
-**TASK**: Write ONE statement per accomplishment below. They will be combined on the frontend.
+**TASK**: Write ONE statement per accomplishment below. They will be combined on the frontend into ONE ${effectiveMaxChars}-character box.
 
-**HOW TO COUNT (FOLLOW THIS METHOD):**
-1. Count your WORDS (spaces separate words)
-2. Each statement: EXACTLY 26-28 WORDS (not more, not less)
-3. Both statements combined: 52-56 WORDS total
-4. After writing, COUNT. If over 28 words → DELETE. If under 26 → ADD impact.
+**HARD CHARACTER BUDGET (COUNT CHARACTERS — letters, spaces, punctuation):**
+1. All statements COMBINED must be ≤ ${packageMax} characters
+2. Aim ~${perStatementTarget} characters per statement
+3. After writing, COUNT the combined length. If over ${packageMax} → DELETE until it fits
+4. Prefer dense abbreviations: hrs, mos, wks, sq, mbrs, ops, &
 
-**EXAMPLE (27 words = PERFECT):**
-"Led 5-mbr team to overhaul network infrastructure, installed 47 servers across 3 sites, slashed downtime 90%, saved $2.3M annually, bolstering readiness."
-
-Count that example: Led(1) 5-mbr(2) team(3) to(4) overhaul(5) network(6) infrastructure(7) installed(8) 47(9) servers(10) across(11) 3(12) sites(13) slashed(14) downtime(15) 90%(16) saved(17) $2.3M(18) annually(19) bolstering(20) readiness(21)... = 27 words
+**EXAMPLE (~170 chars = GOOD half of a 350 package):**
+"Led 5-mbr team overhauling network infrastructure, installed 47 servers across 3 sites, slashed downtime 90%, saved $2.3M annually, boosting readiness."
 
 **ABBREVIATIONS:** hrs, mos, wks, sq, &
 ${userAbbreviations.length > 0 ? `\n**YOUR ABBREVIATIONS (from settings):** ${abbrevForPrompt}` : ""}
@@ -1389,12 +1390,13 @@ ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 ` : ""}
 
 **REQUIREMENTS:**
-1. ⚠️ EACH statement: EXACTLY 26-28 WORDS (count after writing!)
-2. COMBINED: 52-56 words total
+1. ⚠️ COMBINED HARD MAX: ${packageMax} characters (shared budget)
+2. Aim ~${perStatementTarget} chars per statement
 3. ONE sentence per accomplishment
 4. Abbreviations: hrs, mos, wks, sq, &
-5. BANNED: Spearheaded, Orchestrated, Synergized, Leveraged, "w/", "--", ";"
+5. BANNED: Spearheaded, Orchestrated, Synergized, Leveraged, "w/", "--", "—", ";", "<", ">"
 6. Different starting verb for each statement
+7. Write "under 24 hrs" / "over 90%" — never "<24" or ">90"
 
 **ALLOWED ABBREVIATIONS (only these are permitted):**
 - TIME: "hours" → "hrs", "months" → "mos", "weeks" → "wks", "days" → "days"
@@ -1404,8 +1406,9 @@ ${mpaExamples.slice(0, 2).map((e, i) => `${i + 1}. ${e.statement}`).join("\n")}
 
 **BANNED FORMATTING (NEVER USE):**
 - "w/ " - Not standard for EPBs, use "with" instead
-- "--" - Do not use double dashes, use commas instead
+- "--" or "—" - Do not use dashes, use commas instead
 - ";" - Do not use semicolons, use commas or periods instead
+- "<" / ">" - Never use comparison symbols; write "under 24 hrs" / "over 90%"
 
 **OUTPUT FORMAT:**
 {"statements": ["Statement for accomplishment 1 (~${perStatementTarget} chars)", "Statement for accomplishment 2 (~${perStatementTarget} chars)"], "relevancy_score": 85}`;
@@ -1613,18 +1616,9 @@ Rules:
           let qcFeedback: string | undefined;
           const ENABLE_QC = !usageCheck.usingDefaultKey;
 
+          // Soft QC (fill-to-max / polish) — single-statement only; packages use shared-budget enforce below
           if (ENABLE_QC && shouldEnforceCharLimits && fillToMax) {
-            if (isMultiStatementGeneration && statements.length >= 2) {
-              const combinedLength = statements.join(" ").length;
-              console.log(
-                `[Generate] Multi-statement v${versionIndex + 1}: combined ${combinedLength}/${effectiveMaxChars} chars`
-              );
-              if (combinedLength > effectiveMaxChars) {
-                console.warn(
-                  `[Generate] ⚠️ Combined length ${combinedLength} exceeds ${effectiveMaxChars}`
-                );
-              }
-            } else {
+            if (!(isMultiStatementGeneration && statements.length >= 2)) {
               const qcTargetMax = effectiveMaxChars;
               const targetMin = qcTargetMax - 10;
               const qcCheck = shouldRunQualityControl(
@@ -1657,6 +1651,38 @@ Rules:
                 }
               }
             }
+          }
+
+          // HARD max enforcement — always when requested (single OR multi-statement packages)
+          if (shouldEnforceCharLimits) {
+            const { enforcePackageCharacterLimit, combinedStatementLength } =
+              await import("@/lib/statement-char-enforce");
+            const packageResult = await enforcePackageCharacterLimit(
+              verifiedStatements,
+              effectiveMaxChars,
+              {
+                model: modelProvider as LanguageModel,
+                maxAttempts: 2,
+                context: `${mpa.label} for ${rateeRank}`,
+              }
+            );
+            verifiedStatements = packageResult.statements;
+            const combined = packageResult.combinedLength;
+            console.log(
+              `[Generate] Char enforce v${versionIndex + 1}: ${combined}/${effectiveMaxChars} via ${packageResult.method}` +
+                (packageResult.attempts ? ` (${packageResult.attempts} LLM)` : "") +
+                (packageResult.stillOver ? " STILL OVER" : "")
+            );
+            if (packageResult.stillOver) {
+              console.warn(
+                `[Generate] ⚠️ Package still over after enforce: ${combinedStatementLength(verifiedStatements)}/${effectiveMaxChars}`
+              );
+            }
+          } else if (isMultiStatementGeneration && statements.length >= 2) {
+            const combinedLength = statements.join(" ").length;
+            console.log(
+              `[Generate] Multi-statement v${versionIndex + 1}: combined ${combinedLength}/${effectiveMaxChars} chars (enforce disabled)`
+            );
           }
 
           return {

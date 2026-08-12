@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EntryCard } from "@/components/entries/entry-card";
 import { EntryFormDialog } from "@/components/entries/entry-form-dialog";
+import { BulkAccomplishmentDialog } from "@/components/entries/bulk-accomplishment-dialog";
+import { NewEntrySplitButton } from "@/components/entries/new-entry-split-button";
 import { FuseToEpbBar } from "@/components/entries/fuse-to-epb-bar";
 import { FuseToEpbDialog } from "@/components/entries/fuse-to-epb-dialog";
 import { GenerateEpbDialog } from "@/components/entries/generate-epb-dialog";
@@ -46,7 +48,7 @@ import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { deleteAccomplishment } from "@/app/actions/accomplishments";
 import { evaluateEpbGenerationReadiness } from "@/lib/epb-generation-readiness";
-import { Plus, Filter, FileText, LayoutList, CalendarDays, Sparkles } from "lucide-react";
+import { Filter, FileText, LayoutList, CalendarDays, Sparkles } from "lucide-react";
 import { ENTRY_MGAS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, getActiveCycleYear, isEnlisted } from "@/lib/constants";
 import { EPBProgressCard } from "@/components/epb/epb-progress-card";
 import { SupervisorFeedbackPanel } from "@/components/entries/supervisor-feedback-panel";
@@ -75,6 +77,7 @@ function EntriesContent() {
   } = useAccomplishmentsStore();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<Accomplishment | null>(null);
   const [selectedUser, setSelectedUser] = useState<string>("self");
   const [selectedMPA, setSelectedMPA] = useState<string>("all");
@@ -90,6 +93,9 @@ function EntriesContent() {
   );
   const [fuseDialogOpen, setFuseDialogOpen] = useState(false);
   const [generateEpbOpen, setGenerateEpbOpen] = useState(false);
+  const [generatePreselectedOverride, setGeneratePreselectedOverride] = useState<
+    Accomplishment[] | undefined
+  >(undefined);
   const [genEpbShell, setGenEpbShell] = useState<
     (EPBShell & { sections: EPBShellSection[] }) | null
   >(null);
@@ -357,6 +363,19 @@ function EntriesContent() {
     isEnlisted(fuseRatee.rank) &&
     selectedAccomplishments.length > 0;
 
+  const canSelectEntries = isEnlisted(fuseRatee?.rank ?? null);
+  const allFilteredSelected =
+    filteredAccomplishments.length > 0 &&
+    filteredAccomplishments.every((e) => selectedEntryIds.has(e.id));
+
+  function selectAllFiltered() {
+    setSelectedEntryIds(new Set(filteredAccomplishments.map((e) => e.id)));
+  }
+
+  function clearSelection() {
+    setSelectedEntryIds(new Set());
+  }
+
   // Full-EPB generation readiness (content-based; the plan step selects entries).
   const epbReadiness = useMemo(
     () => evaluateEpbGenerationReadiness(accomplishments, { rank: rateeRank }),
@@ -395,6 +414,23 @@ function EntriesContent() {
   function handleEdit(entry: Accomplishment) {
     setEditingEntry(entry);
     setDialogOpen(true);
+  }
+
+  function openNewEntryDialog() {
+    setEditingEntry(null);
+    setDialogOpen(true);
+  }
+
+  async function handleBulkSaved(
+    created: Accomplishment[],
+    openGenerate: boolean,
+  ) {
+    if (created.length === 0) return;
+    setSelectedEntryIds(new Set(created.map((a) => a.id)));
+    if (openGenerate) {
+      setGeneratePreselectedOverride(created);
+      await openGenerateEpb();
+    }
   }
 
   async function handleDelete(id: string) {
@@ -458,10 +494,10 @@ function EntriesContent() {
               </Tooltip>
             </TooltipProvider>
           )}
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="size-4 mr-2" />
-            New Entry
-          </Button>
+          <NewEntrySplitButton
+            onNewEntry={openNewEntryDialog}
+            onBulkPaste={() => setBulkDialogOpen(true)}
+          />
         </div>
       </div>
 
@@ -533,6 +569,26 @@ function EntriesContent() {
           onSelectedTagsChange={setSelectedTags}
         />
 
+        {canSelectEntries && filteredAccomplishments.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={allFilteredSelected ? clearSelection : selectAllFiltered}
+            aria-label={
+              allFilteredSelected
+                ? "Deselect all visible entries"
+                : "Select all visible entries"
+            }
+          >
+            {allFilteredSelected ? "Deselect all" : "Select all"}
+            <span className="ml-1.5 tabular-nums text-muted-foreground">
+              ({filteredAccomplishments.length})
+            </span>
+          </Button>
+        )}
+
         <div className="ml-auto flex items-center gap-3">
           {/* Fiscal Year Toggle - only show in quarterly view; sits left of List/Quarterly so the tabs stay pinned */}
           {viewMode === "quarterly" && (
@@ -587,10 +643,12 @@ function EntriesContent() {
                   Clear Filters
                 </Button>
               ) : (
-                <Button onClick={() => setDialogOpen(true)}>
-                  <Plus className="size-4 mr-2" />
-                  Create Entry
-                </Button>
+                <NewEntrySplitButton
+                  label="Create Entry"
+                  className="justify-center"
+                  onNewEntry={openNewEntryDialog}
+                  onBulkPaste={() => setBulkDialogOpen(true)}
+                />
               )}
             </div>
           </CardContent>
@@ -739,11 +797,26 @@ function EntriesContent() {
         targetManagedMemberId={isManagedMember ? managedMemberId : null}
       />
 
+      <BulkAccomplishmentDialog
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        targetUserId={selectedUser === "self" ? profile?.id : (isManagedMember ? null : selectedUser)}
+        targetManagedMemberId={isManagedMember ? managedMemberId : null}
+        rateeName={
+          fuseRatee?.fullName
+            ? `${fuseRatee.rank ? `${fuseRatee.rank} ` : ""}${fuseRatee.fullName}`
+            : undefined
+        }
+        rateeRank={fuseRatee?.rank ?? (profile?.rank as Rank | null) ?? null}
+        cycleYear={cycleYear}
+        onSaved={handleBulkSaved}
+      />
+
       {fuseRatee && isEnlisted(fuseRatee.rank) && (
         <FuseToEpbBar
           selectedCount={selectedAccomplishments.length}
           canFuse={canFuseToEpb}
-          onClear={() => setSelectedEntryIds(new Set())}
+          onClear={clearSelection}
           onFuse={() => setFuseDialogOpen(true)}
         />
       )}
@@ -761,13 +834,17 @@ function EntriesContent() {
       {generateEpbOpen && fuseRatee && (
         <GenerateEpbDialog
           open={generateEpbOpen}
-          onOpenChange={setGenerateEpbOpen}
+          onOpenChange={(open) => {
+            setGenerateEpbOpen(open);
+            if (!open) setGeneratePreselectedOverride(undefined);
+          }}
           ratee={fuseRatee}
           readiness={epbReadiness}
           preselected={
-            selectedAccomplishments.length > 0
+            generatePreselectedOverride ??
+            (selectedAccomplishments.length > 0
               ? selectedAccomplishments
-              : undefined
+              : undefined)
           }
           initialShell={genEpbShell}
           initialDutyDescription={genEpbDuty}

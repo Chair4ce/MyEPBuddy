@@ -15,6 +15,7 @@ export const BILLABLE_API_PATHS = [
   "/api/assess-accomplishment",
   "/api/assess-accomplishment-preview",
   "/api/parse-bulk-statements",
+  "/api/extract-accomplishments",
   "/api/adapt-sentence",
   "/api/synonyms",
   "/api/combine",

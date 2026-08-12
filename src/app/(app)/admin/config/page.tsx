@@ -20,6 +20,7 @@ import { Loader2, Shield, AlertTriangle, Users, ToggleRight, Wand2, Coins, Messa
 import {
   updateAdminFeatureFlag,
   updateAdminSignupTrialCredits,
+  updateAdminDefaultKeyRpm,
 } from "@/app/actions/admin-config";
 import { AdminTokenGrantPanel } from "@/components/admin/admin-token-grant-panel";
 import { AdminUserFeedbackPanel } from "@/components/admin/admin-user-feedback-panel";
@@ -36,7 +37,9 @@ export default function AdminConfigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [savingField, setSavingField] = useState<FeatureFlagKey | null>(null);
   const [savingTrialCredits, setSavingTrialCredits] = useState(false);
+  const [savingDefaultKeyRpm, setSavingDefaultKeyRpm] = useState(false);
   const [trialCreditsInput, setTrialCreditsInput] = useState("20");
+  const [defaultKeyRpmInput, setDefaultKeyRpmInput] = useState("60");
   const [config, setConfig] = useState<EPBConfig | null>(null);
 
   const supabase = createClient();
@@ -63,6 +66,7 @@ export default function AdminConfigPage() {
           const nextConfig = data as EPBConfig;
           setConfig(nextConfig);
           setTrialCreditsInput(String(nextConfig.signup_trial_credits ?? 20));
+          setDefaultKeyRpmInput(String(nextConfig.default_key_rpm ?? 60));
         }
       } finally {
         setIsLoading(false);
@@ -131,6 +135,40 @@ export default function AdminConfigPage() {
     }
   }
 
+  async function saveDefaultKeyRpm() {
+    if (!config) return;
+
+    const parsed = parseInt(defaultKeyRpmInput, 10);
+    if (Number.isNaN(parsed) || parsed < 5 || parsed > 2000) {
+      toast.error("Enter a whole number between 5 and 2000.");
+      return;
+    }
+
+    const previous = config.default_key_rpm ?? 60;
+    setConfig({ ...config, default_key_rpm: parsed });
+    setSavingDefaultKeyRpm(true);
+
+    try {
+      const result = await updateAdminDefaultKeyRpm(parsed);
+
+      if (!result.ok) {
+        setConfig({ ...config, default_key_rpm: previous });
+        toast.error(result.error);
+        return;
+      }
+
+      setConfig(result.config);
+      setEpbConfig(result.config);
+      setDefaultKeyRpmInput(String(result.config.default_key_rpm));
+      toast.success("Default-key bandwidth updated.");
+    } catch {
+      setConfig({ ...config, default_key_rpm: previous });
+      toast.error("Failed to update default-key bandwidth");
+    } finally {
+      setSavingDefaultKeyRpm(false);
+    }
+  }
+
   if (profile?.role !== "admin") {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -196,7 +234,8 @@ export default function AdminConfigPage() {
             AI Tokens
           </CardTitle>
           <CardDescription>
-            Configure signup trial grants and manually add tokens to existing accounts.
+            Configure signup trial grants, shared default-key bandwidth, and manual
+            token grants.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -228,6 +267,44 @@ export default function AdminConfigPage() {
               className="sm:mb-0.5"
             >
               {savingTrialCredits ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="space-y-2 flex-1 max-w-xs">
+              <Label htmlFor="default_key_rpm">Default-key RPM pool</Label>
+              <Input
+                id="default_key_rpm"
+                type="number"
+                min={5}
+                max={2000}
+                inputMode="numeric"
+                value={defaultKeyRpmInput}
+                onChange={(e) => setDefaultKeyRpmInput(e.target.value)}
+                aria-label="Default key requests per minute"
+                className="tabular-nums"
+              />
+              <p className="text-xs text-muted-foreground">
+                Shared bandwidth for the app Gemini key. Alone users get the full
+                pool; concurrent users split it fairly. Current:{" "}
+                {config.default_key_rpm ?? 60}/min
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void saveDefaultKeyRpm()}
+              disabled={
+                savingDefaultKeyRpm ||
+                parseInt(defaultKeyRpmInput, 10) ===
+                  (config.default_key_rpm ?? 60)
+              }
+              className="sm:mb-0.5"
+            >
+              {savingDefaultKeyRpm ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 "Save"

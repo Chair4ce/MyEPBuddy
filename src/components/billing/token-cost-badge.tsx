@@ -12,6 +12,8 @@ import { useWillChargeToken } from "@/hooks/use-will-charge-token";
 interface TokenCostBadgeProps {
   /** Number of tokens this action consumes. Defaults to 1. */
   cost?: number;
+  /** Extra tooltip line explaining the breakdown (e.g. plan + assesses). */
+  detail?: string;
   /** Show only the icon + number (no "token" word). Good inside compact buttons. */
   compact?: boolean;
   className?: string;
@@ -24,6 +26,7 @@ interface TokenCostBadgeProps {
  */
 export function TokenCostBadge({
   cost = 1,
+  detail,
   compact = false,
   className,
 }: TokenCostBadgeProps) {
@@ -39,7 +42,9 @@ export function TokenCostBadge({
       <TooltipTrigger asChild>
         <span
           role="note"
-          aria-label={`Uses ${cost} ${unit}`}
+          aria-label={
+            detail ? `Uses ${cost} ${unit}. ${detail}` : `Uses ${cost} ${unit}`
+          }
           className={cn(
             "inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none tabular-nums",
             "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
@@ -50,10 +55,13 @@ export function TokenCostBadge({
           {compact ? cost : `${cost} ${unit}`}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={6} className="max-w-[220px]">
+      <TooltipContent side="top" sideOffset={6} className="max-w-[240px]">
         <p className="font-medium">
           Uses {cost} {unit}
         </p>
+        {detail ? (
+          <p className="text-xs text-muted-foreground">{detail}</p>
+        ) : null}
         <p className="text-xs text-muted-foreground">
           {balance === null
             ? "You're using the app's AI."

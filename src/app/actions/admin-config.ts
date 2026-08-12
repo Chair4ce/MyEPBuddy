@@ -67,3 +67,34 @@ export async function updateAdminSignupTrialCredits(
 
   return { ok: true, config: data as EPBConfig };
 }
+
+export async function updateAdminDefaultKeyRpm(
+  rpm: number,
+): Promise<AdminConfigResult> {
+  const auth = await getAdminApiUser();
+  if (!auth.ok) {
+    return { ok: false, error: auth.error };
+  }
+
+  if (!Number.isInteger(rpm) || rpm < 5 || rpm > 2000) {
+    return {
+      ok: false,
+      error: "Default-key RPM must be a whole number between 5 and 2000.",
+    };
+  }
+
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any)
+    .from("epb_config")
+    .update({ default_key_rpm: rpm })
+    .eq("id", 1)
+    .select()
+    .single();
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, config: data as EPBConfig };
+}

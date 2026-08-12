@@ -92,8 +92,10 @@ export default function BillingTermsPage() {
             are billed directly by their LLM provider.
           </li>
           <li>
-            A burst rate limit (5 actions per 60 seconds) applies to all users
-            to prevent abuse.
+            Default-key AI traffic is rate-limited by a shared app bandwidth
+            pool (fairly shared when multiple users are active). Users with
+            their own API keys (BYOK) have a separate per-user burst limit to
+            prevent abuse of the app, not the provider key.
           </li>
           <li>
             Tokens are non-transferable between accounts.

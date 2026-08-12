@@ -37,6 +37,18 @@ describe("findBannedFormattingViolations", () => {
       )
     ).toBe(false);
   });
+
+  it("flags < comparison shorthand and unicode em-dash", () => {
+    const labels = findBannedFormattingViolations(
+      "restored access <24hrs—vital to ops"
+    ).map((v) => v.label);
+    expect(labels).toContain("<");
+    expect(labels).toContain("—");
+  });
+
+  it("flags > comparison shorthand", () => {
+    expect(hasBannedFormatting("sustained >90% FMC")).toBe(true);
+  });
 });
 
 describe("applyDeterministicBannedFormattingFixes", () => {
@@ -61,6 +73,24 @@ describe("applyDeterministicBannedFormattingFixes", () => {
     expect(text).toContain("without");
     expect(text).toContain("with 2");
     expect(text).not.toMatch(/\bw\//i);
+  });
+
+  it("rewrites <24hrs—vital style hallucinations", () => {
+    const { text } = applyDeterministicBannedFormattingFixes(
+      "restored access <24hrs—vital to ops"
+    );
+    expect(text).not.toContain("<");
+    expect(text).not.toMatch(/[\u2013\u2014\u2015]/);
+    expect(text).toContain("under 24hrs");
+    expect(text).toContain(", vital");
+  });
+
+  it("rewrites >90% to over 90%", () => {
+    const { text } = applyDeterministicBannedFormattingFixes(
+      "sustained >90% FMC across the fleet"
+    );
+    expect(text).not.toContain(">");
+    expect(text).toContain("over 90%");
   });
 });
 

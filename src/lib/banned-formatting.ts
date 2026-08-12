@@ -2,7 +2,8 @@
  * Banned EPB formatting guard.
  *
  * The system prompt already forbids slash abbreviations (w/, w/o, b/c),
- * em-dashes, and semicolons — LLMs still hallucinate them. This module:
+ * em-dashes, comparison symbols (<, >), and semicolons — LLMs still
+ * hallucinate them. This module:
  * 1. Detects violations (flag)
  * 2. Applies deterministic replacements (preferred — free, reliable)
  * 3. Optionally runs a hard-capped LLM revision (max 2 attempts, never loops)
@@ -19,6 +20,9 @@ export type BannedFormattingRuleId =
   | "wo_slash"
   | "bc_slash"
   | "em_dash"
+  | "unicode_dash"
+  | "less_than"
+  | "greater_than"
   | "semicolon";
 
 export interface BannedFormattingRule {
@@ -36,6 +40,7 @@ export interface BannedFormattingRule {
 /**
  * Patterns the EPB prompt already bans.
  * Order matters: match "w/o" before "w/" so without isn't partially rewritten.
+ * Comparison symbols: rewrite "<24" / ">90" before stripping residual < / >.
  */
 export const BANNED_FORMATTING_RULES: BannedFormattingRule[] = [
   // "w/o" before "w/" — word-ish boundary after o
@@ -65,6 +70,27 @@ export const BANNED_FORMATTING_RULES: BannedFormattingRule[] = [
     pattern: /--/g,
     replacement: ", ",
   },
+  // Unicode en/em/horizontal dashes LLMs emit instead of ASCII "--"
+  {
+    id: "unicode_dash",
+    label: "—",
+    pattern: /[\u2013\u2014\u2015]/g,
+    replacement: ", ",
+  },
+  // "<24hrs" → "under 24hrs" (comparison shorthand)
+  {
+    id: "less_than",
+    label: "<",
+    pattern: /<\s*(?=\d)/g,
+    replacement: "under ",
+  },
+  // ">90%" → "over 90%"
+  {
+    id: "greater_than",
+    label: ">",
+    pattern: />\s*(?=\d)/g,
+    replacement: "over ",
+  },
   {
     id: "semicolon",
     label: ";",
@@ -73,8 +99,14 @@ export const BANNED_FORMATTING_RULES: BannedFormattingRule[] = [
   },
 ];
 
+/**
+ * Residual `<` / `>` after comparison rewrites — strip entirely so the
+ * banned characters cannot survive (e.g. stray "<vital" fragments).
+ */
+const RESIDUAL_COMPARISON_SYMBOLS = /[<>]/g;
+
 export interface BannedFormattingViolation {
-  id: BannedFormattingRuleId;
+  id: BannedFormattingRuleId | "residual_comparison";
   label: string;
   /** First matched snippet (for logging / UI) */
   match: string;
@@ -115,6 +147,18 @@ function normalizeAfterReplace(text: string): string {
     .trim();
 }
 
+function findResidualComparison(text: string): BannedFormattingViolation | null {
+  RESIDUAL_COMPARISON_SYMBOLS.lastIndex = 0;
+  const match = RESIDUAL_COMPARISON_SYMBOLS.exec(text);
+  RESIDUAL_COMPARISON_SYMBOLS.lastIndex = 0;
+  if (!match) return null;
+  return {
+    id: "residual_comparison",
+    label: match[0],
+    match: match[0],
+  };
+}
+
 /** Detect banned formatting substrings in a statement. */
 export function findBannedFormattingViolations(
   text: string
@@ -133,6 +177,14 @@ export function findBannedFormattingViolations(
       });
     }
     rule.pattern.lastIndex = 0;
+  }
+
+  const residual = findResidualComparison(text);
+  if (residual) {
+    // Avoid duplicate "<" / ">" labels when the comparison rules already fired
+    if (!violations.some((v) => v.label === residual.label)) {
+      violations.push(residual);
+    }
   }
 
   return violations;
@@ -159,6 +211,16 @@ export function applyDeterministicBannedFormattingFixes(
     rule.pattern.lastIndex = 0;
   }
 
+  // Strip any leftover < / > so the banned characters cannot remain
+  if (RESIDUAL_COMPARISON_SYMBOLS.test(result)) {
+    RESIDUAL_COMPARISON_SYMBOLS.lastIndex = 0;
+    result = result.replace(RESIDUAL_COMPARISON_SYMBOLS, "");
+    if (!fixedLabels.includes("<") && !fixedLabels.includes(">")) {
+      fixedLabels.push("<>");
+    }
+  }
+  RESIDUAL_COMPARISON_SYMBOLS.lastIndex = 0;
+
   result = normalizeAfterReplace(result);
   return {
     text: result,
@@ -179,8 +241,10 @@ REQUIRED REPLACEMENTS:
 - "w/" → "with"
 - "w/o" → "without"
 - "b/c" → "because"
-- "--" → commas
+- "--" / "—" / "–" → commas
 - ";" → commas
+- "<24" / "< 24" → "under 24" (never use "<")
+- ">90" / "> 90" → "over 90" (never use ">")
 
 RULES:
 1. Fix ONLY the banned formatting above

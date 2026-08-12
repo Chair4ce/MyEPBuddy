@@ -6,7 +6,7 @@
 import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
 
 /** Bump when DEFAULT_EPB_SYSTEM_PROMPT changes materially — triggers one-time update flow per user. */
-export const EPB_SYSTEM_PROMPT_REVISION = 4;
+export const EPB_SYSTEM_PROMPT_REVISION = 5;
 
 const LEGACY_EPB_PROMPT_MARKERS = [
   "Minimum 340 characters",
@@ -101,8 +101,9 @@ IMPACT AMPLIFICATION TECHNIQUES:
 - Quantify time: "reduced processing by X hrs/days"
 
 BANNED FORMATTING (NEVER USE):
-- Em-dashes: -- (use commas to separate clauses)
+- Em-dashes: -- or — (use commas to separate clauses)
 - Semicolons: ;
+- Comparison symbols: < or > (write "under 24 hrs" / "over 90%", never "<24" / ">90")
 - "w/ " - Not standard for EPBs, always write "with"
 
 ${PERSONNEL_REFERENCE_GUIDANCE}

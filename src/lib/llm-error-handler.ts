@@ -479,7 +479,8 @@ function handleUsageLimitExceeded(
 export function handleBurstRateLimited(): NextResponse<LLMErrorResponse> {
   return NextResponse.json(
     {
-      error: "You're sending requests too quickly. Please wait a moment and try again.",
+      error:
+        "App AI bandwidth is busy right now. Please wait a moment and try again.",
       errorCode: "burst_rate_limited" as LLMErrorCode,
     },
     { status: 429 },
