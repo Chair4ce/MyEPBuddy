@@ -24,8 +24,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   Users,
   Calendar,
-  Clock,
-  ChevronRight,
   TrendingUp,
   UserCheck,
   Award,
@@ -38,19 +36,19 @@ import {
   Settings2,
   Loader2,
   FolderOpen,
+  UserPlus,
+  Link2,
 } from "lucide-react";
 import { ENTRY_MGAS, SUPERVISOR_RANKS, AWARD_QUARTERS, getQuarterDateRange, getFiscalQuarterDateRange, ENLISTED_RANKS, OFFICER_RANKS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
-  formatDayOnly,
   formatMonthOnly,
   formatMonthYear,
-  formatShortDate,
   formatDateRange,
-  formatTimeAgo,
 } from "@/lib/format";
 import type { AwardQuarter } from "@/types/database";
 import { AccomplishmentDetailDialog } from "./accomplishment-detail-dialog";
+import { FeedAccomplishmentCard } from "./feed-accomplishment-card";
 import { WARSettingsModal } from "./war-settings-modal";
 import { WARViewModal } from "./war-view-modal";
 import { WARHistoryModal } from "./war-history-modal";
@@ -61,14 +59,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 // TODO: Re-enable when tutorial feature is ready
 // import { useOnboardingStore } from "@/stores/onboarding-store";
 import { useRouter } from "next/navigation";
-import { UserPlus, Link2 } from "lucide-react";
-import { RankInsignia } from "@/components/rank/rank-insignia";
-import { hasRankInsignia } from "@/lib/rank-insignia";
 
 // All ranks for filtering (enlisted + officer, excluding civilian for typical use)
 const FEED_FILTER_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
@@ -122,11 +116,6 @@ function EmptyTeamState() {
       </div>
     </div>
   );
-}
-
-function FeedAuthorInsignia({ rank }: { rank: Rank | null }) {
-  if (!hasRankInsignia(rank)) return null;
-  return <RankInsignia rank={rank} size="md" className="shrink-0" />;
 }
 
 export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedProps) {
@@ -1250,52 +1239,14 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                         
                         {weekGroup.entries.length > 0 && (
                           <div className="border-t pt-3 space-y-2">
-                            {weekGroup.entries.slice(0, 5).map((acc) => {
-                              const mpaLabel = ENTRY_MGAS.find((m) => m.key === acc.mpa)?.label || acc.mpa;
-                              return (
-                                <div
-                                  key={acc.id}
-                                  className={cn(
-                                    "group p-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer",
-                                    acc.chain_depth === 1 && "border-l-2 border-l-primary/40"
-                                  )}
-                                  onClick={() => handleAccomplishmentClick(acc)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      handleAccomplishmentClick(acc);
-                                    }
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 sm:gap-3 w-full">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1 basis-0">
-                                      <div className={cn(
-                                        "size-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium",
-                                        acc.chain_depth === 1 ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-                                      )}>
-                                        {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                                          <span className="font-medium text-xs">
-                                            {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
-                                            {acc.author_name}
-                                          </span>
-                                          <Badge variant="outline" className="text-[10px] h-4 px-1.5">{mpaLabel}</Badge>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
-                                      </div>
-                                    </div>
-                                    <FeedAuthorInsignia rank={acc.author_rank} />
-                                    <div className="flex items-center justify-end flex-1 basis-0 shrink-0">
-                                      <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors shrink-0" />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            {weekGroup.entries.slice(0, 5).map((acc) => (
+                              <FeedAccomplishmentCard
+                                key={acc.id}
+                                accomplishment={acc}
+                                density="compact"
+                                onSelect={handleAccomplishmentClick}
+                              />
+                            ))}
                             {weekGroup.entries.length > 5 && (
                               <p className="text-xs text-muted-foreground text-center py-1">
                                 + {weekGroup.entries.length - 5} more entries
@@ -1377,55 +1328,14 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                           
                           {/* Entries for this month */}
                           <div className="space-y-2">
-                            {monthGroup.entries.map((acc) => {
-                              const mpaLabel = ENTRY_MGAS.find((m) => m.key === acc.mpa)?.label || acc.mpa;
-                              return (
-                                <div 
-                                  key={acc.id} 
-                                  className={cn(
-                                    "group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer",
-                                    acc.chain_depth === 1 && "border-l-2 border-l-primary/40"
-                                  )}
-                                  onClick={() => handleAccomplishmentClick(acc)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      handleAccomplishmentClick(acc);
-                                    }
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 sm:gap-3 w-full">
-                                    <div className="flex items-start gap-3 min-w-0 flex-1 basis-0">
-                                      <div className={cn(
-                                        "size-8 rounded-full flex items-center justify-center shrink-0 text-xs font-medium",
-                                        acc.chain_depth === 1 ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-                                      )}>
-                                        {acc.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                          <span className="font-medium text-sm">
-                                            {acc.author_rank && <span className="text-muted-foreground">{acc.author_rank} </span>}
-                                            {acc.author_name}
-                                          </span>
-                                          <Badge variant="outline" className="text-xs">{mpaLabel}</Badge>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground line-clamp-1">{acc.details}</p>
-                                      </div>
-                                    </div>
-                                    <FeedAuthorInsignia rank={acc.author_rank} />
-                                    <div className="flex items-center gap-2 justify-end flex-1 basis-0 shrink-0">
-                                      <span className="text-xs text-muted-foreground">
-                                        {formatDayOnly(acc.date)}
-                                      </span>
-                                      <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            {monthGroup.entries.map((acc) => (
+                              <FeedAccomplishmentCard
+                                key={acc.id}
+                                accomplishment={acc}
+                                density="compact"
+                                onSelect={handleAccomplishmentClick}
+                              />
+                            ))}
                           </div>
                         </div>
                       ))}
@@ -1452,96 +1362,14 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                 
                 {/* Entries for this month */}
                 <div className="space-y-2">
-                  {monthGroup.entries.map((acc) => {
-                    const mpaLabel =
-                      ENTRY_MGAS.find((m) => m.key === acc.mpa)?.label || acc.mpa;
-
-                    // Check if this is a direct subordinate (depth 1)
-                    const isDirectSubordinate = acc.chain_depth === 1;
-
-                    return (
-                      <Card
-                        key={acc.id}
-                        className={cn(
-                          "cursor-pointer hover:bg-muted/50 transition-all hover:shadow-md group",
-                          isDirectSubordinate && "border-l-2 border-l-primary/40"
-                        )}
-                        onClick={() => handleAccomplishmentClick(acc)}
-                        tabIndex={0}
-                        role="button"
-                        aria-label={`View accomplishment from ${acc.author_name}`}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleAccomplishmentClick(acc);
-                          }
-                        }}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2 sm:gap-3 w-full">
-                            <div className="flex items-start gap-3 min-w-0 flex-1 basis-0">
-                              <div className={cn(
-                                "size-10 rounded-full flex items-center justify-center shrink-0 text-sm font-medium",
-                                isDirectSubordinate ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
-                              )}>
-                                {acc.author_name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                                  .slice(0, 2)
-                                  .toUpperCase()}
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <div className="mb-1">
-                                  <span className="font-medium text-sm">
-                                    {acc.author_rank && (
-                                      <span className="text-muted-foreground">
-                                        {acc.author_rank}{" "}
-                                      </span>
-                                    )}
-                                    {acc.author_name}
-                                  </span>
-                                  {acc.chain_depth > 0 && (
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      • Level {acc.chain_depth}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-2 mb-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {mpaLabel}
-                                  </Badge>
-                                  <Badge variant="secondary" className="text-xs">
-                                    {acc.action_verb}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Calendar className="size-3" />
-                                    {formatDayOnly(acc.date)}
-                                  </span>
-                                </div>
-
-                                <p className="text-sm text-muted-foreground line-clamp-2">
-                                  {acc.details}
-                                </p>
-                              </div>
-                            </div>
-
-                            <FeedAuthorInsignia rank={acc.author_rank} />
-
-                            <div className="flex items-center gap-2 justify-end flex-1 basis-0 shrink-0 self-center">
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <Clock className="size-3" />
-                                {formatTimeAgo(acc.created_at)}
-                              </div>
-                              <ChevronRight className="size-5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0 transition-colors" />
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  {monthGroup.entries.map((acc) => (
+                    <FeedAccomplishmentCard
+                      key={acc.id}
+                      accomplishment={acc}
+                      density="comfortable"
+                      onSelect={handleAccomplishmentClick}
+                    />
+                  ))}
                 </div>
               </div>
             ))}

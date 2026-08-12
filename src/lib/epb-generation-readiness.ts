@@ -61,7 +61,7 @@ function labelFor(mpaKey: AcaPortfolioMpaKey): string {
   return ENTRY_MGAS.find((m) => m.key === mpaKey)?.label ?? mpaKey;
 }
 
-function isAcaEntry(entry: Accomplishment): boolean {
+function isAcaEntry(entry: Pick<Accomplishment, "mpa">): boolean {
   return (ACA_PORTFOLIO_MPA_KEYS as readonly string[]).includes(entry.mpa);
 }
 

@@ -24,6 +24,11 @@ const SIZE_CONFIG = {
     canvas: "h-full w-full",
     insignia: "w-[72%]",
   },
+  /** Fits inside ReUI IconTile / other sized parents — percentage of parent box. */
+  tile: {
+    canvas: "h-[88%] w-[58%] max-h-full max-w-full",
+    insignia: "w-full",
+  },
 } as const;
 
 type RankInsigniaSize = keyof typeof SIZE_CONFIG;
