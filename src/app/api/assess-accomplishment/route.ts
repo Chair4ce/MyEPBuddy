@@ -180,6 +180,7 @@ export async function POST(request: Request) {
           stewardship_impact: normalizeStewardshipImpact(
             accomplishment.stewardship_impact
           ),
+          education_context: accomplishment.education_context ?? null,
         },
         rateeRank
       ),

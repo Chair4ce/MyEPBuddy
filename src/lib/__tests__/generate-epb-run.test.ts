@@ -5,8 +5,11 @@ import {
   editableFromRecords,
   buildMpaCustomContext,
   buildGroupedMpaContexts,
+  appendSentenceNote,
   combineVersions,
   extractVersionArrays,
+  moveAccomplishmentToSlot,
+  reorderSentenceGroups,
 } from "../generate-epb-run";
 import type { EpbPlan, PlanAccomplishmentRecord } from "../plan-epb";
 import type { AccomplishmentMPARelevancy } from "@/types/database";
@@ -59,11 +62,14 @@ describe("planToEditable + editableToMpaSelections", () => {
     ],
   };
 
-  it("maps a plan to enabled editable groups", () => {
+  it("maps a plan to enabled editable groups and seeds empty core MPAs", () => {
     const editable = planToEditable(plan);
     expect(editable.executing_mission.enabled).toBe(true);
     expect(editable.executing_mission.groups).toEqual([["a", "b"], ["c"]]);
+    expect(editable.executing_mission.notes).toEqual(["", ""]);
     expect(editable.leading_people.groups).toEqual([["d"]]);
+    expect(editable.managing_resources.enabled).toBe(false);
+    expect(editable.improving_unit.groups).toEqual([]);
   });
 
   it("preserves groups and derives sentence count from non-empty groups", () => {
@@ -71,6 +77,7 @@ describe("planToEditable + editableToMpaSelections", () => {
     const em = selections.find((s) => s.mpaKey === "executing_mission")!;
     expect(em.accomplishmentIds).toEqual(["a", "b", "c"]);
     expect(em.groups).toEqual([["a", "b"], ["c"]]);
+    expect(em.notes).toEqual(["", ""]);
     expect(em.sentenceCount).toBe(2);
     const lp = selections.find((s) => s.mpaKey === "leading_people")!;
     expect(lp.sentenceCount).toBe(1);
@@ -82,6 +89,15 @@ describe("planToEditable + editableToMpaSelections", () => {
     editable.executing_mission.enabled = false;
     editable.leading_people.groups = [[]];
     expect(editableToMpaSelections(editable)).toHaveLength(0);
+  });
+
+  it("carries trimmed per-sentence notes into selections", () => {
+    const editable = planToEditable(plan);
+    editable.executing_mission.notes = ["  emphasize tempo  ", "leave out manning"];
+    const em = editableToMpaSelections(editable).find(
+      (s) => s.mpaKey === "executing_mission"
+    )!;
+    expect(em.notes).toEqual(["emphasize tempo", "leave out manning"]);
   });
 });
 
@@ -150,8 +166,18 @@ describe("buildMpaCustomContext", () => {
   });
 });
 
-describe("buildGroupedMpaContexts", () => {
-  it("splits sentence groups into customContext and customContext2", () => {
+describe("appendSentenceNote + buildGroupedMpaContexts", () => {
+  it("appends rater guidance under the accomplishment body", () => {
+    expect(appendSentenceNote("Led: x", "stress early finish")).toContain(
+      "ADDITIONAL GUIDANCE FROM RATER"
+    );
+    expect(appendSentenceNote("Led: x", "stress early finish")).toContain(
+      "stress early finish"
+    );
+    expect(appendSentenceNote("Led: x", "  ")).toBe("Led: x");
+  });
+
+  it("splits sentence groups into customContext and customContext2 with notes", () => {
     const byId = new Map(
       [
         record("a", "executing_mission", {
@@ -168,9 +194,72 @@ describe("buildGroupedMpaContexts", () => {
       customContext: "Led: first",
       customContext2: "Built: second",
     });
+    expect(
+      buildGroupedMpaContexts([["a"], ["b"]], byId, ["note one", "note two"])
+    ).toEqual({
+      customContext:
+        "Led: first\n\nADDITIONAL GUIDANCE FROM RATER:\nnote one",
+      customContext2:
+        "Built: second\n\nADDITIONAL GUIDANCE FROM RATER:\nnote two",
+    });
     expect(buildGroupedMpaContexts([["a"]], byId)).toEqual({
       customContext: "Led: first",
     });
+  });
+});
+
+describe("reorderSentenceGroups + moveAccomplishmentToSlot", () => {
+  const base = planToEditable({
+    mpas: [
+      {
+        mpaKey: "executing_mission",
+        sentences: [
+          { accomplishmentIds: ["a"], rationale: "" },
+          { accomplishmentIds: ["b"], rationale: "" },
+        ],
+      },
+      {
+        mpaKey: "leading_people",
+        sentences: [{ accomplishmentIds: ["c"], rationale: "" }],
+      },
+    ],
+  });
+
+  it("reorders sentences and keeps notes aligned", () => {
+    const withNotes = {
+      ...base,
+      executing_mission: {
+        ...base.executing_mission,
+        notes: ["first note", "second note"],
+      },
+    };
+    const next = reorderSentenceGroups(withNotes, "executing_mission", 0, 1);
+    expect(next.executing_mission.groups).toEqual([["b"], ["a"]]);
+    expect(next.executing_mission.notes).toEqual([
+      "second note",
+      "first note",
+    ]);
+  });
+
+  it("moves an accomplishment across MPAs and enables the destination", () => {
+    const next = moveAccomplishmentToSlot(
+      base,
+      { mpaKey: "executing_mission", groupIdx: 0, id: "a" },
+      { mpaKey: "improving_unit", groupIdx: 0 }
+    );
+    expect(next.executing_mission.groups[0]).toEqual([]);
+    expect(next.improving_unit.enabled).toBe(true);
+    expect(next.improving_unit.groups).toEqual([["a"]]);
+  });
+
+  it("moves an accomplishment onto a new second sentence in another MPA", () => {
+    const next = moveAccomplishmentToSlot(
+      base,
+      { mpaKey: "executing_mission", groupIdx: 1, id: "b" },
+      { mpaKey: "leading_people", groupIdx: 1 }
+    );
+    expect(next.executing_mission.groups[1]).toEqual([]);
+    expect(next.leading_people.groups).toEqual([["c"], ["b"]]);
   });
 });
 

@@ -90,6 +90,14 @@ import type {
   StatementGenerationResult,
 } from "@/lib/formatting-violation-note";
 import { scanTextForLLM } from "@/lib/sensitive-data-scanner";
+import {
+  MAX_GENERATED_STATEMENT_SETS,
+  MAX_STATEMENTS_PER_GENERATED_SET,
+  buildGeneratedSetSnapshotNote,
+  idsOfGeneratedSetsBeyondLimit,
+  idsOfManualSnapshotsBeyondLimit,
+  type GeneratedStatementSource,
+} from "@/lib/epb-generated-set-history";
 
 // Map raw award records to simplified selection format for statement integration
 interface RawAwardRecord {
@@ -1274,17 +1282,23 @@ export function EPBShellForm({
     setCurrentShell({ ...currentShell, duty_description: text });
   };
 
-  // Create a duty description snapshot (max 10, oldest gets deleted when 11th is added)
+  // Create a duty description snapshot (max 10 manual; AI sets use a separate rolling budget)
   const handleCreateDutyDescriptionSnapshot = async (text: string) => {
     if (!currentShell || !profile || !text.trim()) return;
 
-    // If we already have 10 snapshots, delete the oldest
-    if (dutyDescriptionSnapshots.length >= 10) {
-      const oldestSnapshot = dutyDescriptionSnapshots[dutyDescriptionSnapshots.length - 1];
+    const overflowIds = idsOfManualSnapshotsBeyondLimit(
+      dutyDescriptionSnapshots.map((s) => ({
+        id: s.id,
+        note: s.note,
+        created_at: s.created_at,
+      })),
+      9, // leave room for the new manual row
+    );
+    if (overflowIds.length > 0) {
       await supabase
         .from("epb_duty_description_snapshots")
         .delete()
-        .eq("id", oldestSnapshot.id);
+        .in("id", overflowIds);
     }
 
     const { data, error } = await supabase
@@ -1299,8 +1313,50 @@ export function EPBShellForm({
 
     if (error) throw error;
 
-    // Add to local state
-    setDutyDescriptionSnapshots([data as DutyDescriptionSnapshot, ...dutyDescriptionSnapshots.slice(0, 9)]);
+    const kept = dutyDescriptionSnapshots.filter((s) => !overflowIds.includes(s.id));
+    setDutyDescriptionSnapshots([data as DutyDescriptionSnapshot, ...kept]);
+  };
+
+  // Persist a generated revise/generate set into History (last 3 sets / 9 statements).
+  const handleSaveDutyDescriptionGeneratedSet = async (
+    statements: string[],
+    source: GeneratedStatementSource = "revise",
+  ) => {
+    if (!currentShell || !profile) return;
+    const texts = statements
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, MAX_STATEMENTS_PER_GENERATED_SET);
+    if (texts.length === 0) return;
+
+    const batchId = `${Date.now()}`;
+    const rows = texts.map((description_text, index) => ({
+      shell_id: currentShell.id,
+      description_text,
+      created_by: profile.id,
+      note: buildGeneratedSetSnapshotNote(source, batchId, index + 1),
+    }));
+
+    const { data, error } = await supabase
+      .from("epb_duty_description_snapshots")
+      .insert(rows as never)
+      .select();
+
+    if (error) throw error;
+
+    const inserted = (data as DutyDescriptionSnapshot[]) ?? [];
+    const merged = [...inserted, ...dutyDescriptionSnapshots];
+    const pruneIds = idsOfGeneratedSetsBeyondLimit(
+      merged.map((s) => ({ id: s.id, note: s.note, created_at: s.created_at })),
+      MAX_GENERATED_STATEMENT_SETS,
+    );
+    if (pruneIds.length > 0) {
+      await supabase
+        .from("epb_duty_description_snapshots")
+        .delete()
+        .in("id", pruneIds);
+    }
+    setDutyDescriptionSnapshots(merged.filter((s) => !pruneIds.includes(s.id)));
   };
 
   // Save a duty description example
@@ -1395,32 +1451,28 @@ export function EPBShellForm({
     setDutyDescriptionTemplates(dutyDescriptionTemplates.filter((t) => t.id !== templateId));
   };
 
-  // Create a snapshot (max 10 per section, oldest gets deleted when 11th is added)
+  // Create a workspace snapshot (max 10 manual; AI sets use a separate rolling budget)
   const handleCreateSnapshot = async (mpa: string, text: string) => {
     const section = sections[mpa];
     if (!section || !profile) return;
 
     const existingSnapshots = snapshots[section.id] || [];
-    
-    // If we already have 10 snapshots, delete the oldest one
-    if (existingSnapshots.length >= 10) {
-      // Sort by created_at ascending to find oldest
-      const sortedSnapshots = [...existingSnapshots].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    const overflowIds = idsOfManualSnapshotsBeyondLimit(
+      existingSnapshots.map((s) => ({
+        id: s.id,
+        note: s.note,
+        created_at: s.created_at,
+      })),
+      9, // leave room for the new manual row
+    );
+    if (overflowIds.length > 0) {
+      await supabase.from("epb_shell_snapshots").delete().in("id", overflowIds);
+      setSnapshots(
+        section.id,
+        existingSnapshots.filter((s) => !overflowIds.includes(s.id)),
       );
-      const oldestSnapshot = sortedSnapshots[0];
-      
-      // Delete oldest from database
-      await supabase
-        .from("epb_shell_snapshots")
-        .delete()
-        .eq("id", oldestSnapshot.id);
-      
-      // Remove from local state
-      setSnapshots(section.id, existingSnapshots.filter(s => s.id !== oldestSnapshot.id));
     }
 
-    // Create new snapshot
     const { data, error } = await supabase
       .from("epb_shell_snapshots")
       .insert({
@@ -1434,6 +1486,52 @@ export function EPBShellForm({
     if (error) throw error;
 
     addSnapshot(section.id, data as EPBShellSnapshot);
+  };
+
+  // Persist a generated revise/generate set into History (last 3 sets / 9 statements).
+  const handleSaveGeneratedStatementSet = async (
+    mpa: string,
+    statements: string[],
+    source: GeneratedStatementSource,
+  ) => {
+    const section = sections[mpa];
+    if (!section || !profile) return;
+
+    const texts = statements
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, MAX_STATEMENTS_PER_GENERATED_SET);
+    if (texts.length === 0) return;
+
+    const batchId = `${Date.now()}`;
+    const rows = texts.map((statement_text, index) => ({
+      section_id: section.id,
+      statement_text,
+      created_by: profile.id,
+      note: buildGeneratedSetSnapshotNote(source, batchId, index + 1),
+    }));
+
+    const { data, error } = await supabase
+      .from("epb_shell_snapshots")
+      .insert(rows as never)
+      .select();
+
+    if (error) throw error;
+
+    const inserted = (data as EPBShellSnapshot[]) ?? [];
+    const existing = snapshots[section.id] || [];
+    const merged = [...inserted, ...existing];
+    const pruneIds = idsOfGeneratedSetsBeyondLimit(
+      merged.map((s) => ({ id: s.id, note: s.note, created_at: s.created_at })),
+      MAX_GENERATED_STATEMENT_SETS,
+    );
+    if (pruneIds.length > 0) {
+      await supabase.from("epb_shell_snapshots").delete().in("id", pruneIds);
+    }
+    setSnapshots(
+      section.id,
+      merged.filter((s) => !pruneIds.includes(s.id)),
+    );
   };
 
   // Save an example statement to the scratchpad
@@ -2196,6 +2294,7 @@ export function EPBShellForm({
           onToggleComplete={handleToggleDutyDescriptionComplete}
           snapshots={dutyDescriptionSnapshots}
           onCreateSnapshot={handleCreateDutyDescriptionSnapshot}
+          onSaveGeneratedSet={handleSaveDutyDescriptionGeneratedSet}
           savedExamples={dutyDescriptionExamples}
           onSaveExample={handleSaveDutyDescriptionExample}
           onDeleteExample={handleDeleteDutyDescriptionExample}
@@ -2230,6 +2329,9 @@ export function EPBShellForm({
                 onSaveImpactBooster={(booster) => handleSaveImpactBooster(mpa.key, booster)}
                 onClearImpactBooster={() => handleClearImpactBooster(mpa.key)}
                 onCreateSnapshot={(text) => handleCreateSnapshot(mpa.key, text)}
+                onSaveGeneratedSet={(statements, source) =>
+                  handleSaveGeneratedStatementSet(mpa.key, statements, source)
+                }
                 onGenerateStatement={(opts) => handleGenerateStatement(mpa.key, opts)}
                 onReviseStatement={(text, ctx, count, aggr) => handleReviseStatement(mpa.key, text, ctx, count, aggr)}
                 snapshots={snapshots[section.id] || []}

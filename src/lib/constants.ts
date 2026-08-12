@@ -201,33 +201,111 @@ export const AI_MODELS = [
 
 export type AIModel = (typeof AI_MODELS)[number];
 
-export const DEFAULT_ACTION_VERBS = [
+/** Shared verb pool for entry + team accomplishment intake (custom verbs still allowed). */
+export const ENTRY_ACTION_VERBS = [
+  // Leadership
   "Led",
   "Managed",
   "Directed",
-  "Coordinated",
-  "Executed",
+  "Supervised",
   "Spearheaded",
   "Championed",
   "Orchestrated",
+  "Commanded",
+  // Collaboration
+  "Coordinated",
+  "Co-led",
+  "Partnered",
+  "Collaborated",
+  "Teamed",
+  "Unified",
+  // Execution
+  "Executed",
+  "Performed",
+  "Completed",
+  "Accomplished",
+  "Delivered",
+  "Operationalized",
+  "Synchronized",
+  "Integrated",
+  // Expertise / build
   "Developed",
   "Implemented",
   "Established",
+  "Designed",
+  "Engineered",
+  "Analyzed",
+  "Resolved",
+  // Improvement
   "Transformed",
   "Pioneered",
   "Streamlined",
   "Optimized",
   "Enhanced",
   "Improved",
-  "Supervised",
+  "Modernized",
+  "Institutionalized",
+  // Mentorship / teaching
   "Trained",
   "Mentored",
   "Guided",
+  "Coached",
+  "Instructed",
   "Supported",
   "Facilitated",
-  "Analyzed",
-  "Resolved",
-];
+  "Assisted",
+  "Aided",
+  "Contributed",
+  "Helped",
+  // Mission application of education / skills
+  "Applied",
+  "Leveraged",
+  "Translated",
+  "Certified",
+  "Qualified",
+  "Standardized",
+  "Documented",
+  "Briefed",
+  "Presented",
+  "Deployed",
+] as const;
+
+/** @deprecated Prefer ENTRY_ACTION_VERBS — kept as mutable copy for ComboboxInput options. */
+export const DEFAULT_ACTION_VERBS: string[] = [...ENTRY_ACTION_VERBS];
+
+/** Suggested verb groups for team multi-add (options still come from ENTRY_ACTION_VERBS). */
+export const ENTRY_VERB_CATEGORIES = {
+  leadership: {
+    label: "Leadership",
+    verbs: ["Led", "Directed", "Managed", "Supervised", "Spearheaded", "Championed"],
+    description: "For members who took charge or led the effort",
+  },
+  collaboration: {
+    label: "Collaboration",
+    verbs: ["Co-led", "Partnered", "Collaborated", "Coordinated", "Teamed"],
+    description: "For members who shared leadership or worked closely together",
+  },
+  support: {
+    label: "Support",
+    verbs: ["Supported", "Assisted", "Aided", "Helped", "Contributed"],
+    description: "For members who provided key support",
+  },
+  execution: {
+    label: "Execution",
+    verbs: ["Executed", "Performed", "Completed", "Accomplished", "Delivered"],
+    description: "For members who carried out specific tasks",
+  },
+  expertise: {
+    label: "Expertise",
+    verbs: ["Analyzed", "Developed", "Designed", "Engineered", "Implemented"],
+    description: "For members who provided technical expertise",
+  },
+  mentorship: {
+    label: "Mentorship",
+    verbs: ["Mentored", "Trained", "Guided", "Coached", "Instructed"],
+    description: "For members who trained or mentored others",
+  },
+} as const;
 
 export const MAX_STATEMENT_CHARACTERS = 350;
 export const MAX_HLR_CHARACTERS = 250;

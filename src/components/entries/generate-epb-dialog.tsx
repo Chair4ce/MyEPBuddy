@@ -4,12 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUserStore } from "@/stores/user-store";
+import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
 import { useEPBShellStore, type SelectedRatee } from "@/stores/epb-shell-store";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { billableFetch } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -18,12 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
@@ -33,10 +26,10 @@ import {
   motionEnter,
   motionEnterDurList,
   motionEnterDurNormal,
+  motionEnterFade,
   motionInputFocus,
   motionListEnterStagger,
   motionPressOnly,
-  motionSurfaceCard,
 } from "@/lib/motion/classes";
 import {
   getActiveCycleYear,
@@ -48,6 +41,7 @@ import {
 } from "@/lib/model-preferences";
 import { isSubstantialEpbStatement } from "@/lib/fuse-to-epb";
 import { createEpbShell } from "@/lib/epb-shell-create";
+import { GenerateEpbReviewPanel } from "@/components/entries/generate-epb-review-panel";
 import {
   buildGroupedMpaContexts,
   combineVersions,
@@ -64,10 +58,14 @@ import {
   type EpbPlan,
   type PlanAccomplishmentRecord,
 } from "@/lib/plan-epb";
-import type { EpbGenerationReadiness } from "@/lib/epb-generation-readiness";
+import {
+  entriesNeedingAssessment,
+  type EpbGenerationReadiness,
+} from "@/lib/epb-generation-readiness";
 import { Analytics } from "@/lib/analytics";
 import type {
   Accomplishment,
+  AccomplishmentAssessmentScores,
   EPBShell,
   EPBShellSection,
   Rank,
@@ -79,11 +77,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardList,
-  FileWarning,
   Loader2,
-  Plus,
   Sparkles,
-  X,
 } from "lucide-react";
 
 type DialogStep =
@@ -128,6 +123,12 @@ export function GenerateEpbDialog({
   const router = useRouter();
   const supabase = createClient();
   const { profile } = useUserStore();
+  const storeAccomplishments = useAccomplishmentsStore(
+    (s) => s.accomplishments
+  );
+  const updateAccomplishment = useAccomplishmentsStore(
+    (s) => s.updateAccomplishment
+  );
   const { setSelectedRatee, setSectionCollapsed, collapseAll } =
     useEPBShellStore();
 
@@ -136,6 +137,10 @@ export function GenerateEpbDialog({
     : [];
   const isPreselected = preselectedRecords.length > 0;
   const dutyProvided = initialDutyDescription !== undefined;
+  const assessmentPool = isPreselected
+    ? (preselected ?? [])
+    : storeAccomplishments;
+  const pendingAssessmentIds = entriesNeedingAssessment(assessmentPool);
 
   const [step, setStep] = useState<DialogStep>("preflight");
   const [records, setRecords] = useState<PlanAccomplishmentRecord[]>(
@@ -145,6 +150,10 @@ export function GenerateEpbDialog({
   const [rationaleByMpa, setRationaleByMpa] = useState<Record<string, string>>(
     {}
   );
+  const [assessProgress, setAssessProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [activeShell, setActiveShell] = useState<ShellWithSections | null>(
     initialShell ?? null
   );
@@ -180,6 +189,7 @@ export function GenerateEpbDialog({
     setRecords([]);
     setEditable({});
     setRationaleByMpa({});
+    setAssessProgress(null);
     setActiveShell(null);
     setConflictPolicy("overwrite");
     setRunStatus({});
@@ -189,6 +199,52 @@ export function GenerateEpbDialog({
     setDutyLoaded(false);
     setDutyLoading(false);
     setDutyGenerating(false);
+  };
+
+  /** Score missing/stale ACA entries so plan-epb can use MPA fit. Soft-fails per entry. */
+  const ensureFreshAssessments = async (pool: Accomplishment[]) => {
+    const ids = entriesNeedingAssessment(pool);
+    if (ids.length === 0) return true;
+
+    setAssessProgress({ done: 0, total: ids.length });
+    for (let i = 0; i < ids.length; i++) {
+      const accomplishmentId = ids[i]!;
+      try {
+        const response = await billableFetch("/api/assess-accomplishment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accomplishmentId }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          if (handleUsageLimitResponse(errorData)) {
+            setAssessProgress(null);
+            return false;
+          }
+        } else {
+          const { assessment, assessed_at, model } = await response.json();
+          const assessedAtNext =
+            typeof assessed_at === "string"
+              ? assessed_at
+              : new Date().toISOString();
+          updateAccomplishment(accomplishmentId, {
+            assessment_scores: assessment as AccomplishmentAssessmentScores,
+            assessed_at: assessedAtNext,
+            assessment_model: model,
+            updated_at: assessedAtNext,
+          });
+        }
+      } catch (error) {
+        console.error("Pre-plan assessment failed:", error);
+      }
+
+      setAssessProgress({ done: i + 1, total: ids.length });
+      if (i < ids.length - 1) await sleep(PACING_MS);
+    }
+
+    setAssessProgress(null);
+    return true;
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -298,6 +354,12 @@ export function GenerateEpbDialog({
     setStep("planning");
     setErrorMessage("");
     try {
+      const assessedOk = await ensureFreshAssessments(assessmentPool);
+      if (!assessedOk) {
+        setStep("preflight");
+        return;
+      }
+
       const cycleYear = getActiveCycleYear(ratee.rank as Rank | null);
       const shell = await findActiveShell().catch(() => null);
       setActiveShell(shell);
@@ -351,46 +413,6 @@ export function GenerateEpbDialog({
       setStep("error");
     }
   };
-
-  const updateMpa = (
-    mpaKey: string,
-    updater: (prev: { enabled: boolean; groups: string[][] }) => {
-      enabled: boolean;
-      groups: string[][];
-    }
-  ) => {
-    setEditable((prev) => ({ ...prev, [mpaKey]: updater(prev[mpaKey]) }));
-  };
-
-  const removeId = (mpaKey: string, groupIdx: number, id: string) =>
-    updateMpa(mpaKey, (prev) => ({
-      ...prev,
-      groups: prev.groups.map((g, i) =>
-        i === groupIdx ? g.filter((x) => x !== id) : g
-      ),
-    }));
-
-  const addId = (mpaKey: string, groupIdx: number, id: string) =>
-    updateMpa(mpaKey, (prev) => ({
-      ...prev,
-      groups: prev.groups.map((g, i) =>
-        i === groupIdx && !g.includes(id) ? [...g, id] : g
-      ),
-    }));
-
-  const removeGroup = (mpaKey: string, groupIdx: number) =>
-    updateMpa(mpaKey, (prev) => ({
-      ...prev,
-      groups: prev.groups.filter((_, i) => i !== groupIdx),
-    }));
-
-  const addGroup = (mpaKey: string) =>
-    updateMpa(mpaKey, (prev) =>
-      prev.groups.length >= 2 ? prev : { ...prev, groups: [...prev.groups, []] }
-    );
-
-  const toggleMpa = (mpaKey: string) =>
-    updateMpa(mpaKey, (prev) => ({ ...prev, enabled: !prev.enabled }));
 
   const chipLabel = (id: string): string => {
     const r = recordsById.get(id);
@@ -479,7 +501,8 @@ export function GenerateEpbDialog({
 
         const { customContext, customContext2 } = buildGroupedMpaContexts(
           selection.groups,
-          recordsById
+          recordsById,
+          selection.notes
         );
 
         const response = await billableFetch("/api/generate", {
@@ -591,6 +614,8 @@ export function GenerateEpbDialog({
   };
 
   const generateCost = selections.length;
+  /** Plan step (1) plus any auto-assessments still needed. */
+  const planActionCost = 1 + pendingAssessmentIds.length;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -745,11 +770,18 @@ export function GenerateEpbDialog({
               <Button
                 onClick={handleAnalyze}
                 className={cn("h-10 px-5", motionPressOnly)}
+                aria-label={
+                  pendingAssessmentIds.length > 0
+                    ? `Plan my EPB (includes assessing ${pendingAssessmentIds.length} ${
+                        pendingAssessmentIds.length === 1 ? "entry" : "entries"
+                      })`
+                    : "Plan my EPB"
+                }
               >
                 <Sparkles className="mr-2 size-4" />
                 Plan my EPB
                 <TokenCostBadge
-                  cost={1}
+                  cost={planActionCost}
                   compact
                   className="ml-2 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
                 />
@@ -761,14 +793,31 @@ export function GenerateEpbDialog({
         {step === "planning" && (
           <>
             <DialogHeader className="shrink-0 space-y-2 border-b px-6 py-5 pr-12 sm:px-8 sm:py-6">
-              <DialogTitle className="text-xl">Selecting your best work</DialogTitle>
+              <DialogTitle className="text-xl">
+                {assessProgress
+                  ? "Scoring your entries"
+                  : "Selecting your best work"}
+              </DialogTitle>
               <DialogDescription>
-                Ranking by MPA fit, then grouping the same efforts together so
-                related metrics can accumulate…
+                {assessProgress
+                  ? `Assessing ${assessProgress.done} of ${assessProgress.total} so MPA fit can guide selection…`
+                  : "Ranking by MPA fit, then grouping the same efforts together so related metrics can accumulate…"}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16">
               <Loader2 className="size-10 animate-spin text-muted-foreground" />
+              {assessProgress && (
+                <p
+                  className={cn(
+                    "text-sm text-muted-foreground tabular-nums",
+                    motionEnter,
+                    motionEnterFade
+                  )}
+                  aria-live="polite"
+                >
+                  {assessProgress.done}/{assessProgress.total}
+                </p>
+              )}
             </div>
           </>
         )}
@@ -778,195 +827,23 @@ export function GenerateEpbDialog({
             <DialogHeader className="shrink-0 space-y-2 border-b px-6 py-5 pr-12 sm:px-8 sm:py-6">
               <DialogTitle className="text-xl">Review the selection</DialogTitle>
               <DialogDescription className="text-sm leading-relaxed">
-                Each sentence group becomes one statement. Entries in the same
-                group are treated as one effort (metrics accumulate). Different
-                groups stay separate — up to two sentences per area.
+                Each sentence group becomes one statement. Add optional context
+                per sentence, reorder with the arrows, or move entries between
+                sentences and performance areas — up to two sentences per area.
               </DialogDescription>
             </DialogHeader>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7">
-              <div className="flex flex-col gap-4">
-                {conflictingMpas.length > 0 && (
-                  <div className="rounded-xl border border-amber-400/40 bg-amber-50 p-4 dark:bg-amber-950/30">
-                    <div className="flex items-start gap-2">
-                      <FileWarning className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" />
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                          {conflictingMpas.length} area
-                          {conflictingMpas.length === 1 ? "" : "s"} already{" "}
-                          {conflictingMpas.length === 1 ? "has" : "have"} a statement
-                        </p>
-                        <p className="mt-0.5 text-xs text-amber-700/90 dark:text-amber-300/90">
-                          {conflictingMpas.map(mpaLabel).join(", ")}
-                        </p>
-                        <div
-                          className="mt-3 grid grid-cols-2 gap-2"
-                          role="group"
-                          aria-label="What to do with existing statements"
-                        >
-                          {(["overwrite", "stage"] as const).map((policy) => (
-                            <button
-                              key={policy}
-                              type="button"
-                              onClick={() => setConflictPolicy(policy)}
-                              aria-pressed={conflictPolicy === policy}
-                              className={cn(
-                                "h-10 rounded-lg border text-sm font-medium",
-                                motionPressOnly,
-                                conflictPolicy === policy
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "bg-background hover:bg-muted"
-                              )}
-                            >
-                              {policy === "overwrite"
-                                ? "Overwrite them"
-                                : "Keep & stage new"}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {selections.length === 0 && (
-                  <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-                    No performance areas selected. Enable at least one below.
-                  </p>
-                )}
-
-                {Object.keys(editable).map((mpaKey, index) => {
-                  const entry = editable[mpaKey];
-                  const usedIds = new Set(entry.groups.flat());
-                  const available = records.filter(
-                    (r) => !usedIds.has(r.id)
-                  );
-                  return (
-                    <section
-                      key={mpaKey}
-                      className={cn(
-                        "rounded-xl border bg-background p-4 sm:p-5",
-                        motionSurfaceCard,
-                        motionEnter,
-                        motionEnterDurList,
-                        !entry.enabled && "opacity-60"
-                      )}
-                      style={motionListEnterStagger(index)}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <label className="flex items-center gap-2.5">
-                          <Checkbox
-                            checked={entry.enabled}
-                            onCheckedChange={() => toggleMpa(mpaKey)}
-                            aria-label={`Include ${mpaLabel(mpaKey)}`}
-                          />
-                          <span className="text-sm font-semibold">
-                            {mpaLabel(mpaKey)}
-                          </span>
-                        </label>
-                        <Badge variant="outline" className="text-[10px]">
-                          {entry.groups.filter((g) => g.length > 0).length || 0} sentence
-                          {entry.groups.filter((g) => g.length > 0).length === 1
-                            ? ""
-                            : "s"}
-                        </Badge>
-                      </div>
-
-                      {rationaleByMpa[mpaKey] && (
-                        <p className="mt-2 text-xs italic text-muted-foreground leading-snug">
-                          {rationaleByMpa[mpaKey]}
-                        </p>
-                      )}
-
-                      {entry.enabled && (
-                        <div className="mt-3 space-y-3">
-                          {entry.groups.map((group, groupIdx) => (
-                            <div
-                              key={`${mpaKey}-g${groupIdx}`}
-                              className="rounded-lg border bg-muted/20 p-3"
-                            >
-                              <div className="mb-2 flex items-center justify-between">
-                                <span className="text-xs font-medium text-muted-foreground">
-                                  Sentence {groupIdx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => removeGroup(mpaKey, groupIdx)}
-                                  className="text-xs text-muted-foreground hover:text-destructive"
-                                  aria-label={`Remove sentence ${groupIdx + 1}`}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {group.map((id) => (
-                                  <span
-                                    key={id}
-                                    className="flex w-full items-start gap-1.5 rounded-md border bg-background px-2 py-1 text-xs"
-                                  >
-                                    <span className="min-w-0 flex-1 whitespace-normal break-words leading-snug">
-                                      {chipLabel(id)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeId(mpaKey, groupIdx, id)}
-                                      aria-label={`Remove ${chipLabel(id)}`}
-                                      className="mt-0.5 shrink-0 text-muted-foreground hover:text-destructive"
-                                    >
-                                      <X className="size-3" />
-                                    </button>
-                                  </span>
-                                ))}
-                                {group.length === 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    Add an accomplishment to this sentence.
-                                  </span>
-                                )}
-                              </div>
-                              {available.length > 0 && (
-                                <div className="mt-2">
-                                  <Select
-                                    value=""
-                                    onValueChange={(id) => addId(mpaKey, groupIdx, id)}
-                                  >
-                                    <SelectTrigger
-                                      className="h-8 text-xs"
-                                      aria-label={`Add accomplishment to sentence ${groupIdx + 1}`}
-                                    >
-                                      <span className="flex items-center gap-1.5 text-muted-foreground">
-                                        <Plus className="size-3.5" />
-                                        Add accomplishment
-                                      </span>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {available.map((r) => (
-                                        <SelectItem key={r.id} value={r.id}>
-                                          {chipLabel(r.id)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                          {entry.groups.length < 2 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-xs"
-                              onClick={() => addGroup(mpaKey)}
-                            >
-                              <Plus className="mr-1.5 size-3.5" />
-                              Add second sentence
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </section>
-                  );
-                })}
-              </div>
+              <GenerateEpbReviewPanel
+                editable={editable}
+                onEditableChange={setEditable}
+                records={records}
+                rationaleByMpa={rationaleByMpa}
+                conflictingMpas={conflictingMpas}
+                conflictPolicy={conflictPolicy}
+                onConflictPolicyChange={setConflictPolicy}
+                chipLabel={chipLabel}
+              />
             </div>
 
             <DialogFooter className="shrink-0 gap-3 border-t bg-muted/20 px-6 py-4 sm:px-8 sm:justify-between">

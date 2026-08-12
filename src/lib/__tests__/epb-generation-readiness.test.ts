@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  entriesNeedingAssessment,
   evaluateEpbGenerationReadiness,
   getMpasWithExistingStatements,
   MIN_ELIGIBLE_MPAS,
@@ -124,7 +125,7 @@ describe("evaluateEpbGenerationReadiness", () => {
     ).toBe(true);
   });
 
-  it("warns about empty MPAs, unassessed, and stale entries without blocking", () => {
+  it("warns about empty MPAs without blocking; tracks unassessed/stale counts", () => {
     const result = evaluateEpbGenerationReadiness([
       assessed("executing_mission", 80),
       assessed("leading_people", 78),
@@ -142,8 +143,21 @@ describe("evaluateEpbGenerationReadiness", () => {
     expect(result.staleCount).toBe(1);
     const warningText = result.warnings.join(" ");
     expect(warningText).toContain("Improving the Unit"); // empty MPA
-    expect(warningText).toContain("no AI assessment");
-    expect(warningText).toContain("edited after assessment");
+    expect(warningText).not.toContain("no AI assessment");
+    expect(warningText).not.toContain("edited after assessment");
+  });
+
+  it("lists ACA entries that need a fresh assessment", () => {
+    const fresh = assessed("executing_mission", 80);
+    const missing = entry({ mpa: "managing_resources" });
+    const stale = assessed("leading_people", 65, {
+      assessed_at: "2026-03-02T00:00:00.000Z",
+      updated_at: "2026-03-05T00:00:00.000Z",
+    });
+    expect(entriesNeedingAssessment([fresh, missing, stale])).toEqual([
+      missing.id,
+      stale.id,
+    ]);
   });
 
   it("marks per-MPA strength using the portfolio quality floor", () => {

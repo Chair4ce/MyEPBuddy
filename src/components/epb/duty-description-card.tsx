@@ -24,6 +24,11 @@ import {
 } from "@/lib/motion/classes";
 import { MAX_DUTY_DESCRIPTION_CHARACTERS } from "@/lib/constants";
 import {
+  MAX_GENERATED_STATEMENT_SETS,
+  type GeneratedStatementSource,
+} from "@/lib/epb-generated-set-history";
+import { EpbSnapshotHistoryPanel } from "./epb-snapshot-history-panel";
+import {
   Copy,
   Check,
   Loader2,
@@ -67,7 +72,7 @@ interface RevisionBatch {
 }
 
 /** Cap on remembered revision sets per card (short-term, in-session). */
-const MAX_REVISION_HISTORY = 8;
+const MAX_REVISION_HISTORY = MAX_GENERATED_STATEMENT_SETS;
 
 interface DutyDescriptionCardProps {
   currentDutyDescription: string;
@@ -81,6 +86,11 @@ interface DutyDescriptionCardProps {
   // Snapshots (history)
   snapshots?: DutyDescriptionSnapshot[];
   onCreateSnapshot?: (text: string) => Promise<void>;
+  /** Persist last generated revise set into Snapshot History (rolling 3 sets). */
+  onSaveGeneratedSet?: (
+    statements: string[],
+    source?: GeneratedStatementSource,
+  ) => Promise<void>;
   // Saved examples (shell-specific)
   savedExamples?: DutyDescriptionExample[];
   onSaveExample?: (text: string, note?: string) => Promise<void>;
@@ -117,6 +127,7 @@ export function DutyDescriptionCard({
   onToggleComplete,
   snapshots = [],
   onCreateSnapshot,
+  onSaveGeneratedSet,
   savedExamples = [],
   onSaveExample,
   onDeleteExample,
@@ -164,6 +175,7 @@ export function DutyDescriptionCard({
   const [showTemplatesPanel, setShowTemplatesPanel] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+  const [applyingRevisionText, setApplyingRevisionText] = useState<string | null>(null);
   const [isRevisePanelClosing, setIsRevisePanelClosing] = useState(false);
   const [isRevisionsResultsClosing, setIsRevisionsResultsClosing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -475,6 +487,11 @@ export function DutyDescriptionCard({
         setRevisionHistory(nextHistory);
         setActiveRevisionIndex(nextHistory.length - 1);
         resizeCardBody(() => setGeneratedRevisions(results), scrollGeneratedRevisionsIntoView);
+        if (onSaveGeneratedSet) {
+          void onSaveGeneratedSet(results, "revise").catch((err) => {
+            console.error("Failed to save revised set to History:", err);
+          });
+        }
       } else {
         toast.error("No revisions generated");
       }
@@ -517,23 +534,50 @@ export function DutyDescriptionCard({
     }
   };
 
-  // Use a generated revision
-  const handleUseRevision = (version: string, versionIndex: number) => {
-    setLocalText(version);
-    setDutyDescriptionDraft(version);
-    setIsDutyDescriptionDirty(version !== currentDutyDescription);
-    toast.success("Revision applied");
-    
-    // Track for style learning (fire-and-forget)
-    styleFeedback.trackRevisionSelected({
-      version: versionIndex + 1,
-      totalVersions: generatedRevisions.length,
-      charCount: version.length,
-      category: "duty_description",
-      aggressiveness: reviseAggressiveness,
-    });
+  // Use a generated revision — snapshot the current workspace first so the
+  // previous version remains recoverable from History.
+  const handleUseRevision = async (version: string, versionIndex: number) => {
+    if (applyingRevisionText !== null) return;
+    setApplyingRevisionText(version);
+    try {
+      const previousText = localText.trim();
+      const shouldSnapshot =
+        !!onCreateSnapshot &&
+        previousText.length > 0 &&
+        previousText !== version.trim();
 
-    closeRevisePanelWithScroll();
+      if (shouldSnapshot && onCreateSnapshot) {
+        try {
+          await onCreateSnapshot(localText);
+        } catch (error) {
+          console.error(error);
+          toast.error("Failed to save snapshot of current description");
+          return;
+        }
+      }
+
+      setLocalText(version);
+      setDutyDescriptionDraft(version);
+      setIsDutyDescriptionDirty(version !== currentDutyDescription);
+      toast.success(
+        shouldSnapshot
+          ? "Revision applied · previous version saved"
+          : "Revision applied",
+      );
+
+      // Track for style learning (fire-and-forget)
+      styleFeedback.trackRevisionSelected({
+        version: versionIndex + 1,
+        totalVersions: generatedRevisions.length,
+        charCount: version.length,
+        category: "duty_description",
+        aggressiveness: reviseAggressiveness,
+      });
+
+      closeRevisePanelWithScroll();
+    } finally {
+      setApplyingRevisionText(null);
+    }
   };
 
   const handleToggleCollapse = () => {
@@ -860,55 +904,17 @@ export function DutyDescriptionCard({
 
           {/* History Panel */}
           {showHistoryPanel && (
-            <div className="rounded-lg border bg-muted/30 animate-in fade-in-0 duration-200">
-              <div className="p-4 border-b">
-                <h4 className="font-medium text-sm">Snapshot History</h4>
-                <p className="text-xs text-muted-foreground">
-                  {snapshots.length} snapshot{snapshots.length !== 1 && "s"}
-                </p>
-              </div>
-              <div className="max-h-64 overflow-y-auto">
-                {snapshots.length === 0 ? (
-                  <p className="p-3 text-sm text-muted-foreground text-center">
-                    No snapshots yet. Click the camera icon to save your current text.
-                  </p>
-                ) : (
-                  snapshots.map((snap) => (
-                    <div
-                      key={snap.id}
-                      className="p-4 border-b last:border-0"
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatDateTime(snap.created_at)}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(snap.description_text);
-                              toast.success("Copied");
-                            }}
-                            className="h-5 px-1.5 rounded text-[10px] hover:bg-muted transition-colors"
-                            aria-label="Copy snapshot to clipboard"
-                          >
-                            <Copy className="size-3" />
-                          </button>
-                          <button type="button"
-                            onClick={() => handleApplySnapshot(snap.description_text)}
-                            className="h-5 px-1.5 rounded text-[10px] bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                          >
-                            Apply
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {snap.description_text}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            <EpbSnapshotHistoryPanel
+              snapshots={snapshots.map((snap) => ({
+                id: snap.id,
+                text: snap.description_text,
+                note: snap.note,
+                created_at: snap.created_at,
+              }))}
+              onApply={(item) => handleApplySnapshot(item.text)}
+              applyLabel="Apply"
+              variant="muted"
+            />
           )}
 
           {/* Examples Panel */}
@@ -1201,11 +1207,15 @@ export function DutyDescriptionCard({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button type="button"
-                                onClick={() => handleUseRevision(version, index)}
-                                disabled={isUseThisClosing}
+                                onClick={() => void handleUseRevision(version, index)}
+                                disabled={isUseThisClosing || applyingRevisionText !== null}
                                 className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"
                               >
-                                <Check className="size-3 mr-1" />
+                                {applyingRevisionText === version ? (
+                                  <Loader2 className="size-3 mr-1 animate-spin" />
+                                ) : (
+                                  <Check className="size-3 mr-1" />
+                                )}
                                 Use This
                               </button>
                             </TooltipTrigger>

@@ -107,6 +107,14 @@ export interface StewardshipImpact {
   outcome?: string;
 }
 
+/** Optional education metadata — action/details remain mission application */
+export interface EducationContext {
+  program: string;
+  credits?: number;
+  unit?: "credit_hours" | "semester_hours" | "contact_hours";
+  completed_date?: string;
+}
+
 export interface Accomplishment {
   id: string;
   user_id: string;
@@ -119,6 +127,10 @@ export interface Accomplishment {
   metrics: string | null;
   /** Structured AF stewardship impact (man-hours / funds / resources / outcome) */
   stewardship_impact?: StewardshipImpact;
+  /** Optional education context (program/credits); not the bullet itself */
+  education_context?: EducationContext | null;
+  /** Linked award IDs used as recognition impact (join table; hydrated client-side) */
+  linked_award_ids?: string[];
   mpa: string;
   tags: string[];
   cycle_year: number;

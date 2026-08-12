@@ -32,6 +32,7 @@ import { handleStaleDeploymentError } from "@/lib/stale-deployment";
 import {
   DEFAULT_ACTION_VERBS,
   ENTRY_MGAS,
+  ENTRY_VERB_CATEGORIES,
   getActiveCycleYear,
 } from "@/lib/constants";
 import { composeImpactString } from "@/lib/stewardship-impact";
@@ -54,38 +55,7 @@ import {
 } from "@/components/entries/stewardship-impact-fields";
 
 // Role-based verb suggestions to help supervisors choose appropriate verbs
-const VERB_CATEGORIES = {
-  leadership: {
-    label: "Leadership",
-    verbs: ["Led", "Directed", "Managed", "Supervised", "Spearheaded", "Championed"],
-    description: "For members who took charge or led the effort",
-  },
-  collaboration: {
-    label: "Collaboration",
-    verbs: ["Co-led", "Partnered", "Collaborated", "Coordinated", "Teamed"],
-    description: "For members who shared leadership or worked closely together",
-  },
-  support: {
-    label: "Support",
-    verbs: ["Supported", "Assisted", "Aided", "Helped", "Contributed"],
-    description: "For members who provided key support",
-  },
-  execution: {
-    label: "Execution",
-    verbs: ["Executed", "Performed", "Completed", "Accomplished", "Delivered"],
-    description: "For members who carried out specific tasks",
-  },
-  expertise: {
-    label: "Expertise",
-    verbs: ["Analyzed", "Developed", "Designed", "Engineered", "Implemented"],
-    description: "For members who provided technical expertise",
-  },
-  mentorship: {
-    label: "Mentorship",
-    verbs: ["Mentored", "Trained", "Guided", "Coached", "Instructed"],
-    description: "For members who trained or mentored others",
-  },
-};
+const VERB_CATEGORIES = ENTRY_VERB_CATEGORIES;
 
 interface TeamMemberOption {
   id: string;

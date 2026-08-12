@@ -65,6 +65,23 @@ function isAcaEntry(entry: Accomplishment): boolean {
   return (ACA_PORTFOLIO_MPA_KEYS as readonly string[]).includes(entry.mpa);
 }
 
+/** ACA entries missing an assessment or edited after the last one. */
+export function entriesNeedingAssessment(
+  entries: Pick<
+    Accomplishment,
+    "id" | "mpa" | "assessment_scores" | "assessed_at" | "updated_at"
+  >[]
+): string[] {
+  return entries
+    .filter(isAcaEntry)
+    .filter(
+      (entry) =>
+        entry.assessment_scores === null ||
+        isAssessmentStale(entry.assessed_at, entry.updated_at)
+    )
+    .map((entry) => entry.id);
+}
+
 export function evaluateEpbGenerationReadiness(
   entries: Accomplishment[],
   options: ReadinessOptions = {}
@@ -139,21 +156,8 @@ export function evaluateEpbGenerationReadiness(
     );
   }
 
-  if (unassessedCount > 0) {
-    warnings.push(
-      `${unassessedCount} ${
-        unassessedCount === 1 ? "entry has" : "entries have"
-      } no AI assessment yet — they can still be used, but scoring won't guide selection.`
-    );
-  }
-
-  if (staleCount > 0) {
-    warnings.push(
-      `${staleCount} ${
-        staleCount === 1 ? "entry was" : "entries were"
-      } edited after assessment — re-assess for the most accurate selection.`
-    );
-  }
+  // Unassessed / stale entries are assessed automatically before planning —
+  // do not surface those as user-facing warnings.
 
   return {
     canGenerate: reasons.length === 0,

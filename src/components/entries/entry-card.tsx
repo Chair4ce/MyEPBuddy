@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, UserCheck } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, UserCheck, GraduationCap, Award } from "lucide-react";
 import { AssessmentDetailDialog } from "@/components/entries/assessment-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
   hasStewardshipImpactContent,
   normalizeStewardshipImpact,
 } from "@/lib/stewardship-impact";
+import { educationContextSummary } from "@/lib/education-context";
 import { formatShortDate, formatShortDateWithYear } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Accomplishment } from "@/types/database";
@@ -118,6 +119,27 @@ export function EntryCard({
                     ? formatShortDate(entry.date)
                     : formatShortDateWithYear(entry.date)}
                 </span>
+                {educationContextSummary(entry.education_context) && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 text-[10px] font-normal h-5 px-1.5"
+                  >
+                    <GraduationCap className="size-2.5" aria-hidden />
+                    <span className="max-w-[10rem] truncate">
+                      {educationContextSummary(entry.education_context)}
+                    </span>
+                  </Badge>
+                )}
+                {(entry.linked_award_ids?.length ?? 0) > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 text-[10px] font-normal h-5 px-1.5"
+                  >
+                    <Award className="size-2.5" aria-hidden />
+                    {entry.linked_award_ids!.length} award
+                    {entry.linked_award_ids!.length === 1 ? "" : "s"}
+                  </Badge>
+                )}
                 {showCreator && (
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>

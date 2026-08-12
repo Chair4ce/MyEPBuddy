@@ -86,6 +86,8 @@ export interface StewardshipImpactFieldsProps {
   onChange: (next: StewardshipImpactFormValue) => void;
   disabled?: boolean;
   idPrefix?: string;
+  /** When education context is present — mission-tie copy for impact */
+  educationAware?: boolean;
 }
 
 export function StewardshipImpactFields({
@@ -93,19 +95,26 @@ export function StewardshipImpactFields({
   onChange,
   disabled = false,
   idPrefix = "stewardship",
+  educationAware = false,
 }: StewardshipImpactFieldsProps) {
   return (
     <div className="space-y-2.5">
       <div className="space-y-0.5">
         <Label className="text-sm">Impact</Label>
         <p className="text-xs text-muted-foreground">
-          What did this buy back for the mission? (optional)
+          {educationAware
+            ? "How did this education enable mission results? (optional)"
+            : "What did this buy back for the mission? (optional)"}
         </p>
       </div>
       <div className="grid grid-cols-[auto_1rem_minmax(0,1fr)] items-center gap-x-1.5 gap-y-2.5">
         {FIELDS.map((field) => {
           const fieldId = `${idPrefix}-${field.key}`;
           const hintId = `${fieldId}-hint`;
+          const placeholder =
+            educationAware && field.key === "outcome"
+              ? "e.g. applied PME to cut qual timeline / mentored shop"
+              : field.placeholder;
           return (
             <div key={field.key} className="contents">
               <Label
@@ -134,7 +143,9 @@ export function StewardshipImpactFields({
                   sideOffset={6}
                   className="max-w-[260px] text-xs leading-snug"
                 >
-                  {field.hint}
+                  {educationAware && field.key === "outcome"
+                    ? "Tie the education to mission results — readiness, capacity, or unit improvement enabled by what was learned."
+                    : field.hint}
                 </TooltipContent>
               </Tooltip>
               <Input
@@ -146,10 +157,14 @@ export function StewardshipImpactFields({
                     [field.key]: e.target.value.slice(0, STEWARDSHIP_FIELD_MAX),
                   })
                 }
-                placeholder={field.placeholder}
+                placeholder={placeholder}
                 disabled={disabled}
                 aria-label={field.label}
-                title={field.hint}
+                title={
+                  educationAware && field.key === "outcome"
+                    ? "Tie education to mission results"
+                    : field.hint
+                }
                 className="h-9 text-sm"
                 maxLength={STEWARDSHIP_FIELD_MAX}
               />

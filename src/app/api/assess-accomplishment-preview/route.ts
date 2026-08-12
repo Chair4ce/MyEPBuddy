@@ -19,9 +19,10 @@ import {
   getRubricTierForRank,
   DEFAULT_APP_MODEL_ID,
 } from "@/lib/constants";
-import type { AccomplishmentAssessmentScores, Rank, StewardshipImpact } from "@/types/database";
+import type { AccomplishmentAssessmentScores, EducationContext, Rank, StewardshipImpact } from "@/types/database";
 import { buildAccomplishmentAssessmentPrompt } from "@/lib/assess-accomplishment-prompt";
 import { normalizeStewardshipImpact } from "@/lib/stewardship-impact";
+import { normalizeEducationContext } from "@/lib/education-context";
 import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
@@ -36,6 +37,7 @@ interface AssessPreviewRequest {
   impact: string | null;
   metrics: string | null;
   stewardship_impact?: StewardshipImpact | null;
+  education_context?: EducationContext | null;
   mpa: string;
   model?: string;
   rateeRank?: string | null;
@@ -149,12 +151,14 @@ export async function POST(request: Request) {
       impact,
       metrics,
       stewardship_impact,
+      education_context,
       mpa,
       model = DEFAULT_APP_MODEL_ID,
       targetUserId,
       targetManagedMemberId,
     } = body;
     const stewardship = normalizeStewardshipImpact(stewardship_impact ?? {});
+    const education = normalizeEducationContext(education_context ?? null);
     modelId = await resolveRequestedModel(model, "generate");
 
     if (!action_verb || !details) {
@@ -265,6 +269,7 @@ export async function POST(request: Request) {
           metrics,
           mpa,
           stewardship_impact: stewardship,
+          education_context: education,
         },
         resolvedRateeRank
       ),

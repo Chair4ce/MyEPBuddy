@@ -185,10 +185,40 @@ function EntriesContent() {
 
         if (!error && data) {
           const typedData = data as unknown as Accomplishment[];
-          setAccomplishments(typedData);
+          const ids = typedData.map((a) => a.id);
+          let withLinks = typedData;
+          if (ids.length > 0) {
+            const { data: links } = await (supabase as any)
+              .from("accomplishment_awards")
+              .select("accomplishment_id, award_id, sort_order")
+              .in("accomplishment_id", ids)
+              .abortSignal(controller.signal);
+            if (links && !controller.signal.aborted) {
+              const byAcc = new Map<string, { award_id: string; sort_order: number }[]>();
+              for (const row of links as Array<{
+                accomplishment_id: string;
+                award_id: string;
+                sort_order: number;
+              }>) {
+                const list = byAcc.get(row.accomplishment_id) || [];
+                list.push(row);
+                byAcc.set(row.accomplishment_id, list);
+              }
+              withLinks = typedData.map((a) => {
+                const rows = (byAcc.get(a.id) || []).sort(
+                  (x, y) => x.sort_order - y.sort_order
+                );
+                return {
+                  ...a,
+                  linked_award_ids: rows.map((r) => r.award_id),
+                };
+              });
+            }
+          }
+          setAccomplishments(withLinks);
 
           const creatorIds = [...new Set(
-            typedData
+            withLinks
               .filter((a) => a.created_by && a.created_by !== a.user_id)
               .map((a) => a.created_by)
           )];

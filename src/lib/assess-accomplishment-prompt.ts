@@ -16,7 +16,8 @@ import {
   formatStewardshipImpactForPrompt,
   normalizeStewardshipImpact,
 } from "@/lib/stewardship-impact";
-import type { Rank, StewardshipImpact } from "@/types/database";
+import { formatEducationContextForPrompt } from "@/lib/education-context";
+import type { EducationContext, Rank, StewardshipImpact } from "@/types/database";
 
 export interface AccomplishmentAssessmentInput {
   action_verb: string;
@@ -25,6 +26,7 @@ export interface AccomplishmentAssessmentInput {
   metrics: string | null;
   mpa: string;
   stewardship_impact?: StewardshipImpact | null;
+  education_context?: EducationContext | null;
 }
 
 /** Build the assessment prompt for an individual accomplishment using rank-appropriate ACA rubric */
@@ -103,11 +105,14 @@ export function buildAccomplishmentAssessmentPrompt(
     accomplishment.impact,
     accomplishment.metrics
   );
+  const educationBlock = formatEducationContextForPrompt(
+    accomplishment.education_context
+  );
 
   const accomplishmentText = `
 Action: ${accomplishment.action_verb}
 Details: ${accomplishment.details}
-${impactBlock}
+${educationBlock ? `${educationBlock}\n` : ""}${impactBlock}
 Currently categorized as: ${DEFAULT_MPA_DESCRIPTIONS[accomplishment.mpa]?.title || accomplishment.mpa}
 `.trim();
 

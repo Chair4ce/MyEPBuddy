@@ -20,7 +20,16 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { cn, getCharacterCountColor } from "@/lib/utils";
-import { STANDARD_MGAS, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
+import {
+  STANDARD_MGAS,
+  MAX_STATEMENT_CHARACTERS,
+  MAX_HLR_CHARACTERS,
+} from "@/lib/constants";
+import {
+  MAX_GENERATED_STATEMENT_SETS,
+  type GeneratedStatementSource,
+} from "@/lib/epb-generated-set-history";
+import { EpbSnapshotHistoryPanel } from "./epb-snapshot-history-panel";
 import {
   Sparkles,
   Copy,
@@ -101,6 +110,11 @@ interface MPASectionCardProps {
   /** Clear Impact Booster for this MPA */
   onClearImpactBooster?: () => Promise<void>;
   onCreateSnapshot: (text: string) => Promise<void>;
+  /** Persist last generated revise/generate set into Snapshot History (rolling 3 sets). */
+  onSaveGeneratedSet?: (
+    statements: string[],
+    source: GeneratedStatementSource,
+  ) => Promise<void>;
   onGenerateStatement: (options: GenerateOptions) => Promise<StatementGenerationResult>;
   onReviseStatement: (text: string, context?: string, versionCount?: number, aggressiveness?: number) => Promise<StatementGenerationResult>;
   snapshots: EPBShellSnapshot[];
@@ -316,8 +330,8 @@ interface RevisionBatch {
   createdAt: number;
 }
 
-/** Cap on remembered revision sets per section (short-term, in-session). */
-const MAX_REVISION_HISTORY = 8;
+/** Cap on remembered revision/generate sets per section (short-term, in-session). */
+const MAX_REVISION_HISTORY = MAX_GENERATED_STATEMENT_SETS;
 
 export function MPASectionCard({
   section,
@@ -328,6 +342,7 @@ export function MPASectionCard({
   onSaveImpactBooster,
   onClearImpactBooster,
   onCreateSnapshot,
+  onSaveGeneratedSet,
   onGenerateStatement,
   onReviseStatement,
   snapshots,
@@ -385,6 +400,7 @@ export function MPASectionCard({
   const [showHistory, setShowHistory] = useState(false);
   const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+  const [applyingRevisionText, setApplyingRevisionText] = useState<string | null>(null);
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSplitViewClosing, setIsSplitViewClosing] = useState(false);
@@ -415,6 +431,9 @@ export function MPASectionCard({
   const [statementFormattingViolations, setStatementFormattingViolations] = useState<
     FormattingViolationFlag[] | undefined
   >(undefined);
+  // Short-term history of AI Generate sets (same rolling window as revise).
+  const [statementHistory, setStatementHistory] = useState<RevisionBatch[]>([]);
+  const [activeStatementIndex, setActiveStatementIndex] = useState(0);
 
   // Impact Booster — shared draft fields keep pre/post panels in sync; flush on Generate / Revise
   const [includeImpactBooster, setIncludeImpactBooster] = useState(true);
@@ -1047,10 +1066,24 @@ export function MPASectionCard({
         clarifyingContext,
       });
       if (results.length > 0) {
+        const batch: RevisionBatch = {
+          revisions: results,
+          context: "",
+          aggressiveness: 50,
+          createdAt: Date.now(),
+        };
+        const nextHistory = [...statementHistory, batch].slice(-MAX_REVISION_HISTORY);
+        setStatementHistory(nextHistory);
+        setActiveStatementIndex(nextHistory.length - 1);
         // Solid appear: swap results in place (no clear→remount fade). Height
         // tween locks before paint so the card grows without a flash/jerk.
         setStatementFormattingViolations(formattingViolations);
         resizeCardBody(() => setGeneratedStatements(results), scrollGeneratedStatementsIntoView);
+        if (onSaveGeneratedSet) {
+          void onSaveGeneratedSet(results, "generate").catch((err) => {
+            console.error("Failed to save generated set to History:", err);
+          });
+        }
       } else {
         toast.error("No statements generated");
       }
@@ -1180,6 +1213,11 @@ export function MPASectionCard({
         // tween locks before paint so the list does not flash/jerk.
         setRevisionFormattingViolations(formattingViolations);
         resizeCardBody(() => setGeneratedRevisions(revisions), scrollGeneratedRevisionsIntoView);
+        if (onSaveGeneratedSet) {
+          void onSaveGeneratedSet(revisions, "revise").catch((err) => {
+            console.error("Failed to save revised set to History:", err);
+          });
+        }
       } else {
         toast.error("No revisions generated");
       }
@@ -1224,26 +1262,60 @@ export function MPASectionCard({
     resizeCardBody(() => setGeneratedRevisions(batch.revisions));
   };
 
-  // Use a generated revision (replace current statement)
-  const handleUseRevision = (revision: string, versionIndex: number) => {
-    Analytics.statementRevisionApplied(section.mpa);
-    setLocalText(revision);
-    updateSectionState(section.mpa, {
-      draftText: revision,
-      isDirty: true,
-    });
-    toast.success("Revision applied");
-    
-    // Track for style learning (fire-and-forget)
-    styleFeedback.trackRevisionSelected({
-      version: versionIndex + 1,
-      totalVersions: generatedRevisions.length,
-      charCount: revision.length,
-      category: mpaCategory,
-      aggressiveness: reviseAggressiveness,
-    });
+  // Switch the displayed AI Generate set (no token cost).
+  const viewStatementBatch = (index: number) => {
+    const batch = statementHistory[index];
+    if (!batch) return;
+    setActiveStatementIndex(index);
+    resizeCardBody(() => setGeneratedStatements(batch.revisions));
+  };
 
-    closeRevisePanelWithScroll();
+  // Use a generated revision — snapshot the current workspace first so the
+  // previous version remains recoverable from History (DD/MPA/HLR).
+  const handleUseRevision = async (revision: string, versionIndex: number) => {
+    if (applyingRevisionText !== null) return;
+    setApplyingRevisionText(revision);
+    try {
+      const previousText = localText.trim();
+      const shouldSnapshot =
+        previousText.length > 0 && previousText !== revision.trim();
+
+      if (shouldSnapshot) {
+        try {
+          await onCreateSnapshot(localText);
+          Analytics.statementSnapshotCreated(section.mpa);
+        } catch (error) {
+          console.error(error);
+          toast.error("Failed to save snapshot of current statement");
+          return;
+        }
+      }
+
+      Analytics.statementRevisionApplied(section.mpa);
+      setLocalText(revision);
+      updateSectionState(section.mpa, {
+        draftText: revision,
+        isDirty: true,
+      });
+      toast.success(
+        shouldSnapshot
+          ? "Revision applied · previous version saved"
+          : "Revision applied",
+      );
+
+      // Track for style learning (fire-and-forget)
+      styleFeedback.trackRevisionSelected({
+        version: versionIndex + 1,
+        totalVersions: generatedRevisions.length,
+        charCount: revision.length,
+        category: mpaCategory,
+        aggressiveness: reviseAggressiveness,
+      });
+
+      closeRevisePanelWithScroll();
+    } finally {
+      setApplyingRevisionText(null);
+    }
   };
 
   // Handle action selection for statement 1
@@ -1599,6 +1671,15 @@ export function MPASectionCard({
                       void resizeCardBodyAfter(async () => {
                         await handleModeChange("ai-assist");
                         setShowRevisePanel(false);
+                        // Restore last AI Generate set so prior results return free.
+                        setGeneratedStatements(
+                          statementHistory.length > 0
+                            ? (
+                                statementHistory[activeStatementIndex] ??
+                                statementHistory[statementHistory.length - 1]
+                              ).revisions
+                            : [],
+                        );
                       }, () => {
                         setTimeout(() => {
                           aiGeneratePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1778,51 +1859,31 @@ export function MPASectionCard({
 
             {/* History Panel - inline dropdown */}
             {showHistory && (
-              <div className="rounded-lg border bg-card shadow-lg overflow-hidden animate-in fade-in-0 duration-200">
-                <div className="p-4 border-b">
-                  <h4 className="font-medium text-sm">Snapshot History</h4>
-                  <p className="text-xs text-muted-foreground">
-                    {snapshots.length} snapshot{snapshots.length !== 1 && "s"}
-                  </p>
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {snapshots.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground text-center">
-                      No snapshots yet. Click the camera icon to save your current text.
-                    </p>
-                  ) : (
-                    snapshots.map((snap) => (
-                      <div
-                        key={snap.id}
-                        className="p-4 border-b last:border-b-0"
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className="text-xs text-muted-foreground">
-                            {formatDateTime(snap.created_at)}
-                          </p>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button type="button"
-                                onClick={() => handleRestoreSnapshot(snap)}
-                                className="text-[10px] px-1.5 py-0.5 rounded border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                              >
-                                <RotateCcw className="size-3.5 inline mr-1" />
-                                Restore
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Replace current statement with this version</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-sm select-text cursor-text whitespace-pre-wrap">
-                          {snap.statement_text}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+              <EpbSnapshotHistoryPanel
+                snapshots={snapshots.map((snap) => ({
+                  id: snap.id,
+                  text: snap.statement_text,
+                  note: snap.note,
+                  created_at: snap.created_at,
+                }))}
+                onApply={(item) => {
+                  const snap = snapshots.find((s) => s.id === item.id);
+                  if (snap) {
+                    handleRestoreSnapshot(snap);
+                    return;
+                  }
+                  // Fallback if list drifted — still apply the text.
+                  Analytics.statementSnapshotRestored(section.mpa);
+                  updateSectionState(section.mpa, {
+                    draftText: item.text,
+                    isDirty: true,
+                  });
+                  setShowHistory(false);
+                  toast.success("Restored from snapshot");
+                }}
+                applyLabel="Restore"
+                variant="elevated"
+              />
             )}
 
             {/* Saved Examples Panel */}
@@ -2120,11 +2181,15 @@ export function MPASectionCard({
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button type="button"
-                                    onClick={() => handleUseRevision(revision, index)}
-                                    disabled={isUseThisClosing}
+                                    onClick={() => void handleUseRevision(revision, index)}
+                                    disabled={isUseThisClosing || applyingRevisionText !== null}
                                     className="h-6 px-2 rounded text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center disabled:opacity-50"
                                   >
-                                    <Check className="size-4 mr-1.5" />
+                                    {applyingRevisionText === revision ? (
+                                      <Loader2 className="size-4 mr-1.5 animate-spin" />
+                                    ) : (
+                                      <Check className="size-4 mr-1.5" />
+                                    )}
                                     Use This
                                   </button>
                                 </TooltipTrigger>
@@ -2454,6 +2519,37 @@ export function MPASectionCard({
                       )}
                     </div>
                     <FormattingViolationNote flags={statementFormattingViolations} />
+                    {statementHistory.length > 1 && (
+                      <div className="flex items-center justify-between gap-2 rounded-md border border-dashed bg-background/60 px-2.5 py-1.5">
+                        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <History className="size-3.5 shrink-0" aria-hidden="true" />
+                          Set {activeStatementIndex + 1} of {statementHistory.length}
+                          <span className="hidden sm:inline text-muted-foreground/70">
+                            · revisit past sets free
+                          </span>
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => viewStatementBatch(activeStatementIndex - 1)}
+                            disabled={activeStatementIndex === 0}
+                            aria-label="View previous generated set"
+                            className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                          >
+                            <ChevronLeft className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => viewStatementBatch(activeStatementIndex + 1)}
+                            disabled={activeStatementIndex >= statementHistory.length - 1}
+                            aria-label="View next generated set"
+                            className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                          >
+                            <ChevronRight className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {generatedStatements.map((statement, index) => (
                       <div
                         key={`stmt-${statement.slice(0, 48)}-${statement.length}`}

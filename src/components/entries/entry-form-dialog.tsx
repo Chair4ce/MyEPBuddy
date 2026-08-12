@@ -28,9 +28,10 @@ import { toast } from "@/components/ui/sonner";
 import {
   createAccomplishment,
   updateAccomplishment,
+  getAccomplishmentAwardIds,
 } from "@/app/actions/accomplishments";
 import { DEFAULT_ACTION_VERBS, ENTRY_MGAS, getActiveCycleYear, isEnlisted } from "@/lib/constants";
-import type { Rank } from "@/types/database";
+import type { Award, Rank } from "@/types/database";
 import { Loader2, Sparkles, Target, BarChart3, ClipboardCopy } from "lucide-react";
 import { celebrateEntry } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,13 @@ import {
   stewardshipFormFromImpact,
   stewardshipImpactFromForm,
 } from "@/components/entries/stewardship-impact-fields";
+import {
+  EducationContextFields,
+  emptyEducationFormValue,
+  educationContextFromForm,
+  educationFormFromContext,
+} from "@/components/entries/education-context-fields";
+import { RecognitionImpactFields } from "@/components/entries/recognition-impact-fields";
 import { createClient } from "@/lib/supabase/client";
 import { scanForSensitiveData, getScanSummary } from "@/lib/sensitive-data-scanner";
 import { handleStaleDeploymentError } from "@/lib/stale-deployment";
@@ -55,6 +63,12 @@ import {
   composeImpactString,
   hydrateStewardshipImpact,
 } from "@/lib/stewardship-impact";
+import {
+  composeRecognitionPhrase,
+  mergeRecognitionIntoOutcome,
+} from "@/lib/award-recognition";
+import { useAwardsStore } from "@/stores/awards-store";
+import { normalizeEducationContext } from "@/lib/education-context";
 
 interface EntryFormDialogProps {
   open: boolean;
@@ -122,6 +136,7 @@ export function EntryFormDialog({
   const { profile, subordinates, managedMembers } = useUserStore();
   const { addAccomplishment, updateAccomplishment: updateStore } =
     useAccomplishmentsStore();
+  const { awards } = useAwardsStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
@@ -134,6 +149,12 @@ export function EntryFormDialog({
   const assessmentFormUsed = assessmentPreview.formUsed;
   const assessmentRateeRank = assessmentPreview.rateeRank;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [linkedAwards, setLinkedAwards] = useState<Award[]>([]);
+  const [lastRecognitionPhrase, setLastRecognitionPhrase] = useState<string | null>(
+    null
+  );
+  const [education, setEducation] = useState(emptyEducationFormValue());
+  const [mpaTouched, setMpaTouched] = useState(false);
   const supabase = createClient();
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -146,6 +167,13 @@ export function EntryFormDialog({
   });
 
   const mgas = ENTRY_MGAS;
+
+  const rateeProfileId = targetManagedMemberId
+    ? null
+    : targetUserId || profile?.id || null;
+  const rateeTeamMemberId = targetManagedMemberId || null;
+
+  const educationEnabled = education.enabled && !!education.program.trim();
 
   const targetRateeRank = (() => {
     if (targetManagedMemberId) {
@@ -228,6 +256,7 @@ export function EntryFormDialog({
           impact: composeImpactString(stewardshipImpactFromForm(form.stewardship)),
           metrics: form.metrics || null,
           stewardship_impact: stewardshipImpactFromForm(form.stewardship),
+          education_context: educationContextFromForm(education),
           mpa: form.mpa,
           rateeRank: targetRateeRank,
           targetUserId: targetUserId ?? null,
@@ -307,6 +336,14 @@ export function EntryFormDialog({
         mpa: editEntry.mpa || "miscellaneous", // Default to Miscellaneous if null
         tags: Array.isArray(editEntry.tags) ? editEntry.tags.join(", ") : "",
       });
+      setEducation(
+        educationFormFromContext(
+          normalizeEducationContext(editEntry.education_context)
+        )
+      );
+      setMpaTouched(true);
+      setLinkedAwards([]);
+      setLastRecognitionPhrase(null);
       // Load existing assessment if available
       dispatchAssessmentPreview({
         type: "reset",
@@ -319,7 +356,38 @@ export function EntryFormDialog({
         if (cancelled) return;
         setSelectedProjectId(projectId);
       });
-    } else {
+      void getAccomplishmentAwardIds(accomplishmentId).then((result) => {
+        if (cancelled || result.error || !result.data) return;
+        const ids = result.data;
+        const fromStore = awards.filter((a) => ids.includes(a.id));
+        if (fromStore.length === ids.length) {
+          setLinkedAwards(
+            ids
+              .map((id) => fromStore.find((a) => a.id === id))
+              .filter(Boolean) as Award[]
+          );
+          setLastRecognitionPhrase(
+            composeRecognitionPhrase(fromStore)
+          );
+          return;
+        }
+        // Fetch missing awards
+        void (async () => {
+          const supabaseClient = createClient();
+          const { data } = await supabaseClient
+            .from("awards")
+            .select("*")
+            .in("id", ids);
+          if (cancelled) return;
+          const fetched = (data || []) as Award[];
+          const ordered = ids
+            .map((id) => fetched.find((a) => a.id === id))
+            .filter(Boolean) as Award[];
+          setLinkedAwards(ordered);
+          setLastRecognitionPhrase(composeRecognitionPhrase(ordered));
+        })();
+      });
+    } else if (open) {
       setForm({
         date: new Date().toISOString().split("T")[0],
         action_verb: "",
@@ -329,6 +397,10 @@ export function EntryFormDialog({
         mpa: "executing_mission", // Default to Executing the Mission
         tags: "",
       });
+      setEducation(emptyEducationFormValue());
+      setMpaTouched(false);
+      setLinkedAwards([]);
+      setLastRecognitionPhrase(null);
       // Clear assessment preview
       dispatchAssessmentPreview({ type: "reset" });
       setSelectedProjectId(null);
@@ -337,7 +409,37 @@ export function EntryFormDialog({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on open/edit only; awards store used for hydrate snapshot
   }, [editEntry, open]);
+
+  function handleLinkedAwardsChange(next: Award[]) {
+    const phrase = composeRecognitionPhrase(next);
+    setLinkedAwards(next);
+    setForm((prev) => ({
+      ...prev,
+      stewardship: {
+        ...prev.stewardship,
+        outcome: mergeRecognitionIntoOutcome(
+          prev.stewardship.outcome,
+          phrase,
+          lastRecognitionPhrase
+        ),
+      },
+    }));
+    setLastRecognitionPhrase(phrase);
+  }
+
+  function handleEducationChange(
+    next: ReturnType<typeof emptyEducationFormValue>
+  ) {
+    setEducation(next);
+  }
+
+  function handleEducationEnabledFirstTime() {
+    if (!mpaTouched) {
+      setForm((prev) => ({ ...prev, mpa: "improving_unit" }));
+    }
+  }
 
   // Load existing project link for an accomplishment
   // Type assertions needed due to Supabase type generation issue with new tables
@@ -394,6 +496,8 @@ export function EntryFormDialog({
 
     const stewardshipImpact = stewardshipImpactFromForm(form.stewardship);
     const composedImpact = composeImpactString(stewardshipImpact);
+    const educationContext = educationContextFromForm(education);
+    const awardIds = linkedAwards.map((a) => a.id);
 
     // Scan for PII, CUI, and classification markings — hard block if found
     const sensitiveMatches = scanForSensitiveData({
@@ -404,6 +508,7 @@ export function EntryFormDialog({
       stewardship_money: form.stewardship.money,
       stewardship_resources: form.stewardship.resources,
       stewardship_outcome: form.stewardship.outcome,
+      education_program: educationContext?.program,
     });
     if (sensitiveMatches.length > 0) {
       toast.error(getScanSummary(sensitiveMatches), { duration: 10000 });
@@ -436,6 +541,8 @@ export function EntryFormDialog({
           details: form.details,
           impact: composedImpact,
           stewardship_impact: stewardshipImpact,
+          education_context: educationContext,
+          award_ids: awardIds,
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
@@ -490,6 +597,8 @@ export function EntryFormDialog({
           details: form.details,
           impact: composedImpact,
           stewardship_impact: stewardshipImpact,
+          education_context: educationContext,
+          award_ids: awardIds,
           metrics: form.metrics || null,
           mpa: form.mpa,
           tags,
@@ -592,7 +701,10 @@ export function EntryFormDialog({
               <Label htmlFor="mpa" className="text-sm">Major Performance Area</Label>
               <Select
                 value={form.mpa}
-                onValueChange={(value) => setForm({ ...form, mpa: value })}
+                onValueChange={(value) => {
+                  setMpaTouched(true);
+                  setForm({ ...form, mpa: value });
+                }}
               >
                 <SelectTrigger id="mpa" aria-label="Select MPA" className="h-9 sm:h-10">
                   <SelectValue placeholder="Select MPA" />
@@ -626,26 +738,44 @@ export function EntryFormDialog({
           </div>
 
           <div className="space-y-1.5 sm:space-y-2">
-            <Label htmlFor="action_verb" className="text-sm">Action Verb *</Label>
+            <Label htmlFor="action_verb" className="text-sm">
+              Action Verb *
+              <span className="text-muted-foreground font-normal ml-1 sm:ml-2 text-xs sm:text-sm">
+                Select or type your own
+              </span>
+            </Label>
             <ComboboxInput
               value={form.action_verb}
               onChange={(value) => setForm((prev) => ({ ...prev, action_verb: value }))}
               options={DEFAULT_ACTION_VERBS}
-              placeholder="Select or type a verb..."
-              aria-label="Action verb"
+              placeholder="Select or type your own verb..."
+              aria-label="Action verb — select or type your own"
             />
           </div>
+
+          <EducationContextFields
+            value={education}
+            onChange={handleEducationChange}
+            disabled={isSubmitting || isAssessing}
+            onEnabledFirstTime={handleEducationEnabledFirstTime}
+          />
 
           <div className="space-y-1.5 sm:space-y-2">
             <Label htmlFor="details" className="text-sm">
               Details *
               <span className="text-muted-foreground font-normal ml-1 sm:ml-2 text-xs sm:text-sm">
-                What did you do?
+                {educationEnabled
+                  ? "What did you do with this education that supported the mission?"
+                  : "What did you do?"}
               </span>
             </Label>
             <Textarea
               id="details"
-              placeholder="Describe what you accomplished in detail..."
+              placeholder={
+                educationEnabled
+                  ? "Describe how you applied this education to the mission..."
+                  : "Describe what you accomplished in detail..."
+              }
               value={form.details}
               onChange={(e) => setForm({ ...form, details: e.target.value })}
               required
@@ -657,6 +787,15 @@ export function EntryFormDialog({
           <StewardshipImpactFields
             value={form.stewardship}
             onChange={(stewardship) => setForm({ ...form, stewardship })}
+            disabled={isSubmitting || isAssessing}
+            educationAware={educationEnabled}
+          />
+
+          <RecognitionImpactFields
+            linkedAwards={linkedAwards}
+            onLinkedAwardsChange={handleLinkedAwardsChange}
+            recipientProfileId={rateeProfileId}
+            recipientTeamMemberId={rateeTeamMemberId}
             disabled={isSubmitting || isAssessing}
           />
 
