@@ -20,20 +20,56 @@ export interface ParsedStatement {
 }
 
 /**
+ * Coerce LLM / JSON payloads into a single string.
+ * Revise asked for two sentences and models sometimes return
+ * `["sent 1.", "sent 2."]` (or a nested array) instead of one string —
+ * calling `.trim()` on that throws TypeError.
+ */
+export function asPlainText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(asPlainText).filter(Boolean).join(" ");
+  }
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    if (typeof rec.text === "string") return rec.text;
+    if (typeof rec.statement === "string") return rec.statement;
+  }
+  return "";
+}
+
+/** Flatten a JSON revision array into strings (max `limit` items). */
+export function parseRevisionList(raw: unknown, limit: number): string[] {
+  const cap = Math.max(1, Math.floor(limit) || 1);
+  if (!Array.isArray(raw)) {
+    const one = asPlainText(raw).trim();
+    return one ? [one] : [];
+  }
+  return raw
+    .map((item) => asPlainText(item).trim())
+    .filter(Boolean)
+    .slice(0, cap);
+}
+
+/**
  * Parse a statement into its component sentences
  * Handles edge cases like abbreviations, numbers with decimals, etc.
  */
-export function parseStatement(text: string): ParsedStatement {
-  if (!text || !text.trim()) {
+export function parseStatement(text: unknown): ParsedStatement {
+  const rawInput = asPlainText(text);
+  if (!rawInput.trim()) {
     return {
       sentences: [],
-      raw: text || "",
+      raw: rawInput,
       hasTwoSentences: false,
     };
   }
 
   // Normalize whitespace - replace multiple spaces/newlines with single space
-  const normalized = text.trim().replace(/\s+/g, ' ');
+  const normalized = rawInput.trim().replace(/\s+/g, ' ');
   
   // Find sentence boundaries - look for period followed by space and capital letter
   // or period at end of string

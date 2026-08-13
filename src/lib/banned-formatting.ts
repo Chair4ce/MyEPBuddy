@@ -11,6 +11,7 @@
  */
 
 import { generateText, type LanguageModel } from "ai";
+import { asPlainText } from "@/lib/sentence-utils";
 
 /** Absolute ceiling — never more than this many LLM revision calls. */
 export const MAX_BANNED_FORMATTING_REVISIONS = 2;
@@ -196,9 +197,10 @@ export function hasBannedFormatting(text: string): boolean {
 
 /** Instant, no-LLM replacement of known banned patterns. */
 export function applyDeterministicBannedFormattingFixes(
-  text: string
+  text: unknown
 ): DeterministicFixResult {
-  let result = text;
+  const original = asPlainText(text);
+  let result = original;
   const fixedLabels: string[] = [];
 
   for (const rule of BANNED_FORMATTING_RULES) {
@@ -225,7 +227,7 @@ export function applyDeterministicBannedFormattingFixes(
   return {
     text: result,
     fixedLabels,
-    changed: result !== text.trim(),
+    changed: result !== original.trim(),
   };
 }
 
@@ -267,14 +269,14 @@ ${statement}`;
  * 5. Stop — never loops beyond the cap
  */
 export async function repairBannedFormatting(
-  statement: string,
+  statement: unknown,
   options: {
     model?: LanguageModel;
     /** LLM revision attempts; hard-capped at MAX_BANNED_FORMATTING_REVISIONS */
     maxAttempts?: number;
   } = {}
 ): Promise<BannedFormattingRepairResult> {
-  const original = statement.trim();
+  const original = asPlainText(statement).trim();
   const initialViolations = findBannedFormattingViolations(original);
   const violationsFound = initialViolations.map((v) => v.label);
 
@@ -398,7 +400,7 @@ export async function repairBannedFormatting(
  * Repair an array of statements. Sequential to keep LLM attempt budget predictable.
  */
 export async function repairBannedFormattingBatch(
-  statements: string[],
+  statements: unknown[],
   options: {
     model?: LanguageModel;
     maxAttempts?: number;

@@ -41,7 +41,7 @@ import {
   expectedRevisionSentenceCount,
   sanitizeMaxCharacters,
 } from "@/lib/revise-length-constraint";
-import { parseStatement } from "@/lib/sentence-utils";
+import { asPlainText, parseRevisionList, parseStatement } from "@/lib/sentence-utils";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -355,15 +355,14 @@ export async function POST(request: Request) {
     }
 
     const body: ReviseSelectionRequest = await request.json();
+    const fullStatement = asPlainText(body.fullStatement);
+    const selectedText = asPlainText(body.selectedText);
     const { 
-      fullStatement, 
-      selectedText, 
       selectionStart, 
       selectionEnd, 
       model, 
       mode = "general", 
       context, 
-      usedVerbs = [],
       rateeId,
       cycleYear,
       excludeMpa,
@@ -376,6 +375,9 @@ export async function POST(request: Request) {
       rateeRank,
       rateeAfsc,
     } = body;
+    const usedVerbs = Array.isArray(body.usedVerbs)
+      ? body.usedVerbs.map((v) => asPlainText(v)).filter(Boolean)
+      : [];
     const maxCharacters = sanitizeMaxCharacters(maxCharactersRaw);
     
     // Load user's custom duty description prompt if this is a duty description revision
@@ -632,9 +634,9 @@ ${lengthGuidance.promptBlock}
 ${sentenceCountGuidance}
 ${lengthCapNote ? `LENGTH OVERRIDE: ${lengthCapNote}` : ""}
 
-Generate ${versionCount} revisions of ONLY the selected portion${sentenceCount === 2 ? ". Each revision string MUST contain exactly two sentences." : ""}.
+Generate ${versionCount} revisions of ONLY the selected portion${sentenceCount === 2 ? ". Each revision MUST be one JSON string containing exactly two sentences joined by a period and a space — never a nested array." : ""}.
 
-Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}]`;
+Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}]`;
 
     const { text } = await generateText({
       model: modelProvider,
@@ -648,7 +650,7 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
     try {
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        revisions = JSON.parse(jsonMatch[0]);
+        revisions = parseRevisionList(JSON.parse(jsonMatch[0]), versionCount);
       }
     } catch {
       // Fallback: split by newlines if JSON parsing fails
