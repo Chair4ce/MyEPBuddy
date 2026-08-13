@@ -31,6 +31,19 @@ export function combinedStatementLength(statements: string[]): number {
 }
 
 /**
+ * Split a joined two-sentence EPB package back into statements.
+ * Requires a lowercase letter, digit, or ")" immediately before the period
+ * so abbreviations like "U.S. Air Force" are not split.
+ */
+export function splitJoinedStatements(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const parts = trimmed.split(/(?<=[a-z0-9)]\.)\s+(?=[A-Z][a-z])/);
+  const cleaned = parts.map((s) => s.trim()).filter(Boolean);
+  return cleaned.length > 0 ? cleaned : [trimmed];
+}
+
+/**
  * Deterministic length savers that preserve meaning.
  * Safe to run repeatedly; never invents content.
  */
@@ -364,6 +377,24 @@ export async function enforcePackageCharacterLimit(
     method,
     stillOver: combined > targetMax,
   };
+}
+
+/**
+ * Enforce a hard max on one revised blob (one or two joined sentences).
+ * Splits, compresses as a shared package, then re-joins for the UI.
+ */
+export async function enforceRevisionText(
+  text: string,
+  targetMax: number,
+  options: {
+    model?: LanguageModel;
+    maxAttempts?: number;
+    context?: string;
+  } = {}
+): Promise<string> {
+  const parts = splitJoinedStatements(text);
+  const result = await enforcePackageCharacterLimit(parts, targetMax, options);
+  return combineStatementsForDisplay(result.statements);
 }
 
 /** Re-export validation helper for callers that only need a check. */

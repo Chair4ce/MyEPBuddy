@@ -35,6 +35,10 @@ import {
 } from "@/lib/epb-verb-variety";
 import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
 import { TIME_COMPRESSION_WRITING_GUIDANCE } from "@/lib/stewardship-impact";
+import {
+  buildReviseLengthGuidance,
+  sanitizeMaxCharacters,
+} from "@/lib/revise-length-constraint";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -53,6 +57,8 @@ interface ReviseSelectionRequest {
   excludeMpa?: string;
   aggressiveness?: number; // 0-100: how aggressively to replace words (0 = minimal, 100 = replace almost all)
   versionCount?: number; // Number of revisions to generate (default 3)
+  /** Hard myEval / field max for the full revised blob (e.g. 350 MPA, 250 HLR, 450 duty). */
+  maxCharacters?: number;
   category?: StyleExampleCategory; // MPA category for style learning
   isDutyDescription?: boolean; // If true, use duty-description-specific prompt (scope/responsibility, not performance)
   writingStyle?: WritingStyle; // Writing style preference for style signature injection
@@ -119,7 +125,7 @@ You are REPHRASING existing duty description text — NOT writing a performance 
 **GOOD REVISION (same facts, better phrasing):**
 "Serving as crew operations subject matter expert, he drives a 3-member cyber event coordination team during a numbered AF transition, supporting AFSOUTH's elevation to a Service Component Command and establishing AFSOUTH's first MAJCOM Cyber Coordination Center."
 
-Stay within ±20% of the original length. A shorter truthful revision beats a longer fabricated one.`;
+Stay within the LENGTH instructions. A shorter truthful revision beats a longer fabricated one.`;
   }
 
   return `**⚠️ ZERO FABRICATION POLICY (HIGHEST PRIORITY) ⚠️**
@@ -134,7 +140,7 @@ You are revising EXISTING text. Every fact in your output must trace to the sour
 
 **IF INPUT IS VAGUE:** Improve structure and word choice only — do NOT add specificity the user did not provide.
 
-**LENGTH:** Stay within ±20% of the original selection length. Use longer synonyms only for concepts already in the text — never pad with new facts.`;
+**LENGTH:** Follow the HARD CHARACTER LIMIT / LENGTH block. Never pad with new facts to hit a length target.`;
 }
 
 // Strong action verbs to encourage variety
@@ -166,6 +172,7 @@ function buildDutyDescriptionPrompt(
   fewShotExamples: string,
   versionCount: number,
   userCustomPrompt?: string | null,
+  lengthPromptBlock?: string,
 ): string {
   // Override mode instructions for duty descriptions
   const dutyModeOverride: Record<string, string> = {
@@ -203,6 +210,8 @@ Your goal is to improve the duty description by:
 
 ${buildFactualIntegrityPrompt(true)}
 
+${lengthPromptBlock ?? ""}
+
 ${dutyModeOverride[mode]}
 
 ${aggressivenessInstructions}
@@ -235,7 +244,7 @@ CRITICAL RULES:
 8. KEEP factual content identical - only rephrase, do not invent new scope or responsibilities
 9. Prefer "&" over "and" when saving space
 10. AVOID the word "the" where possible - it wastes characters
-11. Stay within ±20% of the original length — never pad with invented facts`;
+11. Stay within the HARD CHARACTER LIMIT / LENGTH block — never pad with invented facts`;
 }
 
 /**
@@ -252,12 +261,15 @@ function buildStatementPrompt(
   availableVerbs: string[],
   versionCount: number,
   verbVarietySection?: string,
+  lengthPromptBlock?: string,
 ): string {
   return `You are an expert Air Force writer helping to revise a portion of an award statement (AF Form 1206).
 
 Your task is to revise the selected portion of text while maintaining coherence with the surrounding context.
 
 ${buildFactualIntegrityPrompt(false)}
+
+${lengthPromptBlock ?? ""}
 
 ${modeInstructions[mode]}
 
@@ -353,12 +365,14 @@ export async function POST(request: Request) {
       excludeMpa,
       aggressiveness = 50,
       versionCount = 3,
+      maxCharacters: maxCharactersRaw,
       category,
       isDutyDescription = false,
       writingStyle,
       rateeRank,
       rateeAfsc,
     } = body;
+    const maxCharacters = sanitizeMaxCharacters(maxCharactersRaw);
     
     // Load user's custom duty description prompt if this is a duty description revision
     let userDutyDescriptionPrompt: string | null = null;
@@ -466,16 +480,32 @@ ${noReuseRule}`;
 
     const beforeSelection = fullStatement.substring(0, selectionStart);
     const afterSelection = fullStatement.substring(selectionEnd);
+    const surroundingLength = beforeSelection.length + afterSelection.length;
+    const lengthGuidance = buildReviseLengthGuidance({
+      selectedLength: selectedText.length,
+      maxCharacters,
+      mode,
+      surroundingLength,
+    });
+    const lengthCapNote = lengthGuidance.mustCompressToFit
+      ? `COMPRESS to ≤ ${lengthGuidance.selectionMax} characters. Matching the original length is WRONG — the original is over the field limit.`
+      : lengthGuidance.hardMax != null
+        ? `Keep quality high but NEVER exceed ${lengthGuidance.selectionMax} characters.`
+        : null;
 
     // Build mode-specific instructions
     const modeInstructions = {
-      expand: `**MODE: EXPAND (use longer words to fill more space)**
+      expand: lengthGuidance.mustCompressToFit
+        ? `**MODE: EXPAND requested, but the text is OVER the field limit**
+Ignore expand. Compress the selected text to ≤ ${lengthGuidance.selectionMax} characters using shorter words, abbreviations, and by cutting filler. Keep every metric and acronym.
+- Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters (HARD MAX ${lengthGuidance.selectionMax})`
+        : `**MODE: EXPAND (use longer words to fill more space)**
 Your goal is to make the selected text LONGER by:
 - Using longer, more descriptive words (e.g., "led" → "directed", "cut" → "eliminated", "made" → "established")
 - Adding impactful adjectives and adverbs where natural
 - Expanding any abbreviations to full words
 - Using more elaborate phrasing while maintaining meaning
-- Target length: ${Math.round(selectedText.length * 1.2)}-${Math.round(selectedText.length * 1.4)} characters (20-40% longer)`,
+- Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax})` : ""}`,
       
       compress: `**MODE: COMPRESS (use shorter words to save space)**
 Your goal is to make the selected text SHORTER by:
@@ -483,15 +513,15 @@ Your goal is to make the selected text SHORTER by:
 - Removing unnecessary filler words while keeping meaning
 - Using more concise phrasing
 - Combining phrases where possible
-- Target length: ${Math.round(selectedText.length * 0.65)}-${Math.round(selectedText.length * 0.85)} characters (15-35% shorter)`,
+- Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax})` : ""}`,
       
       general: `**MODE: IMPROVE (completely rewrite with fresh perspective)**
 Your goal is to SIGNIFICANTLY transform the selected text:
 - Use a COMPLETELY DIFFERENT opening verb - do not keep the same structure
 - Reframe the accomplishment from a new angle using ONLY facts from the source
 - Preserve all quantification from the source — never add new metrics or impact
-- Each of your 3 alternatives should use DIFFERENT verbs from each other
-- Target length: ~${selectedText.length} characters (within 20% of original)`,
+- Each of your ${versionCount} alternatives should use DIFFERENT verbs from each other
+- Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax} — do not match an over-limit original)` : ` (within 20% of original)`}`,
     };
     
     // Get available verbs (exclude used ones)
@@ -549,8 +579,8 @@ Your goal is to SIGNIFICANTLY transform the selected text:
     // Build system prompt - duty descriptions have fundamentally different writing rules
     const featureFlags = await getAppFeatureFlags();
     let systemPrompt = isDutyDescription 
-      ? buildDutyDescriptionPrompt(featureFlags, mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt)
-      : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount, verbVarietySection || undefined);
+      ? buildDutyDescriptionPrompt(featureFlags, mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt, lengthGuidance.promptBlock)
+      : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount, verbVarietySection || undefined, lengthGuidance.promptBlock);
 
     // Append style signature to system prompt if available
     if (styleSignatureSection) {
@@ -582,9 +612,10 @@ ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 
 MODE: ${mode.toUpperCase()}
 ${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results. REPHRASE ONLY — do not invent impact, personnel counts, or geographic scope." : "⚠️ REPHRASE ONLY — do not invent metrics, personnel counts, or impact not in the source."}
-${mode === "expand" ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" ? "Make it SHORTER with concise words and abbreviations." : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping similar length and the same facts."}
+${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" || lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
 AGGRESSIVENESS: ${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})
-LENGTH: Stay within ±20% of the original ${selectedText.length} characters. Do NOT pad with invented facts.
+${lengthGuidance.promptBlock}
+${lengthCapNote ? `LENGTH OVERRIDE: ${lengthCapNote}` : ""}
 
 Generate ${versionCount} revisions of ONLY the selected portion.
 
@@ -594,7 +625,7 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       model: modelProvider,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: isDutyDescription ? 0.4 : 0.7,
+      temperature: isDutyDescription || lengthGuidance.mustCompressToFit ? 0.4 : 0.7,
       maxOutputTokens: 500,
     });
 
@@ -631,6 +662,32 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
           .join("; ")}`
       );
       revisions = formattingRepair.statements;
+    }
+
+    if (lengthGuidance.selectionMax != null) {
+      const { enforceRevisionText } = await import("@/lib/statement-char-enforce");
+      const selectionMax = lengthGuidance.selectionMax;
+      revisions = await Promise.all(
+        revisions.map(async (revision, index) => {
+          if (typeof revision !== "string") return String(revision ?? "");
+          const trimmed = revision.trim();
+          if (trimmed.length <= selectionMax) return trimmed;
+          try {
+            const enforced = await enforceRevisionText(trimmed, selectionMax, {
+              model: modelProvider,
+              maxAttempts: 2,
+              context: "revise-selection character cap",
+            });
+            console.log(
+              `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${enforced.length}/${selectionMax}`
+            );
+            return enforced;
+          } catch (err) {
+            console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
+            return trimmed;
+          }
+        })
+      );
     }
 
     // Trigger async style processing (fire-and-forget) — skip for default-key users

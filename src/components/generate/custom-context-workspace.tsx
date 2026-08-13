@@ -1008,6 +1008,7 @@ export function CustomContextWorkspace({
           model,
           mode: "general",
           context: `Revise with focus on ${impact === "custom" ? customImpact : impact} impact. Original source: ${originalContext}. ${context || ""}`,
+          maxCharacters: maxChars,
           usedVerbs: session?.usedVerbs || [],
           rateeId,
           cycleYear,

@@ -4,6 +4,8 @@ import {
   combineStatementsForDisplay,
   combinedStatementLength,
   enforcePackageCharacterLimit,
+  enforceRevisionText,
+  splitJoinedStatements,
   trimToMaxAtClauseBoundary,
 } from "@/lib/statement-char-enforce";
 
@@ -82,5 +84,31 @@ describe("enforcePackageCharacterLimit", () => {
     const result = await enforcePackageCharacterLimit([long], 350);
     expect(result.statements[0].length).toBeLessThanOrEqual(350);
     expect(result.stillOver).toBe(false);
+  });
+});
+
+describe("splitJoinedStatements", () => {
+  it("splits a two-sentence EPB package", () => {
+    const joined = `${OVER_A.replace(/\.$/, ".")} ${OVER_B}`;
+    const parts = splitJoinedStatements(joined);
+    expect(parts.length).toBe(2);
+    expect(parts[0]).toMatch(/Executed/);
+    expect(parts[1]).toMatch(/Commanded/);
+  });
+
+  it("does not split U.S. abbreviations", () => {
+    const text = "Led U.S. Air Force team rebuilding servers across the wing.";
+    expect(splitJoinedStatements(text)).toEqual([text]);
+  });
+});
+
+describe("enforceRevisionText", () => {
+  it("fits the user's over-limit two-sentence revise example under 350 without LLM", async () => {
+    const v1 =
+      "Executed a $2M network expansion, transitioning 9 joint units to resilient IT, doubling bandwidth & extending air picture over 2.2M sq mi, this action supported 24 kinetic strikes & 42 vessel interdictions, enhancing USSOUTHCOM readiness. Directed AFSOUTH's inaugural Cyber Coordination Center, servicing 10 sites, and crafted the framework that allowed AFCYBER to resolve 12 MAJCOM issues in under 24 hours, proving vital for SOUTHCOM OPs deployments.";
+    expect(v1.length).toBeGreaterThan(350);
+    const out = await enforceRevisionText(v1, 350);
+    expect(out.length).toBeLessThanOrEqual(350);
+    expect(out).toMatch(/\$2M/);
   });
 });

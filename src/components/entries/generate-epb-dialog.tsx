@@ -273,6 +273,7 @@ export function GenerateEpbDialog({
           mode: "general",
           isDutyDescription: true,
           versionCount: 1,
+          maxCharacters: MAX_DUTY_DESCRIPTION_CHARACTERS,
           rateeRank: ratee.rank,
           rateeAfsc: ratee.afsc,
           writingStyle,

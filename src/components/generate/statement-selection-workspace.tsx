@@ -335,6 +335,8 @@ export function StatementSelectionWorkspace({
           model,
           mode: "general",
           context: "Rewrite this EPB statement with fresh verbs and improved flow.",
+          maxCharacters:
+            workspaceState.selectedMPA === "hlr_assessment" ? maxHlrChars : maxChars,
           rateeId: rateeInfo?.id,
           cycleYear,
           excludeMpa: workspaceState.selectedMPA || undefined,
