@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildReviseLengthGuidance,
+  buildSentenceCountGuidance,
+  expectedRevisionSentenceCount,
   sanitizeMaxCharacters,
   selectionBudget,
   withinLimitTargetMin,
@@ -62,6 +64,7 @@ describe("buildReviseLengthGuidance", () => {
     expect(g.mustCompressToFit).toBe(true);
     expect(g.targetMax).toBe(350);
     expect(g.targetMin).toBe(332);
+    expect(g.promptBlock).toMatch(/keep TWO sentences/);
     expect(g.promptBlock).toMatch(/NON-NEGOTIABLE/);
     expect(g.promptBlock).toMatch(/REMOVE at least 102/);
     expect(g.promptBlock).toMatch(/within 5%/);
@@ -88,6 +91,26 @@ describe("buildReviseLengthGuidance", () => {
       mode: "expand",
     });
     expect(g.mustCompressToFit).toBe(true);
+    expect(g.promptBlock).toMatch(/keep TWO sentences/);
     expect(g.targetMax).toBe(350);
+  });
+});
+
+describe("expectedRevisionSentenceCount", () => {
+  it("detects a two-sentence EPB package", () => {
+    const text =
+      "Led 5-mbr team overhauling network, cut downtime 90%, boosting readiness. Directed cyber center supporting 10 sites, vital for SOUTHCOM ops.";
+    expect(expectedRevisionSentenceCount(text)).toBe(2);
+    expect(buildSentenceCountGuidance(2)).toMatch(/TWO sentences/);
+    expect(buildSentenceCountGuidance(2)).toMatch(/Do NOT merge/);
+  });
+
+  it("detects a single sentence", () => {
+    expect(
+      expectedRevisionSentenceCount(
+        "Led 5-mbr team overhauling network, cut downtime 90%, boosting readiness."
+      )
+    ).toBe(1);
+    expect(buildSentenceCountGuidance(1)).toMatch(/ONE sentence/);
   });
 });

@@ -6,6 +6,8 @@
  * produced 450–540 char "improvements" that still cannot be saved.
  */
 
+import { parseStatement } from "@/lib/sentence-utils";
+
 export type ReviseMode = "expand" | "compress" | "general";
 
 export interface ReviseLengthGuidance {
@@ -28,6 +30,23 @@ export const WITHIN_LIMIT_RATIO = 0.95;
 export function withinLimitTargetMin(maxChars: number): number {
   const max = Math.max(0, Math.floor(maxChars));
   return Math.min(max, Math.floor(max * WITHIN_LIMIT_RATIO));
+}
+
+/** EPB packages are at most two sentences; match the split-view parser. */
+export function expectedRevisionSentenceCount(text: string): 1 | 2 {
+  return parseStatement(text).hasTwoSentences ? 2 : 1;
+}
+
+export function buildSentenceCountGuidance(count: 1 | 2): string {
+  if (count === 2) {
+    return `**SENTENCE COUNT (NON-NEGOTIABLE):** The original is TWO sentences that SHARE one character budget.
+Each revision MUST be exactly TWO sentences: "Sentence one. Sentence two."
+- Do NOT merge them into one comma-spliced sentence to save space
+- Do NOT drop the second sentence — compress BOTH until the combined length fits
+- Each sentence is its own standalone sentence with its own opening verb
+- Use a period + space BETWEEN the two sentences; commas only INSIDE a sentence`;
+  }
+  return `**SENTENCE COUNT:** The original is ONE sentence. Keep exactly one sentence — do not split it into two.`;
 }
 
 /** Accept a client-supplied max; reject nonsense so we don't trust raw JSON. */
@@ -97,7 +116,8 @@ How to compress (keep every metric, $, unit name, and acronym):
 - Prefer "&" over "and"; drop "the" where grammar still holds
 - Abbreviate: hrs, mos, wks, mbrs, sq, flt, gp, wg, ops, pers
 - Cut filler: "this action", "this initiative", "this directly", "resulting in", "providing support for"
-- Merge clauses; drop the weakest impact phrase if still over
+- Merge clauses WITHIN each sentence; drop the weakest impact phrase if still over
+- If the original has TWO sentences, keep TWO sentences — never merge or drop one
 - Count characters BEFORE returning. If any version is over ${selMax}, rewrite it shorter.
 
 Target: ${targetMin}–${targetMax} characters (within 5% of the ${selMax} max). MAXIMUM ${selMax}. Do not land 15–20% under the cap.`

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseStatement } from "@/lib/sentence-utils";
 import {
   applyDeterministicCompress,
   combineStatementsForDisplay,
@@ -110,5 +111,6 @@ describe("enforceRevisionText", () => {
     const out = await enforceRevisionText(v1, 350);
     expect(out.length).toBeLessThanOrEqual(350);
     expect(out).toMatch(/\$2M/);
+    expect(parseStatement(out).hasTwoSentences).toBe(true);
   });
 });

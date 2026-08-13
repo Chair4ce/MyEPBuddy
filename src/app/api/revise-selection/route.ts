@@ -37,6 +37,8 @@ import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
 import { TIME_COMPRESSION_WRITING_GUIDANCE } from "@/lib/stewardship-impact";
 import {
   buildReviseLengthGuidance,
+  buildSentenceCountGuidance,
+  expectedRevisionSentenceCount,
   sanitizeMaxCharacters,
 } from "@/lib/revise-length-constraint";
 
@@ -292,7 +294,7 @@ ${availableVerbs.slice(0, 20).join(", ")}
 - Slashes: /
 - Comparison symbols: < or > (write "under 24 hrs" / "over 90%")
 
-**USE ONLY:** Commas (,) to connect clauses
+**USE ONLY:** Commas (,) inside a sentence. If the original has two sentences, keep a period between them.
 
 ${PERSONNEL_REFERENCE_GUIDANCE}
 
@@ -327,13 +329,14 @@ CRITICAL RULES:
 5. Output ONLY the revised text for the selected portion - no quotes, no explanation
 6. Maintain the same general meaning but with appropriately varied phrasing based on aggressiveness level
 7. Maintain grammatical coherence with surrounding text
-8. NEVER use em-dashes (--) - use COMMAS instead to connect clauses
+8. NEVER use em-dashes (--) - use COMMAS inside a sentence; keep a period between two sentences
 9. If the selection starts at the beginning of the statement and includes "- ", preserve the "- " prefix
 10. READABILITY: Revised text should flow naturally when read aloud
 11. PARALLELISM: Use consistent verb tense throughout (all past tense OR all present participles)
 12. AVOID creating run-on laundry lists of 5+ actions - keep it focused
 13. AVOID the word "the" - it wastes characters (e.g., "led the team" → "led 4-mbr team" - always quantify scope)
-14. CONSISTENCY: Use either "&" OR "and" throughout - NEVER mix them. Prefer "&" when saving space.`;
+14. CONSISTENCY: Use either "&" OR "and" throughout - NEVER mix them. Prefer "&" when saving space.
+15. SENTENCE COUNT: If the original selection is two sentences, each revision MUST remain two sentences. Do not collapse them into one.`;
 }
 
 export async function POST(request: Request) {
@@ -487,6 +490,12 @@ ${noReuseRule}`;
       mode,
       surroundingLength,
     });
+    const sentenceCount = isDutyDescription
+      ? 1
+      : expectedRevisionSentenceCount(selectedText);
+    const sentenceCountGuidance = isDutyDescription
+      ? ""
+      : buildSentenceCountGuidance(sentenceCount);
     const lengthCapNote = lengthGuidance.mustCompressToFit
       ? `COMPRESS to ≤ ${lengthGuidance.selectionMax} characters. Matching the original length is WRONG — the original is over the field limit.`
       : lengthGuidance.hardMax != null
@@ -512,7 +521,7 @@ Your goal is to make the selected text SHORTER by:
 - Using shorter, punchier words (e.g., "orchestrated" → "led", "established" → "built", "eliminated" → "cut", "approximately" → "~")
 - Removing unnecessary filler words while keeping meaning
 - Using more concise phrasing
-- Combining phrases where possible
+- Combining phrases where possible (within a sentence — never merge two sentences into one)
 - Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax})` : ""}`,
       
       general: `**MODE: IMPROVE (completely rewrite with fresh perspective)**
@@ -582,6 +591,10 @@ Your goal is to SIGNIFICANTLY transform the selected text:
       ? buildDutyDescriptionPrompt(featureFlags, mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt, lengthGuidance.promptBlock)
       : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount, verbVarietySection || undefined, lengthGuidance.promptBlock);
 
+    if (sentenceCountGuidance) {
+      systemPrompt += `\n\n${sentenceCountGuidance}`;
+    }
+
     // Append style signature to system prompt if available
     if (styleSignatureSection) {
       systemPrompt += `\n\n${styleSignatureSection}`;
@@ -615,9 +628,10 @@ ${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describ
 ${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" || lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
 AGGRESSIVENESS: ${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})
 ${lengthGuidance.promptBlock}
+${sentenceCountGuidance}
 ${lengthCapNote ? `LENGTH OVERRIDE: ${lengthCapNote}` : ""}
 
-Generate ${versionCount} revisions of ONLY the selected portion.
+Generate ${versionCount} revisions of ONLY the selected portion${sentenceCount === 2 ? ". Each revision string MUST contain exactly two sentences." : ""}.
 
 Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}]`;
 
@@ -626,7 +640,7 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       system: systemPrompt,
       prompt: userPrompt,
       temperature: isDutyDescription || lengthGuidance.mustCompressToFit ? 0.4 : 0.7,
-      maxOutputTokens: 500,
+      maxOutputTokens: sentenceCount === 2 ? 1400 : 800,
     });
 
     let revisions: string[] = [];
@@ -664,34 +678,45 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
       revisions = formattingRepair.statements;
     }
 
-    if (lengthGuidance.selectionMax != null) {
-      const { enforceRevisionText, trimToMaxAtClauseBoundary } = await import(
-        "@/lib/statement-char-enforce"
-      );
-      const selectionMax = lengthGuidance.selectionMax;
-      revisions = await Promise.all(
-        revisions.map(async (revision, index) => {
-          if (typeof revision !== "string") return String(revision ?? "");
-          const trimmed = revision.trim();
-          if (trimmed.length <= selectionMax) return trimmed;
-          try {
-            const enforced = await enforceRevisionText(trimmed, selectionMax, {
-              model: modelProvider,
-              maxAttempts: 2,
-              context: "revise-selection character cap",
-            });
-            console.log(
-              `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${enforced.length}/${selectionMax}`
-            );
-            return enforced.length > selectionMax
-              ? trimToMaxAtClauseBoundary(enforced, selectionMax)
-              : enforced;
-          } catch (err) {
-            console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
-            return trimToMaxAtClauseBoundary(trimmed, selectionMax);
-          }
-        })
-      );
+    if (lengthGuidance.selectionMax != null || sentenceCount === 2) {
+      const {
+        enforceRevisionText,
+        repairCollapsedTwoSentenceRevisions,
+      } = await import("@/lib/statement-char-enforce");
+
+      if (sentenceCount === 2) {
+        revisions = await repairCollapsedTwoSentenceRevisions(
+          selectedText,
+          revisions.map((r) => (typeof r === "string" ? r.trim() : String(r ?? ""))),
+          lengthGuidance.selectionMax ?? selectedText.length,
+          { model: modelProvider }
+        );
+      }
+
+      if (lengthGuidance.selectionMax != null) {
+        const selectionMax = lengthGuidance.selectionMax;
+        revisions = await Promise.all(
+          revisions.map(async (revision, index) => {
+            if (typeof revision !== "string") return String(revision ?? "");
+            const trimmed = revision.trim();
+            if (trimmed.length <= selectionMax) return trimmed;
+            try {
+              const enforced = await enforceRevisionText(trimmed, selectionMax, {
+                model: modelProvider,
+                maxAttempts: 2,
+                context: "revise-selection character cap",
+              });
+              console.log(
+                `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${enforced.length}/${selectionMax}`
+              );
+              return enforced;
+            } catch (err) {
+              console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
+              return await enforceRevisionText(trimmed, selectionMax);
+            }
+          })
+        );
+      }
     }
 
     // Trigger async style processing (fire-and-forget) — skip for default-key users

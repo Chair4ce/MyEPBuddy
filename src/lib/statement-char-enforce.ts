@@ -13,6 +13,7 @@ import {
   enforceCharacterLimits,
   validateCharacterCount,
 } from "@/lib/character-verification";
+import { parseStatement } from "@/lib/sentence-utils";
 
 /** Absolute max LLM compress attempts for a package (hard cap). */
 export const MAX_PACKAGE_COMPRESS_ATTEMPTS = 2;
@@ -32,15 +33,12 @@ export function combinedStatementLength(statements: string[]): number {
 
 /**
  * Split a joined two-sentence EPB package back into statements.
- * Requires a lowercase letter, digit, or ")" immediately before the period
- * so abbreviations like "U.S. Air Force" are not split.
+ * Uses the same parser as the EPB split-view UI so revise/enforce
+ * agree with what the user sees as sentence 1 vs sentence 2.
  */
 export function splitJoinedStatements(text: string): string[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-  const parts = trimmed.split(/(?<=[a-z0-9)]\.)\s+(?=[A-Z][a-z])/);
-  const cleaned = parts.map((s) => s.trim()).filter(Boolean);
-  return cleaned.length > 0 ? cleaned : [trimmed];
+  const parsed = parseStatement(text);
+  return parsed.sentences.map((s) => s.text).filter(Boolean);
 }
 
 /**
@@ -382,6 +380,7 @@ export async function enforcePackageCharacterLimit(
 /**
  * Enforce a hard max on one revised blob (one or two joined sentences).
  * Splits, compresses as a shared package, then re-joins for the UI.
+ * Never clause-trims a joined two-sentence blob (that drops sentence 2).
  */
 export async function enforceRevisionText(
   text: string,
@@ -395,6 +394,65 @@ export async function enforceRevisionText(
   const parts = splitJoinedStatements(text);
   const result = await enforcePackageCharacterLimit(parts, targetMax, options);
   return combineStatementsForDisplay(result.statements);
+}
+
+/**
+ * If revise collapsed a two-sentence package into one sentence, ask the model
+ * to restore two sentences without inventing facts. One batched LLM call.
+ */
+export async function repairCollapsedTwoSentenceRevisions(
+  original: string,
+  revisions: string[],
+  targetMax: number,
+  options: { model: LanguageModel }
+): Promise<string[]> {
+  const flags = revisions.map((r) => !parseStatement(r).hasTwoSentences);
+  if (!flags.some(Boolean)) return revisions;
+
+  const numbered = revisions
+    .map((r, i) => (flags[i] ? `[${i + 1}] ${r.trim()}` : null))
+    .filter((line): line is string => line !== null)
+    .join("\n\n");
+
+  try {
+    const { text } = await generateText({
+      model: options.model,
+      system:
+        "You restore EPB two-sentence packages that were wrongly merged into one sentence. Output JSON only.",
+      prompt: `ORIGINAL TWO-SENTENCE PACKAGE:
+"${original.trim()}"
+
+These revisions collapsed to ONE sentence. Rewrite EACH as EXACTLY TWO sentences (Sentence. Sentence.) that share a ${targetMax}-character combined budget. Keep every metric, $, unit name, and acronym. Do not invent facts. Do not merge back into one sentence.
+
+COLLAPSED REVISIONS:
+${numbered}
+
+Return a JSON array of strings — one restored two-sentence package per collapsed revision, in the same order:
+["restored 1", "restored 2"]`,
+      temperature: 0.2,
+      maxOutputTokens: 1200,
+    });
+
+    const parsed = parseStatementArray(text.trim(), flags.filter(Boolean).length);
+    if (!parsed) {
+      console.warn("[PackageChar] two-sentence restore returned unparseable output");
+      return revisions;
+    }
+
+    const next = [...revisions];
+    let p = 0;
+    for (let i = 0; i < next.length; i++) {
+      if (!flags[i]) continue;
+      const restored = parsed[p++]?.trim();
+      if (restored && parseStatement(restored).hasTwoSentences) {
+        next[i] = restored;
+      }
+    }
+    return next;
+  } catch (error) {
+    console.error("[PackageChar] two-sentence restore failed:", error);
+    return revisions;
+  }
 }
 
 /** Re-export validation helper for callers that only need a check. */
