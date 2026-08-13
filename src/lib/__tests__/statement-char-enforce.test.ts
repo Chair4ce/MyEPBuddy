@@ -6,6 +6,7 @@ import {
   combinedStatementLength,
   enforcePackageCharacterLimit,
   enforceRevisionText,
+  fillRevisionsTowardCap,
   splitJoinedStatements,
 } from "@/lib/statement-char-enforce";
 
@@ -103,5 +104,23 @@ describe("enforceRevisionText", () => {
     expect(parseStatement(out.text).hasTwoSentences).toBe(true);
     expect(out.stillOver).toBe(true);
     expect(out.text.length).toBeGreaterThan(350);
+  });
+});
+
+describe("fillRevisionsTowardCap", () => {
+  it("leaves short revisions unchanged when no model is provided", async () => {
+    const short =
+      "Led 5-mbr team overhauling network, cut downtime 90%. Directed cyber center for 10 sites.";
+    expect(short.length).toBeLessThan(332);
+    const out = await fillRevisionsTowardCap(
+      `${OVER_A} ${OVER_B}`,
+      [short],
+      332,
+      350,
+      2,
+      { model: undefined as never }
+    );
+    expect(out[0]).toBe(short);
+    expect(parseStatement(out[0]).hasTwoSentences).toBe(true);
   });
 });

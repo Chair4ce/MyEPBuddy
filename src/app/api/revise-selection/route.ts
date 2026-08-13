@@ -41,7 +41,12 @@ import {
   expectedRevisionSentenceCount,
   sanitizeMaxCharacters,
 } from "@/lib/revise-length-constraint";
-import { asPlainText, parseRevisionList, parseStatement } from "@/lib/sentence-utils";
+import {
+  asPlainText,
+  coalesceTwoSentenceRevisions,
+  parseRevisionList,
+  parseStatement,
+} from "@/lib/sentence-utils";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -293,6 +298,7 @@ ${availableVerbs.slice(0, 20).join(", ")}
 - Em-dashes: -- or — (ABSOLUTELY NEVER use these)
 - Semicolons: ;
 - Slashes: /
+- Parentheses: ( )
 - Comparison symbols: < or > (write "under 24 hrs" / "over 90%")
 
 **USE ONLY:** Commas (,) inside a sentence. If the original has two sentences, keep a period between them.
@@ -628,7 +634,7 @@ ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 
 MODE: ${mode.toUpperCase()}
 ${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results. REPHRASE ONLY — do not invent impact, personnel counts, or geographic scope." : "⚠️ REPHRASE ONLY — do not invent metrics, personnel counts, or impact not in the source."}
-${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" || lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
+${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `Fit ${lengthGuidance.targetMin}–${lengthGuidance.targetMax} characters. Do not undershoot into ~200 characters.` : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
 AGGRESSIVENESS: ${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})
 ${lengthGuidance.promptBlock}
 ${sentenceCountGuidance}
@@ -650,7 +656,13 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
     try {
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        revisions = parseRevisionList(JSON.parse(jsonMatch[0]), versionCount);
+        const parseLimit = sentenceCount === 2 ? versionCount * 2 : versionCount;
+        revisions = parseRevisionList(JSON.parse(jsonMatch[0]), parseLimit);
+        if (sentenceCount === 2) {
+          revisions = coalesceTwoSentenceRevisions(revisions, versionCount);
+        } else {
+          revisions = revisions.slice(0, versionCount);
+        }
       }
     } catch {
       // Fallback: split by newlines if JSON parsing fails
@@ -684,6 +696,7 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
     if (lengthGuidance.selectionMax != null || sentenceCount === 2) {
       const {
         enforceRevisionText,
+        fillRevisionsTowardCap,
         repairCollapsedTwoSentenceRevisions,
       } = await import("@/lib/statement-char-enforce");
 
@@ -737,6 +750,21 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
           console.warn(
             "[revise-selection] No complete revision fit the character cap; returning uncompressed complete drafts"
           );
+        }
+      }
+
+      if (lengthGuidance.selectionMax != null && !isDutyDescription) {
+        try {
+          revisions = await fillRevisionsTowardCap(
+            selectedText,
+            revisions.map((r) => (typeof r === "string" ? r.trim() : String(r ?? ""))),
+            lengthGuidance.targetMin,
+            lengthGuidance.selectionMax,
+            sentenceCount,
+            { model: modelProvider }
+          );
+        } catch (err) {
+          console.error("[revise-selection] fill-to-cap failed:", err);
         }
       }
     }

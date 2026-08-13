@@ -49,6 +49,16 @@ describe("findBannedFormattingViolations", () => {
   it("flags > comparison shorthand", () => {
     expect(hasBannedFormatting("sustained >90% FMC")).toBe(true);
   });
+
+  it("flags and strips parentheses", () => {
+    expect(hasBannedFormatting("Commanded AFSOUTH CCC (10 sites)")).toBe(true);
+    const { text } = applyDeterministicBannedFormattingFixes(
+      "Commanded AFSOUTH CCC (10 sites), vital for SOUTHCOM ops."
+    );
+    expect(text).not.toContain("(");
+    expect(text).not.toContain(")");
+    expect(text).toMatch(/10 sites/);
+  });
 });
 
 describe("applyDeterministicBannedFormattingFixes", () => {

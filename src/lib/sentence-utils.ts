@@ -55,6 +55,35 @@ export function parseRevisionList(raw: unknown, limit: number): string[] {
 }
 
 /**
+ * Models often emit two-sentence packages as a flat list of singles:
+ * [v1s1, v1s2, v2s1, v2s2, ...]. Pair those so each revision is one package.
+ */
+export function coalesceTwoSentenceRevisions(
+  items: string[],
+  versionCount: number
+): string[] {
+  const cap = Math.max(1, Math.floor(versionCount) || 1);
+  const cleaned = items.map((s) => asPlainText(s).trim()).filter(Boolean);
+  if (cleaned.length === 0) return [];
+  if (cleaned.every((s) => parseStatement(s).hasTwoSentences)) {
+    return cleaned.slice(0, cap);
+  }
+  if (
+    cleaned.length >= 2 &&
+    cleaned.length % 2 === 0 &&
+    cleaned.every((s) => !parseStatement(s).hasTwoSentences)
+  ) {
+    const paired: string[] = [];
+    for (let i = 0; i < cleaned.length && paired.length < cap; i += 2) {
+      const a = cleaned[i].endsWith(".") ? cleaned[i] : `${cleaned[i]}.`;
+      paired.push(`${a} ${cleaned[i + 1]}`.trim());
+    }
+    return paired;
+  }
+  return cleaned.slice(0, cap);
+}
+
+/**
  * Parse a statement into its component sentences
  * Handles edge cases like abbreviations, numbers with decimals, etc.
  */

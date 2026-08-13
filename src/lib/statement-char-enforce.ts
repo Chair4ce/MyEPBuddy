@@ -366,10 +366,76 @@ export interface RevisionEnforceResult {
 }
 
 /**
- * Enforce a hard max on one revised blob (one or two joined sentences).
- * Splits, compresses as a shared package, then re-joins for the UI.
- * Never truncates a sentence to fit the cap.
+ * Expand revisions that landed far under the field max (e.g. ~200 of 350).
+ * One batched LLM call. Never invents facts. Keeps sentence count.
  */
+export async function fillRevisionsTowardCap(
+  original: string,
+  revisions: string[],
+  targetMin: number,
+  targetMax: number,
+  expectedSentences: 1 | 2,
+  options: { model: LanguageModel }
+): Promise<string[]> {
+  const shortFlags = revisions.map((r) => {
+    const t = typeof r === "string" ? r.trim() : "";
+    return t.length > 0 && t.length < targetMin;
+  });
+  if (!shortFlags.some(Boolean) || !options.model) return revisions;
+
+  const numbered = revisions
+    .map((r, i) => (shortFlags[i] ? `[${i + 1}] (${r.trim().length} chars) ${r.trim()}` : null))
+    .filter((line): line is string => line !== null)
+    .join("\n\n");
+
+  try {
+    const { text } = await generateText({
+      model: options.model,
+      system:
+        "You expand EPB revisions that are too short. Keep every fact. Output JSON only.",
+      prompt: `ORIGINAL (source of facts — do not invent new metrics, units, or impact):
+"${original.trim()}"
+
+These revisions are TOO SHORT. Rewrite EACH so the combined length is ${targetMin}–${targetMax} characters.
+- Keep EXACTLY ${expectedSentences} sentence${expectedSentences === 2 ? "s" : ""} (period + space between two sentences)
+- Use longer synonyms and restore clauses from the original — do not add new facts
+- No parentheses, semicolons, em-dashes, or "<" / ">"
+- Count characters before answering. Under ${targetMin} is a failure. Over ${targetMax} is a failure.
+
+SHORT REVISIONS:
+${numbered}
+
+Return a JSON array of strings — one filled revision per short input, in the same order:
+["filled 1", "filled 2"]`,
+      temperature: 0.2,
+      maxOutputTokens: expectedSentences === 2 ? 1400 : 800,
+    });
+
+    const parsed = parseStatementArray(text.trim(), shortFlags.filter(Boolean).length);
+    if (!parsed) {
+      console.warn("[PackageChar] fill-to-cap returned unparseable output");
+      return revisions;
+    }
+
+    const next = [...revisions];
+    let p = 0;
+    for (let i = 0; i < next.length; i++) {
+      if (!shortFlags[i]) continue;
+      const filled = parsed[p++]?.trim();
+      if (!filled) continue;
+      if (filled.length > targetMax) continue;
+      if (filled.length <= next[i].trim().length) continue;
+      if (expectedSentences === 2 && !parseStatement(filled).hasTwoSentences) continue;
+      next[i] = filled;
+    }
+    return next;
+  } catch (error) {
+    console.error("[PackageChar] fill-to-cap failed:", error);
+    return revisions;
+  }
+}
+
+/** Enforce a hard max on one revised blob. Never truncates a sentence to fit. */
 export async function enforceRevisionText(
   text: string,
   targetMax: number,

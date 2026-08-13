@@ -24,7 +24,8 @@ export type BannedFormattingRuleId =
   | "unicode_dash"
   | "less_than"
   | "greater_than"
-  | "semicolon";
+  | "semicolon"
+  | "parentheses";
 
 export interface BannedFormattingRule {
   id: BannedFormattingRuleId;
@@ -98,6 +99,12 @@ export const BANNED_FORMATTING_RULES: BannedFormattingRule[] = [
     pattern: /;/g,
     replacement: ", ",
   },
+  {
+    id: "parentheses",
+    label: "(",
+    pattern: /[()]/g,
+    replacement: "",
+  },
 ];
 
 /**
@@ -141,6 +148,7 @@ export interface BannedFormattingRepairResult {
 
 function normalizeAfterReplace(text: string): string {
   return text
+    .replace(/[()]/g, "")
     .replace(/\s{2,}/g, " ")
     .replace(/,\s*,\s*/g, ", ")
     .replace(/,\s*\./g, ".")
@@ -245,6 +253,7 @@ REQUIRED REPLACEMENTS:
 - "b/c" → "because"
 - "--" / "—" / "–" → commas
 - ";" → commas
+- "(" / ")" → remove (never use parentheses)
 - "<24" / "< 24" → "under 24" (never use "<")
 - ">90" / "> 90" → "over 90" (never use ">")
 

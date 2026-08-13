@@ -66,7 +66,8 @@ describe("buildReviseLengthGuidance", () => {
     expect(g.targetMin).toBe(332);
     expect(g.promptBlock).toMatch(/keep TWO sentences/);
     expect(g.promptBlock).toMatch(/NON-NEGOTIABLE/);
-    expect(g.promptBlock).toMatch(/REMOVE at least 102/);
+    expect(g.promptBlock).toMatch(/332–350/);
+    expect(g.promptBlock).toMatch(/200 characters is a FAILURE/);
     expect(g.promptBlock).toMatch(/within 5%/);
     expect(g.promptBlock).not.toMatch(/±20%/);
   });

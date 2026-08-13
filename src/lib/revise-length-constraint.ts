@@ -42,9 +42,10 @@ export function buildSentenceCountGuidance(count: 1 | 2): string {
     return `**SENTENCE COUNT (NON-NEGOTIABLE):** The original is TWO sentences that SHARE one character budget.
 Each revision MUST be exactly TWO sentences: "Sentence one. Sentence two."
 - Do NOT merge them into one comma-spliced sentence to save space
-- Do NOT drop the second sentence — compress BOTH until the combined length fits
+- Do NOT drop the second sentence
 - Each sentence is its own standalone sentence with its own opening verb
-- Use a period + space BETWEEN the two sentences; commas only INSIDE a sentence`;
+- Use a period + space BETWEEN the two sentences; commas only INSIDE a sentence
+- Do NOT put the second accomplishment in parentheses`
   }
   return `**SENTENCE COUNT:** The original is ONE sentence. Keep exactly one sentence — do not split it into two.`;
 }
@@ -109,20 +110,19 @@ export function buildReviseLengthGuidance(opts: {
 
     const promptBlock = over
       ? `**HARD CHARACTER LIMIT (NON-NEGOTIABLE):**
-The revised selection MUST be ≤ ${selMax} characters. The original selection is ${selectedLength} characters (${charsOver} OVER). Over-limit text cannot be used in myEval.${spliceNote}
+The revised selection MUST be ${targetMin}–${targetMax} characters. The original is ${selectedLength} (${charsOver} OVER the ${selMax} max). Over-limit text cannot be used in myEval.${spliceNote}
 
-Do NOT stay near the original length. You must REMOVE at least ${charsOver} characters.
-How to compress (keep every metric, $, unit name, and acronym):
-- Prefer "&" over "and"; drop "the" where grammar still holds
-- Abbreviate: hrs, mos, wks, mbrs, sq, flt, gp, wg, ops, pers
-- Cut filler: "this action", "this initiative", "this directly", "resulting in", "providing support for"
-- Merge clauses WITHIN each sentence; drop the weakest impact phrase if still over
+Compress TO the band — not as short as possible. Landing near 200 characters is a FAILURE.
+Keep every metric, $, unit name, and acronym. After cutting filler, EXPAND remaining clauses with longer synonyms until you are ≥ ${targetMin}.
+- Prefer "&" over "and" only if you are still over ${selMax}
+- Cut filler: "this action", "this initiative", "this directly", "resulting in"
+- Merge clauses WITHIN each sentence if still over ${selMax}
 - If the original has TWO sentences, keep TWO sentences — never merge or drop one
-- Count characters BEFORE returning. If any version is over ${selMax}, rewrite it shorter.
+- Count characters BEFORE returning. If under ${targetMin}, add density. If over ${selMax}, cut more.
 
-Target: ${targetMin}–${targetMax} characters (within 5% of the ${selMax} max). MAXIMUM ${selMax}. Do not land 15–20% under the cap.`
-      : `**HARD CHARACTER LIMIT:** Revised selection MUST be ≤ ${selMax} characters (full field max ${hardMax}).${spliceNote}
-Target ${targetMin}–${targetMax} characters (within 5% of the field max). NEVER exceed ${selMax}. Do not land 15–20% under the cap.`;
+Target: ${targetMin}–${targetMax} characters (within 5% of the ${selMax} max). MAXIMUM ${selMax}.`
+      : `**HARD CHARACTER LIMIT:** Revised selection MUST be ${targetMin}–${targetMax} characters (full field max ${hardMax}).${spliceNote}
+Stay within 5% of the field max. NEVER exceed ${selMax}. Landing ~200 characters when the max is ${selMax} is a FAILURE.`;
 
     return {
       hardMax,
