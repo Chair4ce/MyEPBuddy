@@ -346,5 +346,6 @@ Landed on `cursor/epb-revise-char-limit-43d2` (`b8adb41`): revise no longer uses
 |------|-------|----------|--------|------------|--------|
 | 026  | Label EPB vs 1206 in revise-selection system prompt | P2 | S | — | TODO |
 | 027  | Pass remaining shared-budget when revising one of two EPB sentences | P2 | S | — | TODO |
+| 028  | Fail closed when revise cannot fit the cap without truncating | P2 | S | — | TODO |
 
-Recommended: **026** then **027** (independent; 026 is prompt-only).
+Recommended: **026** then **027** (independent; 026 is prompt-only). **028** after this branch’s no-trim enforce lands — do not reintroduce clause-trim.

@@ -7,7 +7,6 @@ import {
   enforcePackageCharacterLimit,
   enforceRevisionText,
   splitJoinedStatements,
-  trimToMaxAtClauseBoundary,
 } from "@/lib/statement-char-enforce";
 
 const OVER_A =
@@ -39,16 +38,6 @@ describe("applyDeterministicCompress", () => {
   });
 });
 
-describe("trimToMaxAtClauseBoundary", () => {
-  it("cuts at commas to fit max", () => {
-    const long =
-      "Led team rebuilding servers, installed 47 racks, cut downtime 90%, saved $2M, boosting readiness across the wing";
-    const out = trimToMaxAtClauseBoundary(long, 80);
-    expect(out.length).toBeLessThanOrEqual(80);
-    expect(out).toContain("Led team");
-  });
-});
-
 describe("enforcePackageCharacterLimit", () => {
   it("leaves compliant packages alone", async () => {
     const stmts = [
@@ -60,31 +49,31 @@ describe("enforcePackageCharacterLimit", () => {
     expect(result.statements[0]).toBe(stmts[0]);
   });
 
-  it("deterministically shrinks an over-limit two-statement package without LLM", async () => {
+  it("never truncates a two-statement package when no LLM is available", async () => {
     const before = combinedStatementLength([OVER_A, OVER_B]);
     expect(before).toBeGreaterThan(350);
 
     const result = await enforcePackageCharacterLimit([OVER_A, OVER_B], 350, {
-      // no model — deterministic + trim only
       maxAttempts: 2,
     });
 
-    expect(result.combinedLength).toBeLessThanOrEqual(350);
-    expect(result.stillOver).toBe(false);
-    expect(result.wasAdjusted).toBe(true);
-    expect(["deterministic", "trim_fallback"]).toContain(result.method);
     expect(result.statements).toHaveLength(2);
-    // Metrics should survive compression
+    expect(result.statements.every((s) => /[.!?]$/.test(s.trim()))).toBe(true);
     expect(result.statements.join(" ")).toMatch(/\$2M/);
-    expect(result.statements.join(" ")).toMatch(/24/);
+    expect(result.statements.join(" ")).toMatch(/Commanded/);
+    // Without an LLM, complete sentences may still be over — never cut to fake a fit
+    if (result.combinedLength > 350) {
+      expect(result.stillOver).toBe(true);
+    }
   });
 
-  it("trims a single over-long statement without LLM", async () => {
+  it("never truncates a single over-long statement when no LLM is available", async () => {
     const long = `${OVER_A} ${OVER_B}`;
     expect(long.length).toBeGreaterThan(350);
     const result = await enforcePackageCharacterLimit([long], 350);
-    expect(result.statements[0].length).toBeLessThanOrEqual(350);
-    expect(result.stillOver).toBe(false);
+    expect(result.statements[0]).toMatch(/Commanded/);
+    expect(result.statements[0].length).toBeGreaterThan(350);
+    expect(result.stillOver).toBe(true);
   });
 });
 
@@ -104,13 +93,15 @@ describe("splitJoinedStatements", () => {
 });
 
 describe("enforceRevisionText", () => {
-  it("fits the user's over-limit two-sentence revise example under 350 without LLM", async () => {
+  it("keeps both complete sentences instead of cutting the second to fit 350", async () => {
     const v1 =
       "Executed a $2M network expansion, transitioning 9 joint units to resilient IT, doubling bandwidth & extending air picture over 2.2M sq mi, this action supported 24 kinetic strikes & 42 vessel interdictions, enhancing USSOUTHCOM readiness. Directed AFSOUTH's inaugural Cyber Coordination Center, servicing 10 sites, and crafted the framework that allowed AFCYBER to resolve 12 MAJCOM issues in under 24 hours, proving vital for SOUTHCOM OPs deployments.";
     expect(v1.length).toBeGreaterThan(350);
     const out = await enforceRevisionText(v1, 350);
-    expect(out.length).toBeLessThanOrEqual(350);
-    expect(out).toMatch(/\$2M/);
-    expect(parseStatement(out).hasTwoSentences).toBe(true);
+    expect(out.text).toMatch(/\$2M/);
+    expect(out.text).toMatch(/Cyber Coordination Center/);
+    expect(parseStatement(out.text).hasTwoSentences).toBe(true);
+    expect(out.stillOver).toBe(true);
+    expect(out.text.length).toBeGreaterThan(350);
   });
 });

@@ -1665,7 +1665,7 @@ Rules:
               effectiveMaxChars,
               {
                 model: modelProvider as LanguageModel,
-                maxAttempts: 2,
+                maxAttempts: 3,
                 context: `${mpa.label} for ${rateeRank}`,
               }
             );

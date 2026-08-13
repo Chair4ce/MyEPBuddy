@@ -41,6 +41,7 @@ import {
   expectedRevisionSentenceCount,
   sanitizeMaxCharacters,
 } from "@/lib/revise-length-constraint";
+import { parseStatement } from "@/lib/sentence-utils";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -695,27 +696,46 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
 
       if (lengthGuidance.selectionMax != null) {
         const selectionMax = lengthGuidance.selectionMax;
-        revisions = await Promise.all(
+        const enforced = await Promise.all(
           revisions.map(async (revision, index) => {
-            if (typeof revision !== "string") return String(revision ?? "");
+            if (typeof revision !== "string") return null;
             const trimmed = revision.trim();
-            if (trimmed.length <= selectionMax) return trimmed;
+            if (!trimmed) return null;
+            if (trimmed.length <= selectionMax) {
+              if (sentenceCount === 2 && !parseStatement(trimmed).hasTwoSentences) {
+                return null;
+              }
+              return trimmed;
+            }
             try {
-              const enforced = await enforceRevisionText(trimmed, selectionMax, {
+              const result = await enforceRevisionText(trimmed, selectionMax, {
                 model: modelProvider,
-                maxAttempts: 2,
+                maxAttempts: 3,
                 context: "revise-selection character cap",
               });
               console.log(
-                `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${enforced.length}/${selectionMax}`
+                `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${result.text.length}/${selectionMax}` +
+                  (result.stillOver ? " STILL OVER (dropped)" : "")
               );
-              return enforced;
+              if (result.stillOver) return null;
+              if (sentenceCount === 2 && !parseStatement(result.text).hasTwoSentences) {
+                return null;
+              }
+              return result.text;
             } catch (err) {
               console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
-              return await enforceRevisionText(trimmed, selectionMax);
+              return null;
             }
           })
         );
+        const fitting = enforced.filter((r): r is string => r != null);
+        if (fitting.length > 0) {
+          revisions = fitting;
+        } else {
+          console.warn(
+            "[revise-selection] No complete revision fit the character cap; returning uncompressed complete drafts"
+          );
+        }
       }
     }
 

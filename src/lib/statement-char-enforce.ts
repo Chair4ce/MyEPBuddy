@@ -16,7 +16,7 @@ import {
 import { parseStatement } from "@/lib/sentence-utils";
 
 /** Absolute max LLM compress attempts for a package (hard cap). */
-export const MAX_PACKAGE_COMPRESS_ATTEMPTS = 2;
+export const MAX_PACKAGE_COMPRESS_ATTEMPTS = 3;
 
 /** How the UI combines multi-statement packages (epb-shell-form / mpa cards). */
 export function combineStatementsForDisplay(statements: string[]): string {
@@ -105,38 +105,14 @@ export function applyDeterministicCompress(text: string): string {
   return result;
 }
 
-/**
- * Last-resort trim: drop trailing clauses at comma boundaries until ≤ max.
- * Prefer cutting from the end so the lead action stays intact.
- */
-export function trimToMaxAtClauseBoundary(
-  text: string,
-  maxChars: number
-): string {
-  let result = text.trim();
-  if (result.length <= maxChars) return result;
-
-  while (result.length > maxChars) {
-    const cut = result.lastIndexOf(",");
-    if (cut < Math.floor(maxChars * 0.45)) {
-      // No safe clause boundary — hard cut at word boundary
-      const slice = result.slice(0, maxChars);
-      const lastSpace = slice.lastIndexOf(" ");
-      result =
-        lastSpace > Math.floor(maxChars * 0.6)
-          ? slice.slice(0, lastSpace).trim()
-          : slice.trim();
-      break;
-    }
-    result = result.slice(0, cut).trim();
-  }
-
-  // Ensure we don't end mid-punctuation awkwardly
-  result = result.replace(/[,&\s]+$/, "").trim();
-  if (result && !/[.!?]$/.test(result)) {
-    // Keep as clause; UI may join with period
-  }
-  return result;
+function statementsAreComplete(statements: string[]): boolean {
+  return (
+    statements.length > 0 &&
+    statements.every((s) => {
+      const t = s.trim();
+      return t.length >= 8 && /[.!?]$/.test(t);
+    })
+  );
 }
 
 function buildPackageCompressPrompt(
@@ -163,9 +139,10 @@ RULES:
 2. Combined length of all statements (plus ~1–2 chars for the join) MUST be ≤ ${targetMax}
 3. Prefer denser abbreviations: hrs, mos, wks, sq, flt, mbrs, ops, &
 4. Keep EVERY metric, dollar amount, unit name, and acronym
-5. Keep one sentence per array item — no semicolons, no em-dashes (-- or —), no "<" or ">"
-6. Do NOT invent new facts
-7. Count characters carefully before answering
+5. Each array item MUST be a COMPLETE sentence ending with a period — never truncate, never drop a trailing clause mid-thought
+6. Keep one sentence per array item — no semicolons, no em-dashes (-- or —), no "<" or ">"
+7. Do NOT invent new facts. Do NOT merge two statements into one. Do NOT drop a statement
+8. Count characters carefully before answering
 
 OUTPUT (JSON only):
 ["compressed statement 1", "compressed statement 2"]`;
@@ -201,14 +178,45 @@ export interface PackageEnforceResult {
     | "none"
     | "deterministic"
     | "llm"
-    | "trim_fallback"
     | "per_statement";
   stillOver: boolean;
 }
 
+async function llmCompressPackage(opts: {
+  current: string[];
+  combined: number;
+  targetMax: number;
+  model: LanguageModel;
+}): Promise<string[] | null> {
+  const charsOver = opts.combined - opts.targetMax;
+  const { text } = await generateText({
+    model: opts.model,
+    system:
+      "You are a precise EPB editor. Compress statements to fit a hard combined character budget. Every statement must stay a complete sentence. Never truncate. Output JSON only.",
+    prompt: buildPackageCompressPrompt(
+      opts.current,
+      opts.combined,
+      opts.targetMax,
+      charsOver
+    ),
+    temperature: 0.2,
+    maxOutputTokens: opts.current.length >= 2 ? 1400 : 800,
+  });
+
+  const parsed = parseStatementArray(text.trim(), opts.current.length);
+  if (!parsed || !statementsAreComplete(parsed)) return null;
+
+  const next = parsed.map(applyDeterministicCompress);
+  if (!statementsAreComplete(next)) return null;
+  if (combinedStatementLength(next) >= opts.combined) return null;
+  return next;
+}
+
 /**
  * Best-effort enforce combined ≤ targetMax for a statement package.
- * Single-statement packages use enforceCharacterLimits when a model is provided.
+ * Compresses with abbreviations and LLM rewrite only — never truncates
+ * a sentence to fit. If still over after retries, stillOver is true and
+ * the returned statements stay complete.
  */
 export async function enforcePackageCharacterLimit(
   statements: string[],
@@ -248,14 +256,30 @@ export async function enforcePackageCharacterLimit(
         model: options.model,
         context: options.context,
       });
-      current = applyDeterministicCompress(result.statement);
-      attempts = result.attempts;
-      method = result.wasAdjusted ? "per_statement" : method;
+      const next = applyDeterministicCompress(result.statement);
+      if (statementsAreComplete([next])) {
+        current = next;
+        attempts = result.attempts;
+        method = result.wasAdjusted ? "per_statement" : method;
+      }
     }
 
-    if (current.length > targetMax) {
-      current = trimToMaxAtClauseBoundary(current, targetMax);
-      method = "trim_fallback";
+    if (current.length > targetMax && options.model) {
+      try {
+        attempts++;
+        const compressed = await llmCompressPackage({
+          current: [current],
+          combined: current.length,
+          targetMax,
+          model: options.model,
+        });
+        if (compressed) {
+          current = compressed[0];
+          method = "llm";
+        }
+      } catch (error) {
+        console.error("[PackageChar] single-statement compress failed:", error);
+      }
     }
 
     return {
@@ -299,71 +323,29 @@ export async function enforcePackageCharacterLimit(
   if (options.model && maxAttempts > 0) {
     while (combined > targetMax && attempts < maxAttempts) {
       attempts++;
-      const charsOver = combined - targetMax;
       try {
-        const { text } = await generateText({
+        const next = await llmCompressPackage({
+          current,
+          combined,
+          targetMax,
           model: options.model,
-          system:
-            "You are a precise EPB editor. Compress statements to fit a hard combined character budget. Output JSON only.",
-          prompt: buildPackageCompressPrompt(
-            current,
-            combined,
-            targetMax,
-            charsOver
-          ),
-          temperature: 0.2,
-          maxOutputTokens: 800,
         });
-
-        const parsed = parseStatementArray(text.trim(), current.length);
-        if (!parsed) {
+        if (!next) {
           console.warn(
-            `[PackageChar] LLM attempt ${attempts} returned unparseable output`
+            `[PackageChar] LLM attempt ${attempts} rejected (incomplete, unparseable, or not shorter)`
           );
-          break;
-        }
-
-        const next = parsed.map(applyDeterministicCompress);
-        const nextCombined = combinedStatementLength(next);
-
-        // Accept only if we improved (shorter) — never grow
-        if (nextCombined >= combined) {
-          console.warn(
-            `[PackageChar] LLM attempt ${attempts} did not shrink (${nextCombined} ≥ ${combined}), stopping`
-          );
-          break;
+          continue;
         }
 
         current = next;
-        combined = nextCombined;
+        combined = combinedStatementLength(current);
         wasAdjusted = true;
         method = "llm";
-
-        if (combined <= targetMax) break;
       } catch (error) {
         console.error(`[PackageChar] LLM attempt ${attempts} failed:`, error);
         break;
       }
     }
-  }
-
-  // Last resort: trim longest statement(s) at clause boundaries
-  if (combined > targetMax) {
-    const overhead = current.length > 1 ? (current[0].endsWith(".") ? 1 : 2) : 0;
-    // Budget each statement proportionally to current lengths
-    const bodyBudget = Math.max(40, targetMax - overhead);
-    const totalBody = current.reduce((sum, s) => sum + s.length, 0) || 1;
-
-    current = current.map((s) => {
-      const share = Math.max(
-        40,
-        Math.floor((s.length / totalBody) * bodyBudget)
-      );
-      return s.length > share ? trimToMaxAtClauseBoundary(s, share) : s;
-    });
-    combined = combinedStatementLength(current);
-    wasAdjusted = true;
-    method = "trim_fallback";
   }
 
   return {
@@ -377,10 +359,16 @@ export async function enforcePackageCharacterLimit(
   };
 }
 
+export interface RevisionEnforceResult {
+  text: string;
+  stillOver: boolean;
+  method: PackageEnforceResult["method"];
+}
+
 /**
  * Enforce a hard max on one revised blob (one or two joined sentences).
  * Splits, compresses as a shared package, then re-joins for the UI.
- * Never clause-trims a joined two-sentence blob (that drops sentence 2).
+ * Never truncates a sentence to fit the cap.
  */
 export async function enforceRevisionText(
   text: string,
@@ -390,10 +378,14 @@ export async function enforceRevisionText(
     maxAttempts?: number;
     context?: string;
   } = {}
-): Promise<string> {
+): Promise<RevisionEnforceResult> {
   const parts = splitJoinedStatements(text);
   const result = await enforcePackageCharacterLimit(parts, targetMax, options);
-  return combineStatementsForDisplay(result.statements);
+  return {
+    text: combineStatementsForDisplay(result.statements),
+    stillOver: result.stillOver,
+    method: result.method,
+  };
 }
 
 /**
@@ -422,7 +414,7 @@ export async function repairCollapsedTwoSentenceRevisions(
       prompt: `ORIGINAL TWO-SENTENCE PACKAGE:
 "${original.trim()}"
 
-These revisions collapsed to ONE sentence. Rewrite EACH as EXACTLY TWO sentences (Sentence. Sentence.) that share a ${targetMax}-character combined budget. Keep every metric, $, unit name, and acronym. Do not invent facts. Do not merge back into one sentence.
+These revisions collapsed to ONE sentence. Rewrite EACH as EXACTLY TWO complete sentences (Sentence. Sentence.) that share a ${targetMax}-character combined budget. Keep every metric, $, unit name, and acronym. Do not invent facts. Do not merge back into one sentence. Do not truncate a sentence to fit.
 
 COLLAPSED REVISIONS:
 ${numbered}
