@@ -319,3 +319,32 @@ Migrations **207** / **208** + Sent Requests retract/resend/copy shipped. Remain
 | Plan | Title | Priority | Effort | Status |
 |------|-------|----------|--------|--------|
 | 025  | Characterize ensure/retract team_request RPCs (SQL/integration) | P3 | S–M | TODO |
+
+---
+
+## Topic — EPB revise character cap (post-impl improve, 2026-08-13)
+
+Landed on `cursor/epb-revise-char-limit-43d2` (`b8adb41`): revise no longer uses ±20% of an over-limit original; EPB passes `maxCharacters`; package enforce runs after generation.
+
+**Not audited (this pass):** award/decoration generate, live LLM revise, `mpa-section-card.tsx` split/DnD (sacred), full `npm test` suite beyond char-limit files.
+
+### Findings table (vetted)
+
+| # | Finding | Category | Tag | Impact | Effort | Risk | Evidence |
+|---|---------|----------|-----|--------|--------|------|----------|
+| 1 | Revise prompt still introduces itself as AF Form 1206 for EPB MPA statements | bug | pre-existing (in touched file) | Model optimizes for the wrong document after we added a myEval 350 cap | S | LOW | `revise-selection/route.ts` `buildStatementPrompt` opener |
+| 2 | Generate workspaces send the full 350 cap when revising one of two shared-budget sentences | bug | introduced | Sibling sentences can still sum over 350 | S | LOW | `custom-context-workspace.tsx` / `statement-selection-workspace.tsx` `maxCharacters: maxChars` |
+
+### Considered and rejected
+
+- **Apply 350 to award 1206 selection revise.** Different product and limit; callers omit `maxCharacters` on purpose.
+- **Raise `maxOutputTokens` on revise.** No evidence the JSON parse is truncating after the cap work; do not spend tokens speculatively.
+
+### Execution order & status
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 026  | Label EPB vs 1206 in revise-selection system prompt | P2 | S | — | TODO |
+| 027  | Pass remaining shared-budget when revising one of two EPB sentences | P2 | S | — | TODO |
+
+Recommended: **026** then **027** (independent; 026 is prompt-only).

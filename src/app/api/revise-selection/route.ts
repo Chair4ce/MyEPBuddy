@@ -665,7 +665,9 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
     }
 
     if (lengthGuidance.selectionMax != null) {
-      const { enforceRevisionText } = await import("@/lib/statement-char-enforce");
+      const { enforceRevisionText, trimToMaxAtClauseBoundary } = await import(
+        "@/lib/statement-char-enforce"
+      );
       const selectionMax = lengthGuidance.selectionMax;
       revisions = await Promise.all(
         revisions.map(async (revision, index) => {
@@ -681,10 +683,12 @@ Return JSON array only: [${Array.from({ length: versionCount }, (_, i) => `"revi
             console.log(
               `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${enforced.length}/${selectionMax}`
             );
-            return enforced;
+            return enforced.length > selectionMax
+              ? trimToMaxAtClauseBoundary(enforced, selectionMax)
+              : enforced;
           } catch (err) {
             console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
-            return trimmed;
+            return trimToMaxAtClauseBoundary(trimmed, selectionMax);
           }
         })
       );
