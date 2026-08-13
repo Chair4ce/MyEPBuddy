@@ -22,6 +22,14 @@ const MIN_SANITY = 80;
 const MAX_SANITY = 5000;
 const MIN_SELECTION_BUDGET = 20;
 
+/** Stay within 5% of the field max (e.g. 332–350 for a 350 cap). */
+export const WITHIN_LIMIT_RATIO = 0.95;
+
+export function withinLimitTargetMin(maxChars: number): number {
+  const max = Math.max(0, Math.floor(maxChars));
+  return Math.min(max, Math.floor(max * WITHIN_LIMIT_RATIO));
+}
+
 /** Accept a client-supplied max; reject nonsense so we don't trust raw JSON. */
 export function sanitizeMaxCharacters(value: unknown): number | undefined {
   const n =
@@ -59,20 +67,20 @@ export function buildReviseLengthGuidance(opts: {
     const over = selectedLength > selMax;
     const charsOver = selectedLength - selMax;
     const targetMax = selMax;
+    const fillMin = withinLimitTargetMin(selMax);
     let targetMin: number;
 
-    if (over) {
-      targetMin = Math.max(0, selMax - 30);
-    } else if (opts.mode === "compress") {
+    if (opts.mode === "compress" && !over) {
       targetMin = Math.max(0, Math.round(Math.min(selectedLength, selMax) * 0.65));
-    } else if (opts.mode === "expand") {
-      targetMin = selectedLength;
+    } else if (opts.mode === "expand" && !over) {
+      targetMin = Math.min(selMax, Math.max(selectedLength, fillMin));
     } else {
-      targetMin = Math.max(0, Math.round(selectedLength * 0.8));
+      // General revise, or any mode that must compress to fit: fill to within 5% of the cap.
+      targetMin = fillMin;
     }
 
     if (targetMin > targetMax) {
-      targetMin = Math.max(0, targetMax - 30);
+      targetMin = fillMin;
     }
 
     const spliceNote =
@@ -92,9 +100,9 @@ How to compress (keep every metric, $, unit name, and acronym):
 - Merge clauses; drop the weakest impact phrase if still over
 - Count characters BEFORE returning. If any version is over ${selMax}, rewrite it shorter.
 
-Target: ${targetMin}–${targetMax} characters. MAXIMUM ${selMax}.`
+Target: ${targetMin}–${targetMax} characters (within 5% of the ${selMax} max). MAXIMUM ${selMax}. Do not land 15–20% under the cap.`
       : `**HARD CHARACTER LIMIT:** Revised selection MUST be ≤ ${selMax} characters (full field max ${hardMax}).${spliceNote}
-Target ${targetMin}–${targetMax} characters. NEVER exceed ${selMax}, even if that is shorter than ±20% of the original ${selectedLength} characters.`;
+Target ${targetMin}–${targetMax} characters (within 5% of the field max). NEVER exceed ${selMax}. Do not land 15–20% under the cap.`;
 
     return {
       hardMax,

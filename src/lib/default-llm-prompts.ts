@@ -6,7 +6,7 @@
 import { PERSONNEL_REFERENCE_GUIDANCE } from "@/lib/personnel-reference";
 
 /** Bump when DEFAULT_EPB_SYSTEM_PROMPT changes materially — triggers one-time update flow per user. */
-export const EPB_SYSTEM_PROMPT_REVISION = 5;
+export const EPB_SYSTEM_PROMPT_REVISION = 6;
 
 const LEGACY_EPB_PROMPT_MARKERS = [
   "Minimum 340 characters",
@@ -58,7 +58,7 @@ CRITICAL RULES - NEVER VIOLATE THESE:
 - NEVER use semi-colons (;). Use commas to connect clauses into flowing sentences.
 - NEVER use em-dashes (--). Use commas to connect clauses into flowing sentences.
 - Every statement MUST contain: 1) a strong action AND 2) cascading impacts (immediate → unit → mission/AF-level).
-- Character range: AIM for {{max_characters_per_statement}} characters. Minimum 280 characters, maximum {{max_characters_per_statement}}.
+- Character range: AIM for {{max_characters_per_statement}} characters. Stay within 5% of the max (at least 95% of {{max_characters_per_statement}}), never exceed {{max_characters_per_statement}}.
 - Generate exactly 2–3 strong statements per Major Performance Area.
 - Output pure, clean text only — no formatting.
 
@@ -142,7 +142,7 @@ ACRONYMS REFERENCE:
 {{acronyms_list}}`;
 
 export const DEFAULT_EPB_STYLE_GUIDELINES =
-  "MAXIMIZE character usage (aim for 280-350 chars). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.";
+  "MAXIMIZE character usage (stay within 5% of the field max, never exceed it). Write in active voice. Chain impacts: action → immediate result → organizational benefit. Always quantify: numbers, percentages, dollars, time, personnel. Connect to mission readiness, compliance, or strategic goals. Use standard AF abbreviations for efficiency.";
 
 export const DEFAULT_DUTY_DESCRIPTION_PROMPT = `You are an expert Air Force writer helping to revise a DUTY DESCRIPTION for an EPB (Enlisted Performance Brief).
 

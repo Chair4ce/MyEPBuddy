@@ -14,6 +14,7 @@ import {
   resolveStoredSystemPrompt,
 } from "@/lib/default-llm-prompts";
 import { STANDARD_MGAS, DEFAULT_MPA_DESCRIPTIONS, formatMPAContext, MAX_STATEMENT_CHARACTERS, MAX_HLR_CHARACTERS } from "@/lib/constants";
+import { withinLimitTargetMin } from "@/lib/revise-length-constraint";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
@@ -821,14 +822,16 @@ The primary impact MUST emphasize RESOURCE EFFICIENCY. Frame around:
         // Account for " " separator (1 char) when statements are combined on frontend
         const combinedLimit = stmtCount === 2 ? effectiveMaxChars - 2 : effectiveMaxChars; // Leave room for separator
         const charLimitPerStatement = stmtCount === 2 ? Math.floor(combinedLimit / 2) : effectiveMaxChars;
+        const fillMin = withinLimitTargetMin(stmtCount === 2 ? combinedLimit : effectiveMaxChars);
         const charLimitText = stmtCount === 2 
           ? `**HARD CHARACTER BUDGET (COUNT CHARACTERS, NOT WORDS):**
 - Statement 1 + Statement 2 COMBINED must be ≤ ${combinedLimit} characters (they share one ${effectiveMaxChars}-char box)
-- Aim ~${charLimitPerStatement} chars each (letters, spaces, punctuation all count)
-- After writing, COUNT the combined length. If over ${combinedLimit}, DELETE until it fits
+- Aim ${fillMin}–${combinedLimit} combined (within 5% of the shared budget — letters, spaces, punctuation all count)
+- Aim ~${charLimitPerStatement} chars each as a starting split
+- After writing, COUNT the combined length. If over ${combinedLimit}, DELETE until it fits. If under ${fillMin}, add density (metrics already in the source, abbreviations, chained impact) until it lands in range
 - Prefer dense abbreviations: hrs, mos, wks, sq, mbrs, ops, &
 - Example (~170 chars): "Led 5-mbr team overhauling network, installed 47 servers across 3 sites, slashed downtime 90%, saved $2.3M, boosting readiness."`
-          : `TARGET: Statement should be ${Math.floor(effectiveMaxChars * 0.8)}-${effectiveMaxChars} characters. HARD MAX: ${effectiveMaxChars}.`;
+          : `TARGET: ${fillMin}-${effectiveMaxChars} characters (within 5% of the ${effectiveMaxChars} max). HARD MAX: ${effectiveMaxChars}.`;
         
         // Set multi-statement flag for QC when generating 2 statements
         if (stmtCount === 2) {

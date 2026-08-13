@@ -196,7 +196,7 @@ Your goal is to improve the duty description by:
 - Varying how the scope and responsibility are described
 - Each of your ${versionCount} alternatives should approach the role description from a different angle
 - KEEP PRESENT TENSE - this describes a current role, not a past accomplishment
-- Target length: ~similar to original (within 20%)`,
+- Target length: follow the HARD CHARACTER LIMIT block (within 5% of the field max when a max is provided)`,
   };
 
   const basePrompt = resolvePromptWithRulesMode(
@@ -521,7 +521,7 @@ Your goal is to SIGNIFICANTLY transform the selected text:
 - Reframe the accomplishment from a new angle using ONLY facts from the source
 - Preserve all quantification from the source — never add new metrics or impact
 - Each of your ${versionCount} alternatives should use DIFFERENT verbs from each other
-- Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax} — do not match an over-limit original)` : ` (within 20% of original)`}`,
+- Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax} — within 5% of the field max; do not match an over-limit original)` : ` (within 20% of original)`}`,
     };
     
     // Get available verbs (exclude used ones)

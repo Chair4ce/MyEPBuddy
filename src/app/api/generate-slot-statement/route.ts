@@ -16,6 +16,7 @@ import { scanAccomplishmentsForLLM } from "@/lib/sensitive-data-scanner";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
+import { withinLimitTargetMin } from "@/lib/revise-length-constraint";
 import {
   buildEpbVerbVarietyPromptSection,
   fetchOtherMpaStatements,
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
 
     const body: GenerateSlotRequest = await request.json();
     const { accomplishments, targetChars, model, mpa, rateeRank, rateeAfsc, rateeId, cycleYear } = body;
+    const fillMin = withinLimitTargetMin(targetChars);
 
     if (!accomplishments || accomplishments.length === 0) {
       return NextResponse.json({ error: "No accomplishments provided" }, { status: 400 });
@@ -141,7 +143,7 @@ GOOD EXAMPLE (readable, strong ending):
 BAD EXAMPLE (run-on, laundry list):
 "Directed 12 Amn rebuilding 8 servers, advancing completion by 29 days, crafted assessment, fixed errors, purged data, averting outage, streamlining access"
 
-TARGET LENGTH: ${targetChars} characters maximum (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})
+TARGET LENGTH: ${targetChars} characters maximum (aim for ${fillMin}-${targetChars}, within 5% of the max)
 ${verbVarietyBlock}
 Output ONLY the statement (no period at the end).`;
 
@@ -166,7 +168,7 @@ CRITICAL RULES:
 11. Output ONLY the statement text, no quotes or explanation
 12. BANNED FORMATTING: NEVER use "w/", "w/o", "b/c", "--", "—", ";", "<", or ">" — write "with"/"without"/"because", use commas, and write "under"/"over" for comparisons
 
-CHARACTER LIMIT: ${targetChars} (aim for ${Math.floor(targetChars * 0.85)}-${targetChars})`,
+CHARACTER LIMIT: ${targetChars} (aim for ${fillMin}-${targetChars}, within 5% of the max)`,
       user.id,
       "epb",
     );

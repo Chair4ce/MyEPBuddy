@@ -3,6 +3,7 @@ import {
   buildReviseLengthGuidance,
   sanitizeMaxCharacters,
   selectionBudget,
+  withinLimitTargetMin,
 } from "@/lib/revise-length-constraint";
 
 describe("sanitizeMaxCharacters", () => {
@@ -31,6 +32,13 @@ describe("selectionBudget", () => {
   });
 });
 
+describe("withinLimitTargetMin", () => {
+  it("is 5% under the field max", () => {
+    expect(withinLimitTargetMin(350)).toBe(332);
+    expect(withinLimitTargetMin(250)).toBe(237);
+  });
+});
+
 describe("buildReviseLengthGuidance", () => {
   it("tells the model to match original length when no max is set (legacy)", () => {
     const g = buildReviseLengthGuidance({
@@ -53,9 +61,10 @@ describe("buildReviseLengthGuidance", () => {
     expect(g.selectionMax).toBe(350);
     expect(g.mustCompressToFit).toBe(true);
     expect(g.targetMax).toBe(350);
-    expect(g.targetMin).toBeLessThanOrEqual(350);
+    expect(g.targetMin).toBe(332);
     expect(g.promptBlock).toMatch(/NON-NEGOTIABLE/);
     expect(g.promptBlock).toMatch(/REMOVE at least 102/);
+    expect(g.promptBlock).toMatch(/within 5%/);
     expect(g.promptBlock).not.toMatch(/±20%/);
   });
 
@@ -66,7 +75,9 @@ describe("buildReviseLengthGuidance", () => {
       mode: "general",
     });
     expect(g.mustCompressToFit).toBe(false);
-    expect(g.targetMax).toBeLessThanOrEqual(350);
+    expect(g.targetMin).toBe(332);
+    expect(g.targetMax).toBe(350);
+    expect(g.promptBlock).toMatch(/within 5%/);
     expect(g.promptBlock).toMatch(/NEVER exceed 350/);
   });
 
