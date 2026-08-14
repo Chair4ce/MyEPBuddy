@@ -288,6 +288,18 @@ export function combineSentences(sentence1: string, sentence2: string): string {
 }
 
 /**
+ * Reverse S1 and S2 in a two-sentence EPB statement.
+ * One-sentence (or empty) text is returned unchanged.
+ */
+export function swapStatementSentences(text: string): string {
+  const parsed = parseStatement(text);
+  if (!parsed.hasTwoSentences || parsed.sentences.length < 2) {
+    return parsed.raw || text || "";
+  }
+  return combineSentences(parsed.sentences[1].text, parsed.sentences[0].text);
+}
+
+/**
  * Calculate how many characters need to be trimmed/added to fit a target
  */
 function calculateCharacterDelta(

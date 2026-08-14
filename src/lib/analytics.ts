@@ -184,6 +184,9 @@ export const Analytics = {
   sentenceSwapped: (sourceMpa: string, targetMpa: string) =>
     trackEvent("sentence_swapped", { source_mpa: sourceMpa, target_mpa: targetMpa }),
 
+  sentenceOrderSwapped: (mpa: string) =>
+    trackEvent("sentence_order_swapped", { mpa }),
+
   // ── Statement Sharing ──────────────────────────
   statementShared: (shareType: "team" | "community" | "user") => 
     trackEvent("statement_shared", { share_type: shareType }),

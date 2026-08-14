@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { parseStatement, type ParsedSentence } from "@/lib/sentence-utils";
-import { GripVertical } from "lucide-react";
+import { motionPressable } from "@/lib/motion/classes";
+import { ArrowLeftRight, GripVertical } from "lucide-react";
 
 export interface DraggedSentence {
   sentence: ParsedSentence;
@@ -19,8 +20,37 @@ interface SentencePillsProps {
   onDragStart?: (data: DraggedSentence) => void;
   onDragEnd?: () => void;
   onDrop?: (data: DraggedSentence, targetIndex: number) => void;
+  /** Swap S1 and S2 inside this MPA (no AI resize). */
+  onReorder?: () => void;
   draggedSentence?: DraggedSentence | null;
   disabled?: boolean;
+}
+
+export function SentenceOrderSwapButton({
+  disabled,
+  onClick,
+  className,
+}: {
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-label="Swap sentence order"
+      title="Swap sentence 1 and sentence 2"
+      className={cn(
+        "inline-flex items-center justify-center rounded-md size-6 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:pointer-events-none",
+        motionPressable,
+        className,
+      )}
+    >
+      <ArrowLeftRight className="size-3.5" aria-hidden="true" />
+    </button>
+  );
 }
 
 export function SentencePills({
@@ -29,6 +59,7 @@ export function SentencePills({
   onDragStart,
   onDragEnd,
   onDrop,
+  onReorder,
   draggedSentence,
   disabled = false,
 }: SentencePillsProps) {
@@ -38,6 +69,8 @@ export function SentencePills({
 
   // Check if we're a valid drop target (different MPA)
   const isValidDropTarget = draggedSentence && draggedSentence.sourceMpa !== mpaKey;
+  const isIntraMpaDrag =
+    !!draggedSentence && draggedSentence.sourceMpa === mpaKey;
 
   // Don't render if disabled
   if (disabled) {
@@ -80,9 +113,11 @@ export function SentencePills({
     
     try {
       const data = JSON.parse(e.dataTransfer.getData("application/json")) as DraggedSentence;
-      
-      // Don't allow dropping on same MPA
+
       if (data.sourceMpa === mpaKey) {
+        if (data.sourceIndex !== targetIndex) {
+          onReorder?.();
+        }
         return;
       }
       
@@ -144,11 +179,16 @@ export function SentencePills({
     return null;
   }
 
+  const canReorder = parsed.hasTwoSentences && parsed.sentences.length >= 2;
+
   return (
     <div className="flex items-center gap-1">
       {parsed.sentences.map((sentence, index) => {
         const charCount = sentence.text.length;
         const isBeingDragged = draggedSentence?.sourceMpa === mpaKey && draggedSentence?.sourceIndex === index;
+        const isIntraDropTarget =
+          isIntraMpaDrag && draggedSentence?.sourceIndex !== index;
+        const isHovering = dragOverIndex === index && isIntraDropTarget;
         
         return (
           <div
@@ -156,14 +196,26 @@ export function SentencePills({
             draggable={true}
             onDragStart={(e) => handleDragStart(e, sentence, index)}
             onDragEnd={handleDragEnd}
+            onDragOver={
+              isIntraDropTarget
+                ? (e) => handleDragOver(e, index)
+                : undefined
+            }
+            onDragLeave={isIntraDropTarget ? handleDragLeave : undefined}
+            onDrop={isIntraDropTarget ? (e) => handleDrop(e, index) : undefined}
             onMouseDown={(e) => e.stopPropagation()}
             className={cn(
               "group flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-grab active:cursor-grabbing transition-all select-none",
               "border bg-background hover:bg-accent hover:border-primary/40",
               "relative z-10",
               isBeingDragged && "opacity-50 border-dashed border-primary/60",
+              isHovering && "border-primary bg-primary/10",
             )}
-            title={`Drag to swap with another MPA. "${sentence.text.slice(0, 60)}..."`}
+            title={
+              canReorder
+                ? `Drag onto the other sentence to reorder, or onto another MPA to move. "${sentence.text.slice(0, 60)}..."`
+                : `Drag to swap with another MPA. "${sentence.text.slice(0, 60)}..."`
+            }
           >
             <GripVertical className="size-2.5 text-muted-foreground group-hover:text-primary transition-colors" />
             <span className="text-primary">
@@ -175,6 +227,9 @@ export function SentencePills({
           </div>
         );
       })}
+      {canReorder && onReorder && (
+        <SentenceOrderSwapButton onClick={onReorder} />
+      )}
     </div>
   );
 }

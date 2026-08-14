@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { parseStatement, combineSentences, type ParsedSentence } from "@/lib/sentence-utils";
 import { getCharacterCountColor } from "@/lib/utils";
 import { GripVertical } from "lucide-react";
+import { SentenceOrderSwapButton } from "./sentence-pills";
 
 // Re-export compatible type for drag-drop
 export interface DraggedSentence {
@@ -24,6 +25,8 @@ interface SplitViewEditorProps {
   onDragStart?: (data: DraggedSentence) => void;
   onDragEnd?: () => void;
   onDrop?: (data: DraggedSentence, targetIndex: number) => void;
+  /** Swap S1 and S2 in this MPA (no AI resize). */
+  onReorder?: () => void;
   draggedSentence?: DraggedSentence | null;
   // Animation props
   isClosing?: boolean;
@@ -52,6 +55,7 @@ export function SplitViewEditor({
   onDragStart,
   onDragEnd,
   onDrop,
+  onReorder,
   draggedSentence,
   isClosing = false,
   onFocus,
@@ -181,6 +185,14 @@ export function SplitViewEditor({
   
   // Check if we're a valid drop target (different MPA is dragging)
   const isValidDropTarget = draggedSentence && mpaKey && draggedSentence.sourceMpa !== mpaKey;
+  const canReorder = !disabled && !!s1Trimmed && !!s2Trimmed;
+  const isIntraMpaDrag =
+    !!draggedSentence && !!mpaKey && draggedSentence.sourceMpa === mpaKey;
+
+  const handleSwapOrder = () => {
+    if (!canReorder) return;
+    onReorder?.();
+  };
   
   // Drag handlers for initiating drag from this split view
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -220,7 +232,8 @@ export function SplitViewEditor({
   
   // Drop handlers for receiving drops
   const handleDragOver = (e: React.DragEvent, index: number) => {
-    if (!isValidDropTarget) return;
+    const intraTarget = isIntraMpaDrag && draggedSentence?.sourceIndex !== index;
+    if (!isValidDropTarget && !intraTarget) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverIndex(index);
@@ -236,9 +249,13 @@ export function SplitViewEditor({
     
     try {
       const data = JSON.parse(e.dataTransfer.getData("application/json")) as DraggedSentence;
-      if (data.sourceMpa !== mpaKey) {
-        onDrop?.(data, targetIndex);
+      if (data.sourceMpa === mpaKey) {
+        if (data.sourceIndex !== targetIndex) {
+          onReorder?.();
+        }
+        return;
       }
+      onDrop?.(data, targetIndex);
     } catch (err) {
       console.error("Failed to parse drag data:", err);
     }
@@ -251,7 +268,8 @@ export function SplitViewEditor({
         className={cn(
           "space-y-1 rounded-lg p-2 -m-2 transition-all",
           isClosing ? "animate-elevator-close-up" : "animate-elevator-up",
-          isValidDropTarget && dragOverIndex === 0 && "bg-primary/10 ring-2 ring-primary ring-dashed",
+          (isValidDropTarget || (isIntraMpaDrag && draggedSentence?.sourceIndex !== 0)) &&
+            dragOverIndex === 0 && "bg-primary/10 ring-2 ring-primary ring-dashed",
           isValidDropTarget && dragOverIndex !== 0 && "bg-muted/30"
         )}
         onDragOver={(e) => handleDragOver(e, 0)}
@@ -262,9 +280,10 @@ export function SplitViewEditor({
           <div className="flex items-center gap-1.5">
           
             {/* Drop indicator */}
-            {isValidDropTarget && dragOverIndex === 0 && (
+            {((isValidDropTarget && dragOverIndex === 0) ||
+              (isIntraMpaDrag && draggedSentence?.sourceIndex !== 0 && dragOverIndex === 0)) && (
               <span className="text-[10px] text-primary font-medium animate-pulse">
-                Drop here
+                {isIntraMpaDrag ? "Drop to swap" : "Drop here"}
               </span>
             )}
           </div>
@@ -283,7 +302,7 @@ export function SplitViewEditor({
                 "text-muted-foreground hover:text-primary",
                 isDraggingFrom === 0 && "opacity-50 bg-primary/10 border-primary/30 text-primary"
               )}
-              title="Drag to swap with another MPA"
+              title="Drag onto sentence 2 to reorder, or onto another MPA to move"
             >
               <GripVertical className="size-5" />
             </div>
@@ -318,7 +337,11 @@ export function SplitViewEditor({
         "flex items-center gap-2 w-full justify-center mb-0",
         isClosing ? "animate-elevator-divider-close" : "animate-elevator-divider"
       )}>
-        <span className="text-[15px] text-muted-foreground">+</span>
+        {canReorder && onReorder ? (
+          <SentenceOrderSwapButton onClick={handleSwapOrder} className="size-7" />
+        ) : (
+          <span className="text-[15px] text-muted-foreground">+</span>
+        )}
       </div>
       
       {/* Sentence 2 - slides down like elevator door opening/closing */}
@@ -326,7 +349,8 @@ export function SplitViewEditor({
         className={cn(
           "space-y-1 rounded-lg p-2 -m-2 transition-all",
           isClosing ? "animate-elevator-close-down" : "animate-elevator-down",
-          isValidDropTarget && dragOverIndex === 1 && "bg-primary/10 ring-2 ring-primary ring-dashed",
+          (isValidDropTarget || (isIntraMpaDrag && draggedSentence?.sourceIndex !== 1)) &&
+            dragOverIndex === 1 && "bg-primary/10 ring-2 ring-primary ring-dashed",
           isValidDropTarget && dragOverIndex !== 1 && "bg-muted/30"
         )}
         onDragOver={(e) => handleDragOver(e, 1)}
@@ -337,9 +361,10 @@ export function SplitViewEditor({
           <div className="flex items-center gap-1.5">
            
             {/* Drop indicator */}
-            {isValidDropTarget && dragOverIndex === 1 && (
+            {((isValidDropTarget && dragOverIndex === 1) ||
+              (isIntraMpaDrag && draggedSentence?.sourceIndex !== 1 && dragOverIndex === 1)) && (
               <span className="text-[10px] text-primary font-medium animate-pulse">
-                Drop here
+                {isIntraMpaDrag ? "Drop to swap" : "Drop here"}
               </span>
             )}
           </div>
@@ -357,7 +382,7 @@ export function SplitViewEditor({
                 "text-muted-foreground hover:text-primary",
                 isDraggingFrom === 1 && "opacity-50 bg-primary/10 border-primary/30 text-primary"
               )}
-              title="Drag to swap with another MPA"
+              title="Drag onto sentence 1 to reorder, or onto another MPA to move"
             >
               <GripVertical className="size-5" />
             </div>

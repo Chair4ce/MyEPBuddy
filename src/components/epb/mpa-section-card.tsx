@@ -79,7 +79,7 @@ import {
   seedImpactBoosterDraftFields,
   type ImpactBoosterDraftFields,
 } from "@/lib/impact-booster";
-import { parseStatement } from "@/lib/sentence-utils";
+import { parseStatement, swapStatementSentences } from "@/lib/sentence-utils";
 import { MpaDescriptionToggleButton, scrollMpaDescriptionPanelTo } from "./mpa-description-editor";
 import { getEpbZenModeClassName } from "./epb-zen-mode";
 import {
@@ -885,6 +885,18 @@ export function MPASectionCard({
     }
   };
 
+  const handleSwapSentenceOrder = () => {
+    if (isLockedByOther || isHLR) return;
+    const swapped = swapStatementSentences(localTextRef.current);
+    if (swapped === localTextRef.current) return;
+    handleTextChange(swapped);
+    updateSectionState(section.mpa, {
+      draftText: swapped,
+      isDirty: swapped !== section.statement_text,
+    });
+    Analytics.sentenceOrderSwapped(section.mpa);
+  };
+
   // Set presence when textarea gains focus (no blocking, collaborative editing)
   const handleTextFocus = async () => {
     // Store the original text before editing begins (for idle snapshot)
@@ -1554,6 +1566,7 @@ export function MPASectionCard({
                     onDragStart={onSentenceDragStart}
                     onDragEnd={onSentenceDragEnd}
                     onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
+                    onReorder={handleSwapSentenceOrder}
                     draggedSentence={draggedSentence}
                     isClosing={isSplitViewClosing}
                     onFocus={handleTextFocus}
@@ -1606,6 +1619,7 @@ export function MPASectionCard({
                         onDragStart={onSentenceDragStart}
                         onDragEnd={onSentenceDragEnd}
                         onDrop={(data, targetIndex) => onSentenceDrop?.(data, section.mpa, targetIndex)}
+                        onReorder={handleSwapSentenceOrder}
                         draggedSentence={draggedSentence}
                         disabled={isLockedByOther}
                       />
