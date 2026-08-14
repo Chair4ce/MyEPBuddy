@@ -142,20 +142,29 @@ export function CreateReviewLinkDialog({
         tokenId: data.token,
       });
 
-      // Auto-copy to clipboard if not sending email
-      if (!sendEmail || !recipientEmail.trim()) {
+      const copyLink = async (): Promise<boolean> => {
         try {
           await navigator.clipboard.writeText(data.reviewUrl);
           setCopied(true);
-          toast.success("Review link created and copied to clipboard!");
           setTimeout(() => setCopied(false), 2000);
+          return true;
         } catch (copyErr) {
           console.error("Auto-copy error:", copyErr);
-          toast.success("Review link created!");
+          return false;
         }
+      };
+
+      // Auto-copy when not attempting email delivery
+      if (!sendEmail || !recipientEmail.trim()) {
+        const copiedOk = await copyLink();
+        toast.success(
+          copiedOk
+            ? "Review link created and copied to clipboard!"
+            : "Review link created!"
+        );
       }
 
-      // If sending email and email provided
+      // If sending email and email provided — delivery is best-effort; link always works
       if (sendEmail && recipientEmail.trim()) {
         setIsSendingEmail(true);
         try {
@@ -170,24 +179,44 @@ export function CreateReviewLinkDialog({
               rateeRank,
               mentorLabel: linkType === "labeled" ? linkLabel.trim() : null,
               expiresAt: data.expiresAt,
+              shellType,
             }),
           });
 
           const emailData = await emailResponse.json();
+          const copiedOk = await copyLink();
 
-          if (emailResponse.ok) {
-            toast.success(`Review link ready! ${emailData.message || ""}`);
+          if (emailResponse.ok && emailData.emailSent) {
+            toast.success(`Review link emailed to ${recipientEmail.trim()}`, {
+              description: copiedOk
+                ? "A copy is also on your clipboard."
+                : undefined,
+            });
+          } else if (emailResponse.ok) {
+            toast.message(emailData.error || "Review link ready", {
+              description: copiedOk
+                ? "Email couldn't be delivered — share the copied link instead."
+                : "Email couldn't be delivered — copy the link below to share it.",
+            });
           } else {
-            toast.error(emailData.error || "Failed to send email");
+            toast.error(emailData.error || "Failed to send email", {
+              description: copiedOk
+                ? "Link was created and copied — share it manually."
+                : "Link was created — copy it below to share manually.",
+            });
           }
         } catch (emailErr) {
           console.error("Email error:", emailErr);
-          toast.error("Failed to send email, but link was created");
+          const copiedOk = await copyLink();
+          toast.message("Review link created", {
+            description: copiedOk
+              ? "Email couldn't be sent — share the copied link instead."
+              : "Email couldn't be sent — copy the link below to share it.",
+          });
         } finally {
           setIsSendingEmail(false);
         }
       }
-      // Note: Success toast for non-email case is handled above in auto-copy block
     } catch (error) {
       console.error("Generate error:", error);
       toast.error(error instanceof Error ? error.message : "Failed to generate link");

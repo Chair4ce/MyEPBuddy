@@ -1,47 +1,90 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { stripHtml } from "@/lib/email/html-safe";
+import {
+  buildReviewLinkEmail,
+  type ReviewShellType,
+} from "@/lib/email/review-link";
+import {
+  getResendApiKey,
+  getTransactionalFromEmail,
+  ResendSendError,
+  sendResendEmail,
+} from "@/lib/email/resend";
 
 interface ProfileData {
   full_name: string | null;
   rank: string | null;
+  email: string | null;
 }
 
-// Rate limiting: Simple in-memory store (in production, use Redis)
-const emailRateLimits = new Map<string, { count: number; resetAt: number }>();
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAILS_PER_HOUR = 10;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+type RateLimitRecord = { count: number; resetAt: number };
+const emailRateLimits = new Map<string, RateLimitRecord>();
 
 function checkRateLimit(userId: string): boolean {
   const now = Date.now();
   const record = emailRateLimits.get(userId);
-  
+
   if (!record || now > record.resetAt) {
-    emailRateLimits.set(userId, { count: 1, resetAt: now + 3600000 }); // 1 hour
+    emailRateLimits.set(userId, {
+      count: 1,
+      resetAt: now + RATE_LIMIT_WINDOW_MS,
+    });
     return true;
   }
-  
+
   if (record.count >= MAX_EMAILS_PER_HOUR) {
     return false;
   }
-  
-  record.count++;
+
+  record.count += 1;
   return true;
 }
 
-// POST: Send review link via email
-// NOTE: This is a stub for user to integrate their email service (SendGrid/Twilio)
+function getSiteUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://myepbuddy.com"
+  );
+}
+
+function parseShellType(value: unknown): ReviewShellType {
+  if (value === "award" || value === "decoration" || value === "epb") {
+    return value;
+  }
+  return "epb";
+}
+
+function formatExpiresAt(iso: unknown): string {
+  if (typeof iso !== "string" || !iso.trim()) return "soon";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("en-US", {
+    timeZone: "UTC",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+// POST: Send review link via email (Resend). Link creation is separate —
+// this route is best-effort delivery; callers should still show the link.
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check rate limit
     if (!checkRateLimit(user.id)) {
       return NextResponse.json(
         { error: "Rate limit exceeded. Maximum 10 emails per hour." },
@@ -50,108 +93,175 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      tokenId,
-      recipientEmail,
-      reviewUrl,
-      rateeName,
-      rateeRank,
-      mentorLabel,
-      expiresAt,
-    } = body;
+    const token =
+      typeof body.tokenId === "string"
+        ? body.tokenId.trim()
+        : typeof body.token === "string"
+          ? body.token.trim()
+          : "";
+    const recipientEmail = stripHtml(
+      typeof body.recipientEmail === "string" ? body.recipientEmail : ""
+    )
+      .trim()
+      .toLowerCase();
+    const rateeName = stripHtml(
+      typeof body.rateeName === "string" ? body.rateeName : ""
+    ).trim();
+    const rateeRank =
+      typeof body.rateeRank === "string"
+        ? stripHtml(body.rateeRank).trim()
+        : null;
+    const mentorLabel =
+      typeof body.mentorLabel === "string"
+        ? stripHtml(body.mentorLabel).trim()
+        : null;
+    const expiresAtLabel = formatExpiresAt(body.expiresAt);
 
-    // Validate required fields
-    if (!tokenId || !recipientEmail || !reviewUrl) {
+    if (!token || !recipientEmail) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(recipientEmail)) {
+    if (!EMAIL_REGEX.test(recipientEmail)) {
       return NextResponse.json(
         { error: "Invalid email format" },
         { status: 400 }
       );
     }
 
-    // Get user's profile for sender name
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name, rank")
-      .eq("id", user.id)
-      .single() as { data: ProfileData | null; error: unknown };
+    // Ensure the token belongs to the caller (public token string from create API).
+    const { data: ownedToken, error: tokenLookupError } = await supabase
+      .from("review_tokens")
+      .select("id, token, shell_type, expires_at, link_label, ratee_name, ratee_rank")
+      .eq("token", token)
+      .eq("created_by", user.id)
+      .maybeSingle();
 
-    const senderName = profile?.full_name || "A MyEPBuddy user";
-    const senderRank = profile?.rank || "";
+    if (tokenLookupError || !ownedToken) {
+      return NextResponse.json(
+        { error: "Review link not found" },
+        { status: 404 }
+      );
+    }
 
-    // Prepare email data
-    const emailData = {
-      to: recipientEmail,
-      subject: `${senderRank} ${senderName} requested your feedback on their EPB`,
-      senderName: `${senderRank} ${senderName}`.trim(),
-      rateeName,
-      rateeRank,
-      mentorLabel,
-      reviewUrl,
-      expiresAt: new Date(expiresAt).toLocaleString(),
+    const tokenRow = ownedToken as {
+      id: string;
+      token: string;
+      shell_type: string;
+      expires_at: string;
+      link_label: string | null;
+      ratee_name: string;
+      ratee_rank: string | null;
     };
 
-    // =========================================================================
-    // TODO: User integrates their email service here
-    // =========================================================================
-    // 
-    // Example with SendGrid:
-    // 
-    // import sgMail from "@sendgrid/mail";
-    // sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
-    // 
-    // await sgMail.send({
-    //   to: emailData.to,
-    //   from: process.env.SENDGRID_FROM_EMAIL!,
-    //   subject: emailData.subject,
-    //   html: `
-    //     <h2>EPB Feedback Request</h2>
-    //     <p>Hi ${emailData.mentorLabel || "there"},</p>
-    //     <p>${emailData.senderName} has requested your feedback on their 
-    //        Enlisted Performance Brief (EPB) for ${emailData.rateeRank} ${emailData.rateeName}.</p>
-    //     <p><a href="${emailData.reviewUrl}">Click here to review and provide feedback</a></p>
-    //     <p>This link expires on ${emailData.expiresAt}.</p>
-    //     <hr>
-    //     <p><small>MyEPBuddy - EPB Writing Assistant</small></p>
-    //   `,
-    // });
-    //
-    // Example with Twilio SendGrid:
-    // Similar to above, just use Twilio's SendGrid SDK
-    //
-    // =========================================================================
+    const shellType = parseShellType(tokenRow.shell_type);
+    // Build URL server-side — never trust a client-supplied reviewUrl in outbound email.
+    const reviewUrl = `${getSiteUrl().replace(/\/$/, "")}/review/${shellType}/${tokenRow.token}`;
+    const resolvedRateeName = rateeName || tokenRow.ratee_name || "the ratee";
+    const resolvedRateeRank = rateeRank || tokenRow.ratee_rank;
+    const resolvedMentorLabel = mentorLabel || tokenRow.link_label;
+    const resolvedExpiresAt =
+      expiresAtLabel !== "soon"
+        ? expiresAtLabel
+        : formatExpiresAt(tokenRow.expires_at);
 
-    // For now, we'll simulate success and log the email data
-    console.log("Email would be sent:", emailData);
+    const { data: profile } = (await supabase
+      .from("profiles")
+      .select("full_name, rank, email")
+      .eq("id", user.id)
+      .single()) as { data: ProfileData | null; error: unknown };
 
-    // Update the token with email info
+    const senderDisplayName =
+      [profile?.rank, profile?.full_name].filter(Boolean).join(" ").trim() ||
+      "A MyEPBuddy user";
+
+    const resendApiKey = getResendApiKey();
+    const fromEmail = getTransactionalFromEmail();
+
+    if (!resendApiKey || !fromEmail) {
+      console.warn(
+        "Review link email not sent — missing RESEND_API_KEY or EMAIL_FROM/FEEDBACK_FROM_EMAIL."
+      );
+      return NextResponse.json({
+        success: true,
+        emailSent: false,
+        code: "email_not_configured",
+        error:
+          "Review link created, but email is not configured. Copy and share the link instead.",
+      });
+    }
+
+    const emailContent = buildReviewLinkEmail({
+      siteUrl: getSiteUrl(),
+      senderDisplayName,
+      rateeName: resolvedRateeName,
+      rateeRank: resolvedRateeRank,
+      mentorLabel: resolvedMentorLabel,
+      reviewUrl,
+      expiresAt: resolvedExpiresAt,
+      shellType,
+    });
+
+    try {
+      await sendResendEmail({
+        resendApiKey,
+        from: fromEmail,
+        to: recipientEmail,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
+        replyTo: (() => {
+          const candidate = (profile?.email || user.email || "").trim();
+          return candidate.includes("@") ? candidate : null;
+        })(),
+      });
+    } catch (sendError) {
+      const resendDetail =
+        sendError instanceof ResendSendError
+          ? { status: sendError.status, body: sendError.detail.slice(0, 500) }
+          : {
+              message:
+                sendError instanceof Error ? sendError.message : "unknown",
+            };
+      console.error("Review link Resend error:", {
+        from: fromEmail,
+        to: recipientEmail,
+        ...resendDetail,
+      });
+      return NextResponse.json({
+        success: true,
+        emailSent: false,
+        code:
+          sendError instanceof ResendSendError && sendError.status === 403
+            ? "email_forbidden"
+            : "email_send_failed",
+        error:
+          sendError instanceof ResendSendError && sendError.status === 403
+            ? "Review link created, but email could not be delivered. Copy and share the link instead."
+            : "Review link created, but the email provider failed to send. Copy and share the link instead.",
+        resendStatus:
+          sendError instanceof ResendSendError ? sendError.status : null,
+      });
+    }
+
     const { error: updateError } = await supabase
       .from("review_tokens")
       .update({
         recipient_email: recipientEmail,
         email_sent_at: new Date().toISOString(),
       } as never)
-      .eq("id", tokenId)
+      .eq("id", tokenRow.id)
       .eq("created_by", user.id);
 
     if (updateError) {
-      console.error("Update token error:", updateError);
-      // Don't fail the request, email was "sent"
+      console.error("Update token email metadata error:", updateError);
     }
 
-    // Return success with a note that email service needs configuration
     return NextResponse.json({
       success: true,
-      message: "Email service not configured. Please integrate SendGrid or Twilio.",
-      emailData, // Return data so frontend can show what would be sent
+      emailSent: true,
     });
   } catch (error) {
     console.error("Send email error:", error);

@@ -57,6 +57,14 @@ Feature path: New Entry ▾ → Bulk paste → extract API → review/combine �
 
 Shipped: global token bucket + fair share in `consume_credit`; admin `default_key_rpm` (default 60); BYOK stays 5/60. See [026-default-key-bandwidth-followups.md](026-default-key-bandwidth-followups.md).
 
+### Review share email (2026-08)
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 027  | Review-link email preview + characterization tests | P3 | S | Resend share-email ship | TODO |
+
+Shipped on `cursor/fix-review-share-email-toast-0086`: stub SendGrid/Twilio toast removed; Resend + copy-link fallback; server-built review URLs. See [027-review-link-email-preview-tests.md](027-review-link-email-preview-tests.md).
+
 ### Generate EPB score-based assignment (PR #17 follow-ups)
 
 Default selection after the smart two-sentence / stash-pop ship (`bb577bd`). Desperate underfill + non-billable `/api/plan-epb` were fixed in-branch; these plans cover remaining leverage.
