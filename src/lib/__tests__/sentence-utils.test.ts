@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   asPlainText,
   coalesceTwoSentenceRevisions,
+  combineSentences,
   ensureRevisionCount,
   parseRevisionList,
   parseStatement,
+  swapStatementSentences,
 } from "@/lib/sentence-utils";
 
 describe("asPlainText", () => {
@@ -124,5 +126,42 @@ describe("parseStatement", () => {
     ]);
     expect(parsed.hasTwoSentences).toBe(true);
     expect(parsed.sentences).toHaveLength(2);
+  });
+});
+
+describe("swapStatementSentences", () => {
+  it("swaps a two-sentence statement", () => {
+    const original =
+      "Led 12 Airmen through a 96-hour surge. Cut backlog 40% and restored combat sorties.";
+    const swapped = swapStatementSentences(original);
+    const parsed = parseStatement(swapped);
+    expect(parsed.hasTwoSentences).toBe(true);
+    expect(parsed.sentences[0].text).toBe(
+      "Cut backlog 40% and restored combat sorties."
+    );
+    expect(parsed.sentences[1].text).toBe(
+      "Led 12 Airmen through a 96-hour surge."
+    );
+  });
+
+  it("is reversible", () => {
+    const original =
+      "Directed wing inspection prep across 4 squadrons. Zero write-ups at higher HQ.";
+    expect(swapStatementSentences(swapStatementSentences(original))).toBe(
+      combineSentences(
+        parseStatement(original).sentences[0].text,
+        parseStatement(original).sentences[1].text
+      )
+    );
+  });
+
+  it("leaves a single sentence unchanged", () => {
+    const one = "Led 12 Airmen through a 96-hour surge.";
+    expect(swapStatementSentences(one)).toBe(one);
+  });
+
+  it("leaves empty text unchanged", () => {
+    expect(swapStatementSentences("")).toBe("");
+    expect(swapStatementSentences("   ")).toBe("   ");
   });
 });
