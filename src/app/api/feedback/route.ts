@@ -53,28 +53,29 @@ async function notifyOwnerOfFeedback(params: {
 
   try {
     const admin = createAdminClient();
-    const { data: tokenRow, error: tokenError } = await admin
-      .from("review_tokens")
+    // review_tokens is missing from generated Database types — cast like other review routes.
+    const tokenResult = await admin
+      .from("review_tokens" as never)
       .select("created_by, shell_type, ratee_name, ratee_rank")
-      .eq("token", params.token)
+      .eq("token" as never, params.token)
       .maybeSingle();
 
-    if (tokenError || !tokenRow) {
-      console.warn("Mentor feedback notify: token lookup failed", tokenError);
-      return;
-    }
-
-    const row = tokenRow as {
+    const tokenRow = tokenResult.data as {
       created_by: string;
       shell_type: string;
       ratee_name: string;
       ratee_rank: string | null;
-    };
+    } | null;
+
+    if (tokenResult.error || !tokenRow) {
+      console.warn("Mentor feedback notify: token lookup failed", tokenResult.error);
+      return;
+    }
 
     const { data: profile, error: profileError } = await admin
       .from("profiles")
-      .select("email, full_name, first_name")
-      .eq("id", row.created_by)
+      .select("email, full_name")
+      .eq("id", tokenRow.created_by)
       .maybeSingle();
 
     if (profileError || !profile) {
@@ -85,7 +86,6 @@ async function notifyOwnerOfFeedback(params: {
     const owner = profile as {
       email: string | null;
       full_name: string | null;
-      first_name: string | null;
     };
     const to = (owner.email || "").trim();
     if (!to.includes("@")) {
@@ -93,13 +93,13 @@ async function notifyOwnerOfFeedback(params: {
       return;
     }
 
-    const shellType = parseShellType(row.shell_type);
+    const shellType = parseShellType(tokenRow.shell_type);
     const emailContent = buildMentorFeedbackReceivedEmail({
       siteUrl: getSiteUrl(),
-      recipientName: owner.first_name || owner.full_name,
+      recipientName: owner.full_name,
       reviewerName: params.reviewerName,
-      rateeName: row.ratee_name,
-      rateeRank: row.ratee_rank,
+      rateeName: tokenRow.ratee_name,
+      rateeRank: tokenRow.ratee_rank,
       shellType,
       commentCount: params.commentCount,
       appPath: appPathForShell(shellType),
