@@ -41,13 +41,26 @@ const getStorageKey = (token: string) => `review_progress_${token}`;
 
 const reviewLoadCache = new Map<string, Promise<ReviewPageLoadResult>>();
 
+/** Absolute origin for SSR fetches — relative `/api/...` fails on the server and flashes an error card. */
+function getReviewApiOrigin(): string {
+  if (typeof window !== "undefined") return "";
+  const fromEnv =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  return (fromEnv || "http://localhost:3000").replace(/\/$/, "");
+}
+
 export function loadReviewPageData(token: string): Promise<ReviewPageLoadResult> {
   const cached = reviewLoadCache.get(token);
   if (cached) return cached;
 
   const promise = (async (): Promise<ReviewPageLoadResult> => {
     try {
-      const response = await fetch(`/api/review/${token}`);
+      const response = await fetch(
+        `${getReviewApiOrigin()}/api/review/${encodeURIComponent(token)}`,
+        { cache: "no-store" }
+      );
       const data = await response.json();
 
       if (!response.ok) {
