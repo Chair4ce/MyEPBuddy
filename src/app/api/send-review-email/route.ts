@@ -104,8 +104,6 @@ export async function POST(request: NextRequest) {
     )
       .trim()
       .toLowerCase();
-    const reviewUrl =
-      typeof body.reviewUrl === "string" ? body.reviewUrl.trim() : "";
     const rateeName = stripHtml(
       typeof body.rateeName === "string" ? body.rateeName : ""
     ).trim();
@@ -117,10 +115,9 @@ export async function POST(request: NextRequest) {
       typeof body.mentorLabel === "string"
         ? stripHtml(body.mentorLabel).trim()
         : null;
-    const shellType = parseShellType(body.shellType);
     const expiresAtLabel = formatExpiresAt(body.expiresAt);
 
-    if (!token || !recipientEmail || !reviewUrl) {
+    if (!token || !recipientEmail) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -137,7 +134,7 @@ export async function POST(request: NextRequest) {
     // Ensure the token belongs to the caller (public token string from create API).
     const { data: ownedToken, error: tokenLookupError } = await supabase
       .from("review_tokens")
-      .select("id")
+      .select("id, token, shell_type, expires_at, link_label, ratee_name, ratee_rank")
       .eq("token", token)
       .eq("created_by", user.id)
       .maybeSingle();
@@ -148,6 +145,27 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const tokenRow = ownedToken as {
+      id: string;
+      token: string;
+      shell_type: string;
+      expires_at: string;
+      link_label: string | null;
+      ratee_name: string;
+      ratee_rank: string | null;
+    };
+
+    const shellType = parseShellType(tokenRow.shell_type);
+    // Build URL server-side — never trust a client-supplied reviewUrl in outbound email.
+    const reviewUrl = `${getSiteUrl().replace(/\/$/, "")}/review/${shellType}/${tokenRow.token}`;
+    const resolvedRateeName = rateeName || tokenRow.ratee_name || "the ratee";
+    const resolvedRateeRank = rateeRank || tokenRow.ratee_rank;
+    const resolvedMentorLabel = mentorLabel || tokenRow.link_label;
+    const resolvedExpiresAt =
+      expiresAtLabel !== "soon"
+        ? expiresAtLabel
+        : formatExpiresAt(tokenRow.expires_at);
 
     const { data: profile } = (await supabase
       .from("profiles")
@@ -178,11 +196,11 @@ export async function POST(request: NextRequest) {
     const emailContent = buildReviewLinkEmail({
       siteUrl: getSiteUrl(),
       senderDisplayName,
-      rateeName: rateeName || "the ratee",
-      rateeRank,
-      mentorLabel,
+      rateeName: resolvedRateeName,
+      rateeRank: resolvedRateeRank,
+      mentorLabel: resolvedMentorLabel,
       reviewUrl,
-      expiresAt: expiresAtLabel,
+      expiresAt: resolvedExpiresAt,
       shellType,
     });
 
@@ -234,7 +252,7 @@ export async function POST(request: NextRequest) {
         recipient_email: recipientEmail,
         email_sent_at: new Date().toISOString(),
       } as never)
-      .eq("id", (ownedToken as { id: string }).id)
+      .eq("id", tokenRow.id)
       .eq("created_by", user.id);
 
     if (updateError) {
