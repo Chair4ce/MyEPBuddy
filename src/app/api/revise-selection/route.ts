@@ -44,8 +44,8 @@ import {
 import {
   asPlainText,
   coalesceTwoSentenceRevisions,
+  ensureRevisionCount,
   parseRevisionList,
-  parseStatement,
 } from "@/lib/sentence-utils";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
@@ -373,7 +373,7 @@ export async function POST(request: Request) {
       cycleYear,
       excludeMpa,
       aggressiveness = 50,
-      versionCount = 3,
+      versionCount: versionCountRaw = 3,
       maxCharacters: maxCharactersRaw,
       category,
       isDutyDescription = false,
@@ -384,6 +384,7 @@ export async function POST(request: Request) {
     const usedVerbs = Array.isArray(body.usedVerbs)
       ? body.usedVerbs.map((v) => asPlainText(v)).filter(Boolean)
       : [];
+    const versionCount = Math.min(5, Math.max(1, Math.floor(Number(versionCountRaw)) || 3));
     const maxCharacters = sanitizeMaxCharacters(maxCharactersRaw);
     
     // Load user's custom duty description prompt if this is a duty description revision
@@ -477,7 +478,20 @@ ${noReuseRule}`;
     };
 
     const replayed = await getReplayedBillableResponse(billableCtx);
-    if (replayed) return replayed;
+    if (replayed) {
+      try {
+        const cached = (await replayed.clone().json()) as { revisions?: unknown };
+        const cachedCount = Array.isArray(cached.revisions)
+          ? cached.revisions.length
+          : 0;
+        if (cachedCount >= versionCount) return replayed;
+        console.warn(
+          `[revise-selection] Ignoring stale cache with ${cachedCount} revision(s); need ${versionCount}`
+        );
+      } catch {
+        return replayed;
+      }
+    }
 
     const usageCheck = await checkAndTrackUsage(user.id, "revise_selection", resolvedModel, userKeys, billableCtx.idempotencyKey);
     billableCtx.usageCheck = usageCheck;
@@ -669,12 +683,11 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
       revisions = text.split("\n").filter(line => line.trim().length > 10).slice(0, versionCount);
     }
 
-    // Ensure we have at least one revision and limit to requested count
+    // Keep every generated alternative — never drop a version.
     if (revisions.length === 0) {
-      revisions = [selectedText]; // Return original if nothing generated
-    } else {
-      revisions = revisions.slice(0, versionCount);
+      revisions = [selectedText];
     }
+    revisions = ensureRevisionCount(revisions, versionCount, selectedText);
 
     // Flag + hard-capped repair for banned formatting the EPB prompt forbids
     // (w/, w/o, b/c, --, ;). Deterministic first; at most 2 LLM revision tries.
@@ -711,17 +724,10 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
 
       if (lengthGuidance.selectionMax != null) {
         const selectionMax = lengthGuidance.selectionMax;
-        const enforced = await Promise.all(
+        revisions = await Promise.all(
           revisions.map(async (revision, index) => {
-            if (typeof revision !== "string") return null;
-            const trimmed = revision.trim();
-            if (!trimmed) return null;
-            if (trimmed.length <= selectionMax) {
-              if (sentenceCount === 2 && !parseStatement(trimmed).hasTwoSentences) {
-                return null;
-              }
-              return trimmed;
-            }
+            const trimmed = asPlainText(revision).trim() || selectedText;
+            if (trimmed.length <= selectionMax) return trimmed;
             try {
               const result = await enforceRevisionText(trimmed, selectionMax, {
                 model: modelProvider,
@@ -730,27 +736,16 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
               });
               console.log(
                 `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${result.text.length}/${selectionMax}` +
-                  (result.stillOver ? " STILL OVER (dropped)" : "")
+                  (result.stillOver ? " still over (kept)" : "")
               );
-              if (result.stillOver) return null;
-              if (sentenceCount === 2 && !parseStatement(result.text).hasTwoSentences) {
-                return null;
-              }
-              return result.text;
+              if (result.stillOver) return trimmed;
+              return result.text.trim() || trimmed;
             } catch (err) {
               console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
-              return null;
+              return trimmed;
             }
           })
         );
-        const fitting = enforced.filter((r): r is string => r != null);
-        if (fitting.length > 0) {
-          revisions = fitting;
-        } else {
-          console.warn(
-            "[revise-selection] No complete revision fit the character cap; returning uncompressed complete drafts"
-          );
-        }
       }
 
       if (lengthGuidance.selectionMax != null && !isDutyDescription) {
@@ -782,6 +777,8 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
         method: r.method,
         attempts: r.attempts,
       }));
+
+    revisions = ensureRevisionCount(revisions, versionCount, selectedText);
 
     return cacheBillableJson(billableCtx, {
       revisions,

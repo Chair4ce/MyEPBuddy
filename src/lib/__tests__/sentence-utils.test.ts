@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   asPlainText,
   coalesceTwoSentenceRevisions,
+  ensureRevisionCount,
   parseRevisionList,
   parseStatement,
 } from "@/lib/sentence-utils";
@@ -39,6 +40,22 @@ describe("parseRevisionList", () => {
   it("returns empty for garbage", () => {
     expect(parseRevisionList(null, 3)).toEqual([]);
     expect(parseRevisionList({}, 3)).toEqual([]);
+  });
+});
+
+describe("ensureRevisionCount", () => {
+  it("pads with the original so the UI always has 3 slots", () => {
+    const original = "Led team rebuilding servers, cut downtime 90%, boosting readiness.";
+    const out = ensureRevisionCount(["Version A."], 3, original);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toBe("Version A.");
+    expect(out[1]).toBe(original);
+    expect(out[2]).toBe(original);
+  });
+
+  it("never drops extras beyond the requested count", () => {
+    const out = ensureRevisionCount(["a", "b", "c", "d"], 3, "fallback");
+    expect(out).toEqual(["a", "b", "c"]);
   });
 });
 

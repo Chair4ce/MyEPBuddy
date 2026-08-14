@@ -83,6 +83,25 @@ export function coalesceTwoSentenceRevisions(
   return cleaned.slice(0, cap);
 }
 
+/** Always return exactly `count` revisions so the UI can show every slot. */
+export function ensureRevisionCount(
+  revisions: unknown[],
+  count: number,
+  fallback: string
+): string[] {
+  const cap = Math.min(5, Math.max(1, Math.floor(count) || 1));
+  const seed = asPlainText(fallback).trim();
+  const cleaned = revisions
+    .map((item) => asPlainText(item).trim())
+    .filter(Boolean)
+    .slice(0, cap);
+  const out = [...cleaned];
+  while (out.length < cap) {
+    out.push(seed || out[0] || "");
+  }
+  return out;
+}
+
 /**
  * Parse a statement into its component sentences
  * Handles edge cases like abbreviations, numbers with decimals, etc.
