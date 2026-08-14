@@ -37,6 +37,17 @@ describe("applyDeterministicCompress", () => {
     expect(out).not.toMatch(/[\u2013\u2014]/);
     expect(out.length).toBeLessThan(before + 20);
   });
+
+  it("shortens bolstering/within/migrating on the user over-limit package", () => {
+    const v1 =
+      "Executed a $2M network expansion, migrating 9 joint units to enduring IT, doubling bandwidth & expanding air picture across 2.2M sq mi, enabled 24 kinetic strikes & interdiction of 42 vessels, bolstering USSOUTHCOM readiness. Commanded AFSOUTH's 1st Cyber Coordination Center, supporting 10 locations, drafted framework enabling 12 MAJCOM issues resolved by AFCYBER within 24hrs & vital to SOUTHCOM OPs deployments.";
+    const parts = splitJoinedStatements(v1);
+    const det = parts.map(applyDeterministicCompress);
+    const after = combinedStatementLength(det);
+    expect(after).toBeLessThan(v1.length);
+    expect(det.join(" ")).toMatch(/boosting/);
+    expect(det.join(" ")).toMatch(/moving/);
+  });
 });
 
 describe("enforcePackageCharacterLimit", () => {

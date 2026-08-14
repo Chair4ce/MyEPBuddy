@@ -481,12 +481,15 @@ ${noReuseRule}`;
     if (replayed) {
       try {
         const cached = (await replayed.clone().json()) as { revisions?: unknown };
-        const cachedCount = Array.isArray(cached.revisions)
-          ? cached.revisions.length
-          : 0;
-        if (cachedCount >= versionCount) return replayed;
+        const list = Array.isArray(cached.revisions)
+          ? cached.revisions.map((r) => asPlainText(r).trim()).filter(Boolean)
+          : [];
+        const enough = list.length >= versionCount;
+        const withinCap =
+          maxCharacters == null || list.every((r) => r.length <= maxCharacters);
+        if (enough && withinCap) return replayed;
         console.warn(
-          `[revise-selection] Ignoring stale cache with ${cachedCount} revision(s); need ${versionCount}`
+          `[revise-selection] Ignoring stale cache (count=${list.length}, withinCap=${withinCap}); need ${versionCount} ≤ ${maxCharacters ?? "n/a"}`
         );
       } catch {
         return replayed;
@@ -648,8 +651,8 @@ ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 
 MODE: ${mode.toUpperCase()}
 ${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results. REPHRASE ONLY — do not invent impact, personnel counts, or geographic scope." : "⚠️ REPHRASE ONLY — do not invent metrics, personnel counts, or impact not in the source."}
-${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `Fit ${lengthGuidance.targetMin}–${lengthGuidance.targetMax} characters. Do not undershoot into ~200 characters.` : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
-AGGRESSIVENESS: ${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})
+${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `LENGTH FIRST: each revision MUST be ≤ ${lengthGuidance.selectionMax} characters (aim ${lengthGuidance.targetMin}–${lengthGuidance.targetMax}). Synonym-only rewrites that stay near ${selectedText.length} chars FAIL. Delete clauses until under the cap.` : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
+AGGRESSIVENESS: ${lengthGuidance.mustCompressToFit ? `Length override — ignore "replace all words" if it keeps the text over ${lengthGuidance.selectionMax}. Cut wording first, then vary verbs.` : `${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})`}
 ${lengthGuidance.promptBlock}
 ${sentenceCountGuidance}
 ${lengthCapNote ? `LENGTH OVERRIDE: ${lengthCapNote}` : ""}
@@ -683,11 +686,12 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
       revisions = text.split("\n").filter(line => line.trim().length > 10).slice(0, versionCount);
     }
 
-    // Keep every generated alternative — never drop a version.
-    if (revisions.length === 0) {
-      revisions = [selectedText];
-    }
-    revisions = ensureRevisionCount(revisions, versionCount, selectedText);
+    revisions = ensureRevisionCount(
+      revisions,
+      versionCount,
+      selectedText,
+      lengthGuidance.selectionMax ?? undefined
+    );
 
     // Flag + hard-capped repair for banned formatting the EPB prompt forbids
     // (w/, w/o, b/c, --, ;). Deterministic first; at most 2 LLM revision tries.
@@ -708,6 +712,7 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
 
     if (lengthGuidance.selectionMax != null || sentenceCount === 2) {
       const {
+        compressRevisionsToMax,
         enforceRevisionText,
         fillRevisionsTowardCap,
         repairCollapsedTwoSentenceRevisions,
@@ -716,7 +721,7 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
       if (sentenceCount === 2) {
         revisions = await repairCollapsedTwoSentenceRevisions(
           selectedText,
-          revisions.map((r) => (typeof r === "string" ? r.trim() : String(r ?? ""))),
+          revisions.map((r) => asPlainText(r).trim()),
           lengthGuidance.selectionMax ?? selectedText.length,
           { model: modelProvider }
         );
@@ -724,6 +729,7 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
 
       if (lengthGuidance.selectionMax != null) {
         const selectionMax = lengthGuidance.selectionMax;
+        // Per-version enforce (best effort), then one batched pass for anything still over.
         revisions = await Promise.all(
           revisions.map(async (revision, index) => {
             const trimmed = asPlainText(revision).trim() || selectedText;
@@ -736,23 +742,43 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
               });
               console.log(
                 `[revise-selection] Char enforce v${index + 1}: ${trimmed.length} → ${result.text.length}/${selectionMax}` +
-                  (result.stillOver ? " still over (kept)" : "")
+                  (result.stillOver ? " still over" : "")
               );
-              if (result.stillOver) return trimmed;
-              return result.text.trim() || trimmed;
+              // Always keep the shorter complete rewrite — never revert to the over original.
+              const best = result.text.trim() || trimmed;
+              return best.length <= trimmed.length ? best : trimmed;
             } catch (err) {
               console.error(`[revise-selection] Char enforce v${index + 1} failed:`, err);
               return trimmed;
             }
           })
         );
+
+        if (revisions.some((r) => asPlainText(r).length > selectionMax)) {
+          try {
+            revisions = await compressRevisionsToMax(
+              selectedText,
+              revisions,
+              selectionMax,
+              sentenceCount,
+              { model: modelProvider, maxAttempts: 3 }
+            );
+          } catch (err) {
+            console.error("[revise-selection] batch compress-to-max failed:", err);
+          }
+        }
       }
 
       if (lengthGuidance.selectionMax != null && !isDutyDescription) {
         try {
+          // Only fill versions that are under the floor AND already ≤ max.
+          const underCap = revisions.map((r) => {
+            const t = asPlainText(r).trim();
+            return t.length <= (lengthGuidance.selectionMax as number) ? t : t;
+          });
           revisions = await fillRevisionsTowardCap(
             selectedText,
-            revisions.map((r) => (typeof r === "string" ? r.trim() : String(r ?? ""))),
+            underCap,
             lengthGuidance.targetMin,
             lengthGuidance.selectionMax,
             sentenceCount,
@@ -778,7 +804,12 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
         attempts: r.attempts,
       }));
 
-    revisions = ensureRevisionCount(revisions, versionCount, selectedText);
+    revisions = ensureRevisionCount(
+      revisions,
+      versionCount,
+      selectedText,
+      lengthGuidance.selectionMax ?? undefined
+    );
 
     return cacheBillableJson(billableCtx, {
       revisions,

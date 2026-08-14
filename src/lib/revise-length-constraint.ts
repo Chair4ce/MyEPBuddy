@@ -110,17 +110,18 @@ export function buildReviseLengthGuidance(opts: {
 
     const promptBlock = over
       ? `**HARD CHARACTER LIMIT (NON-NEGOTIABLE):**
-The revised selection MUST be ${targetMin}–${targetMax} characters. The original is ${selectedLength} (${charsOver} OVER the ${selMax} max). Over-limit text cannot be used in myEval.${spliceNote}
+The revised selection MUST be ≤ ${selMax} characters (aim ${targetMin}–${targetMax}). The original is ${selectedLength} characters — ${charsOver} OVER. myEval REJECTS anything over ${selMax}.${spliceNote}
 
-Compress TO the band — not as short as possible. Landing near 200 characters is a FAILURE.
-Keep every metric, $, unit name, and acronym. After cutting filler, EXPAND remaining clauses with longer synonyms until you are ≥ ${targetMin}.
-- Prefer "&" over "and" only if you are still over ${selMax}
-- Cut filler: "this action", "this initiative", "this directly", "resulting in"
-- Merge clauses WITHIN each sentence if still over ${selMax}
-- If the original has TWO sentences, keep TWO sentences — never merge or drop one
-- Count characters BEFORE returning. If under ${targetMin}, add density. If over ${selMax}, cut more.
+**SYNONYM-ONLY REWRITES FAIL.** Swapping "Drove"→"Executed" or "Managed"→"Commanded" while keeping the same clauses DOES NOT COUNT. You MUST REMOVE at least ${charsOver} characters of wording.
 
-Target: ${targetMin}–${targetMax} characters (within 5% of the ${selMax} max). MAXIMUM ${selMax}.`
+How to get under ${selMax} (keep every metric, $, unit name, and acronym):
+- Delete the weakest impact/result clause in EACH sentence (the trailing "bolstering/vital/key to …" phrase is often the right cut)
+- Prefer "&" over "and"; drop "the" / "a" / "an" where grammar still holds
+- Abbreviate: hrs, mos, wks, mbrs, sq, flt, gp, wg, ops, pers, 1st
+- Merge redundant clauses WITHIN a sentence — do NOT merge the two sentences into one
+- Count characters BEFORE returning. If any revision is still over ${selMax}, cut another clause.
+
+Target: ${targetMin}–${targetMax} characters. MAXIMUM ${selMax}. Do not land near 200.`
       : `**HARD CHARACTER LIMIT:** Revised selection MUST be ${targetMin}–${targetMax} characters (full field max ${hardMax}).${spliceNote}
 Stay within 5% of the field max. NEVER exceed ${selMax}. Landing ~200 characters when the max is ${selMax} is a FAILURE.`;
 

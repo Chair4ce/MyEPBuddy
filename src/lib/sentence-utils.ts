@@ -87,7 +87,8 @@ export function coalesceTwoSentenceRevisions(
 export function ensureRevisionCount(
   revisions: unknown[],
   count: number,
-  fallback: string
+  fallback: string,
+  maxCharacters?: number
 ): string[] {
   const cap = Math.min(5, Math.max(1, Math.floor(count) || 1));
   const seed = asPlainText(fallback).trim();
@@ -95,9 +96,20 @@ export function ensureRevisionCount(
     .map((item) => asPlainText(item).trim())
     .filter(Boolean)
     .slice(0, cap);
+  const underCap =
+    maxCharacters != null
+      ? cleaned.filter((r) => r.length <= maxCharacters)
+      : [...cleaned];
+  const seedFits =
+    maxCharacters == null || seed.length === 0 || seed.length <= maxCharacters;
+  const padWith =
+    [...underCap].sort((a, b) => b.length - a.length)[0] ||
+    (seedFits ? seed : "") ||
+    [...cleaned].sort((a, b) => a.length - b.length)[0] ||
+    seed;
   const out = [...cleaned];
   while (out.length < cap) {
-    out.push(seed || out[0] || "");
+    out.push(padWith || out[0] || seed || "");
   }
   return out;
 }

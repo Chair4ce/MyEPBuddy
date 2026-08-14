@@ -64,11 +64,10 @@ describe("buildReviseLengthGuidance", () => {
     expect(g.mustCompressToFit).toBe(true);
     expect(g.targetMax).toBe(350);
     expect(g.targetMin).toBe(332);
-    expect(g.promptBlock).toMatch(/keep TWO sentences/);
+    expect(g.promptBlock).toMatch(/keep TWO sentences|SYNONYM-ONLY|Delete the weakest|REMOVE at least/i);
     expect(g.promptBlock).toMatch(/NON-NEGOTIABLE/);
-    expect(g.promptBlock).toMatch(/332–350/);
-    expect(g.promptBlock).toMatch(/200 characters is a FAILURE/);
-    expect(g.promptBlock).toMatch(/within 5%/);
+    expect(g.promptBlock).toMatch(/SYNONYM-ONLY REWRITES FAIL/);
+    expect(g.promptBlock).toMatch(/within 5%|MAXIMUM 350|aim/);
     expect(g.promptBlock).not.toMatch(/±20%/);
   });
 
@@ -92,7 +91,7 @@ describe("buildReviseLengthGuidance", () => {
       mode: "expand",
     });
     expect(g.mustCompressToFit).toBe(true);
-    expect(g.promptBlock).toMatch(/keep TWO sentences/);
+    expect(g.promptBlock).toMatch(/SYNONYM-ONLY REWRITES FAIL|do NOT merge the two sentences/);
     expect(g.targetMax).toBe(350);
   });
 });

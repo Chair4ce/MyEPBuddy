@@ -13,7 +13,7 @@ import {
   enforceCharacterLimits,
   validateCharacterCount,
 } from "@/lib/character-verification";
-import { parseStatement } from "@/lib/sentence-utils";
+import { asPlainText, parseStatement } from "@/lib/sentence-utils";
 
 /** Absolute max LLM compress attempts for a package (hard cap). */
 export const MAX_PACKAGE_COMPRESS_ATTEMPTS = 3;
@@ -90,6 +90,13 @@ export function applyDeterministicCompress(text: string): string {
     [/\bproving vital for\b/gi, "vital for"],
     [/\bcritical for\b/gi, "vital for"],
     [/\bessential for\b/gi, "vital for"],
+    [/\bbolstering\b/gi, "boosting"],
+    [/\bcritical to\b/gi, "vital to"],
+    [/\bessential to\b/gi, "vital to"],
+    [/\bkey to\b/gi, "vital to"],
+    [/\bwithin\b/gi, "in"],
+    [/\bmigrating\b/gi, "moving"],
+    [/\bexpanding\b/gi, "extending"],
   ];
 
   for (const [pattern, replacement] of replacements) {
@@ -137,12 +144,13 @@ ${numbered}
 RULES:
 1. Return EXACTLY ${statements.length} statements as a JSON array of strings
 2. Combined length of all statements (plus ~1–2 chars for the join) MUST be ≤ ${targetMax}
-3. Prefer denser abbreviations: hrs, mos, wks, sq, flt, mbrs, ops, &
-4. Keep EVERY metric, dollar amount, unit name, and acronym
-5. Each array item MUST be a COMPLETE sentence ending with a period — never truncate, never drop a trailing clause mid-thought
-6. Keep one sentence per array item — no semicolons, no em-dashes (-- or —), no "<" or ">"
-7. Do NOT invent new facts. Do NOT merge two statements into one. Do NOT drop a statement
-8. Count characters carefully before answering
+3. Verb/synonym swaps alone are NOT enough — you must DELETE clauses until under the cap
+4. Prefer denser abbreviations: hrs, mos, wks, sq, flt, mbrs, ops, &
+5. Keep EVERY metric, dollar amount, unit name, and acronym
+6. Each array item MUST be a COMPLETE sentence ending with a period — never truncate mid-word
+7. Keep one sentence per array item — no semicolons, parentheses, em-dashes, or "<" / ">"
+8. Do NOT invent new facts. Do NOT merge two statements into one. Do NOT drop a statement
+9. Count characters carefully before answering. If still over, cut the trailing impact clause first
 
 OUTPUT (JSON only):
 ["compressed statement 1", "compressed statement 2"]`;
@@ -452,6 +460,91 @@ export async function enforceRevisionText(
     stillOver: result.stillOver,
     method: result.method,
   };
+}
+
+/**
+ * Batch-compress revisions that are still over the field max.
+ * Always returns one string per input (never drops a slot). Prefer shorter
+ * complete rewrites; if the model fails, keep the best prior text.
+ */
+export async function compressRevisionsToMax(
+  original: string,
+  revisions: string[],
+  targetMax: number,
+  expectedSentences: 1 | 2,
+  options: { model: LanguageModel; maxAttempts?: number }
+): Promise<string[]> {
+  const maxAttempts = Math.min(
+    options.maxAttempts ?? MAX_PACKAGE_COMPRESS_ATTEMPTS,
+    MAX_PACKAGE_COMPRESS_ATTEMPTS
+  );
+  let current = revisions.map((r) => {
+    const t = asPlainText(r).trim();
+    return applyDeterministicCompress(t || asPlainText(original).trim());
+  });
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const overIdx = current
+      .map((r, i) => (r.length > targetMax ? i : -1))
+      .filter((i) => i >= 0);
+    if (overIdx.length === 0) break;
+
+    const numbered = overIdx
+      .map((i) => `[${i + 1}] (${current[i].length} chars, need ≤${targetMax}) ${current[i]}`)
+      .join("\n\n");
+    const charsOver = Math.max(
+      ...overIdx.map((i) => current[i].length - targetMax)
+    );
+
+    try {
+      const { text } = await generateText({
+        model: options.model,
+        system:
+          "You compress EPB revisions under a hard character cap. Synonym swaps alone fail. Delete clauses. Output JSON only.",
+        prompt: `ORIGINAL (facts only — do not invent metrics):
+"${asPlainText(original).trim()}"
+
+These revisions are OVER ${targetMax} characters. Rewrite EACH so length ≤ ${targetMax} (aim ≥ ${Math.floor(targetMax * 0.95)}).
+You must REMOVE at least ${charsOver} characters of wording from the longest ones.
+- Keep EXACTLY ${expectedSentences} sentence${expectedSentences === 2 ? "s" : ""}
+- Keep every metric, $, unit name, and acronym
+- Cut trailing impact phrases first ("bolstering…", "vital to…", "key to…")
+- No parentheses, semicolons, em-dashes, or "<" / ">"
+- Count characters before answering
+
+OVER REVISIONS:
+${numbered}
+
+Return a JSON array of strings — one compressed revision per over input, same order:
+["compressed 1", "compressed 2"]`,
+        temperature: 0.15,
+        maxOutputTokens: expectedSentences === 2 ? 1400 : 800,
+      });
+
+      const parsed = parseStatementArray(text.trim(), overIdx.length);
+      if (!parsed) {
+        console.warn("[PackageChar] compress-to-max returned unparseable output");
+        continue;
+      }
+
+      let p = 0;
+      for (const i of overIdx) {
+        const next = applyDeterministicCompress(parsed[p++]?.trim() || "");
+        if (!next) continue;
+        if (expectedSentences === 2 && !parseStatement(next).hasTwoSentences) continue;
+        if (!statementsAreComplete([next]) && expectedSentences === 1) continue;
+        // Accept if shorter, or already under cap
+        if (next.length < current[i].length || next.length <= targetMax) {
+          current[i] = next;
+        }
+      }
+    } catch (error) {
+      console.error("[PackageChar] compress-to-max failed:", error);
+      break;
+    }
+  }
+
+  return current;
 }
 
 /**

@@ -44,11 +44,40 @@ describe("parseRevisionList", () => {
 });
 
 describe("ensureRevisionCount", () => {
-  it("pads with the original so the UI always has 3 slots", () => {
+  it("pads to 3 using the best available under-cap text", () => {
     const original = "Led team rebuilding servers, cut downtime 90%, boosting readiness.";
     const out = ensureRevisionCount(["Version A."], 3, original);
     expect(out).toHaveLength(3);
     expect(out[0]).toBe("Version A.");
+    // With no max, pad with the longest available cleaned item (Version A.)
+    expect(out[1]).toBe("Version A.");
+    expect(out[2]).toBe("Version A.");
+  });
+
+  it("prefers an under-cap sibling when padding", () => {
+    const under =
+      "Led 5-mbr team overhauling network, cut downtime 90%, boosting readiness. Directed cyber center supporting 10 sites.";
+    const over = Array.from({ length: 8 }, () => under).join(" ");
+    expect(under.length).toBeLessThan(350);
+    expect(over.length).toBeGreaterThan(350);
+    const out = ensureRevisionCount([under], 3, over, 350);
+    expect(out).toHaveLength(3);
+    expect(out.every((r) => r.length <= 350)).toBe(true);
+    expect(out.every((r) => r === under)).toBe(true);
+  });
+
+  it("falls back to the original when nothing under the cap exists yet", () => {
+    const original = "Short seed under the cap.";
+    const over = Array.from(
+      { length: 6 },
+      () =>
+        "This revision is intentionally far over the character budget with lots of extra descriptive wording."
+    ).join(" ");
+    expect(original.length).toBeLessThan(350);
+    expect(over.length).toBeGreaterThan(350);
+    const out = ensureRevisionCount([over], 3, original, 350);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toBe(over);
     expect(out[1]).toBe(original);
     expect(out[2]).toBe(original);
   });
