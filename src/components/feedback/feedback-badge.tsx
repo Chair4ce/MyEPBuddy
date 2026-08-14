@@ -1,16 +1,86 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { Suspense, use, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  loadFeedbackSessions,
+  type FeedbackShellType,
+} from "@/lib/feedback-sessions";
 import { MessageSquare } from "lucide-react";
 
 interface FeedbackBadgeProps {
-  shellType: "epb" | "award" | "decoration";
+  shellType: FeedbackShellType;
   shellId: string;
   onClick: () => void;
   className?: string;
-  refreshKey?: number; // Increment to force refresh
+  refreshKey?: number;
+}
+
+function FeedbackBadgeArmed({
+  shellType,
+  shellId,
+  bust,
+  onClick,
+  className,
+}: {
+  shellType: FeedbackShellType;
+  shellId: string;
+  bust: number;
+  onClick: () => void;
+  className?: string;
+}) {
+  const sessions = use(loadFeedbackSessions(shellType, shellId, bust));
+  const pending = sessions.reduce((sum, s) => sum + (s.pending_count || 0), 0);
+  const total = sessions.reduce((sum, s) => sum + (s.comment_count || 0), 0);
+
+  if (total === 0) return null;
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={onClick}
+      className={cn("gap-2 relative", className)}
+      aria-label={`Reviewer feedback${pending > 0 ? `, ${pending} pending` : ""}`}
+    >
+      <MessageSquare className="size-4" />
+      <span>Feedback</span>
+      {pending > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-amber-500 text-white text-xs font-medium flex items-center justify-center">
+          {pending}
+        </span>
+      )}
+    </Button>
+  );
+}
+
+function PlaceholderBadge({
+  onClick,
+  onArm,
+  className,
+}: {
+  onClick: () => void;
+  onArm: () => void;
+  className?: string;
+}) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        onArm();
+        onClick();
+      }}
+      onMouseEnter={onArm}
+      onFocus={onArm}
+      className={cn("gap-2 relative", className)}
+      aria-label="Reviewer feedback"
+    >
+      <MessageSquare className="size-4" />
+      <span>Feedback</span>
+    </Button>
+  );
 }
 
 export function FeedbackBadge({
@@ -20,61 +90,45 @@ export function FeedbackBadge({
   className,
   refreshKey = 0,
 }: FeedbackBadgeProps) {
-  const [pendingCount, setPendingCount] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const [bust, setBust] = useState(0);
+  const [prevShell, setPrevShell] = useState(`${shellType}:${shellId}`);
+  const [prevRefresh, setPrevRefresh] = useState(refreshKey);
+  const shellKey = `${shellType}:${shellId}`;
 
-  const loadCount = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `/api/feedback?shellType=${shellType}&shellId=${shellId}`
-      );
-      const data = await response.json();
+  if (shellKey !== prevShell) {
+    setPrevShell(shellKey);
+    setArmed(false);
+    setBust((n) => n + 1);
+  }
+  if (refreshKey !== prevRefresh) {
+    setPrevRefresh(refreshKey);
+    setArmed(true);
+    setBust((n) => n + 1);
+  }
 
-      if (response.ok && data.sessions) {
-        const sessions = data.sessions as Array<{ pending_count: number; comment_count: number }>;
-        const pending = sessions.reduce((sum, s) => sum + (s.pending_count || 0), 0);
-        const total = sessions.reduce((sum, s) => sum + (s.comment_count || 0), 0);
-        setPendingCount(pending);
-        setTotalCount(total);
-        setHasLoaded(true);
-      }
-    } catch (error) {
-      console.error("Load feedback count error:", error);
-    }
-  }, [shellType, shellId]);
+  const arm = () => setArmed(true);
 
-  const handlePrefetch = () => {
-    void loadCount();
-  };
-
-  const handleClick = () => {
-    if (!hasLoaded) {
-      void loadCount();
-    }
-    onClick();
-  };
-
-  if (totalCount === 0 && hasLoaded) {
-    return null;
+  if (!armed) {
+    return (
+      <PlaceholderBadge onClick={onClick} onArm={arm} className={className} />
+    );
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleClick}
-      onMouseEnter={handlePrefetch}
-      onFocus={handlePrefetch}
-      className={cn("gap-2 relative", className)}
+    <Suspense
+      fallback={
+        <PlaceholderBadge onClick={onClick} onArm={arm} className={className} />
+      }
     >
-      <MessageSquare className="size-4" />
-      <span>Feedback</span>
-      {pendingCount > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-amber-500 text-white text-xs font-medium flex items-center justify-center">
-          {pendingCount}
-        </span>
-      )}
-    </Button>
+      <FeedbackBadgeArmed
+        key={`${shellKey}-${bust}`}
+        shellType={shellType}
+        shellId={shellId}
+        bust={bust}
+        onClick={onClick}
+        className={className}
+      />
+    </Suspense>
   );
 }
