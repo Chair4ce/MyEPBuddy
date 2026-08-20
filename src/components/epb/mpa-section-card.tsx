@@ -71,6 +71,8 @@ import { useStyleFeedback, getMpaCategory } from "@/hooks/use-style-feedback";
 import { PromptSettingsModal } from "./prompt-settings-modal";
 import { ImpactBoosterPanel } from "./impact-booster-panel";
 import { WordReplacementSlider } from "./word-replacement-slider";
+import { useWordThesaurus } from "@/hooks/use-word-thesaurus";
+import { WordThesaurusPopup } from "@/components/word-thesaurus/word-thesaurus-popup";
 import {
   DEFAULT_IMPACT_BOOSTER_PROMPTS,
   buildImpactBoosterContext,
@@ -100,6 +102,8 @@ import type {
 import { FormattingViolationNote } from "@/components/generate/formatting-violation-note";
 interface MPASectionCardProps {
   section: EPBShellSection;
+  /** Selected LLM for highlight-to-replace suggestions */
+  model: string;
   /** Ratee ID for clarifying questions feature */
   rateeId?: string;
   isCollapsed: boolean;
@@ -335,6 +339,7 @@ const MAX_REVISION_HISTORY = MAX_GENERATED_STATEMENT_SETS;
 
 export function MPASectionCard({
   section,
+  model,
   rateeId: _rateeId,
   isCollapsed,
   onToggleCollapse,
@@ -411,6 +416,7 @@ export function MPASectionCard({
   const mpaCardBodyShellRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
+  const thesaurus = useWordThesaurus({ model, documentContext: "epb" });
   
   // Revise panel state — always request 3 alternatives (1 credit)
   const [showRevisePanel, setShowRevisePanel] = useState(false);
@@ -1558,6 +1564,7 @@ export function MPASectionCard({
                     isClosing={isSplitViewClosing}
                     onFocus={handleTextFocus}
                     onBlur={handleTextBlur}
+                    model={model}
                   />
                 ) : (
                   <div className="relative">
@@ -1566,7 +1573,25 @@ export function MPASectionCard({
                       value={localText}
                       onChange={(e) => handleTextChange(e.target.value)}
                       onFocus={handleTextFocus}
-                      onBlur={handleTextBlur}
+                      onBlur={() => {
+                        thesaurus.handleBlur();
+                        void handleTextBlur();
+                      }}
+                      onMouseUp={() =>
+                        thesaurus.handleTextSelect(textareaRef.current, {
+                          text: localText,
+                          onChange: handleTextChange,
+                        })
+                      }
+                      onKeyUp={(event) => {
+                        if (event.shiftKey || event.key.startsWith("Arrow")) {
+                          thesaurus.handleTextSelect(textareaRef.current, {
+                            text: localText,
+                            onChange: handleTextChange,
+                          });
+                        }
+                      }}
+                      onKeyDown={thesaurus.handleKeyDown}
                       placeholder={`Enter your ${mpa?.label || "statement"} here...`}
                       rows={5}
                       className={cn(
@@ -1574,6 +1599,8 @@ export function MPASectionCard({
                         isOverLimit && "border-destructive focus-visible:ring-destructive"
                       )}
                     />
+
+                    <WordThesaurusPopup thesaurus={thesaurus} />
 
                     {/* Drop overlay - shows when dragging a sentence from another MPA */}
                     {!isHLR && !isLockedByOther && (

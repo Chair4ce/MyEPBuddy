@@ -16,6 +16,11 @@ import { resolveRequestedModel } from "@/app/actions/ai-models";
 import { checkAndTrackUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 import type { PromptRuleContext } from "@/types/database";
+import {
+  isSingleSelectableWord,
+  sanitizeThesaurusWord,
+  WORD_THESAURUS_MAX_WORD_LENGTH,
+} from "@/lib/word-thesaurus";
 
 // Allow up to 60s for LLM calls
 export const maxDuration = 60;
@@ -23,6 +28,7 @@ export const maxDuration = 60;
 interface SynonymRequest {
   word: string;
   fullStatement: string;
+  sentence?: string;
   model: string;
   context?: "epb" | "decoration" | "award"; // Type of document for better suggestions
 }
@@ -42,10 +48,21 @@ export async function POST(request: Request) {
     }
 
     const body: SynonymRequest = await request.json();
-    const { word, fullStatement, model, context = "epb" } = body;
+    const { model, context = "epb" } = body;
+    const word = sanitizeThesaurusWord(body.word ?? "");
+    const fullStatement =
+      typeof body.fullStatement === "string" ? body.fullStatement.slice(0, 8000) : "";
+    const sentence =
+      typeof body.sentence === "string" ? body.sentence.slice(0, 800) : "";
     if (!word || !fullStatement) {
       return NextResponse.json(
         { error: "Word and full statement are required" },
+        { status: 400 }
+      );
+    }
+    if (!isSingleSelectableWord(word) || word.length > WORD_THESAURUS_MAX_WORD_LENGTH) {
+      return NextResponse.json(
+        { error: "Select a single word to find replacements" },
         { status: 400 }
       );
     }
@@ -102,41 +119,34 @@ export async function POST(request: Request) {
           ? "decoration"
           : "epb";
     const systemPrompt = await appendUserRulesToPrompt(
-      `You are an expert military writing assistant specializing in Air Force performance and recognition documents. Your task is to suggest context-appropriate synonyms for a specific word within a ${docType.name}.
+      `You are an expert military writing assistant specializing in Air Force performance and recognition documents. Suggest replacement words for one highlighted word inside a ${docType.name}.
 
 GUIDELINES:
-1. **ANALYZE THE FULL CONTEXT** - Read the entire statement to understand how the word is used
-2. ${docType.guidance}
-3. Prioritize words that:
-   - Fit grammatically in the exact same position
-   - Maintain or enhance the professional, action-oriented tone
-   - Are commonly used in Air Force writing
-4. Include a mix of:
-   - Direct synonyms that fit the context perfectly
-   - Stronger/more impactful alternatives
-   - Military-appropriate terminology
-5. Each suggestion MUST be grammatically correct when substituted directly
-6. Keep suggestions concise (preferably single words, short phrases only if needed)
-7. Order suggestions from MOST relevant/impactful to least
+1. **SENTENCE FIRST** — The containing sentence is the primary context. Suggest replacements that fit THAT sentence's meaning, grammar, and tense — not a generic thesaurus dump.
+2. Use the full statement only to confirm tone and nearby facts.
+3. ${docType.guidance}
+4. Each suggestion MUST drop in as a direct substitute (same part of speech, same tense/number).
+5. Prefer single words. Short phrases only when the original is a compound idea.
+6. Order from MOST context-fit / impactful to least.
+7. Do NOT include the original word.
 
-IMPORTANT: Return ONLY a JSON array of 10-15 synonyms/alternatives.`,
+IMPORTANT: Return ONLY a JSON array of 6-8 replacements.`,
       user.id,
       rulesContext,
     );
 
-    const userPrompt = `Find synonyms for the word "${word}" in this ${docType.name}:
+    const userPrompt = `Replace the word "${word}" in this ${docType.name}.
 
+CONTAINING SENTENCE (primary context):
+"${sentence || fullStatement}"
+
+FULL STATEMENT (secondary context):
 "${fullStatement}"
 
-The word "${word}" appears in the context above. Consider:
-- What part of speech is this word? (verb, noun, adjective, etc.)
-- What tone and formality level fits this document?
-- What synonyms would a senior Air Force leader use?
-
-Provide 10-15 context-appropriate alternatives, ordered from most to least impactful.
+Suggest 6-8 replacements a senior Air Force leader would actually use in this sentence.
 
 Return ONLY a JSON array of strings:
-["synonym1", "synonym2", "synonym3", ...]`;
+["replacement1", "replacement2", ...]`;
 
     const { text } = await generateText({
       model: modelProvider,
@@ -150,7 +160,8 @@ Return ONLY a JSON array of strings:
     try {
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        synonyms = JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        synonyms = Array.isArray(parsed) ? parsed : [];
       }
     } catch {
       // Fallback: try to extract words from text
@@ -160,12 +171,25 @@ Return ONLY a JSON array of strings:
         .filter((s) => s.length > 0 && s.length < 50);
     }
 
-    // Clean up and deduplicate
-    synonyms = [...new Set(synonyms.map((s) => s.toLowerCase().trim()))]
-      .filter((s) => s.length > 0 && s !== word.toLowerCase())
-      .slice(0, 15);
+    // Deduplicate case-insensitively while preserving the model's casing
+    const seen = new Set<string>();
+    const originalKey = word.toLowerCase();
+    synonyms = synonyms
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => {
+        if (!item || item.length > 50) return false;
+        const key = item.toLowerCase();
+        if (key === originalKey || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 8);
 
-    return cacheBillableJson(billableCtx, { synonyms }, usageCheck);
+    return cacheBillableJson(
+      billableCtx,
+      { suggestions: synonyms, synonyms },
+      usageCheck,
+    );
   } catch (error) {
     if (billableCtx) {
       return handleBillableLLMError(

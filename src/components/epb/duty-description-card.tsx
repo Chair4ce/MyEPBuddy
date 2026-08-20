@@ -61,6 +61,8 @@ import {
 } from "./epb-animated-collapse";
 import { animateEpbShellResize } from "./epb-resize-transition";
 import { WordReplacementSlider } from "./word-replacement-slider";
+import { useWordThesaurus } from "@/hooks/use-word-thesaurus";
+import { WordThesaurusPopup } from "@/components/word-thesaurus/word-thesaurus-popup";
 import { formatDateTime } from "@/lib/format";
 
 /** A single generated batch of revisions kept in short-term session history. */
@@ -76,6 +78,8 @@ const MAX_REVISION_HISTORY = MAX_GENERATED_STATEMENT_SETS;
 
 interface DutyDescriptionCardProps {
   currentDutyDescription: string;
+  /** Selected LLM for highlight-to-replace suggestions */
+  model: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onSave: (text: string) => Promise<void>;
@@ -119,6 +123,7 @@ interface DutyDescriptionCardProps {
 
 export function DutyDescriptionCard({
   currentDutyDescription,
+  model,
   isCollapsed,
   onToggleCollapse,
   onSave,
@@ -179,6 +184,7 @@ export function DutyDescriptionCard({
   const [isRevisePanelClosing, setIsRevisePanelClosing] = useState(false);
   const [isRevisionsResultsClosing, setIsRevisionsResultsClosing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const thesaurus = useWordThesaurus({ model, documentContext: "epb" });
   const cardBodyShellRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(currentDutyDescription);
@@ -707,7 +713,25 @@ export function DutyDescriptionCard({
               value={localText}
               onChange={(e) => handleTextChange(e.target.value)}
               onFocus={handleTextFocus}
-              onBlur={handleTextBlur}
+              onBlur={() => {
+                thesaurus.handleBlur();
+                void handleTextBlur();
+              }}
+              onMouseUp={() =>
+                thesaurus.handleTextSelect(textareaRef.current, {
+                  text: localText,
+                  onChange: handleTextChange,
+                })
+              }
+              onKeyUp={(event) => {
+                if (event.shiftKey || event.key.startsWith("Arrow")) {
+                  thesaurus.handleTextSelect(textareaRef.current, {
+                    text: localText,
+                    onChange: handleTextChange,
+                  });
+                }
+              }}
+              onKeyDown={thesaurus.handleKeyDown}
               placeholder='e.g., "Leads 36 Amn & 12 total force members directing 24/7 O&M of 730 enterprise domain controllers by administering & securing enterprise Directory Services on a $14B cyber weapon system..."'
               rows={5}
               className={cn(
@@ -715,6 +739,7 @@ export function DutyDescriptionCard({
                 isOverLimit && "border-destructive focus-visible:ring-destructive"
               )}
             />
+            <WordThesaurusPopup thesaurus={thesaurus} />
 
             {/* Action bar */}
             <div className="flex items-center justify-between gap-2">

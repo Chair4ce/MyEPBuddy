@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { parseStatement, combineSentences, type ParsedSentence } from "@/lib/sentence-utils";
 import { getCharacterCountColor } from "@/lib/utils";
 import { GripVertical } from "lucide-react";
+import { useWordThesaurus } from "@/hooks/use-word-thesaurus";
+import { WordThesaurusPopup } from "@/components/word-thesaurus/word-thesaurus-popup";
 
 // Re-export compatible type for drag-drop
 export interface DraggedSentence {
@@ -29,6 +31,8 @@ interface SplitViewEditorProps {
   isClosing?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** Selected LLM for highlight-to-replace suggestions */
+  model?: string;
 }
 
 // Strip ALL periods from text (periods are added automatically when combining)
@@ -56,6 +60,7 @@ export function SplitViewEditor({
   isClosing = false,
   onFocus,
   onBlur,
+  model,
 }: SplitViewEditorProps) {
   // Local state for each sentence (stored WITHOUT trailing periods)
   const [sentence1, setSentence1] = useState("");
@@ -70,6 +75,12 @@ export function SplitViewEditor({
   
   // Track if we're in the middle of a local edit
   const isLocalEditRef = useRef(false);
+  const sentence1Ref = useRef<HTMLTextAreaElement>(null);
+  const sentence2Ref = useRef<HTMLTextAreaElement>(null);
+  const thesaurus = useWordThesaurus({
+    model: model ?? "",
+    documentContext: "epb",
+  });
   
   // Initialize from external text when it changes from external source
   useEffect(() => {
@@ -290,10 +301,31 @@ export function SplitViewEditor({
           )}
           <div className="relative flex-1">
             <textarea
+              ref={sentence1Ref}
               value={sentence1}
               onChange={(e) => handleS1Change(e.target.value)}
               onFocus={onFocus}
-              onBlur={onBlur}
+              onBlur={() => {
+                thesaurus.handleBlur();
+                onBlur?.();
+              }}
+              onMouseUp={() => {
+                if (disabled || !model) return;
+                thesaurus.handleTextSelect(sentence1Ref.current, {
+                  text: sentence1,
+                  onChange: handleS1Change,
+                });
+              }}
+              onKeyUp={(event) => {
+                if (disabled || !model) return;
+                if (event.shiftKey || event.key.startsWith("Arrow")) {
+                  thesaurus.handleTextSelect(sentence1Ref.current, {
+                    text: sentence1,
+                    onChange: handleS1Change,
+                  });
+                }
+              }}
+              onKeyDown={thesaurus.handleKeyDown}
               disabled={disabled}
               placeholder={placeholder}
               rows={3}
@@ -364,10 +396,31 @@ export function SplitViewEditor({
           )}
           <div className="relative flex-1">
             <textarea
+              ref={sentence2Ref}
               value={sentence2}
               onChange={(e) => handleS2Change(e.target.value)}
               onFocus={onFocus}
-              onBlur={onBlur}
+              onBlur={() => {
+                thesaurus.handleBlur();
+                onBlur?.();
+              }}
+              onMouseUp={() => {
+                if (disabled || !model) return;
+                thesaurus.handleTextSelect(sentence2Ref.current, {
+                  text: sentence2,
+                  onChange: handleS2Change,
+                });
+              }}
+              onKeyUp={(event) => {
+                if (disabled || !model) return;
+                if (event.shiftKey || event.key.startsWith("Arrow")) {
+                  thesaurus.handleTextSelect(sentence2Ref.current, {
+                    text: sentence2,
+                    onChange: handleS2Change,
+                  });
+                }
+              }}
+              onKeyDown={thesaurus.handleKeyDown}
               disabled={disabled}
               placeholder="Second sentence (optional)..."
               rows={3}
@@ -397,6 +450,8 @@ export function SplitViewEditor({
           {totalLength}/{maxChars}
         </span>
       </div>
+
+      {model && <WordThesaurusPopup thesaurus={thesaurus} />}
       
       {isOverLimit && (
         <p className="text-xs text-destructive">

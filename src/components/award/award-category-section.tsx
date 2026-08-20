@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo, useLayoutEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
@@ -36,9 +35,6 @@ import {
   Trash2,
   Zap,
   FileText,
-  Maximize2,
-  Minimize2,
-  RefreshCw,
   X,
   CalendarDays,
   MessageSquareText,
@@ -53,6 +49,8 @@ import { useClarifyingQuestionsStore } from "@/stores/clarifying-questions-store
 import { ClarifyingQuestionsIndicator, ClarifyingQuestionsModal } from "@/components/generate/clarifying-questions-modal";
 import { compressText, normalizeSpaces, getVisualLineSegments, AF1206_LINE_WIDTH_PX, toDisplayText, fromDisplayText } from "@/lib/bullet-fitting";
 import { formatShortDateWithYear } from "@/lib/format";
+import { useWordThesaurus } from "@/hooks/use-word-thesaurus";
+import { WordThesaurusPopup } from "@/components/word-thesaurus/word-thesaurus-popup";
 
 // ============================================================================
 // Types
@@ -249,14 +247,7 @@ function StatementSlotCard({
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showActionSelector, setShowActionSelector] = useState(false);
   const [generatedSuggestion, setGeneratedSuggestion] = useState<string | null>(null);
-  
-  // Selection popup state
-  const [showSelectionPopup, setShowSelectionPopup] = useState(false);
-  const [selectedText, setSelectedText] = useState("");
-  const [selectionStart, setSelectionStart] = useState(0);
-  const [selectionEnd, setSelectionEnd] = useState(0);
-  const [isRevising, setIsRevising] = useState(false);
-  const [revisionResults, setRevisionResults] = useState<string[]>([]);
+  const thesaurus = useWordThesaurus({ model, documentContext: "award" });
   
   // Clarifying questions for this slot
   const slotMpaKey = `award:${categoryKey}:${slotIndex}`;
@@ -390,78 +381,9 @@ function StatementSlotCard({
     : customContext.trim().length > 0;
   const canGenerate = hasContent || hasAdditionalContext;
 
-  // Handle text selection for synonym/revision popup
-  const handleTextSelect = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = draftText.substring(start, end);
-    
-    if (text.trim().length > 0 && start !== end) {
-      setSelectedText(text);
-      setSelectionStart(start);
-      setSelectionEnd(end);
-      setShowSelectionPopup(true);
-      setRevisionResults([]);
-    } else {
-      setShowSelectionPopup(false);
-    }
+  const applyThesaurusText = (nextDisplayText: string) => {
+    onUpdate({ draftText: fromDisplayText(nextDisplayText), isDirty: true });
   };
-
-  // Close selection popup
-  const closeSelectionPopup = () => {
-    setShowSelectionPopup(false);
-    setSelectedText("");
-    setRevisionResults([]);
-  };
-
-  // Revise selected text (expand, compress, or general)
-  const handleReviseSelection = async (mode: "expand" | "compress" | "general") => {
-    if (!selectedText.trim()) return;
-    
-    setIsRevising(true);
-    setRevisionResults([]);
-    
-    try {
-      const response = await fetchWithRetry("/api/revise-selection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullStatement: draftText,
-          selectedText,
-          selectionStart,
-          selectionEnd,
-          model,
-          mode,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (handleUsageLimitResponse(errorData)) return;
-        throw new Error(errorData.error || "Revision failed");
-      }
-
-      const data = await response.json();
-      setRevisionResults(data.revisions || []);
-    } catch (error) {
-      console.error("Revision error:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to revise selection");
-    } finally {
-      setIsRevising(false);
-    }
-  };
-
-  // Apply a revision to the text
-  const applyRevision = (revision: string) => {
-    const newText = draftText.substring(0, selectionStart) + revision + draftText.substring(selectionEnd);
-    onUpdate({ draftText: newText, isDirty: true });
-    closeSelectionPopup();
-    toast.success("Applied revision");
-  };
-
 
   return (
     <div className="border rounded-lg bg-card/50 overflow-hidden">
@@ -557,18 +479,23 @@ function StatementSlotCard({
                       e.clipboardData.setData('text/plain', fromDisplayText(selection));
                     }
                   }}
-                  onMouseUp={handleTextSelect}
+                  onMouseUp={() =>
+                    thesaurus.handleTextSelect(textareaRef.current, {
+                      text: toDisplayText(draftText),
+                      onChange: applyThesaurusText,
+                    })
+                  }
                   onKeyUp={(e) => {
-                    // Handle shift+arrow key selection
-                    if (e.shiftKey) handleTextSelect();
+                    if (e.shiftKey || e.key.startsWith("Arrow")) {
+                      thesaurus.handleTextSelect(textareaRef.current, {
+                        text: toDisplayText(draftText),
+                        onChange: applyThesaurusText,
+                      });
+                    }
                   }}
+                  onKeyDown={thesaurus.handleKeyDown}
                   onBlur={() => {
-                    // Delay closing popup to allow clicking on it
-                    setTimeout(() => {
-                      if (!document.activeElement?.closest('.selection-popup')) {
-                        closeSelectionPopup();
-                      }
-                    }, 200);
+                    thesaurus.handleBlur();
                   }}
                   placeholder="Enter your statement here..."
                   className="bg-transparent focus:outline-none resize-none"
@@ -647,75 +574,7 @@ function StatementSlotCard({
           </div>
         </div>
         
-        {/* Selection Popup - appears when text is selected */}
-        {showSelectionPopup && (
-          <div 
-            className="selection-popup p-3 rounded-lg bg-card border shadow-lg animate-in fade-in-0 zoom-in-95 duration-200"
-          >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Selected: <span className="font-medium text-foreground">&ldquo;{selectedText.slice(0, 30)}{selectedText.length > 30 ? "..." : ""}&rdquo;</span>
-                  <span className="ml-1">({selectedText.length} chars)</span>
-                </p>
-                <button type="button"
-                  onClick={closeSelectionPopup}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Close selection popup"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-              
-              {/* Revision mode buttons */}
-              <div className="flex items-center gap-2">
-                <button type="button"
-                  onClick={() => handleReviseSelection("expand")}
-                  disabled={isRevising}
-                  className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  {isRevising ? <Loader2 className="size-3 animate-spin" /> : <Maximize2 className="size-3" />}
-                  Expand
-                </button>
-                <button type="button"
-                  onClick={() => handleReviseSelection("compress")}
-                  disabled={isRevising}
-                  className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  {isRevising ? <Loader2 className="size-3 animate-spin" /> : <Minimize2 className="size-3" />}
-                  Compress
-                </button>
-                <button type="button"
-                  onClick={() => handleReviseSelection("general")}
-                  disabled={isRevising}
-                  className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  {isRevising ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-                  Rephrase
-                </button>
-              </div>
-              
-              {/* Revision results */}
-              {revisionResults.length > 0 && (
-                <div className="space-y-2 pt-2 border-t">
-                  <p className="text-xs text-muted-foreground font-medium">Alternatives:</p>
-                  {revisionResults.map((revision) => (
-                    <button type="button"
-                      key={`alt-${revision.slice(0, 48)}-${revision.length}`}
-                      onClick={() => applyRevision(revision)}
-                      className="w-full text-left p-2 rounded-md text-sm border hover:bg-accent hover:border-primary/50 transition-colors"
-                    >
-                      <p className="whitespace-pre-wrap">{revision}</p>
-                      <span className="text-[10px] text-muted-foreground mt-1">
-                        {revision.length} chars ({revision.length > selectedText.length ? "+" : ""}{revision.length - selectedText.length})
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <WordThesaurusPopup thesaurus={thesaurus} />
       </div>
 
       {/* AI Options Bar - below workspace */}

@@ -8,12 +8,10 @@ import {
   type HighlightColorId,
 } from "@/stores/decoration-shell-store";
 import { useUserStore } from "@/stores/user-store";
-import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
@@ -21,6 +19,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { DECORATION_TYPES } from "@/features/decorations/constants";
+import { useWordThesaurus } from "@/hooks/use-word-thesaurus";
+import { WordThesaurusPopup } from "@/components/word-thesaurus/word-thesaurus-popup";
 import {
   Copy,
   Check,
@@ -29,11 +29,6 @@ import {
   Camera,
   History,
   X,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  RefreshCw,
-  BookA,
   Palette,
 } from "lucide-react";
 import {
@@ -95,23 +90,10 @@ export function DecorationCitationEditor({
   } = useDecorationShellStore();
 
   const [copied, setCopied] = useState(false);
-
-  // Text selection state for highlight-to-revise
-  const [showSelectionPopup, setShowSelectionPopup] = useState(false);
-  const [selectedText, setSelectedText] = useState("");
-  const [selectionStart, setSelectionStart] = useState(0);
-  const [selectionEnd, setSelectionEnd] = useState(0);
-  const [revisionResults, setRevisionResults] = useState<string[]>([]);
-  const [isRevisingSelection, setIsRevisingSelection] = useState(false);
-  
-  // Synonym state (for single-word selection)
-  const [synonyms, setSynonyms] = useState<string[]>([]);
-  const [isLoadingSynonyms, setIsLoadingSynonyms] = useState(false);
-  
-  // Staged synonym state - for preview/toggle before applying
-  const [stagedSynonym, setStagedSynonym] = useState<string | null>(null);
-  const [originalWord, setOriginalWord] = useState<string>(""); // The original highlighted word
-  const [synonymsLocked, setSynonymsLocked] = useState(false); // When true, popup stays open
+  const thesaurus = useWordThesaurus({
+    model: selectedModel,
+    documentContext: "decoration",
+  });
 
   // Color overlay state — overlay is visible when not hovering/focused/editing
   const [isHoveringCitation, setIsHoveringCitation] = useState(false);
@@ -454,15 +436,6 @@ export function DecorationCitationEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [citationText]); // Only trigger on citation text changes
   
-  // Check if selection is a single word (no spaces, reasonable length)
-  const isSingleWord = useMemo(() => {
-    const trimmed = selectedText.trim();
-    return trimmed.length > 0 && 
-           trimmed.length <= 30 && 
-           !trimmed.includes(" ") &&
-           /^[a-zA-Z-]+$/.test(trimmed);
-  }, [selectedText]);
-
   // Get decoration config
   const decorationConfig = useMemo(() => {
     return DECORATION_TYPES.find((d) => d.key === awardType);
@@ -547,147 +520,6 @@ export function DecorationCitationEditor({
   );
 
 
-  // Handle text selection for popup (highlight text to get expand/compress/rephrase options)
-  const handleTextSelect = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = citationText.substring(start, end);
-
-    if (text.trim().length > 0 && start !== end) {
-      // If selecting a different word, reset synonym state to allow fresh search
-      if (text.trim() !== selectedText.trim()) {
-        setSynonyms([]);
-        setStagedSynonym(null);
-        setOriginalWord("");
-        setSynonymsLocked(false);
-        setRevisionResults([]);
-      }
-      
-      setSelectedText(text);
-      setSelectionStart(start);
-      setSelectionEnd(end);
-      setShowSelectionPopup(true);
-    } else {
-      // Clicking away without selection - close and reset everything
-      if (showSelectionPopup) {
-        // If we have a staged synonym, keep it (don't revert) but close the popup
-        setShowSelectionPopup(false);
-        setSelectedText("");
-        setRevisionResults([]);
-        setSynonyms([]);
-        setStagedSynonym(null);
-        setOriginalWord("");
-        setSynonymsLocked(false);
-      }
-    }
-  }, [citationText, selectedText, showSelectionPopup]);
-
-  // Close selection popup and reset all synonym state (keeps current text as-is)
-  const closeSelectionPopup = useCallback(() => {
-    setShowSelectionPopup(false);
-    setSelectedText("");
-    setRevisionResults([]);
-    setSynonyms([]);
-    setStagedSynonym(null);
-    setOriginalWord("");
-    setSynonymsLocked(false);
-  }, []);
-  
-  // Fetch synonyms for a single word
-  const handleFetchSynonyms = useCallback(async () => {
-    if (!selectedText.trim() || !isSingleWord) return;
-    
-    setIsLoadingSynonyms(true);
-    setSynonyms([]);
-    
-    // Store the original word when fetching synonyms
-    setOriginalWord(selectedText.trim());
-    
-    try {
-      const response = await fetch("/api/synonyms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          word: selectedText.trim(),
-          fullStatement: citationText,
-          model: selectedModel,
-          context: "decoration", // Decoration-specific synonym suggestions
-        }),
-      });
-      
-      if (!response.ok) throw new Error("Failed to fetch synonyms");
-      
-      const data = await response.json();
-      setSynonyms(data.synonyms || []);
-      setSynonymsLocked(true); // Lock the popup open only after success
-    } catch (error) {
-      console.error("Synonym error:", error);
-      toast.error("Failed to get synonyms");
-      setOriginalWord(""); // Reset on error
-    } finally {
-      setIsLoadingSynonyms(false);
-    }
-  }, [selectedText, isSingleWord, citationText, selectedModel]);
-  
-  // Stage a synonym (toggle preview without final apply)
-  const stageSynonym = useCallback(
-    (synonym: string) => {
-      // Get current word in the text (could be original or previously staged)
-      const currentWord = stagedSynonym || originalWord;
-      
-      if (synonym === currentWord) {
-        // Clicking the same word - unstage it (revert to original)
-        if (stagedSynonym) {
-          const newText = citationText.substring(0, selectionStart) + originalWord + citationText.substring(selectionStart + stagedSynonym.length);
-          setCitationText(newText);
-          setStagedSynonym(null);
-        }
-        return;
-      }
-      
-      // Replace current word with new synonym
-      const newText = citationText.substring(0, selectionStart) + synonym + citationText.substring(selectionStart + currentWord.length);
-      setCitationText(newText);
-      setStagedSynonym(synonym);
-    },
-    [citationText, selectionStart, stagedSynonym, originalWord, setCitationText]
-  );
-  
-  // Apply the staged synonym (finalize and close)
-  const applyStaged = useCallback(() => {
-    if (stagedSynonym) {
-      toast.success(`Replaced "${originalWord}" with "${stagedSynonym}"`);
-    }
-    // Clear state without reverting
-    setShowSelectionPopup(false);
-    setSelectedText("");
-    setRevisionResults([]);
-    setSynonyms([]);
-    setStagedSynonym(null);
-    setOriginalWord("");
-    setSynonymsLocked(false);
-  }, [stagedSynonym, originalWord]);
-  
-  // Cancel and revert to original word
-  const cancelSynonym = useCallback(() => {
-    if (stagedSynonym && originalWord) {
-      // Revert to original
-      const newText = citationText.substring(0, selectionStart) + originalWord + citationText.substring(selectionStart + stagedSynonym.length);
-      setCitationText(newText);
-    }
-    // Clear state
-    setShowSelectionPopup(false);
-    setSelectedText("");
-    setRevisionResults([]);
-    setSynonyms([]);
-    setStagedSynonym(null);
-    setOriginalWord("");
-    setSynonymsLocked(false);
-  }, [citationText, selectionStart, stagedSynonym, originalWord, setCitationText]);
-  
   // Render citation text with highlights
   const renderHighlightedText = useMemo(() => {
     if (citationHighlights.length === 0) return null;
@@ -727,30 +559,6 @@ export function DecorationCitationEditor({
     return segments;
   }, [citationText, citationHighlights]);
 
-  // Handle textarea blur - delay closing to allow button clicks
-  const handleTextareaBlur = useCallback(() => {
-    setTimeout(() => {
-      // Don't close if focus is inside the popup
-      if (document.activeElement?.closest(".selection-popup")) {
-        return;
-      }
-      // Check the current revising/loading state via data attribute to avoid stale closure
-      const loadingElement = document.querySelector('[data-loading="true"]');
-      if (loadingElement) {
-        return;
-      }
-      // When blurring, just close the popup without reverting
-      // Keep whatever word is currently staged in the text
-      setShowSelectionPopup(false);
-      setSelectedText("");
-      setRevisionResults([]);
-      setSynonyms([]);
-      setStagedSynonym(null);
-      setOriginalWord("");
-      setSynonymsLocked(false);
-    }, 300);
-  }, []);
-
   // Sync overlay scroll position with textarea
   const handleCitationScroll = useCallback(() => {
     if (textareaRef.current && overlayRef.current) {
@@ -765,70 +573,8 @@ export function DecorationCitationEditor({
     renderHighlightedText.length > 0 &&
     !isHoveringCitation &&
     !isCitationFocused &&
-    !showSelectionPopup &&
+    !thesaurus.open &&
     !isGenerating
-  );
-
-  // Revise selected text
-  const handleReviseSelection = useCallback(
-    async (mode: "expand" | "compress" | "general") => {
-      // Capture values at call time to avoid stale closures
-      const textToRevise = selectedText.trim();
-      const fullText = citationText;
-      const start = selectionStart;
-      const end = selectionEnd;
-      const model = selectedModel;
-      
-      if (!textToRevise) {
-        console.warn("No text selected for revision");
-        return;
-      }
-
-      setIsRevisingSelection(true);
-      setRevisionResults([]);
-
-      try {
-        const response = await fetchWithRetry("/api/revise-selection", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fullStatement: fullText,
-            selectedText: textToRevise,
-            selectionStart: start,
-            selectionEnd: end,
-            model: model,
-            mode,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          if (handleUsageLimitResponse(errorData)) return;
-          throw new Error(errorData.error || "Revision failed");
-        }
-
-        const data = await response.json();
-        setRevisionResults(data.revisions || []);
-      } catch (error) {
-        console.error("Revision error:", error);
-        toast.error(error instanceof Error ? error.message : "Failed to revise selection");
-      } finally {
-        setIsRevisingSelection(false);
-      }
-    },
-    [selectedText, citationText, selectionStart, selectionEnd, selectedModel]
-  );
-
-  // Apply a revision to the text
-  const applyRevision = useCallback(
-    (revision: string) => {
-      const newText =
-        citationText.substring(0, selectionStart) + revision + citationText.substring(selectionEnd);
-      setCitationText(newText);
-      closeSelectionPopup();
-      toast.success("Applied revision");
-    },
-    [citationText, selectionStart, selectionEnd, setCitationText, closeSelectionPopup]
   );
 
   // Copy to clipboard
@@ -1029,12 +775,25 @@ export function DecorationCitationEditor({
               ref={textareaRef}
               value={citationText}
               onChange={(e) => setCitationText(e.target.value)}
-              onMouseUp={handleTextSelect}
-              onKeyUp={handleTextSelect}
+              onMouseUp={() =>
+                thesaurus.handleTextSelect(textareaRef.current, {
+                  text: citationText,
+                  onChange: setCitationText,
+                })
+              }
+              onKeyUp={(event) => {
+                if (event.shiftKey || event.key.startsWith("Arrow")) {
+                  thesaurus.handleTextSelect(textareaRef.current, {
+                    text: citationText,
+                    onChange: setCitationText,
+                  });
+                }
+              }}
+              onKeyDown={thesaurus.handleKeyDown}
               onFocus={() => setIsCitationFocused(true)}
               onBlur={() => {
                 setIsCitationFocused(false);
-                handleTextareaBlur();
+                thesaurus.handleBlur();
               }}
               onScroll={handleCitationScroll}
               placeholder={
@@ -1096,226 +855,7 @@ export function DecorationCitationEditor({
             )}
           </div>
 
-          {/* Text Selection Popup - with smooth transition */}
-          <div
-            className={cn(
-              "selection-popup grid transition-all duration-200 ease-in-out",
-              showSelectionPopup ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
-            )}
-            data-loading={(isRevisingSelection || isLoadingSynonyms) ? "true" : "false"}
-          >
-            <div className="overflow-hidden">
-              <div className="p-3 rounded-lg bg-card border shadow-lg">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      Selected:{" "}
-                      <span className="font-medium text-foreground">
-                        &ldquo;{selectedText.slice(0, 50)}
-                        {selectedText.length > 50 ? "..." : ""}&rdquo;
-                      </span>
-                      <span className="ml-1">({selectedText.length} chars)</span>
-                      {isSingleWord && (
-                        <span className="ml-1.5 text-[10px] text-primary">(word)</span>
-                      )}
-                    </p>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={synonymsLocked ? cancelSynonym : closeSelectionPopup}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label="Close synonym suggestions"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-
-                  {/* Single word: Show synonym button */}
-                  {isSingleWord && (
-                    <div className="space-y-2">
-                      {/* Only show Find Synonyms button if synonyms haven't been fetched yet */}
-                      {!synonymsLocked && (
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={handleFetchSynonyms}
-                          disabled={isLoadingSynonyms}
-                          className="w-full h-8 px-3 rounded-md text-xs border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                        >
-                          {isLoadingSynonyms ? (
-                            <Loader2 className="size-3 animate-spin" />
-                          ) : (
-                            <BookA className="size-3" />
-                          )}
-                          {isLoadingSynonyms ? "Finding synonyms..." : "Find Synonyms"}
-                        </button>
-                      )}
-                      
-                      {/* Synonyms results - toggle buttons */}
-                      {synonyms.length > 0 && (
-                        <div className="space-y-3 pt-2 border-t">
-                          {/* Current word indicator */}
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              Original: <span className="font-medium text-foreground">&ldquo;{originalWord}&rdquo;</span>
-                            </span>
-                            {stagedSynonym && (
-                              <span className="text-primary font-medium">
-                                → &ldquo;{stagedSynonym}&rdquo;
-                              </span>
-                            )}
-                          </div>
-                          
-                          {/* Synonym toggle buttons */}
-                          <div className="flex flex-wrap gap-1.5">
-                            {/* Original word button */}
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                if (stagedSynonym) {
-                                  stageSynonym(originalWord);
-                                }
-                              }}
-                              className={cn(
-                                "px-2 py-1 rounded text-xs border transition-colors",
-                                !stagedSynonym
-                                  ? "bg-primary text-primary-foreground border-primary"
-                                  : "bg-background hover:bg-accent hover:border-primary/50"
-                              )}
-                            >
-                              {originalWord}
-                            </button>
-                            
-                            {/* Synonym buttons */}
-                            {synonyms.map((synonym) => (
-                              <button
-                                key={synonym}
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => stageSynonym(synonym)}
-                                className={cn(
-                                  "px-2 py-1 rounded text-xs border transition-colors",
-                                  stagedSynonym === synonym
-                                    ? "bg-primary text-primary-foreground border-primary"
-                                    : "bg-background hover:bg-accent hover:border-primary/50"
-                                )}
-                              >
-                                {synonym}
-                              </button>
-                            ))}
-                          </div>
-                          
-                          {/* Apply/Cancel buttons */}
-                          <div className="flex items-center gap-2 pt-2 border-t">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={cancelSynonym}
-                              className="h-7 text-xs flex-1"
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="default"
-                              size="sm"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={applyStaged}
-                              className="h-7 text-xs flex-1"
-                            >
-                              {stagedSynonym ? `Apply "${stagedSynonym}"` : "Keep Original"}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Multi-word/phrase: Show revision buttons */}
-                  {!isSingleWord && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => handleReviseSelection("expand")}
-                        disabled={isRevisingSelection}
-                        className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                      >
-                        {isRevisingSelection ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          <Maximize2 className="size-3" />
-                        )}
-                        Expand
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => handleReviseSelection("compress")}
-                        disabled={isRevisingSelection}
-                        className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                      >
-                        {isRevisingSelection ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          <Minimize2 className="size-3" />
-                        )}
-                        Compress
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => handleReviseSelection("general")}
-                        disabled={isRevisingSelection}
-                        className="flex-1 h-8 px-3 rounded-md text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                      >
-                        {isRevisingSelection ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="size-3" />
-                        )}
-                        Rephrase
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Revision results - with smooth transition (only for multi-word) */}
-                  <div
-                    className={cn(
-                      "grid transition-all duration-200 ease-in-out",
-                      revisionResults.length > 0 && !isSingleWord ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-                    )}
-                  >
-                    <div className="overflow-hidden">
-                      <div className="space-y-2 pt-2 border-t">
-                        <p className="text-xs text-muted-foreground font-medium">Alternatives:</p>
-                        {revisionResults.map((revision) => (
-                          <button
-                            key={`alt-${revision.slice(0, 48)}-${revision.length}`}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applyRevision(revision)}
-                            className="w-full text-left p-2 rounded-md text-sm border hover:bg-accent hover:border-primary/50 transition-colors"
-                          >
-                            <p className="whitespace-pre-wrap">{revision}</p>
-                            <span className="text-[10px] text-muted-foreground mt-1">
-                              {revision.length} chars (
-                              {revision.length > selectedText.length ? "+" : ""}
-                              {revision.length - selectedText.length})
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  
-                </div>
-              </div>
-            </div>
-          </div>
+          <WordThesaurusPopup thesaurus={thesaurus} />
 
           {/* TODO: Future work - Revise Panel (needs proper citation structure parsing)
           {citationText.trim() && (

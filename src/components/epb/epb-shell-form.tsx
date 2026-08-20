@@ -2287,6 +2287,7 @@ export function EPBShellForm({
         {/* Duty Description Card - Placed at the top above MPAs */}
         <DutyDescriptionCard
           key={`duty-desc-${loadVersion}-${selectedRatee?.id || 'new'}`}
+          model={model}
           currentDutyDescription={currentShell?.duty_description || ""}
           isCollapsed={isDutyDescriptionCollapsed}
           onToggleCollapse={() => setIsDutyDescriptionCollapsed(!isDutyDescriptionCollapsed)}
@@ -2325,6 +2326,7 @@ export function EPBShellForm({
             <div key={`${loadVersion}-${mpa.key}`} data-mpa-key={mpa.key}>
               <MPASectionCard
                 section={section}
+                model={model}
                 rateeId={selectedRatee?.id}
                 isCollapsed={collapsedSections[mpa.key] ?? false}
                 onToggleCollapse={() => toggleSectionCollapsed(mpa.key)}
