@@ -80,41 +80,7 @@ export async function checkAndTrackUsage(
   };
 
   if (!usingDefault) {
-    const { data: countAfter, error } = await (supabase.rpc as Function)(
-      "check_and_record_usage",
-      {
-        p_user_id: userId,
-        p_action_type: action,
-        p_model_id: effectiveModel,
-        p_provider: provider,
-      },
-    ) as { data: number | null; error: { message: string } | null };
-
-    if (error) {
-      console.error("[usage-tracker] BYOK RPC error:", error.message);
-      return {
-        allowed: false,
-        usingDefaultKey: false,
-        effectiveModel,
-        serviceError: true,
-      };
-    }
-
-    if (countAfter === -1) {
-      return {
-        allowed: false,
-        usingDefaultKey: false,
-        effectiveModel,
-        rateLimited: true,
-      };
-    }
-
-    return {
-      allowed: true,
-      usingDefaultKey: false,
-      effectiveModel,
-      tracking,
-    };
+    return recordByokUsage(supabase, userId, action, effectiveModel, provider, tracking);
   }
 
   const { data: balanceAfter, error } = await (supabase.rpc as Function)(
@@ -165,6 +131,86 @@ export async function checkAndTrackUsage(
     effectiveModel,
     creditsRemaining: result,
     creditsBalance: result,
+    tracking,
+  };
+}
+
+/**
+ * Allow an authenticated LLM call without consuming a prepaid credit.
+ *
+ * Default-key users skip `consume_credit` (and therefore never get 402).
+ * BYOK users still hit the burst limiter via `check_and_record_usage`.
+ * Token-usage telemetry is recorded either way.
+ */
+export async function allowUnbilledLlmUsage(
+  userId: string,
+  action: BillableAction,
+  modelId: string,
+  userKeys: Partial<DecryptedApiKeys> | null,
+): Promise<UsageCheckResult> {
+  const usingDefault = isUsingDefaultKey(modelId, userKeys);
+  const effectiveModel = usingDefault ? DEFAULT_KEY_MODEL : modelId;
+  const provider = detectProvider(effectiveModel);
+  const tracking: TokenTrackingContext = {
+    subjectId: userId,
+    action,
+    usingDefaultKey: usingDefault,
+  };
+
+  if (!usingDefault) {
+    const supabase = await createClient();
+    return recordByokUsage(supabase, userId, action, effectiveModel, provider, tracking);
+  }
+
+  return {
+    allowed: true,
+    usingDefaultKey: true,
+    effectiveModel,
+    tracking,
+  };
+}
+
+async function recordByokUsage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  action: BillableAction,
+  effectiveModel: string,
+  provider: ReturnType<typeof detectProvider>,
+  tracking: TokenTrackingContext,
+): Promise<UsageCheckResult> {
+  const { data: countAfter, error } = await (supabase.rpc as Function)(
+    "check_and_record_usage",
+    {
+      p_user_id: userId,
+      p_action_type: action,
+      p_model_id: effectiveModel,
+      p_provider: provider,
+    },
+  ) as { data: number | null; error: { message: string } | null };
+
+  if (error) {
+    console.error("[usage-tracker] BYOK RPC error:", error.message);
+    return {
+      allowed: false,
+      usingDefaultKey: false,
+      effectiveModel,
+      serviceError: true,
+    };
+  }
+
+  if (countAfter === -1) {
+    return {
+      allowed: false,
+      usingDefaultKey: false,
+      effectiveModel,
+      rateLimited: true,
+    };
+  }
+
+  return {
+    allowed: true,
+    usingDefaultKey: false,
+    effectiveModel,
     tracking,
   };
 }

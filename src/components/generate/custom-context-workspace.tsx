@@ -1060,7 +1060,7 @@ export function CustomContextWorkspace({
   // Synonym lookup - needs word, full statement context, and model
   const synonymLookup = async (word: string, fullStatement: string): Promise<string[]> => {
     try {
-      const response = await billableFetch("/api/synonyms", {
+      const response = await fetchWithRetry("/api/synonyms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ word, fullStatement, model }),

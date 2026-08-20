@@ -2,6 +2,7 @@
 
 import { BookA, Loader2, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TokenCostBadge } from "@/components/billing/token-cost-badge";
 import {
   motionChip,
   motionCollapseGrid,
@@ -292,6 +293,7 @@ function PhraseButton({
     >
       {disabled ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
       {label}
+      <TokenCostBadge compact className="ml-0.5" />
     </button>
   );
 }

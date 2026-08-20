@@ -1,6 +1,7 @@
 import { useCreditsStore } from "@/stores/credits-store";
 
 /** POST endpoints that consume a prepaid AI call (default-key users). */
+/** `/api/synonyms` is intentionally omitted — word replacement suggestions are free. */
 export const BILLABLE_API_PATHS = [
   "/api/generate",
   "/api/plan-epb",
@@ -17,7 +18,6 @@ export const BILLABLE_API_PATHS = [
   "/api/parse-bulk-statements",
   "/api/extract-accomplishments",
   "/api/adapt-sentence",
-  "/api/synonyms",
   "/api/combine",
   "/api/combine-statements",
   "/api/convert-sentences",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { checkAndTrackUsage } from "../usage-tracker";
+import { allowUnbilledLlmUsage, checkAndTrackUsage } from "../usage-tracker";
 
 const mockRpc = vi.fn();
 
@@ -74,7 +74,7 @@ describe("checkAndTrackUsage", () => {
 
     const result = await checkAndTrackUsage(
       "user-1",
-      "synonyms",
+      "generate",
       "gemini-2.5-flash-lite",
       null,
     );
@@ -106,6 +106,60 @@ describe("checkAndTrackUsage", () => {
         p_user_id: "user-1",
         p_action_type: "generate",
       }),
+    );
+  });
+});
+
+describe("allowUnbilledLlmUsage", () => {
+  beforeEach(() => {
+    mockRpc.mockReset();
+  });
+
+  it("does not consume a credit for default-key users", async () => {
+    const result = await allowUnbilledLlmUsage(
+      "user-1",
+      "synonyms",
+      "gemini-2.5-flash-lite",
+      null,
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.usingDefaultKey).toBe(true);
+    expect(result.insufficientCredits).toBeFalsy();
+    expect(result.creditsRemaining).toBeUndefined();
+    expect(result.tracking).toEqual({
+      subjectId: "user-1",
+      action: "synonyms",
+      usingDefaultKey: true,
+    });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it("still burst-limits BYOK users without consuming credits", async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: 1,
+      error: null,
+    });
+
+    const result = await allowUnbilledLlmUsage(
+      "user-1",
+      "synonyms",
+      "gpt-4o",
+      { openai_key: "sk-test" },
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.usingDefaultKey).toBe(false);
+    expect(mockRpc).toHaveBeenCalledWith(
+      "check_and_record_usage",
+      expect.objectContaining({
+        p_user_id: "user-1",
+        p_action_type: "synonyms",
+      }),
+    );
+    expect(mockRpc).not.toHaveBeenCalledWith(
+      "consume_credit",
+      expect.anything(),
     );
   });
 });

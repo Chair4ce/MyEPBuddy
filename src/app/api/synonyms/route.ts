@@ -7,13 +7,12 @@ import {
   cacheBillableJson,
   createBillableRequestContext,
   getReplayedBillableResponse,
-  handleBillableLLMError,
   type BillableRequestContext,
 } from "@/lib/billing/billable-request";
 import { handleLLMError } from "@/lib/llm-error-handler";
 import { enforceUsageGate } from "@/lib/usage-gate";
 import { resolveRequestedModel } from "@/app/actions/ai-models";
-import { checkAndTrackUsage } from "@/lib/usage-tracker";
+import { allowUnbilledLlmUsage } from "@/lib/usage-tracker";
 import { appendUserRulesToPrompt } from "@/lib/prompt-rules/server";
 import type { PromptRuleContext } from "@/types/database";
 import {
@@ -78,13 +77,12 @@ export async function POST(request: Request) {
     const replayed = await getReplayedBillableResponse(billableCtx);
     if (replayed) return replayed;
 
-    // Usage tracking — enforce weekly limit for default-key users
-    const usageCheck = await checkAndTrackUsage(
+    // Free for default-key users — suggestions never consume a prepaid credit.
+    const usageCheck = await allowUnbilledLlmUsage(
       user.id,
       "synonyms",
       modelId,
       userKeys,
-      billableCtx.idempotencyKey,
     );
     billableCtx.usageCheck = usageCheck;
     if (!usageCheck.allowed) {
@@ -191,14 +189,6 @@ Return ONLY a JSON array of strings:
       usageCheck,
     );
   } catch (error) {
-    if (billableCtx) {
-      return handleBillableLLMError(
-        error,
-        "POST /api/synonyms",
-        modelId,
-        billableCtx,
-      );
-    }
     return handleLLMError(error, "POST /api/synonyms", modelId);
   }
 }
