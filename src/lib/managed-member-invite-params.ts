@@ -122,6 +122,7 @@ export function clearPersistedManagedInviteToken(): void {
 
 /**
  * Prevent open redirects: only same-origin absolute URLs or relative app paths.
+ * Protocol-relative and `https://our.host//evil.tld` pathnames are rejected.
  */
 export function safeAppNextPath(
   next: string | null | undefined,
@@ -130,17 +131,38 @@ export function safeAppNextPath(
   if (!next) return "/dashboard";
 
   try {
-    if (next.startsWith("/")) {
-      if (next.startsWith("//")) return "/dashboard";
-      return next;
-    }
-
-    const parsed = new URL(next);
     const allowedOrigin = new URL(origin).origin;
+    const parsed = next.startsWith("/")
+      ? new URL(next, allowedOrigin)
+      : new URL(next);
     if (parsed.origin !== allowedOrigin) return "/dashboard";
 
-    return `${parsed.pathname}${parsed.search}${parsed.hash}` || "/dashboard";
+    const path = `${parsed.pathname}${parsed.search}${parsed.hash}` || "/dashboard";
+    if (!path.startsWith("/") || path.startsWith("//")) return "/dashboard";
+    return path;
   } catch {
     return "/dashboard";
   }
+}
+
+const AUTH_ENTRY_PREFIXES = [
+  "/login",
+  "/signup",
+  "/phone-login",
+  "/forgot-password",
+] as const;
+
+/**
+ * Post-login destination. Same open-redirect rules as safeAppNextPath,
+ * plus no loops back onto auth screens.
+ */
+export function safePostAuthPath(
+  next: string | null | undefined,
+  origin: string
+): string {
+  const path = safeAppNextPath(next, origin);
+  if (AUTH_ENTRY_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`))) {
+    return "/dashboard";
+  }
+  return path;
 }

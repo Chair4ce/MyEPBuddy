@@ -44,6 +44,10 @@ export interface Profile {
   writing_style: WritingStyle;
   terms_accepted_at: string | null;
   billing_terms_accepted_at: string | null;
+  /** null = legacy, never asked. false = declined. true = opted in. */
+  marketing_email_opt_in: boolean | null;
+  marketing_email_opt_in_at: string | null;
+  marketing_email_opt_in_source: "signup" | "onboarding" | "settings" | null;
   trial_intro_seen_at: string | null;
   earn_tokens_intro_seen_at: string | null;
   coaching_features_intro_seen_at: string | null;

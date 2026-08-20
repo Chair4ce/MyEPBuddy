@@ -24,6 +24,7 @@ import { AvatarCropDialog } from "@/components/settings/avatar-crop-dialog";
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
 import { DeleteAccountSection } from "@/components/settings/delete-account-section";
+import { EmailPreferencesCard } from "@/components/settings/email-preferences-card";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { RankInsignia } from "@/components/rank/rank-insignia";
 import { 
@@ -1146,6 +1147,8 @@ export default function SettingsPage() {
 
       {/* EPB Close-out Date Card */}
       <EPBCloseoutCard rank={profile?.rank || null} />
+
+      <EmailPreferencesCard />
 
       <DeleteAccountSection userEmail={userEmail} />
     </div>

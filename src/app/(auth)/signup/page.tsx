@@ -34,6 +34,8 @@ import {
   persistManagedInviteToken,
 } from "@/lib/managed-member-invite-params";
 import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
+import { persistSignupMarketingOptIn } from "@/lib/marketing-email-opt-in";
+import { MarketingEmailOptInCheckbox } from "@/components/auth/marketing-email-opt-in-checkbox";
 
 function SignupPageContent() {
   const searchParams = useSearchParams();
@@ -50,6 +52,7 @@ function SignupPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [marketingEmailOptIn, setMarketingEmailOptIn] = useState(false);
   const restrictedBrowser = useRestrictedBrowser();
   const router = useRouter();
   const supabase = createClient();
@@ -79,6 +82,7 @@ function SignupPageContent() {
       persistManagedInviteToken(invite.token);
     }
 
+    persistSignupMarketingOptIn(marketingEmailOptIn);
     setIsLoading(true);
 
     try {
@@ -96,6 +100,7 @@ function SignupPageContent() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             managed_invite: isInviteFlow,
+            marketing_email_opt_in: marketingEmailOptIn,
           },
         },
       });
@@ -151,6 +156,7 @@ function SignupPageContent() {
       persistManagedInviteToken(invite.token);
     }
 
+    persistSignupMarketingOptIn(marketingEmailOptIn);
     setIsGoogleLoading(true);
 
     try {
@@ -263,6 +269,12 @@ function SignupPageContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <MarketingEmailOptInCheckbox
+              checked={marketingEmailOptIn}
+              disabled={anyLoading}
+              onCheckedChange={setMarketingEmailOptIn}
+            />
+
             <Button
               variant="outline"
               className="w-full"
