@@ -6,6 +6,7 @@ import {
   onboardingMarketingPreferenceUpdate,
   type MarketingEmailOptInSource,
 } from "@/lib/marketing-email-opt-in";
+import type { Profile } from "@/types/database";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -37,6 +38,9 @@ export async function POST(request: Request) {
     .select("marketing_email_opt_in")
     .eq("id", user.id)
     .single();
+  const currentOptIn =
+    (currentProfile as Pick<Profile, "marketing_email_opt_in"> | null)
+      ?.marketing_email_opt_in ?? null;
 
   const acceptedAt = new Date().toISOString();
   const update: {
@@ -50,7 +54,7 @@ export async function POST(request: Request) {
   let marketingSyncFailed = false;
   if (typeof marketingEmailOptIn === "boolean") {
     persistedMarketing = onboardingMarketingPreferenceUpdate(
-      currentProfile?.marketing_email_opt_in,
+      currentOptIn,
       marketingEmailOptIn
     );
   }
@@ -82,7 +86,7 @@ export async function POST(request: Request) {
 
   const marketingEmailOptInResult =
     persistedMarketing === "unchanged"
-      ? (currentProfile?.marketing_email_opt_in ?? null)
+      ? currentOptIn
       : persistedMarketing;
 
   return NextResponse.json({

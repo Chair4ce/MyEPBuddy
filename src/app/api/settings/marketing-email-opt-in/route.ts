@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { ResendSendError } from "@/lib/email/resend";
 import { syncResendMarketingContact } from "@/lib/email/resend-contacts";
+import type { Profile } from "@/types/database";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -57,8 +58,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to save preference" }, { status: 500 });
   }
 
+  const saved = data as Pick<
+    Profile,
+    "marketing_email_opt_in" | "marketing_email_opt_in_at"
+  >;
+
   return NextResponse.json({
-    marketingEmailOptIn: data.marketing_email_opt_in,
-    marketingEmailOptInAt: data.marketing_email_opt_in_at,
+    marketingEmailOptIn: saved.marketing_email_opt_in,
+    marketingEmailOptInAt: saved.marketing_email_opt_in_at,
   });
 }
