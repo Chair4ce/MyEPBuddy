@@ -1,3 +1,8 @@
+import {
+  formatUsageActionLabel,
+  WRITING_ASSIST_ACTIONS,
+} from "@/lib/admin/usage-formatters";
+
 export interface DayCostRow {
   day: string;
   calls: number;
@@ -22,6 +27,14 @@ export interface ByokModelPoint {
   model: string;
   calls: number;
   users: number;
+}
+
+export interface ActionCostPoint {
+  action: string;
+  label: string;
+  calls: number;
+  cost: number;
+  featured: boolean;
 }
 
 function formatDayLabel(day: string): string {
@@ -150,4 +163,51 @@ export function buildByokModelSeries(
       calls: row.calls,
       users: row.unique_users,
     }));
+}
+
+function toActionPoint(
+  action: string,
+  calls: number,
+  cost: number,
+  featured: boolean,
+): ActionCostPoint {
+  return {
+    action,
+    label: formatUsageActionLabel(action),
+    calls,
+    cost,
+    featured,
+  };
+}
+
+/**
+ * Cost series for the admin usage page.
+ * Writing-assist actions (synonyms, expand, compress, rephrase) always appear,
+ * even at zero, so ops can see those features in the estimated-cost visual.
+ */
+export function buildActionCostSeries(
+  byAction: { action_type: string; calls: number; estimated_cost_usd: number }[],
+): ActionCostPoint[] {
+  const totals = new Map<string, { calls: number; cost: number }>();
+  for (const row of byAction) {
+    const action = row.action_type || "unknown";
+    const previous = totals.get(action) ?? { calls: 0, cost: 0 };
+    totals.set(action, {
+      calls: previous.calls + Number(row.calls ?? 0),
+      cost: previous.cost + Number(row.estimated_cost_usd ?? 0),
+    });
+  }
+
+  const featured = WRITING_ASSIST_ACTIONS.map((action) => {
+    const row = totals.get(action);
+    totals.delete(action);
+    return toActionPoint(action, row?.calls ?? 0, row?.cost ?? 0, true);
+  });
+
+  const rest = [...totals.entries()]
+    .filter(([, row]) => row.calls > 0 || row.cost > 0)
+    .sort((a, b) => b[1].cost - a[1].cost || b[1].calls - a[1].calls)
+    .map(([action, row]) => toActionPoint(action, row.calls, row.cost, false));
+
+  return [...featured, ...rest];
 }

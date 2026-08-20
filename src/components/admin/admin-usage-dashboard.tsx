@@ -12,9 +12,12 @@ import {
   DailyBurnCostChart,
   ByokModelsChart,
   WeeklyActiveUsersChart,
+  ActionCostChart,
 } from "@/components/admin/usage-charts";
+import { WritingAssistCostGrid } from "@/components/admin/writing-assist-cost-grid";
 import type { AdminUsagePageData } from "@/components/admin/admin-usage-types";
 import {
+  buildActionCostSeries,
   buildByokModelSeries,
   buildDailyBurnSeries,
   buildWeeklyBurnSeries,
@@ -75,6 +78,10 @@ export function AdminUsageDashboard({ data }: { data: AdminUsagePageData }) {
       );
   const weeklySeries = buildWeeklyUsersSeries(credits.trial_burn.by_week);
   const byokSeries = buildByokModelSeries(credits.byok_models.by_model);
+  const actionSeries = buildActionCostSeries(defaultKey.by_action ?? []);
+  const writingAssistCost = actionSeries
+    .filter((row) => row.featured)
+    .reduce((sum, row) => sum + row.cost, 0);
 
   const totalByokCalls = credits.byok_models.by_model.reduce(
     (sum, row) => sum + row.calls,
@@ -131,6 +138,34 @@ export function AdminUsageDashboard({ data }: { data: AdminUsagePageData }) {
         </CardHeader>
         <CardContent className="min-w-0">
           <DailyBurnCostChart data={burnSeries} weekly={weeklyBurn} />
+        </CardContent>
+      </Card>
+
+      <Card className="min-w-0 overflow-hidden">
+        <CardHeader className="pb-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <CardTitle>Writing assists</CardTitle>
+              <CardDescription>
+                Highlighted synonym suggestions plus Expand, Compress, and Rephrase.
+                Estimated app-key spend — suggestions are free to members.
+              </CardDescription>
+            </div>
+            <div className="text-sm tabular-nums sm:text-right">
+              <p className="text-muted-foreground">Assist cost</p>
+              <p className="text-lg font-semibold">{formatCost(writingAssistCost)}</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="min-w-0 space-y-6">
+          <WritingAssistCostGrid points={actionSeries} />
+          <div>
+            <p className="mb-2 text-sm font-medium">Estimated cost by feature</p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Writing assists in green; other app-key features in blue.
+            </p>
+            <ActionCostChart data={actionSeries} />
+          </div>
         </CardContent>
       </Card>
 

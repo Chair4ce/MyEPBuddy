@@ -3,6 +3,7 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 import { getDecryptedApiKeys } from "@/app/actions/api-keys";
 import { getModelProvider } from "@/lib/llm-provider";
+import { reviseTrackingAction, withTrackingAction } from "@/lib/revise-tracking";
 import {
   cacheBillableJson,
   createBillableRequestContext,
@@ -505,7 +506,11 @@ ${noReuseRule}`;
     // Cost reduction: force cheapest model for default-key users
     const effectiveModel = usageCheck.effectiveModel;
     requestModelId = effectiveModel;
-    const modelProvider = getModelProvider(effectiveModel, userKeys, usageCheck.tracking);
+    const modelProvider = getModelProvider(
+      effectiveModel,
+      userKeys,
+      withTrackingAction(usageCheck.tracking, reviseTrackingAction(mode)),
+    );
 
     const beforeSelection = fullStatement.substring(0, selectionStart);
     const afterSelection = fullStatement.substring(selectionEnd);

@@ -33,5 +33,7 @@ describe("synonym vs phrase-revise billing contract", () => {
     expect(consumeCalls).toHaveLength(REVISE_SELECTION_USAGE_CHECKS_PER_REQUEST);
     expect(src).toContain("revise_selection");
     expect(src).toContain("handleBillableLLMError");
+    expect(src).toContain("reviseTrackingAction");
+    expect(src).toContain("withTrackingAction");
   });
 });

@@ -3,6 +3,7 @@
 import {
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
   BarChart as RechartsBarChart,
@@ -12,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import type {
+  ActionCostPoint,
   ByokModelPoint,
   DailyBurnPoint,
   WeeklyUsersPoint,
@@ -276,6 +278,82 @@ export function ByokModelsChart({ data }: { data: ByokModelPoint[] }) {
           maxBarSize={20}
         />
       </RechartsBarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function ActionCostChart({ data }: { data: ActionCostPoint[] }) {
+  const hasCost = data.some((row) => row.cost > 0);
+  const chartHeight = Math.max(220, data.length * 34);
+
+  if (data.length === 0) {
+    return (
+      <p className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
+        No feature usage in this period yet.
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className="w-full min-w-0 max-w-full"
+      style={{ height: chartHeight }}
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <RechartsBarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+        >
+          <CartesianGrid
+            stroke="var(--border)"
+            strokeDasharray="3 3"
+            horizontal={false}
+          />
+          <XAxis
+            type="number"
+            tick={{ fill: MUTED, fontSize: 11 }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={formatCostAxis}
+          />
+          <YAxis
+            type="category"
+            dataKey="label"
+            tick={{ fill: MUTED, fontSize: 11 }}
+            tickLine={false}
+            axisLine={false}
+            width={132}
+          />
+          <Tooltip
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null;
+              const row = payload[0]?.payload as ActionCostPoint | undefined;
+              return (
+                <div className="rounded-lg border bg-background px-3 py-2 text-sm shadow-md">
+                  <p className="font-medium">{label}</p>
+                  <p className="tabular-nums text-muted-foreground">
+                    {formatInt(row?.calls ?? 0)} calls · {formatCost(row?.cost ?? 0)}
+                  </p>
+                </div>
+              );
+            }}
+          />
+          <Bar
+            dataKey="cost"
+            name="Cost"
+            radius={[0, 4, 4, 0]}
+            maxBarSize={18}
+          >
+            {data.map((row) => (
+              <Cell
+                key={row.action}
+                fill={row.featured ? CHART_1 : hasCost ? CHART_2 : CHART_1}
+              />
+            ))}
+          </Bar>
+        </RechartsBarChart>
       </ResponsiveContainer>
     </div>
   );
