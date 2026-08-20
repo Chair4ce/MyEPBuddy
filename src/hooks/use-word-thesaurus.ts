@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
-import { fetchDictionarySynonyms } from "@/lib/datamuse-synonyms";
 import { handleUsageLimitResponse } from "@/stores/usage-limit-store";
 import {
   applyRangeReplacement,
@@ -138,9 +137,7 @@ export function useWordThesaurus({
         toast.error(error instanceof Error ? error.message : "Failed to get replacements");
         setSuggested([]);
       } finally {
-        if (!controller.signal.aborted) {
-          setIsLoadingSuggestions(false);
-        }
+        setIsLoadingSuggestions(false);
       }
     },
     [documentContext, model],
@@ -235,7 +232,15 @@ export function useWordThesaurus({
     setIsLoadingAll(true);
 
     try {
-      const dictionary = await fetchDictionarySynonyms(word, controller.signal);
+      const response = await fetch(
+        `/api/dictionary-synonyms?word=${encodeURIComponent(word)}`,
+        { signal: controller.signal },
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch dictionary synonyms");
+      }
+      const data = await response.json();
+      const dictionary: string[] = Array.isArray(data.synonyms) ? data.synonyms : [];
       const already = new Set(suggested.map((item) => item.toLowerCase()));
       already.add(word.toLowerCase());
       setAllSynonyms(dictionary.filter((item) => !already.has(item.toLowerCase())));
@@ -245,9 +250,7 @@ export function useWordThesaurus({
       toast.error("Failed to load all synonyms");
       setAllSynonyms([]);
     } finally {
-      if (!controller.signal.aborted) {
-        setIsLoadingAll(false);
-      }
+      setIsLoadingAll(false);
     }
   }, [allSynonyms.length, isLoadingAll, suggested]);
 
