@@ -12,6 +12,7 @@ describe("isMilEmail", () => {
 
 describe("syncResendMarketingContact", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -20,7 +21,7 @@ describe("syncResendMarketingContact", () => {
     const result = await syncResendMarketingContact({
       email: "a@gmail.com",
       optedIn: false,
-      resendApiKey: null,
+      resendContactsApiKey: null,
     });
     expect(result).toEqual({ status: "skipped", reason: "no_key" });
   });
@@ -29,7 +30,7 @@ describe("syncResendMarketingContact", () => {
     const result = await syncResendMarketingContact({
       email: "a@us.af.mil",
       optedIn: true,
-      resendApiKey: "re_test",
+      resendContactsApiKey: "re_contacts_test",
     });
     expect(result).toEqual({ status: "skipped", reason: "mil" });
   });
@@ -45,7 +46,7 @@ describe("syncResendMarketingContact", () => {
     const result = await syncResendMarketingContact({
       email: "Airman@Gmail.com",
       optedIn: false,
-      resendApiKey: "re_test",
+      resendContactsApiKey: "re_contacts_test",
     });
 
     expect(result).toEqual({ status: "synced" });
@@ -53,6 +54,9 @@ describe("syncResendMarketingContact", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.resend.com/contacts/airman%40gmail.com");
     expect(init.method).toBe("PATCH");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer re_contacts_test"
+    );
     expect(JSON.parse(String(init.body))).toEqual({ unsubscribed: true });
   });
 
@@ -74,7 +78,7 @@ describe("syncResendMarketingContact", () => {
     const result = await syncResendMarketingContact({
       email: "new@gmail.com",
       optedIn: true,
-      resendApiKey: "re_test",
+      resendContactsApiKey: "re_contacts_test",
     });
 
     expect(result).toEqual({ status: "synced" });
@@ -98,7 +102,41 @@ describe("syncResendMarketingContact", () => {
       syncResendMarketingContact({
         email: "a@gmail.com",
         optedIn: false,
-        resendApiKey: "re_test",
+        resendContactsApiKey: "re_contacts_test",
+      })
+    ).rejects.toBeInstanceOf(ResendSendError);
+  });
+
+  it("uses RESEND_CONTACTS_API_KEY instead of the sending key", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_sending_only");
+    vi.stubEnv("RESEND_CONTACTS_API_KEY", "re_full_contacts");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "{}",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await syncResendMarketingContact({
+      email: "a@gmail.com",
+      optedIn: false,
+    });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer re_full_contacts"
+    );
+  });
+
+  it("throws in production when the contacts key is missing", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RESEND_API_KEY", "re_sending_only");
+    vi.stubEnv("RESEND_CONTACTS_API_KEY", "");
+
+    await expect(
+      syncResendMarketingContact({
+        email: "a@gmail.com",
+        optedIn: false,
       })
     ).rejects.toBeInstanceOf(ResendSendError);
   });
