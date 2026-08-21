@@ -80,3 +80,11 @@ export function getTransactionalFromEmail(): string | null {
 export function getResendApiKey(): string | null {
   return normalizeEnvSecret(process.env.RESEND_API_KEY);
 }
+
+/**
+ * Full-access key for Contacts (Broadcast unsub). Sending-access keys
+ * return 401 restricted_api_key on PATCH /contacts.
+ */
+export function getResendContactsApiKey(): string | null {
+  return normalizeEnvSecret(process.env.RESEND_CONTACTS_API_KEY);
+}

@@ -1,4 +1,8 @@
-import { getResendApiKey, ResendSendError } from "@/lib/email/resend";
+import {
+  getResendApiKey,
+  getResendContactsApiKey,
+  ResendSendError,
+} from "@/lib/email/resend";
 
 const CONTACTS_URL = "https://api.resend.com/contacts";
 
@@ -20,7 +24,7 @@ export type SyncResendMarketingContactResult =
 export async function syncResendMarketingContact(params: {
   email: string | null | undefined;
   optedIn: boolean;
-  resendApiKey?: string | null;
+  resendContactsApiKey?: string | null;
 }): Promise<SyncResendMarketingContactResult> {
   const email = params.email?.trim().toLowerCase() ?? "";
   if (!email || !email.includes("@")) {
@@ -30,8 +34,17 @@ export async function syncResendMarketingContact(params: {
     return { status: "skipped", reason: "mil" };
   }
 
-  const resendApiKey = params.resendApiKey ?? getResendApiKey();
+  const resendApiKey =
+    params.resendContactsApiKey !== undefined
+      ? params.resendContactsApiKey
+      : getResendContactsApiKey();
   if (!resendApiKey) {
+    if (process.env.NODE_ENV === "production" && getResendApiKey()) {
+      throw new ResendSendError(
+        401,
+        "RESEND_CONTACTS_API_KEY is required to update Broadcast contacts"
+      );
+    }
     return { status: "skipped", reason: "no_key" };
   }
 
