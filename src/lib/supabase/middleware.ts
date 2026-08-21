@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
+import { safePostAuthPath } from "@/lib/managed-member-invite-params";
 
 type CookieToSet = {
   name: string;
@@ -73,9 +74,11 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (!user && !isPublicPath) {
-    // No user, redirect to login page
     const url = request.nextUrl.clone();
+    const requested = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     url.pathname = "/login";
+    url.search = "";
+    url.searchParams.set("next", requested);
     return NextResponse.redirect(url);
   }
 
@@ -86,9 +89,19 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname === "/phone-login" ||
       request.nextUrl.pathname === "/forgot-password")
   ) {
-    // User is logged in but trying to access auth pages (except reset-password)
+    const next = safePostAuthPath(
+      request.nextUrl.searchParams.get("next"),
+      request.nextUrl.origin
+    );
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    const dest = new URL(next, request.nextUrl.origin);
+    if (dest.origin !== request.nextUrl.origin) {
+      dest.pathname = "/dashboard";
+      dest.search = "";
+      dest.hash = "";
+    }
+    url.pathname = dest.pathname;
+    url.search = dest.search;
     return NextResponse.redirect(url);
   }
 

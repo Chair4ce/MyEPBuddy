@@ -2219,6 +2219,9 @@ export type Database = {
           unit: string | null
           updated_at: string
           writing_style: string
+          marketing_email_opt_in: boolean | null
+          marketing_email_opt_in_at: string | null
+          marketing_email_opt_in_source: string | null
         }
         Insert: {
           afsc?: string | null
@@ -2234,6 +2237,9 @@ export type Database = {
           unit?: string | null
           updated_at?: string
           writing_style?: string
+          marketing_email_opt_in?: boolean | null
+          marketing_email_opt_in_at?: string | null
+          marketing_email_opt_in_source?: string | null
         }
         Update: {
           afsc?: string | null
@@ -2249,6 +2255,9 @@ export type Database = {
           unit?: string | null
           updated_at?: string
           writing_style?: string
+          marketing_email_opt_in?: boolean | null
+          marketing_email_opt_in_at?: string | null
+          marketing_email_opt_in_source?: string | null
         }
         Relationships: [
           {

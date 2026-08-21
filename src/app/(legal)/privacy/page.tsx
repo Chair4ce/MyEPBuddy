@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 // Static date for legal compliance
-const LAST_UPDATED = "January 9, 2026";
+const LAST_UPDATED = "August 20, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
@@ -82,6 +82,12 @@ export default function PrivacyPolicyPage() {
           <li>Generate AI-powered narrative statements based on your input</li>
           <li>Enable team collaboration features you explicitly opt into</li>
           <li>Send important service-related communications</li>
+          <li>
+            Send optional EPB cycle reminder emails. New accounts receive these
+            only if they opt in at signup, onboarding, or Settings. Existing
+            accounts may receive closeout reminders until they turn them off in
+            Settings → Email preferences or unsubscribe from the email
+          </li>
         </ul>
         <p>
           <strong>We do not:</strong>
@@ -121,6 +127,12 @@ export default function PrivacyPolicyPage() {
           <li>
             <strong>Vercel:</strong> Hosting and analytics
           </li>
+          <li>
+            <strong>Resend:</strong> Email delivery for invites, feedback, and
+            EPB cycle reminders (we do not sell your address). You can stop
+            cycle reminders in Settings → Email preferences or via unsubscribe
+            in those emails.
+          </li>
         </ul>
         <p>
           Each of these services has their own privacy policies. We recommend reviewing them 
@@ -144,7 +156,11 @@ export default function PrivacyPolicyPage() {
           <li>Export your accomplishment data</li>
           <li>Request correction of inaccurate data</li>
           <li>Request deletion of your account and data</li>
-          <li>Opt out of non-essential communications</li>
+          <li>
+            Stop non-essential communications (EPB cycle reminders) by logging
+            in and turning them off in Settings → Email preferences, or via
+            the unsubscribe link in those emails — either works
+          </li>
         </ul>
       </section>
 

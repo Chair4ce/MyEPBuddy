@@ -13,6 +13,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { ShieldAlert } from "lucide-react";
 import { getTermsSessionKey } from "@/lib/terms-session";
+import { MarketingEmailOptInCheckbox } from "@/components/auth/marketing-email-opt-in-checkbox";
+import {
+  clearSignupMarketingOptIn,
+  initialMarketingEmailOptIn,
+} from "@/lib/marketing-email-opt-in";
+import { cn } from "@/lib/utils";
+import { motionTransitionColors } from "@/lib/motion/classes";
 
 const PROHIBITED_ITEMS = [
   {
@@ -51,6 +58,9 @@ export function TermsStep() {
   const [isChecked, setIsChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { setProfile, profile, setTermsAcceptedThisSession } = useUserStore();
+  const [marketingEmailOptIn, setMarketingEmailOptIn] = useState(() =>
+    initialMarketingEmailOptIn(profile?.marketing_email_opt_in)
+  );
 
   async function handleAcceptTerms() {
     if (!isChecked) {
@@ -70,17 +80,33 @@ export function TermsStep() {
     try {
       const response = await fetch("/api/onboarding/accept-terms", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marketingEmailOptIn }),
       });
 
       if (!response.ok) {
         throw new Error("Failed to save acceptance");
       }
 
-      const body = (await response.json()) as { termsAcceptedAt: string };
+      const body = (await response.json()) as {
+        termsAcceptedAt: string;
+        marketingEmailOptIn: boolean | null;
+      };
       const acceptedAt = body.termsAcceptedAt;
 
-      setProfile({ ...profile, terms_accepted_at: acceptedAt });
+      setProfile({
+        ...profile,
+        terms_accepted_at: acceptedAt,
+        ...(typeof body.marketingEmailOptIn === "boolean"
+          ? {
+              marketing_email_opt_in: body.marketingEmailOptIn,
+              marketing_email_opt_in_at: acceptedAt,
+              marketing_email_opt_in_source: "onboarding" as const,
+            }
+          : {}),
+      });
       setTermsAcceptedThisSession(true);
+      clearSignupMarketingOptIn();
 
       try {
         sessionStorage.setItem(getTermsSessionKey(profile.id), "true");
@@ -173,7 +199,11 @@ export function TermsStep() {
       <div className="shrink-0 space-y-3 border-t bg-muted/30 p-4 md:p-6">
         <label
           htmlFor="terms-checkbox"
-          className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 transition-colors hover:bg-muted/50 md:max-w-2xl md:mx-auto"
+          className={cn(
+            "flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3",
+            motionTransitionColors,
+            "hover:bg-muted/50 md:max-w-2xl md:mx-auto"
+          )}
         >
           <Checkbox
             id="terms-checkbox"
@@ -186,6 +216,15 @@ export function TermsStep() {
             data I enter will be UNCLASSIFIED and I will practice good OPSEC.
           </span>
         </label>
+
+        <div className="md:max-w-2xl md:mx-auto">
+          <MarketingEmailOptInCheckbox
+            id="onboarding-marketing-email-opt-in"
+            checked={marketingEmailOptIn}
+            disabled={isSubmitting}
+            onCheckedChange={setMarketingEmailOptIn}
+          />
+        </div>
 
         <AlertDialogFooter className="p-0 md:justify-center">
           <Button

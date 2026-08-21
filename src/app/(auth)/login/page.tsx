@@ -36,6 +36,7 @@ import {
   buildManagedInviteSignupPath,
   parseManagedInviteParams,
   persistManagedInviteToken,
+  safePostAuthPath,
 } from "@/lib/managed-member-invite-params";
 import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
 
@@ -73,7 +74,12 @@ function LoginPageContent() {
   const supabase = createClient();
   const postAuthPath = invite.isInvite
     ? buildManagedInviteDashboardPath()
-    : "/dashboard";
+    : safePostAuthPath(
+        searchParams.get("next"),
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "https://www.myepbuddy.com"
+      );
   const signupHref = invite.isInvite
     ? buildManagedInviteSignupPath({
         email: invite.email,

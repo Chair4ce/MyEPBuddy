@@ -4,6 +4,7 @@ import {
   buildManagedInviteSignupPath,
   parseManagedInviteParams,
   safeAppNextPath,
+  safePostAuthPath,
 } from "@/lib/managed-member-invite-params";
 import { buildManagedInviteCtaUrl } from "@/lib/email/managed-member-invite";
 
@@ -68,10 +69,31 @@ describe("managed invite params", () => {
     );
     expect(
       safeAppNextPath(
+        "https://myepbuddy.com//evil.example",
+        "https://myepbuddy.com"
+      )
+    ).toBe("/dashboard");
+    expect(
+      safeAppNextPath(
         "https://myepbuddy.com/dashboard?invite=1",
         "https://myepbuddy.com"
       )
     ).toBe("/dashboard?invite=1");
+  });
+
+  it("honors a relative next path after login", () => {
+    expect(safePostAuthPath("/entries", "https://myepbuddy.com")).toBe(
+      "/entries"
+    );
+  });
+
+  it("does not loop post-auth back onto login", () => {
+    expect(safePostAuthPath("/login", "https://myepbuddy.com")).toBe(
+      "/dashboard"
+    );
+    expect(safePostAuthPath("/signup?foo=1", "https://myepbuddy.com")).toBe(
+      "/dashboard"
+    );
   });
 
   it("builds absolute invite CTA URLs for email", () => {
