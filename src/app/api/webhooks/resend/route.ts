@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Resend → MyEPBuddy list sync.
- * Dashboard URL to register: https://myepbuddy.com/api/webhooks/resend
+ * Dashboard URL to register: https://www.myepbuddy.com/api/webhooks/resend
+ * (apex myepbuddy.com 307s to www; Resend will not follow that POST).
  * Events: contact.updated, contact.created, email.bounced, email.complained
  */
 export async function POST(request: NextRequest) {
