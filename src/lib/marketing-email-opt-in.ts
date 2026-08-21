@@ -1,4 +1,8 @@
-export type MarketingEmailOptInSource = "signup" | "onboarding" | "settings";
+export type MarketingEmailOptInSource =
+  | "signup"
+  | "onboarding"
+  | "settings"
+  | "resend";
 
 export const SIGNUP_MARKETING_OPT_IN_KEY = "epb_marketing_email_opt_in";
 

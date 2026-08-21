@@ -88,3 +88,8 @@ export function getResendApiKey(): string | null {
 export function getResendContactsApiKey(): string | null {
   return normalizeEnvSecret(process.env.RESEND_CONTACTS_API_KEY);
 }
+
+/** Svix signing secret from the Resend webhook endpoint page (`whsec_…`). */
+export function getResendWebhookSecret(): string | null {
+  return normalizeEnvSecret(process.env.RESEND_WEBHOOK_SECRET);
+}

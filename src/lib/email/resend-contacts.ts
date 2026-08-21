@@ -20,6 +20,10 @@ export type SyncResendMarketingContactResult =
  * cycle mail stops. Turning them on sets unsubscribed false.
  * Does not run for legacy NULL — those contacts stay on the campaign until
  * they opt out. Skips .mil. No-ops when the API key is unset (local/dev).
+ *
+ * Create first, then PATCH only when the email already exists. PATCH-by-email
+ * returns 404 for unknown addresses; probing with PATCH floods Resend's error
+ * log for every new opt-in.
  */
 export async function syncResendMarketingContact(params: {
   email: string | null | undefined;
@@ -49,29 +53,35 @@ export async function syncResendMarketingContact(params: {
   }
 
   const unsubscribed = !params.optedIn;
-  const patched = await resendContactRequest(
-    resendApiKey,
-    `${CONTACTS_URL}/${encodeURIComponent(email)}`,
-    "PATCH",
-    { unsubscribed }
-  );
+  const created = await resendContactRequest(resendApiKey, CONTACTS_URL, "POST", {
+    email,
+    unsubscribed,
+  });
 
-  if (patched.ok || patched.status === 200) {
+  if (created.ok) {
     return { status: "synced" };
   }
 
-  if (patched.status === 404) {
-    const created = await resendContactRequest(resendApiKey, CONTACTS_URL, "POST", {
-      email,
-      unsubscribed,
-    });
-    if (created.ok) {
+  if (isExistingContactConflict(created.status, created.detail)) {
+    const patched = await resendContactRequest(
+      resendApiKey,
+      `${CONTACTS_URL}/${encodeURIComponent(email)}`,
+      "PATCH",
+      { unsubscribed }
+    );
+    if (patched.ok) {
       return { status: "synced" };
     }
-    throw new ResendSendError(created.status, created.detail);
+    throw new ResendSendError(patched.status, patched.detail);
   }
 
-  throw new ResendSendError(patched.status, patched.detail);
+  throw new ResendSendError(created.status, created.detail);
+}
+
+function isExistingContactConflict(status: number, detail: string): boolean {
+  if (status === 409) return true;
+  if (status !== 422 && status !== 400) return false;
+  return /already exists|already a contact/i.test(detail);
 }
 
 async function resendContactRequest(

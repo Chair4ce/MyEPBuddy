@@ -35,7 +35,7 @@ describe("syncResendMarketingContact", () => {
     expect(result).toEqual({ status: "skipped", reason: "mil" });
   });
 
-  it("PATCHes unsubscribed true on opt-out", async () => {
+  it("POSTs a new contact with unsubscribed true on opt-out", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -52,21 +52,24 @@ describe("syncResendMarketingContact", () => {
     expect(result).toEqual({ status: "synced" });
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.resend.com/contacts/airman%40gmail.com");
-    expect(init.method).toBe("PATCH");
+    expect(url).toBe("https://api.resend.com/contacts");
+    expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).Authorization).toBe(
       "Bearer re_contacts_test"
     );
-    expect(JSON.parse(String(init.body))).toEqual({ unsubscribed: true });
+    expect(JSON.parse(String(init.body))).toEqual({
+      email: "airman@gmail.com",
+      unsubscribed: true,
+    });
   });
 
-  it("creates the contact when PATCH returns 404", async () => {
+  it("PATCHes by email when POST reports the contact already exists", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
         ok: false,
-        status: 404,
-        text: async () => "missing",
+        status: 409,
+        text: async () => JSON.stringify({ name: "conflict", message: "already exists" }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -83,15 +86,41 @@ describe("syncResendMarketingContact", () => {
 
     expect(result).toEqual({ status: "synced" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const createInit = fetchMock.mock.calls[1][1] as RequestInit;
-    expect(createInit.method).toBe("POST");
-    expect(JSON.parse(String(createInit.body))).toEqual({
-      email: "new@gmail.com",
-      unsubscribed: false,
-    });
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.resend.com/contacts");
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("POST");
+    const [patchUrl, patchInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(patchUrl).toBe("https://api.resend.com/contacts/new%40gmail.com");
+    expect(patchInit.method).toBe("PATCH");
+    expect(JSON.parse(String(patchInit.body))).toEqual({ unsubscribed: false });
   });
 
-  it("throws when Resend rejects the update", async () => {
+  it("PATCHes when POST returns 422 already exists", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        text: async () => JSON.stringify({ message: "Contact already exists" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => "{}",
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await syncResendMarketingContact({
+      email: "existing@gmail.com",
+      optedIn: false,
+      resendContactsApiKey: "re_contacts_test",
+    });
+
+    expect(result).toEqual({ status: "synced" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1][1] as RequestInit).method).toBe("PATCH");
+  });
+
+  it("throws when POST is rejected for a reason other than an existing contact", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
