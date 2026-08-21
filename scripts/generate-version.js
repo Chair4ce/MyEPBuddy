@@ -20,12 +20,30 @@ function getGitCommitHash() {
   }
 }
 
+function readPinnedBuildId() {
+  const fromEnv = (process.env.PIN_APP_BUILD_ID || "").trim();
+  if (/^[a-f0-9]{16}$/i.test(fromEnv)) return fromEnv.toLowerCase();
+
+  const pinFilePath = path.join(process.cwd(), ".preserve-app-build-id");
+  if (!fs.existsSync(pinFilePath)) return null;
+
+  const line = fs
+    .readFileSync(pinFilePath, "utf8")
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry && !entry.startsWith("#"));
+
+  if (line && /^[a-f0-9]{16}$/i.test(line)) return line.toLowerCase();
+  return null;
+}
+
 function generateVersion() {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   
   const now = new Date();
-  const buildId = crypto.randomBytes(8).toString("hex");
+  const pinnedBuildId = readPinnedBuildId();
+  const buildId = pinnedBuildId || crypto.randomBytes(8).toString("hex");
   const commitHash = getGitCommitHash();
   
   const versionInfo = {
@@ -55,7 +73,9 @@ function generateVersion() {
   
   console.log("✓ Generated version.json:");
   console.log(`  Version: ${versionInfo.version}`);
-  console.log(`  Build ID: ${versionInfo.buildId}`);
+  console.log(
+    `  Build ID: ${versionInfo.buildId}${pinnedBuildId ? " (pinned)" : ""}`
+  );
   console.log(`  Build Time: ${versionInfo.buildTime}`);
   if (commitHash) {
     console.log(`  Commit: ${commitHash}`);
