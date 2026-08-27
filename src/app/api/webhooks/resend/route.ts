@@ -27,7 +27,12 @@ function webhookLogMeta(request: NextRequest) {
  */
 export async function GET() {
   return NextResponse.json(
-    { ok: true, endpoint: "resend" },
+    {
+      ok: true,
+      endpoint: "resend",
+      /** Apex myepbuddy.com 307s to www; Resend treats that POST as a failed attempt. */
+      url: "https://www.myepbuddy.com/api/webhooks/resend",
+    },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
