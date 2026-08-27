@@ -135,15 +135,20 @@ function escapeIlikeExact(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+export type ResendListApplyResult = {
+  status: "ignored" | "updated" | "unchanged";
+  contactSync: "ok" | "skipped" | "failed";
+};
+
 export async function applyResendListAction(
   action: ResendListAction,
   deps: {
     admin?: ReturnType<typeof createAdminClient>;
     syncContact?: typeof syncResendMarketingContact;
   } = {}
-): Promise<{ status: "ignored" | "updated" | "unchanged" }> {
+): Promise<ResendListApplyResult> {
   if (action.kind === "ignore") {
-    return { status: "ignored" };
+    return { status: "ignored", contactSync: "skipped" };
   }
 
   const admin = deps.admin ?? createAdminClient();
@@ -156,32 +161,42 @@ export async function applyResendListAction(
   if (error) {
     throw error;
   }
-  if (action.syncContact) {
+
+  let status: ResendListApplyResult["status"] = "ignored";
+  if (!profile) {
+    status = "ignored";
+  } else if (profile.marketing_email_opt_in === action.optedIn) {
+    status = "unchanged";
+  } else {
+    const source: MarketingEmailOptInSource = "resend";
+    const { error: updateError } = await admin
+      .from("profiles")
+      .update({
+        marketing_email_opt_in: action.optedIn,
+        marketing_email_opt_in_at: new Date().toISOString(),
+        marketing_email_opt_in_source: source,
+      } as never)
+      .eq("id", profile.id);
+
+    if (updateError) {
+      throw updateError;
+    }
+    status = "updated";
+  }
+
+  if (!action.syncContact) {
+    return { status, contactSync: "skipped" };
+  }
+
+  try {
     const sync = deps.syncContact ?? syncResendMarketingContact;
     await sync({ email: action.email, optedIn: action.optedIn });
+    return { status, contactSync: "ok" };
+  } catch (error) {
+    console.error(
+      "[webhooks/resend] Contact sync failed after profile apply:",
+      error
+    );
+    return { status, contactSync: "failed" };
   }
-
-  if (!profile) {
-    return { status: "ignored" };
-  }
-
-  if (profile.marketing_email_opt_in === action.optedIn) {
-    return { status: "unchanged" };
-  }
-
-  const source: MarketingEmailOptInSource = "resend";
-  const { error: updateError } = await admin
-    .from("profiles")
-    .update({
-      marketing_email_opt_in: action.optedIn,
-      marketing_email_opt_in_at: new Date().toISOString(),
-      marketing_email_opt_in_source: source,
-    } as never)
-    .eq("id", profile.id);
-
-  if (updateError) {
-    throw updateError;
-  }
-
-  return { status: "updated" };
 }

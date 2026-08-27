@@ -166,7 +166,7 @@ describe("applyResendListAction", () => {
       { admin: admin as never }
     );
 
-    expect(result).toEqual({ status: "unchanged" });
+    expect(result).toEqual({ status: "unchanged", contactSync: "skipped" });
   });
 
   it("updates the profile when Resend unsubscribes a previously opted-in user", async () => {
@@ -195,13 +195,77 @@ describe("applyResendListAction", () => {
       { admin: admin as never }
     );
 
-    expect(result).toEqual({ status: "updated" });
+    expect(result).toEqual({ status: "updated", contactSync: "skipped" });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         marketing_email_opt_in: false,
         marketing_email_opt_in_source: "resend",
       })
     );
+  });
+
+  it("updates the profile even when bounce contact sync throws", async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: "user-1", marketing_email_opt_in: true },
+      error: null,
+    });
+    const admin = {
+      from: () => ({
+        select: () => ({
+          ilike: () => ({ maybeSingle }),
+        }),
+        update,
+      }),
+    };
+    const syncContact = vi.fn().mockRejectedValue(new Error("restricted_api_key"));
+
+    const result = await applyResendListAction(
+      {
+        kind: "preference",
+        email: "gone@gmail.com",
+        optedIn: false,
+        syncContact: true,
+      },
+      { admin: admin as never, syncContact }
+    );
+
+    expect(result).toEqual({ status: "updated", contactSync: "failed" });
+    expect(update).toHaveBeenCalled();
+    expect(syncContact).toHaveBeenCalledWith({
+      email: "gone@gmail.com",
+      optedIn: false,
+    });
+  });
+
+  it("records successful bounce contact sync after the profile write", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: "user-1", marketing_email_opt_in: false },
+      error: null,
+    });
+    const admin = {
+      from: () => ({
+        select: () => ({
+          ilike: () => ({ maybeSingle }),
+        }),
+        update: () => ({ eq: vi.fn() }),
+      }),
+    };
+    const syncContact = vi.fn().mockResolvedValue({ status: "synced" });
+
+    const result = await applyResendListAction(
+      {
+        kind: "preference",
+        email: "gone@gmail.com",
+        optedIn: false,
+        syncContact: true,
+      },
+      { admin: admin as never, syncContact }
+    );
+
+    expect(result).toEqual({ status: "unchanged", contactSync: "ok" });
+    expect(syncContact).toHaveBeenCalledOnce();
   });
 });
 
