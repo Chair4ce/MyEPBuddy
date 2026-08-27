@@ -42,12 +42,14 @@
                 </tr>
               </table>
               
-              <!-- Alternative Link -->
               <p style="margin: 0 0 8px; font-size: 13px; color: #a3a3a3; text-align: center;">
-                Or copy and paste this link:
+                Or enter this code on the password reset page:
               </p>
-              <p style="margin: 0; font-size: 12px; color: #818cf8; text-align: center; word-break: break-all;">
-                {{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=recovery
+              <p style="margin: 0 0 16px; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #fafafa; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                {{ .Token }}
+              </p>
+              <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #a3a3a3; text-align: center;">
+                If you are on a government network, prefer the code. Email scanners and isolated browsers can invalidate the button.
               </p>
             </td>
           </tr>

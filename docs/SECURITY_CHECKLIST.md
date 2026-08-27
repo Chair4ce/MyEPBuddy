@@ -75,7 +75,8 @@ A detailed security audit checklist for web applications, with emphasis on Next.
 
 | Check | Status | Priority | Notes |
 |-------|--------|----------|-------|
-| OTP expiry (5 minutes max) | ☐ | HIGH | Short window |
+| SMS OTP expiry (5 minutes max) | ☐ | HIGH | Short window for phone codes |
+| Email / magic-link OTP expiry (1 hour) | ☐ | HIGH | Shared mailer TTL; .mil delay + Menlo prefetch |
 | OTP brute force protection (3 attempts max) | ☐ | HIGH | Prevents guessing |
 | OTP length sufficient (6+ digits) | ☐ | MEDIUM | 6 digits = 1M combinations |
 | Magic links single-use | ☐ | HIGH | Prevents forwarding attacks |

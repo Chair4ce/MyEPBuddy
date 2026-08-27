@@ -23,7 +23,7 @@ Custom dark-themed email templates for MyEPBuddy using the app's branding.
 | Variable | Description | Templates |
 |----------|-------------|-----------|
 | `{{ .ConfirmationURL }}` | Full confirmation link | All |
-| `{{ .Token }}` | OTP code (6 digits) | Magic Link, Recovery |
+| `{{ .Token }}` | OTP code (6–8 digits) | Magic Link, Confirm, Recovery, Email Change |
 | `{{ .TokenHash }}` | Hashed token for custom URLs | All |
 | `{{ .SiteURL }}` | Your app's site URL | All |
 | `{{ .Email }}` | User's email address | All |
@@ -679,10 +679,11 @@ passes as `emailRedirectTo` / `redirectTo`) and fall back to `{{ .SiteURL }}`:
 <a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Reset Password</a>
 ```
 
-The client passes the **origin only** (e.g. `https://<preview>.vercel.app`) as
-`emailRedirectTo` — see `getAuthEmailRedirectBase()` in
-`src/lib/auth/email-redirect.ts` — and the template appends `/auth/confirm?...`.
-The canonical templates live in `supabase/templates/*.html`.
+Or enter this code on the sign-in page: `{{ .Token }}`
+
+The `/auth/confirm` page does **not** consume the token on GET. The user must
+submit a POST (Continue) so Menlo / Safe Links prefetch cannot burn it. Always
+include `{{ .Token }}` as a non-link fallback for isolated browsers.
 
 For `{{ .RedirectTo }}` to be honored, the origin must be allow-listed:
 
@@ -711,14 +712,19 @@ For `{{ .RedirectTo }}` to be honored, the origin must be allow-listed:
 
 1. **Logo URL**: The templates use `{{ .SiteURL }}/icon.svg`. Make sure your logo is publicly accessible.
 
-2. **Email Prefetching**: Some email providers (Microsoft, etc.) prefetch links, which can invalidate tokens. Consider:
-   - Using OTP codes (`{{ .Token }}`) as primary method
-   - Or building custom confirmation pages that require user action
+2. **Email Prefetching / Menlo isolation**: DoD and Air Force mail often runs
+   through Microsoft Safe Links or Menlo Security, which GET the URL in a
+   remote browser and consume one-time tokens. Mitigations already in the app:
+   - `/auth/confirm` verifies only on POST (explicit Continue)
+   - Emails include `{{ .Token }}` (numeric, not a link)
+   - Sign-in / reset pages accept that code
+   Hosted dashboard templates must be pasted from `supabase/templates/` or
+   production still uses the old GET-consuming ConfirmationURL.
 
-3. **Token Expiry**: Configure appropriate expiry times in Supabase settings:
-   - Signup confirmation: 24 hours
-   - Magic link: 1 hour
-   - Password reset: 1 hour
-   - Email change: 24 hours
+3. **Token Expiry**: Magic link, confirm-signup, recovery, and email-change
+   share **one** mailer OTP TTL (`GOTRUE_MAILER_OTP_EXP`). Set
+   Authentication → Providers → **Email** → OTP expiration to **3600**
+   seconds (1 hour). Phone OTP is a different knob. Do not use the 5-minute
+   SMS recommendation for email links — delayed `.mil` delivery will miss it.
 
 4. **Testing**: Always test emails in multiple clients (Gmail, Outlook, Apple Mail) to ensure rendering consistency.

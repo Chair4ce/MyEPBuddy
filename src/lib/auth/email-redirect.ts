@@ -6,7 +6,9 @@
  * requested from a Vercel preview deployment come back to that same preview
  * instead of the project's fixed production Site URL. Supabase renders this value
  * as `{{ .RedirectTo }}` and the email templates prepend it to
- * `/auth/confirm?...`, so this must be the origin only.
+ * `/auth/confirm?...` (GET shows a Continue form; the token is consumed on
+ * POST so email scanners / Menlo isolation do not burn it). This must be
+ * the origin only.
  *
  * For the origin to be honored, the deployment URL must be allow-listed under
  * Supabase Auth > URL Configuration > Redirect URLs (a wildcard such as

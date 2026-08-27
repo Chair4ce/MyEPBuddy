@@ -25,10 +25,10 @@
                 Sign in to your account
               </h2>
               <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #a3a3a3; text-align: center;">
-                Click the button below to sign in to your MyEPBuddy account. This magic link will expire in 1 hour.
+                Sign in with the button or the code below. Both expire in 1 hour. If you are on a government network, prefer the code — email scanners and isolated browsers can invalidate the link.
               </p>
               
-              <!-- CTA Button (token_hash link works across browsers/devices) -->
+              <!-- CTA Button: /auth/confirm verifies on POST, not GET, so prefetch does not burn the token -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center" style="padding: 8px 0 24px;">
@@ -38,13 +38,12 @@
                   </td>
                 </tr>
               </table>
-              
-              <!-- Alternative Link -->
+
               <p style="margin: 0 0 8px; font-size: 13px; color: #a3a3a3; text-align: center;">
-                Or copy and paste this link:
+                Or enter this code on the sign-in page:
               </p>
-              <p style="margin: 0; font-size: 12px; color: #818cf8; text-align: center; word-break: break-all;">
-                {{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink&amp;next=/dashboard
+              <p style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #fafafa; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                {{ .Token }}
               </p>
             </td>
           </tr>

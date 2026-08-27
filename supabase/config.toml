@@ -106,6 +106,12 @@ double_confirm_changes = true
 enable_confirmations = true
 # Maximum frequency for sending emails (in seconds)
 max_frequency = 60
+# Shared TTL for magic link, confirm-signup, recovery, and email-change
+# (GOTRUE_MAILER_OTP_EXP). This is NOT Phone OTP and NOT jwt_expiry.
+# Hosted production: set Authentication → Providers → Email → OTP expiration
+# to this same value. 3600s covers delayed .mil delivery; scanners still must
+# not consume the link on GET (see /auth/confirm POST interstitial).
+otp_expiry = 3600
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
@@ -120,7 +126,8 @@ max_frequency = 60
 # Dashboard > Authentication > Providers > Phone:
 # - Enable phone authentication
 # - Configure Twilio credentials (Account SID, Auth Token, Messaging Service SID)
-# - Set OTP expiry: 3600 seconds (1 hour)
+# - Set Phone OTP expiry independently (SMS codes). Email/magic-link expiry is
+#   [auth.email] otp_expiry above — changing Phone OTP does not affect email links.
 # - Max OTP attempts: 5 per phone number
 # - Consider enabling phone confirmations for production (prevents unverified signups)
 
