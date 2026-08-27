@@ -38,6 +38,7 @@ describe("GET /api/webhooks/resend", () => {
     await expect(response.json()).resolves.toEqual({
       ok: true,
       endpoint: "resend",
+      url: "https://www.myepbuddy.com/api/webhooks/resend",
     });
   });
 });
