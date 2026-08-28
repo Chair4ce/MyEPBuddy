@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
+import { canonicalPageUrl } from "@/lib/site-url";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | My EPBuddy",
   description:
     "Privacy Policy for My EPBuddy - Learn how we handle your data securely and transparently.",
   alternates: {
-    canonical: "https://myepbuddy.com/privacy",
+    canonical: canonicalPageUrl("/privacy"),
   },
   openGraph: {
     title: "Privacy Policy | My EPBuddy",
     description: "Privacy Policy for My EPBuddy - Learn how we handle your data securely and transparently.",
-    url: "https://myepbuddy.com/privacy",
+    url: canonicalPageUrl("/privacy"),
     siteName: "My EPBuddy",
     type: "website",
   },

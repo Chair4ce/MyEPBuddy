@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { canonicalPageUrl } from "@/lib/site-url";
 
 export const metadata: Metadata = {
   title: "AI Tokens Terms | My EPBuddy",
   description:
     "AI token terms, usage policies, and fee disclosure for My EPBuddy.",
   alternates: {
-    canonical: "https://myepbuddy.com/billing-terms",
+    canonical: canonicalPageUrl("/billing-terms"),
   },
 };
 

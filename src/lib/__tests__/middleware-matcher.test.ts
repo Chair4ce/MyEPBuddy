@@ -21,4 +21,13 @@ describe("middleware matcher", () => {
     expect(matches("/dashboard")).toBe(true);
     expect(matches("/api/analytics")).toBe(true);
   });
+
+  it("skips social-preview and crawler metadata routes", () => {
+    expect(matches("/opengraph-image")).toBe(false);
+    expect(matches("/twitter-image")).toBe(false);
+    expect(matches("/icon")).toBe(false);
+    expect(matches("/robots.txt")).toBe(false);
+    expect(matches("/sitemap.xml")).toBe(false);
+    expect(matches("/manifest.json")).toBe(false);
+  });
 });
