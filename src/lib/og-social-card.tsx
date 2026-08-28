@@ -9,7 +9,6 @@ const THEME = {
   foreground: "#f7f5f4",
   muted: "#afacab",
   hairline: "rgba(255, 255, 255, 0.08)",
-  unclassified: "#15803d",
 } as const;
 
 const LOGO_PATH_A =
@@ -63,29 +62,6 @@ export function OgSocialCard({
             "radial-gradient(ellipse at 50% 0%, rgba(129, 140, 248, 0.22) 0%, rgba(129, 140, 248, 0) 62%)",
         }}
       />
-
-      <div
-        style={{
-          position: "absolute",
-          top: 36,
-          display: "flex",
-          alignItems: "center",
-          padding: "6px 14px",
-          borderRadius: 6,
-          backgroundColor: THEME.unclassified,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            letterSpacing: "0.12em",
-            color: "#ffffff",
-          }}
-        >
-          UNCLASSIFIED
-        </span>
-      </div>
 
       <div
         style={{
