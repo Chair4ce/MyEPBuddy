@@ -10,25 +10,20 @@
     <tr>
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 480px; background-color: #1f1f1f; border-radius: 12px; border: 1px solid #2e2e2e;">
-          <!-- Logo Header -->
           <tr>
             <td align="center" style="padding: 32px 40px 24px;">
               <img src="{{ .SiteURL }}/icon.svg" alt="MyEPBuddy" width="48" height="48" style="display: block;">
               <h1 style="margin: 16px 0 0; font-size: 24px; font-weight: 600; color: #fafafa;">MyEPBuddy</h1>
             </td>
           </tr>
-          
-          <!-- Main Content -->
           <tr>
             <td style="padding: 0 40px 32px;">
               <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 600; color: #fafafa; text-align: center;">
                 Sign in to your account
               </h2>
               <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #a3a3a3; text-align: center;">
-                Click the button below to sign in to your MyEPBuddy account. This magic link will expire in 1 hour.
+                Click the button to sign in to MyEPBuddy. If you are on a government network, use the code instead — email scanners can invalidate the link.
               </p>
-              
-              <!-- CTA Button (token_hash link works across browsers/devices) -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center" style="padding: 8px 0 24px;">
@@ -38,27 +33,21 @@
                   </td>
                 </tr>
               </table>
-              
-              <!-- Alternative Link -->
               <p style="margin: 0 0 8px; font-size: 13px; color: #a3a3a3; text-align: center;">
-                Or copy and paste this link:
+                Or enter this code on the sign-in page:
               </p>
-              <p style="margin: 0; font-size: 12px; color: #818cf8; text-align: center; word-break: break-all;">
-                {{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink&amp;next=/dashboard
+              <p style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #fafafa; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                {{ .Token }}
               </p>
             </td>
           </tr>
-          
-          <!-- Security Notice -->
           <tr>
             <td style="padding: 24px 40px; border-top: 1px solid #2e2e2e;">
               <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #6b6b6b; text-align: center;">
-                If you didn't request this sign-in link, you can safely ignore this email. Someone may have entered your email by mistake.
+                This button and code expire in 1 hour. If you didn't request this sign-in link, you can safely ignore this email.
               </p>
             </td>
           </tr>
-          
-          <!-- Footer -->
           <tr>
             <td style="padding: 24px 40px 32px; border-top: 1px solid #2e2e2e;">
               <p style="margin: 0; font-size: 12px; color: #6b6b6b; text-align: center;">

@@ -57,19 +57,17 @@
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center" style="padding: 8px 0 24px;">
-                    <a href="{{ .ConfirmationURL }}" target="_blank" style="display: inline-block; padding: 14px 32px; background-color: #818cf8; color: #1f1f1f; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+                    <a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}{{ end }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/dashboard" target="_blank" style="display: inline-block; padding: 14px 32px; background-color: #818cf8; color: #1f1f1f; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
                       Accept Invitation
                     </a>
                   </td>
                 </tr>
               </table>
-              
-              <!-- Alternative Link -->
               <p style="margin: 0 0 8px; font-size: 13px; color: #a3a3a3; text-align: center;">
-                Or copy and paste this link:
+                Or enter this code on the sign-in page if a government email scanner opened the link:
               </p>
-              <p style="margin: 0; font-size: 12px; color: #818cf8; text-align: center; word-break: break-all;">
-                {{ .ConfirmationURL }}
+              <p style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #fafafa; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                {{ .Token }}
               </p>
             </td>
           </tr>
@@ -78,7 +76,7 @@
           <tr>
             <td style="padding: 24px 40px; border-top: 1px solid #2e2e2e;">
               <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #6b6b6b; text-align: center;">
-                This invitation expires in 7 days. If you weren't expecting this invitation, you can safely ignore this email.
+                This button and code expire in 1 hour. If you weren't expecting this invitation, you can safely ignore this email.
               </p>
             </td>
           </tr>

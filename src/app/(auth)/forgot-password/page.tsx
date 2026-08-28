@@ -22,6 +22,8 @@ import { Analytics } from "@/lib/analytics";
 import { AppLogo } from "@/components/layout/app-logo";
 import { ResizeContainer } from "@/components/ui/resize-container";
 import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
+import { EmailOtpCodeForm } from "@/components/auth/email-otp-code-form";
+import { EMAIL_OTP_EXPIRY_LABEL } from "@/lib/auth/email-otp";
 
 function ForgotPasswordContent() {
   const [email, setEmail] = useState("");
@@ -111,16 +113,24 @@ function ForgotPasswordContent() {
                 </p>
                 <p className="font-medium">{email}</p>
                 <p className="text-sm text-muted-foreground mt-4">
-                  Click the link in the email to set a new password. The link
-                  expires in 1 hour.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Just trying to sign in?{" "}
-                  <Link href="/login" className="text-primary hover:underline">
-                    Use a magic link instead
-                  </Link>
+                  The email includes a reset button and a code. Both expire in{" "}
+                  {EMAIL_OTP_EXPIRY_LABEL}. If a security proxy opened the
+                  link, type the code below.
                 </p>
               </div>
+              <EmailOtpCodeForm
+                key={`recovery-${email}`}
+                email={email}
+                type="recovery"
+                submitLabel="Continue with code"
+                idPrefix="recovery-otp"
+              />
+              <p className="text-sm text-muted-foreground text-center">
+                Just trying to sign in?{" "}
+                <Link href="/login" className="text-primary hover:underline">
+                  Use a magic link instead
+                </Link>
+              </p>
               <Button
                 variant="outline"
                 className="w-full"
@@ -133,7 +143,8 @@ function ForgotPasswordContent() {
               </Button>
             </div>
           ) : (
-            <form onSubmit={handleResetRequest} className="space-y-4" key="reset-email-form">
+            <div className="space-y-4" key="reset-email-form">
+            <form onSubmit={handleResetRequest} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -161,6 +172,24 @@ function ForgotPasswordContent() {
                 )}
               </Button>
             </form>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">
+                  Already have a code?
+                </span>
+              </div>
+            </div>
+            <EmailOtpCodeForm
+              key={`recovery-existing-${email}`}
+              email={email}
+              type="recovery"
+              submitLabel="Continue with code"
+              idPrefix="recovery-otp-existing"
+            />
+            </div>
           )}
         </CardContent>
         <CardFooter className="flex justify-center">

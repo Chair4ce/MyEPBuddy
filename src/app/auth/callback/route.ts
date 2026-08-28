@@ -6,12 +6,19 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const next = safeAppNextPath(searchParams.get("next"), origin);
+  const errorParam = searchParams.get("error");
   const error_description = searchParams.get("error_description");
 
-  // Handle error from auth provider
-  if (error_description) {
+  // Handle error from auth provider (including prefetch-consumed magic links)
+  if (errorParam || error_description) {
+    const expired =
+      errorParam === "expired_token" ||
+      /expired|invalid/i.test(error_description ?? "");
+    const message = expired
+      ? "Verification link is invalid or has expired. Enter the code from the email instead."
+      : (error_description ?? errorParam ?? "Authentication failed");
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent(error_description)}`
+      `${origin}/login?error=${encodeURIComponent(message)}`
     );
   }
 
