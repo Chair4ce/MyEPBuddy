@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
+import { canonicalSiteUrl } from "@/lib/site-url";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://myepbuddy.com";
+  const baseUrl = canonicalSiteUrl();
 
   return [
     {

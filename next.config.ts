@@ -144,6 +144,39 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
         ],
       },
+      // Next metadata image routes have no file extension, so the PNG CORP
+      // override never matches. Facebook, X, LinkedIn, Discord, and Slack
+      // fetch these as cross-origin subresources.
+      {
+        source: "/opengraph-image",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
+      {
+        source: "/opengraph-image.png",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
+      {
+        source: "/twitter-image",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
+      {
+        source: "/twitter-image.png",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
+      {
+        source: "/icon",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
     ];
   },
 };
