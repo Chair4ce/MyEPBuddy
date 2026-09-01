@@ -85,10 +85,7 @@ export async function createManagedTeamMember(
     isEnlisted(input.supervisorRank ?? null);
   const skipAutoSupervise =
     existingMatch && subordinateIsCivilian && supervisorIsMilitary;
-  const isSelfExistingUser = !shouldCreateManagedLinkForExistingUser(
-    input.supervisorId,
-    existingMatch?.id ?? null
-  ) && existingMatch != null;
+  const isSelfExistingUser = existingMatch?.id === input.supervisorId;
 
   if (existingMatch && !isSelfExistingUser && !skipAutoSupervise) {
     const ensureResult = await ensurePendingTeamRequest(supabase, {
