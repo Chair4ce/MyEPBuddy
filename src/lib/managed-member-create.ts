@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isCivilian, isEnlisted, isOfficer } from "@/lib/constants";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import { searchProfileByEmail } from "@/lib/profile-directory";
+import { shouldCreateManagedLinkForExistingUser } from "@/lib/pending-managed-links";
 import { ensurePendingTeamRequest } from "@/lib/team-requests";
 import type { ManagedMember, Rank } from "@/types/database";
 
@@ -84,8 +85,12 @@ export async function createManagedTeamMember(
     isEnlisted(input.supervisorRank ?? null);
   const skipAutoSupervise =
     existingMatch && subordinateIsCivilian && supervisorIsMilitary;
+  const isSelfExistingUser = !shouldCreateManagedLinkForExistingUser(
+    input.supervisorId,
+    existingMatch?.id ?? null
+  ) && existingMatch != null;
 
-  if (existingMatch && !skipAutoSupervise) {
+  if (existingMatch && !isSelfExistingUser && !skipAutoSupervise) {
     const ensureResult = await ensurePendingTeamRequest(supabase, {
       targetId: existingMatch.id,
       requestType: "supervise",
@@ -96,7 +101,7 @@ export async function createManagedTeamMember(
     }
   }
 
-  if (existingMatch) {
+  if (existingMatch && !isSelfExistingUser) {
     const { error: linkError } = await (
       supabase.rpc as unknown as (
         fn: string,
@@ -112,7 +117,7 @@ export async function createManagedTeamMember(
     }
   }
 
-  if (email) {
+  if (email && !isSelfExistingUser) {
     const invite = await requestManagedMemberInvite({
       teamMemberId: member.id,
       recipientEmail: email,
