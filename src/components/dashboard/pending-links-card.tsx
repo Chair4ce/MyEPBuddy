@@ -59,6 +59,10 @@ import type { Rank } from "@/types/database";
 import { MPA_ABBREVIATIONS } from "@/lib/constants";
 import { consumePersistedManagedInviteToken } from "@/lib/managed-member-invite-consume";
 import { formatDateDefault } from "@/lib/format";
+import {
+  canAcceptSupervisorFromManagedLink,
+  isSelfSupervisorManagedLink,
+} from "@/lib/pending-managed-links";
 
 interface PreviewEntry {
   id: string;
@@ -373,6 +377,16 @@ export function PendingLinksCard() {
   };
 
   const handleAcceptSupervisor = async (link: PendingLink) => {
+    if (!canAcceptSupervisorFromManagedLink(link, profile?.id)) {
+      toast.error("You cannot accept yourself as supervisor", {
+        description:
+          "Dismiss this request or sync data without adding a supervisor link.",
+      });
+      setSelectedLink(null);
+      setActionType(null);
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -566,7 +580,43 @@ export function PendingLinksCard() {
                 {(() => {
                   const hasData = link.entry_count > 0 || link.statement_count > 0;
                   const needsDataDecision = hasData && !link.data_synced;
-                  const needsSupervisorDecision = !link.supervisor_accepted;
+                  const isSelfLink = isSelfSupervisorManagedLink(link, profile?.id);
+                  const needsSupervisorDecision = canAcceptSupervisorFromManagedLink(
+                    link,
+                    profile?.id
+                  );
+
+                  if (isSelfLink && !link.supervisor_accepted) {
+                    return (
+                      <div className="flex flex-col gap-2 w-full">
+                        <p className="text-xs text-muted-foreground">
+                          This managed account is yours. You cannot add yourself as supervisor.
+                          {needsDataDecision
+                            ? " You can still preview and sync entries, or dismiss this request."
+                            : " Dismiss this request to clear it."}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {needsDataDecision ? (
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-700 text-white"
+                              onClick={() => openPreview(link)}
+                            >
+                              <Eye className="size-4 mr-1.5" />
+                              Preview & Sync
+                            </Button>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openConfirmDialog(link, "dismiss")}
+                          >
+                            Dismiss
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   // Case 1: Nothing done yet - must accept supervisor first to see data
                   if (needsSupervisorDecision && needsDataDecision) {
