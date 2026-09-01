@@ -85,9 +85,12 @@ export async function createManagedTeamMember(
     isEnlisted(input.supervisorRank ?? null);
   const skipAutoSupervise =
     existingMatch && subordinateIsCivilian && supervisorIsMilitary;
-  const isSelfExistingUser = existingMatch?.id === input.supervisorId;
+  const linkExistingUser = shouldCreateManagedLinkForExistingUser(
+    input.supervisorId,
+    existingMatch?.id
+  );
 
-  if (existingMatch && !isSelfExistingUser && !skipAutoSupervise) {
+  if (existingMatch && linkExistingUser && !skipAutoSupervise) {
     const ensureResult = await ensurePendingTeamRequest(supabase, {
       targetId: existingMatch.id,
       actorId: input.supervisorId,
@@ -99,7 +102,7 @@ export async function createManagedTeamMember(
     }
   }
 
-  if (existingMatch && !isSelfExistingUser) {
+  if (existingMatch && linkExistingUser) {
     const { error: linkError } = await (
       supabase.rpc as unknown as (
         fn: string,
@@ -115,7 +118,7 @@ export async function createManagedTeamMember(
     }
   }
 
-  if (email && !isSelfExistingUser) {
+  if (email && existingMatch?.id !== input.supervisorId) {
     const invite = await requestManagedMemberInvite({
       teamMemberId: member.id,
       recipientEmail: email,
