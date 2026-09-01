@@ -90,6 +90,7 @@ export async function createManagedTeamMember(
   if (existingMatch && !isSelfExistingUser && !skipAutoSupervise) {
     const ensureResult = await ensurePendingTeamRequest(supabase, {
       targetId: existingMatch.id,
+      actorId: input.supervisorId,
       requestType: "supervise",
       message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
     });

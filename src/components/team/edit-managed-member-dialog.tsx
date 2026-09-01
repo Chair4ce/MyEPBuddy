@@ -40,7 +40,10 @@ import {
   resendManagedMemberInvite,
 } from "@/lib/managed-member-invite-actions";
 import { searchProfileByEmail } from "@/lib/profile-directory";
-import { ensurePendingTeamRequest } from "@/lib/team-requests";
+import {
+  canRequestTeamSupervision,
+  ensurePendingTeamRequest,
+} from "@/lib/team-requests";
 import { Loader2, UserCog, Link2, AlertCircle, Copy, Mail } from "lucide-react";
 import type { Rank, ManagedMember } from "@/types/database";
 import { ENLISTED_RANKS, OFFICER_RANKS, CIVILIAN_RANK, isOfficer, isCivilian } from "@/lib/constants";
@@ -250,7 +253,13 @@ export function EditManagedMemberDialog({
           : undefined;
 
       // If email changed and we should create a pending link
-      if (emailChanged && newEmail && createLink && existingUser) {
+      if (
+        emailChanged &&
+        newEmail &&
+        createLink &&
+        existingUser &&
+        canRequestTeamSupervision(profile.id, existingUser.id)
+      ) {
         // Call the function to create a pending link
         const { error: linkError } = await (supabase.rpc as Function)(
           "create_pending_link_for_existing_user",
@@ -262,6 +271,7 @@ export function EditManagedMemberDialog({
 
         const ensureResult = await ensurePendingTeamRequest(supabase, {
           targetId: existingUser.id,
+          actorId: profile.id,
           requestType: "supervise",
           message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
         });
