@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildRephraseModeInstructions,
   buildRephraseSystemOverride,
+  buildSourceFactsPrompt,
+  buildSpanContextInstruction,
   formatClarifyingAnswers,
   isUnderspecifiedSelection,
   parseClarifyingQuestions,
@@ -89,5 +91,23 @@ describe("rephrase prompt copy", () => {
     const override = buildRephraseSystemOverride(3, true);
     expect(override).toContain('"questions"');
     expect(override).toMatch(/different sentence architecture/i);
+  });
+});
+
+describe("surrounding statement context", () => {
+  it("keeps package-level metrics out of the selected-span fact list", () => {
+    const prompt = buildSourceFactsPrompt(
+      THIN,
+      `Led 12 Amn through a $2M C4I upgrade. ${THIN}.`,
+    );
+    expect(prompt).toMatch(/REST OF THE STATEMENT/i);
+    expect(prompt).toMatch(/12/);
+    expect(prompt).toMatch(/2M/);
+    expect(prompt).toMatch(/selected span/i);
+  });
+
+  it("requires the rewrite to stay a span inside the full statement", () => {
+    expect(buildSpanContextInstruction()).toMatch(/SPAN inside a larger statement/i);
+    expect(buildSpanContextInstruction()).toMatch(/Do not output the surrounding sentences/i);
   });
 });

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { parseStatement, combineSentences, type ParsedSentence } from "@/lib/sentence-utils";
 import { getCharacterCountColor } from "@/lib/utils";
 import { GripVertical } from "lucide-react";
-import { useWordThesaurus } from "@/hooks/use-word-thesaurus";
+import { useWordThesaurus, type ThesaurusTextSource } from "@/hooks/use-word-thesaurus";
 import { WordThesaurusPopup } from "@/components/word-thesaurus/word-thesaurus-popup";
 
 // Re-export compatible type for drag-drop
@@ -44,6 +44,19 @@ function stripAllPeriods(text: string): string {
 function stripTrailingPeriod(text: string): string {
   const trimmed = text.trim();
   return trimmed.endsWith('.') ? trimmed.slice(0, -1) : trimmed;
+}
+
+function splitViewThesaurusSource(
+  fieldText: string,
+  onChange: (next: string) => void,
+  sentence1: string,
+  sentence2: string,
+): ThesaurusTextSource {
+  return {
+    text: fieldText,
+    onChange,
+    contextText: combineSentences(sentence1, sentence2),
+  };
 }
 
 export function SplitViewEditor({
@@ -312,18 +325,18 @@ export function SplitViewEditor({
               }}
               onMouseUp={() => {
                 if (disabled || !model) return;
-                thesaurus.handleTextSelect(sentence1Ref.current, {
-                  text: sentence1,
-                  onChange: handleS1Change,
-                });
+                thesaurus.handleTextSelect(
+                  sentence1Ref.current,
+                  splitViewThesaurusSource(sentence1, handleS1Change, sentence1, sentence2),
+                );
               }}
               onKeyUp={(event) => {
                 if (disabled || !model) return;
                 if (event.shiftKey || event.key.startsWith("Arrow")) {
-                  thesaurus.handleTextSelect(sentence1Ref.current, {
-                    text: sentence1,
-                    onChange: handleS1Change,
-                  });
+                  thesaurus.handleTextSelect(
+                    sentence1Ref.current,
+                    splitViewThesaurusSource(sentence1, handleS1Change, sentence1, sentence2),
+                  );
                 }
               }}
               onKeyDown={thesaurus.handleKeyDown}
@@ -407,18 +420,18 @@ export function SplitViewEditor({
               }}
               onMouseUp={() => {
                 if (disabled || !model) return;
-                thesaurus.handleTextSelect(sentence2Ref.current, {
-                  text: sentence2,
-                  onChange: handleS2Change,
-                });
+                thesaurus.handleTextSelect(
+                  sentence2Ref.current,
+                  splitViewThesaurusSource(sentence2, handleS2Change, sentence1, sentence2),
+                );
               }}
               onKeyUp={(event) => {
                 if (disabled || !model) return;
                 if (event.shiftKey || event.key.startsWith("Arrow")) {
-                  thesaurus.handleTextSelect(sentence2Ref.current, {
-                    text: sentence2,
-                    onChange: handleS2Change,
-                  });
+                  thesaurus.handleTextSelect(
+                    sentence2Ref.current,
+                    splitViewThesaurusSource(sentence2, handleS2Change, sentence1, sentence2),
+                  );
                 }
               }}
               onKeyDown={thesaurus.handleKeyDown}

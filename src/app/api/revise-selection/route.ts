@@ -51,6 +51,8 @@ import {
   buildRephraseModeInstructions,
   buildRephraseSystemOverride,
   buildRephraseUserAddon,
+  buildSourceFactsPrompt,
+  buildSpanContextInstruction,
   isUnderspecifiedSelection,
   parseReviseSelectionLlmOutput,
   sanitizeReviseContext,
@@ -92,29 +94,6 @@ const BANNED_VERBS = [
   "utilized",
   "facilitated",
 ];
-
-/**
- * Extract numbers, metrics, and acronyms present in source text.
- * Injected into prompts so the model knows which facts it may reference.
- */
-function extractSourceFacts(text: string): string {
-  const numbers = [...new Set(text.match(/\d[\d,.$%KMBkb]*/g) ?? [])];
-  const acronyms = [...new Set(text.match(/\b[A-Z]{2,}(?:-[A-Z]+)?\b/g) ?? [])];
-  const properNouns = [...new Set(
-    (text.match(/\b[A-Z][a-z]+(?:'s)?\b/g) ?? []).filter(
-      (word) => !["As", "During", "The", "His", "Her", "He", "She"].includes(word)
-    )
-  )];
-
-  const lines: string[] = [];
-  if (numbers.length > 0) lines.push(`- Numbers/metrics in source: ${numbers.join(", ")}`);
-  if (acronyms.length > 0) lines.push(`- Acronyms in source: ${acronyms.join(", ")}`);
-  if (properNouns.length > 0) lines.push(`- Proper nouns in source: ${properNouns.join(", ")}`);
-
-  return lines.length > 0
-    ? lines.join("\n")
-    : "- No discrete numbers or acronyms detected — do not add any.";
-}
 
 function buildFactualIntegrityPrompt(isDutyDescription: boolean): string {
   if (isDutyDescription) {
@@ -568,7 +547,7 @@ Your goal is to make the selected text SHORTER by:
     const availableVerbs = RECOMMENDED_VERBS.filter(v => !verbsToAvoid.includes(v.toLowerCase()));
 
     const aggressivenessInstructions = getAggressivenessInstructions(aggressiveness);
-    const sourceFacts = extractSourceFacts(selectedText);
+    const sourceFacts = buildSourceFactsPrompt(selectedText, fullStatement);
 
     // Build style guidance from user's learned preferences
     const styleGuidance = buildStyleGuidance(styleContext);
@@ -640,6 +619,7 @@ Your goal is to make the selected text SHORTER by:
     if (mode === "general") {
       systemPrompt += `\n\n${buildRephraseSystemOverride(versionCount, askRephraseQuestions)}`;
     }
+    systemPrompt += `\n\n${buildSpanContextInstruction()}`;
 
     const userPrompt = `FULL STATEMENT FOR CONTEXT:
 "${fullStatement}"
@@ -655,6 +635,8 @@ TEXT AFTER SELECTION:
 
 **SOURCE FACTS (do NOT add any facts beyond these):**
 ${sourceFacts}
+
+${buildSpanContextInstruction()}
 
 ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 

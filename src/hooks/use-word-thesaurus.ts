@@ -8,6 +8,7 @@ import {
   applyRangeReplacement,
   isSingleSelectableWord,
   preserveReplacementCase,
+  resolveThesaurusDocumentContext,
   sentenceContainingRange,
   shouldAutoFetchSuggestions,
   splitSuggestedAndRest,
@@ -22,6 +23,8 @@ const SUGGEST_DEBOUNCE_MS = 280;
 export interface ThesaurusTextSource {
   text: string;
   onChange: (next: string) => void;
+  /** Full statement the span lives in (e.g. both EPB sentences). Defaults to `text`. */
+  contextText?: string;
 }
 
 export interface UseWordThesaurusOptions {
@@ -203,7 +206,11 @@ export function useWordThesaurus({
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
       debounceRef.current = window.setTimeout(() => {
         debounceRef.current = null;
-        void fetchSuggestions(trimmed, source.text, sentence);
+        void fetchSuggestions(
+          trimmed,
+          source.contextText?.trim() ? source.contextText : source.text,
+          sentence,
+        );
       }, SUGGEST_DEBOUNCE_MS);
     },
     [abortPending, close, fetchSuggestions, open],
@@ -301,15 +308,22 @@ export function useWordThesaurus({
         [rephraseIntent, answerContext].filter(Boolean).join(" "),
       );
 
+      const document = resolveThesaurusDocumentContext({
+        fieldText: source.text,
+        fieldStart: rangeRef.current.start,
+        fieldEnd: rangeRef.current.end,
+        contextText: source.contextText,
+      });
+
       try {
         const response = await fetchWithRetry("/api/revise-selection", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            fullStatement: source.text,
+            fullStatement: document.fullStatement,
             selectedText: selected,
-            selectionStart: rangeRef.current.start,
-            selectionEnd: rangeRef.current.end,
+            selectionStart: document.selectionStart,
+            selectionEnd: document.selectionEnd,
             model,
             mode,
             context: context || undefined,

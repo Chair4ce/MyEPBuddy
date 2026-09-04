@@ -184,9 +184,113 @@ Return JSON only in this shape:
 }
 
 export function buildRephraseUserAddon(askQuestions: boolean): string {
-  if (!askQuestions) {
-    return "Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Return questions as [].";
+  const architecture = askQuestions
+    ? `Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only.
+Because this selection is thin on facts, include clarifying questions a rater could answer (what "optimizing" involved, which assets, whether the operation can be named). Do not answer those questions yourself by inventing details.`
+    : "Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Return questions as [].";
+  return `${architecture}
+
+${buildSpanContextInstruction()}`;
+}
+
+/** The highlight is a span; surrounding sentences are context, not output. */
+export function buildSpanContextInstruction(): string {
+  return `**SURROUNDING STATEMENT (REQUIRED CONTEXT):**
+The selected text is a SPAN inside a larger statement. Read FULL STATEMENT, TEXT BEFORE SELECTION, and TEXT AFTER SELECTION before writing.
+- Rewrite ONLY the selected span so TEXT BEFORE + revision + TEXT AFTER still reads as one grammatical statement
+- Do not output the surrounding sentences
+- Use facts that already appear elsewhere in the statement only for coherence (tense, who, mission). Do not copy those facts into the span unless the span already contains them`;
+}
+
+const SOURCE_FACT_STOPWORDS = new Set([
+  "As",
+  "During",
+  "The",
+  "His",
+  "Her",
+  "He",
+  "She",
+]);
+
+export interface SourceFactTokens {
+  numbers: string[];
+  acronyms: string[];
+  properNouns: string[];
+}
+
+export function collectSourceFactTokens(text: string): SourceFactTokens {
+  const numbers = [...new Set(text.match(/\d[\d,.$%KMBkb]*/g) ?? [])];
+  const acronyms = [...new Set(text.match(/\b[A-Z]{2,}(?:-[A-Z]+)?\b/g) ?? [])];
+  const properNouns = [
+    ...new Set(
+      (text.match(/\b[A-Z][a-z]+(?:'s)?\b/g) ?? []).filter(
+        (word) => !SOURCE_FACT_STOPWORDS.has(word),
+      ),
+    ),
+  ];
+  return { numbers, acronyms, properNouns };
+}
+
+function formatFactTokenLines(tokens: SourceFactTokens): string[] {
+  const lines: string[] = [];
+  if (tokens.numbers.length > 0) {
+    lines.push(`- Numbers/metrics: ${tokens.numbers.join(", ")}`);
   }
-  return `Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only.
-Because this selection is thin on facts, include clarifying questions a rater could answer (what "optimizing" involved, which assets, whether the operation can be named). Do not answer those questions yourself by inventing details.`;
+  if (tokens.acronyms.length > 0) {
+    lines.push(`- Acronyms: ${tokens.acronyms.join(", ")}`);
+  }
+  if (tokens.properNouns.length > 0) {
+    lines.push(`- Proper nouns: ${tokens.properNouns.join(", ")}`);
+  }
+  return lines;
+}
+
+function tokenKey(kind: keyof SourceFactTokens, value: string): string {
+  return `${kind}:${value.toLowerCase()}`;
+}
+
+function surroundingOnly(
+  full: SourceFactTokens,
+  selected: SourceFactTokens,
+): SourceFactTokens {
+  const selectedKeys = new Set<string>([
+    ...selected.numbers.map((v) => tokenKey("numbers", v)),
+    ...selected.acronyms.map((v) => tokenKey("acronyms", v)),
+    ...selected.properNouns.map((v) => tokenKey("properNouns", v)),
+  ]);
+  const keep = (kind: keyof SourceFactTokens) =>
+    full[kind].filter((value) => !selectedKeys.has(tokenKey(kind, value)));
+  return {
+    numbers: keep("numbers"),
+    acronyms: keep("acronyms"),
+    properNouns: keep("properNouns"),
+  };
+}
+
+export function buildSourceFactsPrompt(
+  selectedText: string,
+  fullStatement: string,
+): string {
+  const selectedTokens = collectSourceFactTokens(selectedText);
+  const fullTokens = collectSourceFactTokens(fullStatement);
+  const selectedLines = formatFactTokenLines(selectedTokens);
+  const restLines = formatFactTokenLines(
+    surroundingOnly(fullTokens, selectedTokens),
+  );
+
+  const selectedBlock =
+    selectedLines.length > 0
+      ? selectedLines.join("\n")
+      : "- No discrete numbers or acronyms in the selected span — do not invent any.";
+
+  const restBlock =
+    restLines.length > 0
+      ? restLines.join("\n")
+      : "- No additional metrics in the surrounding statement.";
+
+  return `**SOURCE FACTS IN THE SELECTED SPAN (these may appear in the rewrite):**
+${selectedBlock}
+
+**FACTS IN THE REST OF THE STATEMENT (context only — already written outside the selection; do not copy them into the revision unless the span already contains them):**
+${restBlock}`;
 }

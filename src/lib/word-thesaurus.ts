@@ -132,6 +132,61 @@ export function applyRangeReplacement(
   return text.slice(0, clampedStart) + replacement + text.slice(clampedEnd);
 }
 
+export function fieldOffsetInContext(fieldText: string, contextText: string): number | null {
+  if (!contextText) return null;
+  if (fieldText && contextText.includes(fieldText)) {
+    return contextText.indexOf(fieldText);
+  }
+  const needle = fieldText.trim();
+  if (needle && contextText.includes(needle)) {
+    return contextText.indexOf(needle);
+  }
+  return null;
+}
+
+export interface ThesaurusDocumentContextPayload {
+  fullStatement: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+/**
+ * Map a highlight inside one editor field onto the full statement the LLM
+ * should see (e.g. both EPB split-view sentences). Replacement still uses
+ * the field-local range.
+ */
+export function resolveThesaurusDocumentContext(opts: {
+  fieldText: string;
+  fieldStart: number;
+  fieldEnd: number;
+  contextText?: string;
+}): ThesaurusDocumentContextPayload {
+  const fieldLen = opts.fieldText.length;
+  const fieldStart = Math.max(0, Math.min(opts.fieldStart, fieldLen));
+  const fieldEnd = Math.max(fieldStart, Math.min(opts.fieldEnd, fieldLen));
+  const context = opts.contextText ?? "";
+  if (!context || context === opts.fieldText) {
+    return {
+      fullStatement: opts.fieldText,
+      selectionStart: fieldStart,
+      selectionEnd: fieldEnd,
+    };
+  }
+  const offset = fieldOffsetInContext(opts.fieldText, context);
+  if (offset == null) {
+    return {
+      fullStatement: opts.fieldText,
+      selectionStart: fieldStart,
+      selectionEnd: fieldEnd,
+    };
+  }
+  return {
+    fullStatement: context,
+    selectionStart: offset + fieldStart,
+    selectionEnd: offset + fieldEnd,
+  };
+}
+
 export function sanitizeThesaurusWord(word: string): string {
   return trimSelection(word).slice(0, WORD_THESAURUS_MAX_WORD_LENGTH);
 }
