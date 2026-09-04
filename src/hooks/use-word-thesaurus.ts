@@ -346,7 +346,7 @@ export function useWordThesaurus({
         if (nextQuestions.length > 0) {
           setClarifyingQuestions(nextQuestions);
           setQuestionAnswers((current) =>
-            nextQuestions.map((_, index) => current[index] ?? ""),
+            nextQuestions.map((_question: string, index: number) => current[index] ?? ""),
           );
         }
       } catch (error) {
