@@ -3,11 +3,14 @@
 import { BookA, Loader2, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TokenCostBadge } from "@/components/billing/token-cost-badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   motionChip,
   motionCollapseGrid,
   motionEnter,
   motionEnterDurFast,
+  motionInputFocus,
   motionPressable,
   motionSurfaceElevated,
   motionTransitionColors,
@@ -53,6 +56,9 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
     isLoadingSuggestions,
     isLoadingAll,
     revisionResults,
+    clarifyingQuestions,
+    questionAnswers,
+    rephraseIntent,
     isRevising,
     enablePhraseRevise,
     applyReplacement,
@@ -60,6 +66,8 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
     showAll,
     hideAll,
     reviseSelection,
+    setRephraseIntent,
+    setQuestionAnswerAt,
     close,
   } = thesaurus;
 
@@ -206,6 +214,21 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
 
             {!isSingleWord && enablePhraseRevise && (
               <div className="space-y-2">
+                <div>
+                  <Label htmlFor="rephrase-intent" className="text-[11px] text-muted-foreground">
+                    What should this phrase emphasize? (optional)
+                  </Label>
+                  <Input
+                    id="rephrase-intent"
+                    value={rephraseIntent}
+                    onChange={(event) => setRephraseIntent(event.target.value)}
+                    placeholder="e.g. allocating radios, not process improvement"
+                    maxLength={240}
+                    className={cn("mt-1 h-8 text-xs", motionInputFocus)}
+                    aria-label="Optional rephrase intent"
+                    autoComplete="off"
+                  />
+                </div>
                 <div className="flex items-center gap-2">
                   <PhraseButton
                     label="Expand"
@@ -257,6 +280,52 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
                     ))}
                   </div>
                 )}
+                <div
+                  className={motionCollapseGrid}
+                  data-open={clarifyingQuestions.length > 0 ? "true" : "false"}
+                >
+                  <div className="overflow-hidden">
+                    {clarifyingQuestions.length > 0 && (
+                      <fieldset className="pt-2 space-y-2 border-t border-border/60">
+                        <legend className="text-xs font-medium text-foreground">
+                          Sharpen the rewrite
+                        </legend>
+                        <p className="text-[11px] text-muted-foreground">
+                          This phrase is light on facts. Answer any of these, then rephrase again — we will not invent the details for you.
+                        </p>
+                        {clarifyingQuestions.map((question, index) => {
+                          const fieldId = `rephrase-q-${index}`;
+                          return (
+                            <div key={question} className="space-y-1">
+                              <Label htmlFor={fieldId} className="text-[11px] leading-snug text-muted-foreground">
+                                {question}
+                              </Label>
+                              <Input
+                                id={fieldId}
+                                value={questionAnswers[index] ?? ""}
+                                onChange={(event) =>
+                                  setQuestionAnswerAt(index, event.target.value)
+                                }
+                                className={cn("h-8 text-xs", motionInputFocus)}
+                                maxLength={160}
+                                autoComplete="off"
+                              />
+                            </div>
+                          );
+                        })}
+                        <PhraseButton
+                          label="Rephrase with answers"
+                          icon={RefreshCw}
+                          disabled={
+                            isRevising ||
+                            !questionAnswers.some((answer) => answer.trim().length > 0)
+                          }
+                          onClick={() => void reviseSelection("general")}
+                        />
+                      </fieldset>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
