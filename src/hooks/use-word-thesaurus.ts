@@ -277,10 +277,11 @@ export function useWordThesaurus({
 
   const setQuestionAnswerAt = useCallback((index: number, value: string) => {
     setQuestionAnswers((current) => {
-      const next = current.slice();
-      while (next.length <= index) next.push("");
-      next[index] = value;
-      return next;
+      if (index < 0) return current;
+      if (index < current.length) {
+        return current.map((item, i) => (i === index ? value : item));
+      }
+      return [...current, ...Array.from({ length: index - current.length }, () => ""), value];
     });
   }, []);
 
