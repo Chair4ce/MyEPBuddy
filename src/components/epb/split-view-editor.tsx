@@ -80,6 +80,7 @@ export function SplitViewEditor({
   const thesaurus = useWordThesaurus({
     model: model ?? "",
     documentContext: "epb",
+    maxCharacters: maxChars,
   });
   
   // Initialize from external text when it changes from external source

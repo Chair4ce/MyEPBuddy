@@ -184,7 +184,12 @@ export function DutyDescriptionCard({
   const [isRevisePanelClosing, setIsRevisePanelClosing] = useState(false);
   const [isRevisionsResultsClosing, setIsRevisionsResultsClosing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const thesaurus = useWordThesaurus({ model, documentContext: "epb" });
+  const thesaurus = useWordThesaurus({
+    model,
+    documentContext: "epb",
+    isDutyDescription: true,
+    maxCharacters: maxChars,
+  });
   const cardBodyShellRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(currentDutyDescription);

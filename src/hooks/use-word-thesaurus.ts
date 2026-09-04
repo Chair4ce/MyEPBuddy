@@ -15,6 +15,7 @@ import {
   type PhraseReviseMode,
   type WordThesaurusDocumentContext,
 } from "@/lib/word-thesaurus";
+import { formatClarifyingAnswers, sanitizeReviseContext } from "@/lib/revise-rephrase";
 
 const SUGGEST_DEBOUNCE_MS = 280;
 
@@ -27,12 +28,18 @@ export interface UseWordThesaurusOptions {
   model: string;
   documentContext: WordThesaurusDocumentContext;
   enablePhraseRevise?: boolean;
+  /** Duty description highlight-rephrase must stay present-tense / non-performance. */
+  isDutyDescription?: boolean;
+  /** Field max so highlight rephrase cannot blow the myEval cap. */
+  maxCharacters?: number;
 }
 
 export function useWordThesaurus({
   model,
   documentContext,
   enablePhraseRevise = true,
+  isDutyDescription = false,
+  maxCharacters,
 }: UseWordThesaurusOptions) {
   const [open, setOpen] = useState(false);
   const [selectedText, setSelectedText] = useState("");
@@ -44,6 +51,9 @@ export function useWordThesaurus({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isLoadingAll, setIsLoadingAll] = useState(false);
   const [revisionResults, setRevisionResults] = useState<string[]>([]);
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<string[]>([]);
+  const [questionAnswers, setQuestionAnswers] = useState<string[]>([]);
+  const [rephraseIntent, setRephraseIntent] = useState("");
   const [isRevising, setIsRevising] = useState(false);
 
   const sourceRef = useRef<ThesaurusTextSource | null>(null);
@@ -72,6 +82,9 @@ export function useWordThesaurus({
     setAllSynonyms([]);
     setShowAllSynonyms(false);
     setRevisionResults([]);
+    setClarifyingQuestions([]);
+    setQuestionAnswers([]);
+    setRephraseIntent("");
     setIsLoadingSuggestions(false);
     setIsLoadingAll(false);
     setIsRevising(false);
@@ -164,6 +177,10 @@ export function useWordThesaurus({
       setSelectionEnd(end);
       setSelectedText(trimmed);
       setOpen(true);
+      setRevisionResults([]);
+      setClarifyingQuestions([]);
+      setQuestionAnswers([]);
+      setRephraseIntent("");
 
       const single = isSingleSelectableWord(trimmed);
       if (!single) {
@@ -258,6 +275,15 @@ export function useWordThesaurus({
     setShowAllSynonyms(false);
   }, []);
 
+  const setQuestionAnswerAt = useCallback((index: number, value: string) => {
+    setQuestionAnswers((current) => {
+      const next = current.slice();
+      while (next.length <= index) next.push("");
+      next[index] = value;
+      return next;
+    });
+  }, []);
+
   const reviseSelection = useCallback(
     async (mode: PhraseReviseMode) => {
       const source = sourceRef.current;
@@ -265,7 +291,14 @@ export function useWordThesaurus({
       if (!source || !selected) return;
 
       setIsRevising(true);
-      setRevisionResults([]);
+
+      const answerContext = formatClarifyingAnswers(
+        clarifyingQuestions,
+        questionAnswers,
+      );
+      const context = sanitizeReviseContext(
+        [rephraseIntent, answerContext].filter(Boolean).join(" "),
+      );
 
       try {
         const response = await fetchWithRetry("/api/revise-selection", {
@@ -278,6 +311,9 @@ export function useWordThesaurus({
             selectionEnd: rangeRef.current.end,
             model,
             mode,
+            context: context || undefined,
+            isDutyDescription,
+            maxCharacters,
           }),
         });
 
@@ -289,6 +325,15 @@ export function useWordThesaurus({
 
         const data = await response.json();
         setRevisionResults(Array.isArray(data.revisions) ? data.revisions : []);
+        const nextQuestions = Array.isArray(data.questions)
+          ? data.questions.filter((item: unknown): item is string => typeof item === "string")
+          : [];
+        if (nextQuestions.length > 0) {
+          setClarifyingQuestions(nextQuestions);
+          setQuestionAnswers((current) =>
+            nextQuestions.map((_, index) => current[index] ?? ""),
+          );
+        }
       } catch (error) {
         console.error("Selection revise error:", error);
         toast.error(error instanceof Error ? error.message : "Failed to revise selection");
@@ -296,7 +341,14 @@ export function useWordThesaurus({
         setIsRevising(false);
       }
     },
-    [model],
+    [
+      clarifyingQuestions,
+      isDutyDescription,
+      maxCharacters,
+      model,
+      questionAnswers,
+      rephraseIntent,
+    ],
   );
 
   const handleBlur = useCallback(() => {
@@ -326,6 +378,9 @@ export function useWordThesaurus({
     isLoadingSuggestions,
     isLoadingAll,
     revisionResults,
+    clarifyingQuestions,
+    questionAnswers,
+    rephraseIntent,
     isRevising,
     enablePhraseRevise,
     handleTextSelect,
@@ -336,6 +391,8 @@ export function useWordThesaurus({
     showAll,
     hideAll,
     reviseSelection,
+    setRephraseIntent,
+    setQuestionAnswerAt,
     close,
   };
 }

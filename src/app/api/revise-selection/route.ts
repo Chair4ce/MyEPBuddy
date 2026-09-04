@@ -46,8 +46,15 @@ import {
   asPlainText,
   coalesceTwoSentenceRevisions,
   ensureRevisionCount,
-  parseRevisionList,
 } from "@/lib/sentence-utils";
+import {
+  buildRephraseModeInstructions,
+  buildRephraseSystemOverride,
+  buildRephraseUserAddon,
+  isUnderspecifiedSelection,
+  parseReviseSelectionLlmOutput,
+  sanitizeReviseContext,
+} from "@/lib/revise-rephrase";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
 export const maxDuration = 60;
@@ -199,12 +206,7 @@ Your goal is to make the selected text SHORTER by:
 - Combining descriptive phrases where possible
 - Removing redundant positional language
 - KEEP PRESENT TENSE - this describes a current role, not a past accomplishment`,
-    general: `**MODE: IMPROVE (rewrite with fresh perspective)**
-Your goal is to improve the duty description by:
-- Using a different opening structure or framing
-- Varying how the scope and responsibility are described
-- Each of your ${versionCount} alternatives should approach the role description from a different angle
-- KEEP PRESENT TENSE - this describes a current role, not a past accomplishment
+    general: `${buildRephraseModeInstructions(versionCount, true)}
 - Target length: follow the HARD CHARACTER LIMIT block (within 5% of the field max when a max is provided)`,
   };
 
@@ -369,7 +371,6 @@ export async function POST(request: Request) {
       selectionEnd, 
       model, 
       mode = "general", 
-      context, 
       rateeId,
       cycleYear,
       excludeMpa,
@@ -387,6 +388,9 @@ export async function POST(request: Request) {
       : [];
     const versionCount = Math.min(5, Math.max(1, Math.floor(Number(versionCountRaw)) || 3));
     const maxCharacters = sanitizeMaxCharacters(maxCharactersRaw);
+    const context = sanitizeReviseContext(body.context);
+    const askRephraseQuestions =
+      mode === "general" && isUnderspecifiedSelection(selectedText) && !context;
     
     // Load user's custom duty description prompt if this is a duty description revision
     let userDutyDescriptionPrompt: string | null = null;
@@ -555,12 +559,8 @@ Your goal is to make the selected text SHORTER by:
 - Combining phrases where possible (within a sentence — never merge two sentences into one)
 - Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax})` : ""}`,
       
-      general: `**MODE: IMPROVE (completely rewrite with fresh perspective)**
-Your goal is to SIGNIFICANTLY transform the selected text:
-- Use a COMPLETELY DIFFERENT opening verb - do not keep the same structure
-- Reframe the accomplishment from a new angle using ONLY facts from the source
+      general: `${buildRephraseModeInstructions(versionCount, false)}
 - Preserve all quantification from the source — never add new metrics or impact
-- Each of your ${versionCount} alternatives should use DIFFERENT verbs from each other
 - Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax} — within 5% of the field max; do not match an over-limit original)` : ` (within 20% of original)`}`,
     };
     
@@ -637,6 +637,10 @@ Your goal is to SIGNIFICANTLY transform the selected text:
       isDutyDescription ? "duty_description" : "epb",
     );
 
+    if (mode === "general") {
+      systemPrompt += `\n\n${buildRephraseSystemOverride(versionCount, askRephraseQuestions)}`;
+    }
+
     const userPrompt = `FULL STATEMENT FOR CONTEXT:
 "${fullStatement}"
 
@@ -656,40 +660,39 @@ ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 
 MODE: ${mode.toUpperCase()}
 ${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results. REPHRASE ONLY — do not invent impact, personnel counts, or geographic scope." : "⚠️ REPHRASE ONLY — do not invent metrics, personnel counts, or impact not in the source."}
-${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `LENGTH FIRST: each revision MUST be ≤ ${lengthGuidance.selectionMax} characters (aim ${lengthGuidance.targetMin}–${lengthGuidance.targetMax}). Synonym-only rewrites that stay near ${selectedText.length} chars FAIL. Delete clauses until under the cap.` : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
-AGGRESSIVENESS: ${lengthGuidance.mustCompressToFit ? `Length override — ignore "replace all words" if it keeps the text over ${lengthGuidance.selectionMax}. Cut wording first, then vary verbs.` : `${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})`}
+${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `LENGTH FIRST: each revision MUST be ≤ ${lengthGuidance.selectionMax} characters (aim ${lengthGuidance.targetMin}–${lengthGuidance.targetMax}). Synonym-only rewrites that stay near ${selectedText.length} chars FAIL. Delete clauses until under the cap.` : mode === "general" ? buildRephraseUserAddon(askRephraseQuestions) : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
+AGGRESSIVENESS: ${lengthGuidance.mustCompressToFit ? `Length override — ignore "replace all words" if it keeps the text over ${lengthGuidance.selectionMax}. Cut wording first, then vary verbs.` : mode === "general" ? `${aggressiveness}% — apply to wording AFTER the sentence architecture changes. Do not satisfy this by only swapping the opening verb.` : `${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})`}
 ${lengthGuidance.promptBlock}
 ${sentenceCountGuidance}
 ${lengthCapNote ? `LENGTH OVERRIDE: ${lengthCapNote}` : ""}
 
 Generate ${versionCount} revisions of ONLY the selected portion${sentenceCount === 2 ? ". Each revision MUST be one JSON string containing exactly two sentences joined by a period and a space — never a nested array." : ""}.
 
-Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}]`;
+${mode === "general" ? `Return JSON: {"revisions":[${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}],"questions":[]}` : `Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_, i) => `"revision${i + 1}"`).join(", ")}]`}`;
 
     const { text } = await generateText({
       model: modelProvider,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: isDutyDescription || lengthGuidance.mustCompressToFit ? 0.4 : 0.7,
-      maxOutputTokens: sentenceCount === 2 ? 1400 : 800,
+      temperature: lengthGuidance.mustCompressToFit
+        ? 0.4
+        : mode === "general"
+          ? 0.65
+          : isDutyDescription
+            ? 0.4
+            : 0.7,
+      maxOutputTokens: sentenceCount === 2 ? 1400 : mode === "general" ? 1000 : 800,
     });
 
-    let revisions: string[] = [];
-    try {
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parseLimit = sentenceCount === 2 ? versionCount * 2 : versionCount;
-        revisions = parseRevisionList(JSON.parse(jsonMatch[0]), parseLimit);
-        if (sentenceCount === 2) {
-          revisions = coalesceTwoSentenceRevisions(revisions, versionCount);
-        } else {
-          revisions = revisions.slice(0, versionCount);
-        }
-      }
-    } catch {
-      // Fallback: split by newlines if JSON parsing fails
-      revisions = text.split("\n").filter(line => line.trim().length > 10).slice(0, versionCount);
+    const parseLimit = sentenceCount === 2 ? versionCount * 2 : versionCount;
+    const parsedPayload = parseReviseSelectionLlmOutput(text, parseLimit);
+    let revisions = parsedPayload.revisions;
+    if (sentenceCount === 2) {
+      revisions = coalesceTwoSentenceRevisions(revisions, versionCount);
+    } else {
+      revisions = revisions.slice(0, versionCount);
     }
+    let clarifyingQuestions = parsedPayload.questions;
 
     revisions = ensureRevisionCount(
       revisions,
@@ -819,6 +822,7 @@ Return a JSON array of strings only: [${Array.from({ length: versionCount }, (_,
     return cacheBillableJson(billableCtx, {
       revisions,
       original: selectedText,
+      ...(clarifyingQuestions.length > 0 && { questions: clarifyingQuestions }),
       ...(formattingFlags.length > 0 && { formattingViolations: formattingFlags }),
     }, usageCheck);
   } catch (error) {
