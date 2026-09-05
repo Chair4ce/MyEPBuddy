@@ -56,6 +56,7 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
     isLoadingSuggestions,
     isLoadingAll,
     revisionResults,
+    revisionAnchorText,
     clarifyingQuestions,
     questionAnswers,
     rephraseIntent,
@@ -72,19 +73,20 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
   } = thesaurus;
 
   const loading = isLoadingSuggestions || isLoadingAll || isRevising;
+  const panelOpen = open || revisionResults.length > 0;
   const preview =
     selectedText.length > 48 ? `${selectedText.slice(0, 48)}…` : selectedText;
 
   return (
     <div
       className={cn("selection-popup", motionCollapseGrid)}
-      data-open={open ? "true" : "false"}
+      data-open={panelOpen ? "true" : "false"}
       data-loading={loading ? "true" : "false"}
     >
       <div className="overflow-hidden">
         <div
-          role={open ? "dialog" : undefined}
-          aria-hidden={!open}
+          role={panelOpen ? "dialog" : undefined}
+          aria-hidden={!panelOpen}
           aria-label={
             isSingleWord
               ? `Replacement suggestions for ${selectedText}`
@@ -255,31 +257,50 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
                     Revising selection…
                   </div>
                 )}
-                {revisionResults.length > 0 && (
-                  <div className="space-y-2 pt-1">
-                    <p className="text-xs font-medium text-muted-foreground">Alternatives</p>
-                    {revisionResults.map((revision) => (
-                      <button
-                        type="button"
-                        key={`rev-${revision.slice(0, 48)}-${revision.length}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => applyRevision(revision)}
-                        className={cn(
-                          "w-full text-left p-2 rounded-md text-sm border border-border/80",
-                          "hover:bg-accent hover:border-primary/40",
-                          motionChip,
-                        )}
-                      >
-                        <p className="whitespace-pre-wrap">{revision}</p>
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {revision.length} chars (
-                          {revision.length > selectedText.length ? "+" : ""}
-                          {revision.length - selectedText.length})
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              </div>
+            )}
+
+            {revisionResults.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Alternatives
+                  {revisionAnchorText ? (
+                    <span className="font-normal">
+                      {" "}
+                      for &ldquo;
+                      {revisionAnchorText.length > 40
+                        ? `${revisionAnchorText.slice(0, 40)}…`
+                        : revisionAnchorText}
+                      &rdquo;
+                    </span>
+                  ) : null}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Stays until you dismiss or rephrase a new highlight.
+                </p>
+                {revisionResults.map((revision) => {
+                  const baseline = revisionAnchorText || selectedText;
+                  return (
+                    <button
+                      type="button"
+                      key={`rev-${revision.slice(0, 48)}-${revision.length}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applyRevision(revision)}
+                      className={cn(
+                        "w-full text-left p-2 rounded-md text-sm border border-border/80",
+                        "hover:bg-accent hover:border-primary/40",
+                        motionChip,
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap">{revision}</p>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {revision.length} chars (
+                        {revision.length > baseline.length ? "+" : ""}
+                        {revision.length - baseline.length})
+                      </span>
+                    </button>
+                  );
+                })}
                 <div
                   className={motionCollapseGrid}
                   data-open={clarifyingQuestions.length > 0 ? "true" : "false"}
