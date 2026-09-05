@@ -275,9 +275,6 @@ export function WordThesaurusPopup({ thesaurus }: WordThesaurusPopupProps) {
                     </span>
                   ) : null}
                 </p>
-                <p className="text-[11px] text-muted-foreground">
-                  Stays until you dismiss or rephrase a new highlight.
-                </p>
                 {revisionResults.map((revision) => {
                   const baseline = revisionAnchorText || selectedText;
                   return (
