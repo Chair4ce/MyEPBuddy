@@ -57,6 +57,7 @@ import {
   isUnderspecifiedSelection,
   parseReviseSelectionLlmOutput,
   sanitizeReviseContext,
+  stripBannedRephraseFillers,
   type RevisionTense,
 } from "@/lib/revise-rephrase";
 
@@ -308,6 +309,7 @@ ${TIME_COMPRESSION_WRITING_GUIDANCE}
 - "enhancing combat capability"
 - "supporting warfighter needs"
 - "key to operational excellence"
+- "thereby" (never use this connector — join with a comma and keep the verb)
 - Any generic closer that could apply to ANY accomplishment. The ending must be SPECIFIC to THIS accomplishment's actual impact.
 
 BAD ENDING: "...saving $50K, ensuring mission success." (generic - what mission? how?)
@@ -808,6 +810,7 @@ ${mode === "general" ? `Return JSON: {"revisions":[${Array.from({ length: versio
       selectedText,
       lengthGuidance.selectionMax ?? undefined
     );
+    revisions = revisions.map((revision) => stripBannedRephraseFillers(revision));
 
     return cacheBillableJson(billableCtx, {
       revisions,
