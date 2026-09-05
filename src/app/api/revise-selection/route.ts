@@ -682,7 +682,7 @@ ${mode === "general" ? `Return JSON: {"revisions":[${Array.from({ length: versio
     } else {
       revisions = revisions.slice(0, versionCount);
     }
-    let clarifyingQuestions = parsedPayload.questions;
+    const clarifyingQuestions = parsedPayload.questions;
 
     revisions = ensureRevisionCount(
       revisions,
