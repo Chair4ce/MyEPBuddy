@@ -125,36 +125,142 @@ export function parseReviseSelectionLlmOutput(
   };
 }
 
+export type RevisionTense = "past" | "present_finite" | "present_participle";
+
+const PAST_IRREGULAR =
+  /\b(led|drove|built|cut|ran|won|sent|held|made|took|gave|kept|left|spent|struck|wrote|grew|began|became|brought|caught|fought|found|got|had|hit|lost|met|paid|put|said|saw|sold|stood|thought|told|understood|went|did|was|were)\b/i;
+const PRESENT_FINITE =
+  /\b(drives|leads|manages|supports|coordinates|oversees|directs|provides|enables|maintains|operates|sustains|advises|administers|represents|monitors|evaluates|governs|deploys|optimizes|enhances|improves|ensures)\b/i;
+const GERUND_STOP = /^(during|including|regarding|according|pending|following)$/i;
+
+function countRe(text: string, re: RegExp): number {
+  return [...text.matchAll(new RegExp(re.source, "gi"))].length;
+}
+
+const ED_ADJECTIVE =
+  /^(named|based|related|detailed|united|joint|assigned|authorized|required|limited|nested)$/i;
+
+function openingWord(text: string): string {
+  return text.match(/^[A-Za-z][A-Za-z']*/)?.[0] ?? "";
+}
+
+function tenseFromOpening(word: string): RevisionTense | null {
+  if (!word) return null;
+  if (!GERUND_STOP.test(word) && word.length >= 5 && /ing$/i.test(word)) {
+    return "present_participle";
+  }
+  if (PAST_IRREGULAR.test(word)) return "past";
+  if (word.length >= 4 && /ed$/i.test(word) && !ED_ADJECTIVE.test(word)) {
+    return "past";
+  }
+  if (PRESENT_FINITE.test(word)) return "present_finite";
+  return null;
+}
+
+function tenseFromText(text: string): RevisionTense | null {
+  const trimmed = asPlainText(text).replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  const fromOpening = tenseFromOpening(openingWord(trimmed));
+  if (fromOpening) return fromOpening;
+
+  const past =
+    countRe(trimmed, PAST_IRREGULAR) +
+    [...trimmed.matchAll(/\b[A-Za-z]{3,}ed\b/gi)].filter(
+      (match) => !ED_ADJECTIVE.test(match[0]),
+    ).length;
+  const finite = countRe(trimmed, PRESENT_FINITE);
+  const ings = [...trimmed.matchAll(/\b[A-Za-z]{3,}ing\b/g)].filter(
+    (match) => !GERUND_STOP.test(match[0]),
+  ).length;
+
+  if (ings > 0 && past === 0 && finite === 0) return "present_participle";
+  if (past > 0 && past >= finite && past >= ings) return "past";
+  if (finite > 0 && finite >= past && finite >= ings) return "present_finite";
+  if (ings > 0 && past === 0) return "present_participle";
+  if (past > 0) return "past";
+  if (finite > 0) return "present_finite";
+  if (ings > 0) return "present_participle";
+  return null;
+}
+
+/**
+ * Match the highlighted span's tense. Duty descriptions stay present finite;
+ * MPA/award spans stay past or present-participle when that is what the user wrote.
+ */
+export function inferRevisionTense(
+  selectedText: string,
+  fullStatement = "",
+  isDutyDescription = false,
+): RevisionTense {
+  if (isDutyDescription) return "present_finite";
+  return tenseFromText(selectedText) ?? tenseFromText(fullStatement) ?? "past";
+}
+
+export function buildTenseLockInstruction(tense: RevisionTense): string {
+  if (tense === "present_finite") {
+    return `**TENSE LOCK (NON-NEGOTIABLE):** The source span is PRESENT FINITE (drives, manages, deploys).
+Keep every alternative in present finite. Do not switch to past (led, deployed) or to a gerund-only rewrite that drops the finite verb unless the source was already a noun phrase.`;
+  }
+  if (tense === "present_participle") {
+    return `**TENSE LOCK (NON-NEGOTIABLE):** The source span is a PRESENT PARTICIPLE / GERUND (optimizing, deploying, managing).
+Keep every alternative in that -ing form, or use a tense-neutral noun phrase.
+FORBIDDEN: flipping into present finite (optimizing → deploys / manages / leads) or into simple past (optimized, deployed) unless the source already used that tense.`;
+  }
+  return `**TENSE LOCK (NON-NEGOTIABLE):** The source span is PAST TENSE (led, deployed, managed, optimized).
+Keep every alternative in past tense, or use a tense-neutral noun phrase.
+FORBIDDEN: flipping into present finite (deploys, manages, leads, drives) or rewriting a past verb as a present participle unless the source already used -ing.`;
+}
+
+function architectureExamples(tense: RevisionTense): string {
+  if (tense === "present_finite") {
+    return `**BAD (verb-only — do not do this):**
+- "optimizes comm asset deployment & management for a named operation"
+- "streamlines comm asset deployment & management for a named operation"
+
+**GOOD (same facts, different architecture, SAME TENSE):**
+- "deploys & manages comm assets for a named operation"
+- "deployment & management of comm assets for a named operation"`;
+  }
+  if (tense === "present_participle") {
+    return `**BAD (verb-only OR tense flip — do not do this):**
+- "optimizing comm asset deployment & management for a named operation" (source clone)
+- "streamlining comm asset deployment & management for a named operation"
+- "deploys & manages comm assets for a named operation" (WRONG TENSE — present finite)
+- "deployed & managed comm assets for a named operation" (WRONG TENSE — past)
+
+**GOOD (same facts, different architecture, SAME TENSE):**
+- "deploying & managing comm assets for a named operation"
+- "deployment & management of comm assets for a named operation"
+- "named-operation comm asset deployment & management"`;
+  }
+  return `**BAD (verb-only OR tense flip — do not do this):**
+- "spearheaded comm asset deployment & management for a named operation"
+- "deploys & manages comm assets for a named operation" (WRONG TENSE — present)
+
+**GOOD (same facts, different architecture, SAME TENSE):**
+- "deployed & managed comm assets for a named operation"
+- "deployment & management of comm assets for a named operation"
+- "named-operation comm asset deployment & management"`;
+}
+
 export function buildRephraseModeInstructions(
   versionCount: number,
-  isDutyDescription: boolean,
+  tense: RevisionTense,
 ): string {
-  const tense = isDutyDescription
-    ? "KEEP PRESENT TENSE — this describes a current role, not a past accomplishment."
-    : "Keep the original tense (past for accomplishments, present participle only if the source already uses it).";
-
   return `**MODE: REPHRASE (same facts, different sentence architecture)**
 Your goal is a true rewrite of HOW the idea is expressed — not a thesaurus pass on the first verb.
 
-${tense}
+${buildTenseLockInstruction(tense)}
 
 Each of your ${versionCount} alternatives MUST change at least TWO of:
-1. Syntactic frame (gerund phrase vs finite clause vs noun-led phrase)
+1. Syntactic frame (reorder, noun-led phrase, split a compound) WITHOUT changing tense. Do not convert a gerund into a present-tense finite verb unless the source is already present finite.
 2. Clause / object order (lead with the mission or object, then the action)
 3. How compound duties are grouped (split an "&" blob into coordinated verbs, or nest one duty under the other)
 4. Prepositional framing already licensed by the source ("for X" vs "of X") — do not invent a new relationship
 
 **VERB-SWAP CLONES ARE FAILURES.** If the rest of the phrase is identical and only the opening verb changed, that alternative is invalid. Rewrite it.
 
-**BAD (verb-only — do not do this):**
-- "optimizing comm asset deployment & management for a named operation"
-- "streamlining comm asset deployment & management for a named operation"
-- "enhancing comm asset deployment & management for a named operation"
-
-**GOOD (same facts, different architecture):**
-- "deploys & manages comm assets for a named operation"
-- "deployment & management of comm assets for a named operation"
-- "named-operation comm assets: deployment & management"
+${architectureExamples(tense)}
 
 If the source is vague, STAY vague. Do not invent an operation name, asset types, counts, geography, or impact. A shorter honest rewrite beats a specific fabricated one.`;
 }
@@ -162,6 +268,7 @@ If the source is vague, STAY vague. Do not invent an operation name, asset types
 export function buildRephraseSystemOverride(
   versionCount: number,
   askQuestions: boolean,
+  tense: RevisionTense,
 ): string {
   const questionBlock = askQuestions
     ? `The selected text is UNDERSPECIFIED (few or no metrics, generic verbs, or a placeholder like "named operation").
@@ -174,6 +281,8 @@ Ignore any earlier instruction whose primary success criterion is "use a differe
 Diversity = different sentence architecture across the ${versionCount} alternatives.
 Do not recycle the original word order with a new first verb.
 
+${buildTenseLockInstruction(tense)}
+
 ${questionBlock}
 
 Return JSON only in this shape:
@@ -183,12 +292,17 @@ Return JSON only in this shape:
 "questions" is an array of 0–${CLARIFYING_QUESTION_MAX} strings.`;
 }
 
-export function buildRephraseUserAddon(askQuestions: boolean): string {
+export function buildRephraseUserAddon(
+  askQuestions: boolean,
+  tense: RevisionTense,
+): string {
   const architecture = askQuestions
-    ? `Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only.
+    ? `Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Keep the source span's tense.
 Because this selection is thin on facts, include clarifying questions a rater could answer (what "optimizing" involved, which assets, whether the operation can be named). Do not answer those questions yourself by inventing details.`
-    : "Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Return questions as [].";
+    : "Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Keep the source span's tense. Return questions as [].";
   return `${architecture}
+
+${buildTenseLockInstruction(tense)}
 
 ${buildSpanContextInstruction()}`;
 }
@@ -199,7 +313,8 @@ export function buildSpanContextInstruction(): string {
 The selected text is a SPAN inside a larger statement. Read FULL STATEMENT, TEXT BEFORE SELECTION, and TEXT AFTER SELECTION before writing.
 - Rewrite ONLY the selected span so TEXT BEFORE + revision + TEXT AFTER still reads as one grammatical statement
 - Do not output the surrounding sentences
-- Use facts that already appear elsewhere in the statement only for coherence (tense, who, mission). Do not copy those facts into the span unless the span already contains them`;
+- Match the SELECTED SPAN's verb tense. Do not copy a different tense from elsewhere in the package
+- Use facts that already appear elsewhere in the statement only for coherence (who, mission). Do not copy those facts into the span unless the span already contains them`;
 }
 
 const SOURCE_FACT_STOPWORDS = new Set([
