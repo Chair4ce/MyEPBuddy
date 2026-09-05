@@ -11,6 +11,8 @@ import {
   parseReviseSelectionLlmOutput,
   sanitizeReviseContext,
   stripBannedRephraseFillers,
+  isRephraseClone,
+  uniqueRephraseRevisions,
 } from "@/lib/revise-rephrase";
 
 const THIN =
@@ -114,6 +116,7 @@ describe("rephrase prompt copy", () => {
     expect(mode).toMatch(/deployment & management of comm assets[\s\S]*NO VERB/i);
     expect(mode).toMatch(/managing named-operation comm-asset deployment/i);
     expect(mode).toMatch(/"thereby" IS BANNED/i);
+    expect(mode).toMatch(/AND\/& CLONES ARE FAILURES/i);
     const good = mode.split("**GOOD")[1] ?? "";
     expect(good).not.toMatch(/deployment & management of comm assets/);
 
@@ -164,5 +167,43 @@ describe("stripBannedRephraseFillers", () => {
     expect(stripBannedRephraseFillers("Thereby deploying comm assets")).toBe(
       "deploying comm assets",
     );
+  });
+});
+
+const AUTHORED =
+  "Authored special instructions for communicators, streamlined IT status reporting, and expedited information flow to senior leadership";
+
+describe("and/& rephrase clones", () => {
+  it("treats and and & as the same sentence", () => {
+    expect(
+      isRephraseClone(
+        AUTHORED,
+        "Authored special instructions for communicators, streamlined IT status reporting & expedited information flow to senior leadership",
+      ),
+    ).toBe(true);
+  });
+
+  it("drops alternatives that only swap and/& on the source", () => {
+    expect(
+      uniqueRephraseRevisions(
+        [
+          AUTHORED,
+          AUTHORED.replace("and expedited", "& expedited"),
+          AUTHORED.replace(/ and /g, " & "),
+        ],
+        AUTHORED,
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps a regrouped rewrite next to an and/& clone", () => {
+    const regrouped =
+      "Expedited information flow to senior leadership by authoring communicator special instructions & streamlining IT status reporting";
+    expect(
+      uniqueRephraseRevisions(
+        [AUTHORED.replace("and expedited", "& expedited"), regrouped],
+        AUTHORED,
+      ),
+    ).toEqual([regrouped]);
   });
 });
