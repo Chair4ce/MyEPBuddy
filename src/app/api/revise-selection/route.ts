@@ -57,12 +57,24 @@ import {
   isUnderspecifiedSelection,
   parseReviseSelectionLlmOutput,
   sanitizeReviseContext,
+  uniqueRephraseRevisions,
   stripBannedRephraseFillers,
   type RevisionTense,
 } from "@/lib/revise-rephrase";
 
-// Allow up to 60s for LLM calls (initial generation + quality control pass)
-export const maxDuration = 60;
+function finalizeRevisions(
+  mode: "expand" | "compress" | "general",
+  revisions: string[],
+  versionCount: number,
+  selectedText: string,
+  selectionMax?: number,
+): string[] {
+  const stripped = revisions.map((revision) => stripBannedRephraseFillers(revision));
+  if (mode === "general") {
+    return uniqueRephraseRevisions(stripped, selectedText);
+  }
+  return ensureRevisionCount(stripped, versionCount, selectedText, selectionMax);
+}
 
 interface ReviseSelectionRequest {
   fullStatement: string;
@@ -669,7 +681,7 @@ ${mode === "general" ? `Return JSON: {"revisions":[${Array.from({ length: versio
       temperature: lengthGuidance.mustCompressToFit
         ? 0.4
         : mode === "general"
-          ? 0.65
+          ? 0.8
           : isDutyDescription
             ? 0.4
             : 0.7,
@@ -686,11 +698,12 @@ ${mode === "general" ? `Return JSON: {"revisions":[${Array.from({ length: versio
     }
     const clarifyingQuestions = parsedPayload.questions;
 
-    revisions = ensureRevisionCount(
+    revisions = finalizeRevisions(
+      mode,
       revisions,
       versionCount,
       selectedText,
-      lengthGuidance.selectionMax ?? undefined
+      lengthGuidance.selectionMax ?? undefined,
     );
 
     // Flag + hard-capped repair for banned formatting the EPB prompt forbids
@@ -804,13 +817,13 @@ ${mode === "general" ? `Return JSON: {"revisions":[${Array.from({ length: versio
         attempts: r.attempts,
       }));
 
-    revisions = ensureRevisionCount(
+    revisions = finalizeRevisions(
+      mode,
       revisions,
       versionCount,
       selectedText,
-      lengthGuidance.selectionMax ?? undefined
+      lengthGuidance.selectionMax ?? undefined,
     );
-    revisions = revisions.map((revision) => stripBannedRephraseFillers(revision));
 
     return cacheBillableJson(billableCtx, {
       revisions,
