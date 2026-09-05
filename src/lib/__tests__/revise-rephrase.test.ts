@@ -5,6 +5,7 @@ import {
   buildSourceFactsPrompt,
   buildSpanContextInstruction,
   formatClarifyingAnswers,
+  inferRevisionTense,
   isUnderspecifiedSelection,
   parseClarifyingQuestions,
   parseReviseSelectionLlmOutput,
@@ -80,17 +81,45 @@ describe("sanitizeReviseContext / formatClarifyingAnswers", () => {
   });
 });
 
+describe("inferRevisionTense", () => {
+  it("keeps gerund duty fragments in present participle", () => {
+    expect(inferRevisionTense(THIN, `Led 12 Amn. ${THIN}.`)).toBe(
+      "present_participle",
+    );
+  });
+
+  it("keeps past MPA openings in past tense", () => {
+    expect(inferRevisionTense(RICH)).toBe("past");
+  });
+
+  it("does not treat 'named operation' as past tense", () => {
+    expect(
+      inferRevisionTense(
+        "optimizing comm asset deployment & management for a named operation",
+      ),
+    ).toBe("present_participle");
+  });
+});
+
 describe("rephrase prompt copy", () => {
-  it("forbids verb-swap clones and shows the user's example as a failure", () => {
-    const mode = buildRephraseModeInstructions(3, true);
+  it("forbids verb-swap clones and tense flips for gerund spans", () => {
+    const mode = buildRephraseModeInstructions(3, "present_participle");
     expect(mode).toMatch(/VERB-SWAP CLONES ARE FAILURES/i);
     expect(mode).toContain(THIN);
     expect(mode).toMatch(/streamlining comm asset deployment/i);
-    expect(mode).toMatch(/PRESENT TENSE/);
+    expect(mode).toMatch(/deploying & managing/i);
+    expect(mode).toMatch(/deploys & manages comm assets for a named operation" \(WRONG TENSE/i);
 
-    const override = buildRephraseSystemOverride(3, true);
+    const override = buildRephraseSystemOverride(3, true, "present_participle");
     expect(override).toContain('"questions"');
     expect(override).toMatch(/different sentence architecture/i);
+    expect(override).toMatch(/PRESENT PARTICIPLE/i);
+  });
+
+  it("locks duty descriptions to present finite", () => {
+    const mode = buildRephraseModeInstructions(3, "present_finite");
+    expect(mode).toMatch(/PRESENT FINITE/i);
+    expect(mode).toMatch(/deploys & manages comm assets/i);
   });
 });
 

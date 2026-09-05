@@ -53,9 +53,11 @@ import {
   buildRephraseUserAddon,
   buildSourceFactsPrompt,
   buildSpanContextInstruction,
+  inferRevisionTense,
   isUnderspecifiedSelection,
   parseReviseSelectionLlmOutput,
   sanitizeReviseContext,
+  type RevisionTense,
 } from "@/lib/revise-rephrase";
 
 // Allow up to 60s for LLM calls (initial generation + quality control pass)
@@ -166,6 +168,7 @@ function buildDutyDescriptionPrompt(
   styleGuidance: string,
   fewShotExamples: string,
   versionCount: number,
+  tense: RevisionTense,
   userCustomPrompt?: string | null,
   lengthPromptBlock?: string,
 ): string {
@@ -185,7 +188,7 @@ Your goal is to make the selected text SHORTER by:
 - Combining descriptive phrases where possible
 - Removing redundant positional language
 - KEEP PRESENT TENSE - this describes a current role, not a past accomplishment`,
-    general: `${buildRephraseModeInstructions(versionCount, true)}
+    general: `${buildRephraseModeInstructions(versionCount, tense)}
 - Target length: follow the HARD CHARACTER LIMIT block (within 5% of the field max when a max is provided)`,
   };
 
@@ -370,6 +373,11 @@ export async function POST(request: Request) {
     const context = sanitizeReviseContext(body.context);
     const askRephraseQuestions =
       mode === "general" && isUnderspecifiedSelection(selectedText) && !context;
+    const revisionTense = inferRevisionTense(
+      selectedText,
+      fullStatement,
+      isDutyDescription,
+    );
     
     // Load user's custom duty description prompt if this is a duty description revision
     let userDutyDescriptionPrompt: string | null = null;
@@ -538,7 +546,7 @@ Your goal is to make the selected text SHORTER by:
 - Combining phrases where possible (within a sentence — never merge two sentences into one)
 - Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax})` : ""}`,
       
-      general: `${buildRephraseModeInstructions(versionCount, false)}
+      general: `${buildRephraseModeInstructions(versionCount, revisionTense)}
 - Preserve all quantification from the source — never add new metrics or impact
 - Target length: ${lengthGuidance.targetMin}-${lengthGuidance.targetMax} characters${lengthGuidance.hardMax != null ? ` (HARD MAX ${lengthGuidance.selectionMax} — within 5% of the field max; do not match an over-limit original)` : ` (within 20% of original)`}`,
     };
@@ -598,7 +606,7 @@ Your goal is to make the selected text SHORTER by:
     // Build system prompt - duty descriptions have fundamentally different writing rules
     const featureFlags = await getAppFeatureFlags();
     let systemPrompt = isDutyDescription 
-      ? buildDutyDescriptionPrompt(featureFlags, mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, userDutyDescriptionPrompt, lengthGuidance.promptBlock)
+      ? buildDutyDescriptionPrompt(featureFlags, mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, versionCount, revisionTense, userDutyDescriptionPrompt, lengthGuidance.promptBlock)
       : buildStatementPrompt(mode, modeInstructions, aggressivenessInstructions, styleGuidance, fewShotExamples, verbsToAvoid, availableVerbs, versionCount, verbVarietySection || undefined, lengthGuidance.promptBlock);
 
     if (sentenceCountGuidance) {
@@ -617,7 +625,7 @@ Your goal is to make the selected text SHORTER by:
     );
 
     if (mode === "general") {
-      systemPrompt += `\n\n${buildRephraseSystemOverride(versionCount, askRephraseQuestions)}`;
+      systemPrompt += `\n\n${buildRephraseSystemOverride(versionCount, askRephraseQuestions, revisionTense)}`;
     }
     systemPrompt += `\n\n${buildSpanContextInstruction()}`;
 
@@ -642,7 +650,7 @@ ${context ? `ADDITIONAL GUIDANCE: ${context}` : ""}
 
 MODE: ${mode.toUpperCase()}
 ${isDutyDescription ? "⚠️ DUTY DESCRIPTION - Use PRESENT TENSE only. Describe scope & responsibility factually. NO performance verbs, NO subjective adjectives, NO accomplishment results. REPHRASE ONLY — do not invent impact, personnel counts, or geographic scope." : "⚠️ REPHRASE ONLY — do not invent metrics, personnel counts, or impact not in the source."}
-${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `LENGTH FIRST: each revision MUST be ≤ ${lengthGuidance.selectionMax} characters (aim ${lengthGuidance.targetMin}–${lengthGuidance.targetMax}). Synonym-only rewrites that stay near ${selectedText.length} chars FAIL. Delete clauses until under the cap.` : mode === "general" ? buildRephraseUserAddon(askRephraseQuestions) : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
+${mode === "expand" && !lengthGuidance.mustCompressToFit ? "Make it LONGER with longer synonyms for existing content only — never add new facts." : mode === "compress" && !lengthGuidance.mustCompressToFit ? "Make it SHORTER with concise words and abbreviations." : lengthGuidance.mustCompressToFit ? `LENGTH FIRST: each revision MUST be ≤ ${lengthGuidance.selectionMax} characters (aim ${lengthGuidance.targetMin}–${lengthGuidance.targetMax}). Synonym-only rewrites that stay near ${selectedText.length} chars FAIL. Delete clauses until under the cap.` : mode === "general" ? buildRephraseUserAddon(askRephraseQuestions, revisionTense) : isDutyDescription ? "Rephrase with improved word economy and flow while keeping present tense and every factual element from the source." : "Improve quality while keeping the same facts."}
 AGGRESSIVENESS: ${lengthGuidance.mustCompressToFit ? `Length override — ignore "replace all words" if it keeps the text over ${lengthGuidance.selectionMax}. Cut wording first, then vary verbs.` : mode === "general" ? `${aggressiveness}% — apply to wording AFTER the sentence architecture changes. Do not satisfy this by only swapping the opening verb.` : `${aggressiveness}% (${aggressiveness <= 20 ? "minimal changes" : aggressiveness <= 40 ? "conservative" : aggressiveness <= 60 ? "moderate" : aggressiveness <= 80 ? "aggressive" : "maximum rewrite"})`}
 ${lengthGuidance.promptBlock}
 ${sentenceCountGuidance}
