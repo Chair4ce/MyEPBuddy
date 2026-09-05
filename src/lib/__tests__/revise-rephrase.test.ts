@@ -109,6 +109,11 @@ describe("rephrase prompt copy", () => {
     expect(mode).toMatch(/streamlining comm asset deployment/i);
     expect(mode).toMatch(/deploying & managing/i);
     expect(mode).toMatch(/deploys & manages comm assets for a named operation" \(WRONG TENSE/i);
+    expect(mode).toMatch(/VERB-LESS NOUN PHRASES ARE FAILURES/i);
+    expect(mode).toMatch(/deployment & management of comm assets[\s\S]*NO VERB/i);
+    expect(mode).toMatch(/managing named-operation comm-asset deployment/i);
+    const good = mode.split("**GOOD")[1] ?? "";
+    expect(good).not.toMatch(/deployment & management of comm assets/);
 
     const override = buildRephraseSystemOverride(3, true, "present_participle");
     expect(override).toContain('"questions"');
@@ -120,6 +125,8 @@ describe("rephrase prompt copy", () => {
     const mode = buildRephraseModeInstructions(3, "present_finite");
     expect(mode).toMatch(/PRESENT FINITE/i);
     expect(mode).toMatch(/deploys & manages comm assets/i);
+    expect(mode).toMatch(/VERB REQUIRED/i);
+    expect(mode).toMatch(/NO VERB/i);
   });
 });
 
