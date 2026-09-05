@@ -33,6 +33,22 @@ export function sanitizeReviseContext(value: unknown): string {
   return raw.slice(0, REVISE_CONTEXT_MAX_CHARS);
 }
 
+/** AF filler connector — adds no fact and pads the bullet. */
+const THEREBY_CONNECTOR = /\s*,?\s*\bthereby\b\s*,?\s*/gi;
+
+/**
+ * Strip banned rephrase filler ("thereby") and tidy leftover commas/spaces.
+ */
+export function stripBannedRephraseFillers(text: string): string {
+  let out = asPlainText(text).replace(THEREBY_CONNECTOR, ", ");
+  out = out.replace(/^[\s,]+/, "");
+  out = out.replace(/,\s*,+/g, ",");
+  out = out.replace(/\s+,/g, ",");
+  out = out.replace(/,\s*$/g, "");
+  out = out.replace(/\s{2,}/g, " ");
+  return out.trim();
+}
+
 export function formatClarifyingAnswers(
   questions: string[],
   answers: string[],
@@ -283,6 +299,7 @@ Each of your ${versionCount} alternatives MUST keep an action verb in the source
 
 **VERB-SWAP CLONES ARE FAILURES.** If the rest of the phrase is identical and only the opening verb changed, that alternative is invalid. Rewrite it.
 **VERB-LESS NOUN PHRASES ARE FAILURES.** If there is no action verb, that alternative is invalid. Rewrite it.
+**"thereby" IS BANNED.** Never use "thereby" (or "thus"/"hence" as a swap). Join clauses with a comma and keep the action verb.
 
 ${architectureExamples(tense)}
 
@@ -305,6 +322,7 @@ Ignore any earlier instruction whose primary success criterion is "use a differe
 Diversity = different sentence architecture across the ${versionCount} alternatives.
 Do not recycle the original word order with a new first verb.
 Do not drop the action verb for a noun phrase.
+Never use the word "thereby".
 
 ${buildTenseLockInstruction(tense)}
 

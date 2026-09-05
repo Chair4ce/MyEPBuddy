@@ -10,6 +10,7 @@ import {
   parseClarifyingQuestions,
   parseReviseSelectionLlmOutput,
   sanitizeReviseContext,
+  stripBannedRephraseFillers,
 } from "@/lib/revise-rephrase";
 
 const THIN =
@@ -112,6 +113,7 @@ describe("rephrase prompt copy", () => {
     expect(mode).toMatch(/VERB-LESS NOUN PHRASES ARE FAILURES/i);
     expect(mode).toMatch(/deployment & management of comm assets[\s\S]*NO VERB/i);
     expect(mode).toMatch(/managing named-operation comm-asset deployment/i);
+    expect(mode).toMatch(/"thereby" IS BANNED/i);
     const good = mode.split("**GOOD")[1] ?? "";
     expect(good).not.toMatch(/deployment & management of comm assets/);
 
@@ -119,6 +121,7 @@ describe("rephrase prompt copy", () => {
     expect(override).toContain('"questions"');
     expect(override).toMatch(/different sentence architecture/i);
     expect(override).toMatch(/PRESENT PARTICIPLE/i);
+    expect(override).toMatch(/Never use the word "thereby"/i);
   });
 
   it("locks duty descriptions to present finite", () => {
@@ -145,5 +148,21 @@ describe("surrounding statement context", () => {
   it("requires the rewrite to stay a span inside the full statement", () => {
     expect(buildSpanContextInstruction()).toMatch(/SPAN inside a larger statement/i);
     expect(buildSpanContextInstruction()).toMatch(/Do not output the surrounding sentences/i);
+  });
+});
+
+describe("stripBannedRephraseFillers", () => {
+  it("removes thereby and keeps the surrounding verbs", () => {
+    expect(
+      stripBannedRephraseFillers(
+        "deploying comm assets, thereby managing a named operation",
+      ),
+    ).toBe("deploying comm assets, managing a named operation");
+  });
+
+  it("strips a leading Thereby", () => {
+    expect(stripBannedRephraseFillers("Thereby deploying comm assets")).toBe(
+      "deploying comm assets",
+    );
   });
 });
