@@ -196,51 +196,74 @@ export function inferRevisionTense(
   return tenseFromText(selectedText) ?? tenseFromText(fullStatement) ?? "past";
 }
 
+export function buildVerbRequiredInstruction(tense: RevisionTense): string {
+  if (tense === "present_finite") {
+    return `**VERB REQUIRED (NON-NEGOTIABLE):** Every alternative MUST contain a present-finite action verb (deploys, manages, leads, drives).
+FORBIDDEN: verb-less noun piles ("deployment & management of comm assets", "named-operation comm asset deployment"). Those are not rephrases of an action.`;
+  }
+  if (tense === "present_participle") {
+    return `**VERB REQUIRED (NON-NEGOTIABLE):** Every alternative MUST contain a present-participle / gerund action (-ing): deploying, managing, allocating.
+FORBIDDEN: dropping the verb for a noun phrase ("deployment & management of comm assets", "named-operation comm asset deployment"). Keep an -ing verb in the rewrite.`;
+  }
+  return `**VERB REQUIRED (NON-NEGOTIABLE):** Every alternative MUST contain a past-tense action verb (deployed, managed, led, drove).
+FORBIDDEN: dropping the verb for a noun phrase ("deployment & management of comm assets", "named-operation comm asset deployment"). Keep a past-tense verb in the rewrite.`;
+}
+
 export function buildTenseLockInstruction(tense: RevisionTense): string {
   if (tense === "present_finite") {
     return `**TENSE LOCK (NON-NEGOTIABLE):** The source span is PRESENT FINITE (drives, manages, deploys).
-Keep every alternative in present finite. Do not switch to past (led, deployed) or to a gerund-only rewrite that drops the finite verb unless the source was already a noun phrase.`;
+Keep every alternative in present finite. Do not switch to past (led, deployed) or to a gerund-only rewrite.
+${buildVerbRequiredInstruction(tense)}`;
   }
   if (tense === "present_participle") {
     return `**TENSE LOCK (NON-NEGOTIABLE):** The source span is a PRESENT PARTICIPLE / GERUND (optimizing, deploying, managing).
-Keep every alternative in that -ing form, or use a tense-neutral noun phrase.
-FORBIDDEN: flipping into present finite (optimizing → deploys / manages / leads) or into simple past (optimized, deployed) unless the source already used that tense.`;
+Keep every alternative in that -ing verb form. Do not "solve" tense by deleting the verb.
+FORBIDDEN: flipping into present finite (optimizing → deploys / manages / leads) or into simple past (optimized, deployed).
+${buildVerbRequiredInstruction(tense)}`;
   }
   return `**TENSE LOCK (NON-NEGOTIABLE):** The source span is PAST TENSE (led, deployed, managed, optimized).
-Keep every alternative in past tense, or use a tense-neutral noun phrase.
-FORBIDDEN: flipping into present finite (deploys, manages, leads, drives) or rewriting a past verb as a present participle unless the source already used -ing.`;
+Keep every alternative in past tense with a past-tense verb.
+FORBIDDEN: flipping into present finite (deploys, manages, leads, drives) or rewriting a past verb as a present participle unless the source already used -ing.
+${buildVerbRequiredInstruction(tense)}`;
 }
 
 function architectureExamples(tense: RevisionTense): string {
   if (tense === "present_finite") {
-    return `**BAD (verb-only — do not do this):**
+    return `**BAD (verb-swap clone OR verb-less noun phrase — do not do this):**
 - "optimizes comm asset deployment & management for a named operation"
 - "streamlines comm asset deployment & management for a named operation"
+- "deployment & management of comm assets for a named operation" (NO VERB)
+- "named-operation comm asset deployment & management" (NO VERB)
 
-**GOOD (same facts, different architecture, SAME TENSE):**
+**GOOD (same facts, different architecture, SAME TENSE, HAS A VERB):**
 - "deploys & manages comm assets for a named operation"
-- "deployment & management of comm assets for a named operation"`;
+- "manages named-operation comm-asset deployment"
+- "for a named operation, deploys & manages comm assets"`;
   }
   if (tense === "present_participle") {
-    return `**BAD (verb-only OR tense flip — do not do this):**
+    return `**BAD (verb-swap clone, tense flip, OR verb-less noun phrase — do not do this):**
 - "optimizing comm asset deployment & management for a named operation" (source clone)
 - "streamlining comm asset deployment & management for a named operation"
 - "deploys & manages comm assets for a named operation" (WRONG TENSE — present finite)
 - "deployed & managed comm assets for a named operation" (WRONG TENSE — past)
+- "deployment & management of comm assets for a named operation" (NO VERB)
+- "named-operation comm asset deployment & management" (NO VERB)
 
-**GOOD (same facts, different architecture, SAME TENSE):**
+**GOOD (same facts, different architecture, SAME TENSE, HAS A VERB):**
 - "deploying & managing comm assets for a named operation"
-- "deployment & management of comm assets for a named operation"
-- "named-operation comm asset deployment & management"`;
+- "managing named-operation comm-asset deployment"
+- "for a named operation, deploying & managing comm assets"`;
   }
-  return `**BAD (verb-only OR tense flip — do not do this):**
+  return `**BAD (verb-swap clone, tense flip, OR verb-less noun phrase — do not do this):**
 - "spearheaded comm asset deployment & management for a named operation"
 - "deploys & manages comm assets for a named operation" (WRONG TENSE — present)
+- "deployment & management of comm assets for a named operation" (NO VERB)
+- "named-operation comm asset deployment & management" (NO VERB)
 
-**GOOD (same facts, different architecture, SAME TENSE):**
+**GOOD (same facts, different architecture, SAME TENSE, HAS A VERB):**
 - "deployed & managed comm assets for a named operation"
-- "deployment & management of comm assets for a named operation"
-- "named-operation comm asset deployment & management"`;
+- "managed named-operation comm-asset deployment"
+- "for a named operation, deployed & managed comm assets"`;
 }
 
 export function buildRephraseModeInstructions(
@@ -252,13 +275,14 @@ Your goal is a true rewrite of HOW the idea is expressed — not a thesaurus pas
 
 ${buildTenseLockInstruction(tense)}
 
-Each of your ${versionCount} alternatives MUST change at least TWO of:
-1. Syntactic frame (reorder, noun-led phrase, split a compound) WITHOUT changing tense. Do not convert a gerund into a present-tense finite verb unless the source is already present finite.
-2. Clause / object order (lead with the mission or object, then the action)
+Each of your ${versionCount} alternatives MUST keep an action verb in the source tense AND change at least TWO of:
+1. Syntactic frame (reorder, lead with the object/mission then the verb, split a compound) WITHOUT changing tense. Do not convert a gerund into a present-tense finite verb unless the source is already present finite. Do not replace the verb with a noun.
+2. Clause / object order (lead with the mission or object, then the action — the action verb must still appear)
 3. How compound duties are grouped (split an "&" blob into coordinated verbs, or nest one duty under the other)
 4. Prepositional framing already licensed by the source ("for X" vs "of X") — do not invent a new relationship
 
 **VERB-SWAP CLONES ARE FAILURES.** If the rest of the phrase is identical and only the opening verb changed, that alternative is invalid. Rewrite it.
+**VERB-LESS NOUN PHRASES ARE FAILURES.** If there is no action verb, that alternative is invalid. Rewrite it.
 
 ${architectureExamples(tense)}
 
@@ -280,6 +304,7 @@ Questions must not assume facts (no "which of the 12 radios"). Empty answers are
 Ignore any earlier instruction whose primary success criterion is "use a different opening verb." Opening-verb variety is optional spice, not the task.
 Diversity = different sentence architecture across the ${versionCount} alternatives.
 Do not recycle the original word order with a new first verb.
+Do not drop the action verb for a noun phrase.
 
 ${buildTenseLockInstruction(tense)}
 
@@ -297,9 +322,9 @@ export function buildRephraseUserAddon(
   tense: RevisionTense,
 ): string {
   const architecture = askQuestions
-    ? `Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Keep the source span's tense.
+    ? `Rephrase by changing sentence architecture, not by swapping the opening verb and not by deleting the verb. Same facts only. Keep the source span's tense and keep an action verb.
 Because this selection is thin on facts, include clarifying questions a rater could answer (what "optimizing" involved, which assets, whether the operation can be named). Do not answer those questions yourself by inventing details.`
-    : "Rephrase by changing sentence architecture, not by swapping the opening verb. Same facts only. Keep the source span's tense. Return questions as [].";
+    : "Rephrase by changing sentence architecture, not by swapping the opening verb and not by deleting the verb. Same facts only. Keep the source span's tense and keep an action verb. Return questions as [].";
   return `${architecture}
 
 ${buildTenseLockInstruction(tense)}
