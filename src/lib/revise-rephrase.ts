@@ -49,6 +49,48 @@ export function stripBannedRephraseFillers(text: string): string {
   return out.trim();
 }
 
+/**
+ * Fingerprint that treats "&" and "and" as the same token and ignores
+ * punctuation/case, so "foo and bar" === "foo & bar".
+ */
+export function normalizeRephraseFingerprint(text: string): string {
+  return asPlainText(text)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isRephraseClone(a: string, b: string): boolean {
+  const left = normalizeRephraseFingerprint(a);
+  const right = normalizeRephraseFingerprint(b);
+  return Boolean(left) && left === right;
+}
+
+/**
+ * Drop copies of the source and of earlier alternatives (and/&-only swaps).
+ * Does not pad — identical slots are worse than fewer distinct rewrites.
+ */
+export function uniqueRephraseRevisions(
+  revisions: string[],
+  original: string,
+): string[] {
+  const seen = new Set<string>();
+  const source = normalizeRephraseFingerprint(original);
+  if (source) seen.add(source);
+  const out: string[] = [];
+  for (const revision of revisions) {
+    const cleaned = asPlainText(revision).trim();
+    if (!cleaned) continue;
+    const key = normalizeRephraseFingerprint(cleaned);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+  }
+  return out;
+}
+
 export function formatClarifyingAnswers(
   questions: string[],
   answers: string[],
@@ -279,7 +321,16 @@ function architectureExamples(tense: RevisionTense): string {
 **GOOD (same facts, different architecture, SAME TENSE, HAS A VERB):**
 - "deployed & managed comm assets for a named operation"
 - "managed named-operation comm-asset deployment"
-- "for a named operation, deployed & managed comm assets"`;
+- "for a named operation, deployed & managed comm assets"
+
+**BAD (and/& clone of a 3-verb list — do not do this):**
+- "Authored special instructions for communicators, streamlined IT status reporting, and expedited information flow to senior leadership"
+- "Authored special instructions for communicators, streamlined IT status reporting & expedited information flow to senior leadership"
+
+**GOOD (same three facts, regrouped):**
+- "Expedited information flow to senior leadership by authoring communicator special instructions & streamlining IT status reporting"
+- "Authored communicator special instructions that streamlined IT status reporting, expediting information flow to senior leadership"
+- "Streamlined IT status reporting & authored communicator special instructions, expediting information flow to senior leadership"`;
 }
 
 export function buildRephraseModeInstructions(
@@ -299,6 +350,7 @@ Each of your ${versionCount} alternatives MUST keep an action verb in the source
 
 **VERB-SWAP CLONES ARE FAILURES.** If the rest of the phrase is identical and only the opening verb changed, that alternative is invalid. Rewrite it.
 **VERB-LESS NOUN PHRASES ARE FAILURES.** If there is no action verb, that alternative is invalid. Rewrite it.
+**AND/& CLONES ARE FAILURES.** If alternatives (or the source) differ only by "and" vs "&", they are the same sentence. Invalid. Regroup clauses, change lead item, or nest one action under another.
 **"thereby" IS BANNED.** Never use "thereby" (or "thus"/"hence" as a swap). Join clauses with a comma and keep the action verb.
 
 ${architectureExamples(tense)}
@@ -323,6 +375,7 @@ Diversity = different sentence architecture across the ${versionCount} alternati
 Do not recycle the original word order with a new first verb.
 Do not drop the action verb for a noun phrase.
 Never use the word "thereby".
+Never return alternatives that only swap "and" and "&". Each revision must regroup the clauses.
 
 ${buildTenseLockInstruction(tense)}
 
@@ -342,7 +395,7 @@ export function buildRephraseUserAddon(
   const architecture = askQuestions
     ? `Rephrase by changing sentence architecture, not by swapping the opening verb and not by deleting the verb. Same facts only. Keep the source span's tense and keep an action verb.
 Because this selection is thin on facts, include clarifying questions a rater could answer (what "optimizing" involved, which assets, whether the operation can be named). Do not answer those questions yourself by inventing details.`
-    : "Rephrase by changing sentence architecture, not by swapping the opening verb and not by deleting the verb. Same facts only. Keep the source span's tense and keep an action verb. Return questions as [].";
+    : "Rephrase by changing sentence architecture, not by swapping the opening verb, deleting the verb, or swapping and/&. Same facts only. Keep the source span's tense and keep an action verb. Return questions as [].";
   return `${architecture}
 
 ${buildTenseLockInstruction(tense)}

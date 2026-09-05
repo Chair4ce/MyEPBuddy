@@ -374,6 +374,8 @@ export function useWordThesaurus({
           };
           setRevisionAnchorText(selected);
           setOpen(true);
+        } else if (mode === "general") {
+          toast.error("Rephrase copied the original. Try again for a different sentence shape.");
         }
         const nextQuestions = Array.isArray(data.questions)
           ? data.questions.filter((item: unknown): item is string => typeof item === "string")
