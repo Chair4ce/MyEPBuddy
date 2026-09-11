@@ -7,6 +7,11 @@ import {
   recordStripeEvent,
 } from "@/lib/stripe/server";
 import { creditsFromPaidAmount } from "@/lib/billing/purchase-quantity";
+import {
+  PURCHASE_CAMPAIGN_METADATA_KEY,
+  grantPurchaseCampaignBonus,
+  resolveCampaignBonusGrant,
+} from "@/lib/billing/purchase-campaign";
 
 export const runtime = "nodejs";
 // Stripe needs the raw, unparsed body for signature verification.
@@ -128,6 +133,19 @@ export async function POST(request: NextRequest) {
           stripeEventId: event.id,
           stripeCheckoutSessionId: session.id,
         });
+
+        const bonus = await resolveCampaignBonusGrant({
+          userId,
+          stampedSlug: session.metadata?.[PURCHASE_CAMPAIGN_METADATA_KEY],
+        });
+        if (bonus) {
+          await grantPurchaseCampaignBonus({
+            userId,
+            campaignSlug: bonus.slug,
+            stripeEventId: event.id,
+            stripeCheckoutSessionId: session.id,
+          });
+        }
         break;
       }
       default:

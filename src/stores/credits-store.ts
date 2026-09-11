@@ -5,6 +5,7 @@ import {
   MIN_PURCHASE_PACKS,
 } from "@/lib/billing/constants";
 import type { EarnRewardsSummary } from "@/lib/billing/reward-constants";
+import type { PurchaseCampaignOffer } from "@/lib/billing/purchase-campaign";
 import { useAvailableModelsStore } from "@/stores/available-models-store";
 
 export interface CreditTransaction {
@@ -45,6 +46,9 @@ interface CreditsState {
   earnRewardsEligible: boolean;
   earnRewardsSummary: EarnRewardsSummary | null;
   earnRewardsLoading: boolean;
+  purchaseCampaign: PurchaseCampaignOffer | null;
+  purchaseCampaignPromoSeenSlug: string | null;
+  promoDrawerOpen: boolean;
   setFromApi: (data: {
     creditsRemaining?: number;
     creditsBalance?: number;
@@ -59,7 +63,11 @@ interface CreditsState {
     trialIntroSeen?: boolean;
     earnTokensIntroSeen?: boolean;
     recentTransactions?: CreditTransaction[];
+    purchaseCampaign?: PurchaseCampaignOffer | null;
+    purchaseCampaignPromoSeenSlug?: string | null;
   }) => void;
+  setPurchaseCampaignPromoSeenSlug: (slug: string | null) => void;
+  setPromoDrawerOpen: (open: boolean) => void;
   setBalance: (balance: number) => void;
   setPreferCreditsFirst: (prefer: boolean) => Promise<void>;
   applyOptimisticConsume: (count?: number) => void;
@@ -108,6 +116,9 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   earnRewardsEligible: false,
   earnRewardsSummary: null,
   earnRewardsLoading: false,
+  purchaseCampaign: null,
+  purchaseCampaignPromoSeenSlug: null,
+  promoDrawerOpen: false,
 
   setFromApi: (data) =>
     set({
@@ -125,6 +136,14 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       earnTokensIntroSeen:
         data.earnTokensIntroSeen ?? get().earnTokensIntroSeen,
       recentTransactions: data.recentTransactions ?? get().recentTransactions,
+      purchaseCampaign:
+        data.purchaseCampaign === undefined
+          ? get().purchaseCampaign
+          : data.purchaseCampaign,
+      purchaseCampaignPromoSeenSlug:
+        data.purchaseCampaignPromoSeenSlug === undefined
+          ? get().purchaseCampaignPromoSeenSlug
+          : data.purchaseCampaignPromoSeenSlug,
       isLoading: false,
     }),
 
@@ -173,6 +192,11 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   setTrialIntroSeen: (trialIntroSeen) => set({ trialIntroSeen }),
 
   setEarnTokensIntroSeen: (earnTokensIntroSeen) => set({ earnTokensIntroSeen }),
+
+  setPurchaseCampaignPromoSeenSlug: (purchaseCampaignPromoSeenSlug) =>
+    set({ purchaseCampaignPromoSeenSlug }),
+
+  setPromoDrawerOpen: (promoDrawerOpen) => set({ promoDrawerOpen }),
 
   openPurchaseDialog: () => set({ isOpen: true }),
 
@@ -371,6 +395,9 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       earnRewardsEligible: false,
       earnRewardsSummary: null,
       earnRewardsLoading: true,
+      purchaseCampaign: null,
+      purchaseCampaignPromoSeenSlug: null,
+      promoDrawerOpen: false,
     });
   },
 }));

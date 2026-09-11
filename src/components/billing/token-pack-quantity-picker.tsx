@@ -20,6 +20,7 @@ type TokenPackQuantityPickerProps = {
   disabled?: boolean;
   className?: string;
   id?: string;
+  bonusNote?: string | null;
 };
 
 function clampPacks(value: number): number {
@@ -36,6 +37,7 @@ export function TokenPackQuantityPicker({
   disabled = false,
   className,
   id = "token-pack-quantity",
+  bonusNote,
 }: TokenPackQuantityPickerProps) {
   const safePacks = clampPacks(packs);
   const tokens = safePacks * PURCHASE_CREDITS;
@@ -112,6 +114,7 @@ export function TokenPackQuantityPicker({
       <p id={`${id}-help`} className="text-sm text-muted-foreground">
         {formatInteger(tokens)} tokens · ${formatUsd(priceUsd)} one-time ·{" "}
         ${PURCHASE_PRICE_USD} per {PURCHASE_CREDITS}
+        {bonusNote ? ` · ${bonusNote}` : null}
       </p>
     </div>
   );

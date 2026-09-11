@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   },
 };
 
-const LAST_UPDATED = "June 6, 2026";
+const LAST_UPDATED = "September 10, 2026";
 
 export default function BillingTermsPage() {
   return (
@@ -46,6 +46,14 @@ export default function BillingTermsPage() {
             <strong>Purchased tokens</strong> — sold in increments of 100
             tokens for $1 each (buy any multiple). Purchased tokens never
             expire.
+          </li>
+          <li>
+            <strong>Limited-time purchase bonuses</strong> — we may grant extra
+            tokens on a first qualifying purchase during a disclosed campaign
+            window (for example, a holiday weekend). Bonuses are promotional,
+            one per account per campaign, non-transferable, and do not change
+            the $1-per-100 list price. Unused campaign bonuses expire with the
+            campaign window; granted bonus tokens never expire.
           </li>
         </ul>
         <p>
