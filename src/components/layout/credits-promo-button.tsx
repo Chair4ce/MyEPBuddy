@@ -22,6 +22,7 @@ import {
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
 import { TokenPackQuantityPicker } from "@/components/billing/token-pack-quantity-picker";
+import { PurchaseCampaignBanner } from "@/components/billing/purchase-campaign-banner";
 import { formatInteger, formatUsd } from "@/lib/format";
 
 export function CreditsPromoButton() {
@@ -39,9 +40,10 @@ export function CreditsPromoButton() {
     openEmbeddedCheckout,
     purchasePacks,
     setPurchasePacks,
+    purchaseCampaign,
+    promoDrawerOpen,
+    setPromoDrawerOpen,
   } = useCreditsStore();
-
-  const [open, setOpen] = useState(false);
   const [termsChecked, setTermsChecked] = useState(false);
   const tokens = purchasePacks * PURCHASE_CREDITS;
   const priceUsd = purchasePacks * PURCHASE_PRICE_USD;
@@ -73,7 +75,7 @@ export function CreditsPromoButton() {
       }
 
       // Close the drawer and open in-app checkout so the user stays put.
-      setOpen(false);
+      setPromoDrawerOpen(false);
       await openEmbeddedCheckout(purchasePacks);
     } catch (error) {
       toast.error(
@@ -85,7 +87,7 @@ export function CreditsPromoButton() {
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={promoDrawerOpen} onOpenChange={setPromoDrawerOpen}>
       <SheetTrigger asChild>
         <Button
           size="sm"
@@ -236,6 +238,10 @@ export function CreditsPromoButton() {
             </ul>
           </div>
 
+          {purchaseCampaign ? (
+            <PurchaseCampaignBanner campaign={purchaseCampaign} />
+          ) : null}
+
           <div className="rounded-lg border p-4 space-y-3">
             <div className="space-y-1">
               <p className="text-sm font-medium">{PURCHASE_PACKAGE_LABEL}</p>
@@ -248,6 +254,11 @@ export function CreditsPromoButton() {
               packs={purchasePacks}
               onPacksChange={setPurchasePacks}
               disabled={isCheckoutLoading}
+              bonusNote={
+                purchaseCampaign && !purchaseCampaign.claimed
+                  ? `+${purchaseCampaign.bonusCredits} birthday bonus on your first purchase`
+                  : null
+              }
             />
           </div>
 

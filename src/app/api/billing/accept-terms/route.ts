@@ -68,6 +68,15 @@ export async function PATCH(request: Request) {
       kind: z.literal("coachingFeaturesIntro"),
       coachingFeaturesIntroSeen: z.literal(true),
     }),
+    z.object({
+      kind: z.literal("purchaseCampaignPromo"),
+      purchaseCampaignPromoSeen: z.literal(true),
+      campaignSlug: z
+        .string()
+        .min(1)
+        .max(80)
+        .regex(/^[a-z0-9-]+$/),
+    }),
   ]);
 
   const legacyTrial = z.object({ trialIntroSeen: z.literal(true) }).safeParse(body);
@@ -148,6 +157,33 @@ export async function PATCH(request: Request) {
     }
 
     return NextResponse.json({ earnTokensIntroSeenAt: seenAt });
+  }
+
+  if (parsed.data.kind === "purchaseCampaignPromo") {
+    const campaign = await supabase
+      .from("token_purchase_campaigns" as never)
+      .select("slug")
+      .eq("slug", parsed.data.campaignSlug)
+      .maybeSingle();
+
+    if (campaign.error || !campaign.data) {
+      return NextResponse.json({ error: "Unknown campaign" }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        purchase_campaign_promo_seen_slug: parsed.data.campaignSlug,
+      } as never)
+      .eq("id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      purchaseCampaignPromoSeenSlug: parsed.data.campaignSlug,
+    });
   }
 
   const { error } = await supabase

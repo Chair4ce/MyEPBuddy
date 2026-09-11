@@ -21,6 +21,7 @@ import {
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
 import { TokenPackQuantityPicker } from "@/components/billing/token-pack-quantity-picker";
+import { PurchaseCampaignBanner } from "@/components/billing/purchase-campaign-banner";
 import { formatInteger, formatUsd } from "@/lib/format";
 
 export function InsufficientCreditsDialog() {
@@ -34,6 +35,7 @@ export function InsufficientCreditsDialog() {
     openEmbeddedCheckout,
     purchasePacks,
     setPurchasePacks,
+    purchaseCampaign,
   } = useCreditsStore();
 
   const [termsChecked, setTermsChecked] = useState(false);
@@ -92,6 +94,10 @@ export function InsufficientCreditsDialog() {
                 keep generating statements and assessments.
               </p>
 
+              {purchaseCampaign ? (
+                <PurchaseCampaignBanner campaign={purchaseCampaign} />
+              ) : null}
+
               <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">
@@ -107,6 +113,11 @@ export function InsufficientCreditsDialog() {
                   packs={purchasePacks}
                   onPacksChange={setPurchasePacks}
                   disabled={isCheckoutLoading}
+                  bonusNote={
+                    purchaseCampaign && !purchaseCampaign.claimed
+                      ? `+${purchaseCampaign.bonusCredits} birthday bonus on your first purchase`
+                      : null
+                  }
                 />
               </div>
 

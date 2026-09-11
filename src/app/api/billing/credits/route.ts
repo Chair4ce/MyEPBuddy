@@ -8,6 +8,7 @@ import {
   PURCHASE_CREDITS,
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
+import { getVisiblePurchaseCampaign } from "@/lib/billing/purchase-campaign";
 
 export async function GET() {
   const supabase = await createClient();
@@ -19,7 +20,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [stats, keyStatus, profileResult] = await Promise.all([
+  const [stats, keyStatus, profileResult, purchaseCampaign] = await Promise.all([
     getUsageStats(user.id),
     getKeyStatus(),
     (supabase as unknown as {
@@ -31,6 +32,7 @@ export async function GET() {
                 billing_terms_accepted_at: string | null;
                 trial_intro_seen_at: string | null;
                 earn_tokens_intro_seen_at: string | null;
+                purchase_campaign_promo_seen_slug: string | null;
               } | null;
               error: unknown;
             }>;
@@ -40,10 +42,11 @@ export async function GET() {
     })
       .from("profiles")
       .select(
-        "billing_terms_accepted_at, trial_intro_seen_at, earn_tokens_intro_seen_at",
+        "billing_terms_accepted_at, trial_intro_seen_at, earn_tokens_intro_seen_at, purchase_campaign_promo_seen_slug",
       )
       .eq("id", user.id)
       .single(),
+    getVisiblePurchaseCampaign(user.id),
   ]);
 
   const hasOwnKey =
@@ -60,6 +63,8 @@ export async function GET() {
     billingTermsAccepted: !!profile?.billing_terms_accepted_at,
     trialIntroSeen: !!profile?.trial_intro_seen_at,
     earnTokensIntroSeen: !!profile?.earn_tokens_intro_seen_at,
+    purchaseCampaignPromoSeenSlug:
+      profile?.purchase_campaign_promo_seen_slug ?? null,
     purchasePackage: {
       credits: PURCHASE_CREDITS,
       priceUsd: PURCHASE_PRICE_USD,
@@ -67,5 +72,6 @@ export async function GET() {
       maxPacks: MAX_PURCHASE_PACKS,
       incrementCredits: PURCHASE_CREDITS,
     },
+    purchaseCampaign,
   });
 }
