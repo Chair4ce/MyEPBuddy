@@ -7,11 +7,11 @@ import {
   recordStripeEvent,
 } from "@/lib/stripe/server";
 import { creditsFromPaidAmount } from "@/lib/billing/purchase-quantity";
+import { PURCHASE_CAMPAIGN_METADATA_KEY } from "@/lib/billing/purchase-campaign";
 import {
-  PURCHASE_CAMPAIGN_METADATA_KEY,
   grantPurchaseCampaignBonus,
   resolveCampaignBonusGrant,
-} from "@/lib/billing/purchase-campaign";
+} from "@/lib/billing/purchase-campaign-server";
 
 export const runtime = "nodejs";
 // Stripe needs the raw, unparsed body for signature verification.

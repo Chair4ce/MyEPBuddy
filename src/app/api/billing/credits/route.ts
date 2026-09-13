@@ -8,7 +8,7 @@ import {
   PURCHASE_CREDITS,
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
-import { getVisiblePurchaseCampaign } from "@/lib/billing/purchase-campaign";
+import { getVisiblePurchaseCampaign } from "@/lib/billing/purchase-campaign-server";
 
 export async function GET() {
   const supabase = await createClient();
