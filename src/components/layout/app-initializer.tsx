@@ -9,8 +9,10 @@ import { OnboardingFlowModal } from "@/components/modals/onboarding-flow-modal";
 import { useOnboardingStep } from "@/lib/onboarding-flow";
 import { useClientReady } from "@/lib/client-ready";
 import { CoachingFeaturesIntroModal } from "@/components/modals/coaching-features-intro-modal";
+import { PurchaseCampaignPromoModal } from "@/components/modals/purchase-campaign-promo-modal";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
 import { shouldShowCoachingFeaturesIntro } from "@/lib/coaching-features-intro";
+import { shouldShowPurchaseCampaignPromo } from "@/lib/billing/purchase-campaign-promo";
 import { toast } from "@/components/ui/sonner";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
@@ -56,11 +58,17 @@ export function AppInitializer({
     isLoading: creditsLoading,
     earnRewardsSummary,
     trialCredits,
+    purchaseCampaign,
+    purchaseCampaignPromoSeenSlug,
+    setPurchaseCampaignPromoSeenSlug,
+    setPromoDrawerOpen,
   } = useCreditsStore();
 
   const hasHydrated = useRef(false);
   const creditsInitialized = useRef(false);
   const [coachingIntroSeenOptimistic, setCoachingIntroSeenOptimistic] =
+    useState(false);
+  const [campaignPromoSeenOptimistic, setCampaignPromoSeenOptimistic] =
     useState(false);
 
   useEffect(() => {
@@ -128,6 +136,19 @@ export function AppInitializer({
       optimisticSeen: coachingIntroSeenOptimistic,
     });
 
+  const showCampaignPromo =
+    clientReady &&
+    !isSigningOut &&
+    shouldShowPurchaseCampaignPromo({
+      onboardingComplete,
+      blockingIntroOpen: showCoachingIntro,
+      creditsLoading,
+      hasOwnKey,
+      campaign: purchaseCampaign,
+      seenSlug: purchaseCampaignPromoSeenSlug,
+      optimisticSeen: campaignPromoSeenOptimistic,
+    });
+
   async function dismissCoachingIntro() {
     setCoachingIntroSeenOptimistic(true);
     try {
@@ -166,6 +187,36 @@ export function AppInitializer({
     }).catch(() => undefined);
   }
 
+  async function dismissCampaignPromo() {
+    if (!purchaseCampaign) return;
+    const slug = purchaseCampaign.slug;
+    setCampaignPromoSeenOptimistic(true);
+    setPurchaseCampaignPromoSeenSlug(slug);
+    try {
+      const response = await fetch("/api/billing/accept-terms", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "purchaseCampaignPromo",
+          purchaseCampaignPromoSeen: true,
+          campaignSlug: slug,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to save campaign promo dismissal");
+      }
+    } catch {
+      setCampaignPromoSeenOptimistic(false);
+      setPurchaseCampaignPromoSeenSlug(null);
+      toast.error("Failed to save. Please try again.");
+    }
+  }
+
+  function openCampaignFromPromo() {
+    void dismissCampaignPromo();
+    setPromoDrawerOpen(true);
+  }
+
   const usePromptRulesModeEnabled = usePromptRulesMode();
 
   return (
@@ -185,6 +236,14 @@ export function AppInitializer({
         <CoachingFeaturesIntroModal
           open
           onDismiss={dismissCoachingIntro}
+        />
+      )}
+      {showCampaignPromo && purchaseCampaign && (
+        <PurchaseCampaignPromoModal
+          open
+          campaign={purchaseCampaign}
+          onDismiss={() => void dismissCampaignPromo()}
+          onOpenDrawer={openCampaignFromPromo}
         />
       )}
       {onboardingComplete && !usePromptRulesModeEnabled && (

@@ -56,6 +56,7 @@ export interface Profile {
   trial_intro_seen_at: string | null;
   earn_tokens_intro_seen_at: string | null;
   coaching_features_intro_seen_at: string | null;
+  purchase_campaign_promo_seen_slug: string | null;
   created_at: string;
   updated_at: string;
 }

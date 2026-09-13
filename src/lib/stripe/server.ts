@@ -5,6 +5,8 @@ import {
   MIN_PURCHASE_PACKS,
 } from "@/lib/billing/constants";
 import { creditsForPacks, parsePurchasePacks } from "@/lib/billing/purchase-quantity";
+import { PURCHASE_CAMPAIGN_METADATA_KEY } from "@/lib/billing/purchase-campaign";
+import { resolveCheckoutCampaignSlug } from "@/lib/billing/purchase-campaign-server";
 import { getValidatedCreditsPriceId } from "@/lib/stripe/validate-price";
 
 let stripeClient: Stripe | null = null;
@@ -107,12 +109,19 @@ function checkoutLineItem(priceId: string, packs: number) {
   };
 }
 
-function checkoutCreditMetadata(userId: string, packs: number) {
+function checkoutCreditMetadata(
+  userId: string,
+  packs: number,
+  campaignSlug?: string,
+) {
   const credits = creditsForPacks(packs);
   return {
     user_id: userId,
     packs: String(packs),
     credits: String(credits),
+    ...(campaignSlug
+      ? { [PURCHASE_CAMPAIGN_METADATA_KEY]: campaignSlug }
+      : {}),
   };
 }
 
@@ -123,7 +132,8 @@ export async function createCreditsCheckoutSession(params: {
 }): Promise<string> {
   const stripe = getStripe();
   const { packs } = resolveCheckoutPacks(params.packs);
-  const metadata = checkoutCreditMetadata(params.userId, packs);
+  const campaignSlug = await resolveCheckoutCampaignSlug(params.userId);
+  const metadata = checkoutCreditMetadata(params.userId, packs, campaignSlug);
   const [customerId, priceId] = await Promise.all([
     getOrCreateStripeCustomer(params.userId, params.email),
     getValidatedCreditsPriceId(stripe),
@@ -166,7 +176,8 @@ export async function createEmbeddedCreditsCheckoutSession(params: {
 }): Promise<string> {
   const stripe = getStripe();
   const { packs } = resolveCheckoutPacks(params.packs);
-  const metadata = checkoutCreditMetadata(params.userId, packs);
+  const campaignSlug = await resolveCheckoutCampaignSlug(params.userId);
+  const metadata = checkoutCreditMetadata(params.userId, packs, campaignSlug);
   const [customerId, priceId] = await Promise.all([
     getOrCreateStripeCustomer(params.userId, params.email),
     getValidatedCreditsPriceId(stripe),

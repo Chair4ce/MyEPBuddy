@@ -7,6 +7,7 @@ import { useCreditsStore } from "@/stores/credits-store";
 import { CreditLedgerTable } from "@/components/settings/credit-ledger-table";
 import { EarnedTokensTracker } from "@/components/billing/earned-tokens-tracker";
 import { CreditsFirstBanner } from "@/components/billing/credits-first-banner";
+import { PurchaseCampaignBanner } from "@/components/billing/purchase-campaign-banner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -50,6 +51,7 @@ export default function BillingSettingsPage() {
     earnRewardsSummary,
     earnRewardsLoading,
     fetchEarnRewards,
+    purchaseCampaign,
   } = useCreditsStore();
 
   const [termsChecked, setTermsChecked] = useState(false);
@@ -260,6 +262,10 @@ export default function BillingSettingsPage() {
         />
       )}
 
+      {purchaseCampaign ? (
+        <PurchaseCampaignBanner campaign={purchaseCampaign} />
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Purchase More Tokens</CardTitle>
@@ -274,6 +280,11 @@ export default function BillingSettingsPage() {
             packs={purchasePacks}
             onPacksChange={setPurchasePacks}
             disabled={isCheckoutLoading}
+            bonusNote={
+              purchaseCampaign && !purchaseCampaign.claimed
+                ? `+${purchaseCampaign.bonusCredits} birthday bonus on your first purchase`
+                : null
+            }
           />
 
           {!billingTermsAccepted && (
