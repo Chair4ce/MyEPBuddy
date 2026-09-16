@@ -8,7 +8,7 @@ const campaign: PurchaseCampaignOffer = {
   subtitle: "Bonus tokens",
   bonusCredits: 400,
   startsAt: "2026-09-18T04:00:00.000Z",
-  endsAt: "2026-09-21T04:00:00.000Z",
+  endsAt: "2026-09-22T04:00:00.000Z",
   claimed: false,
 };
 
