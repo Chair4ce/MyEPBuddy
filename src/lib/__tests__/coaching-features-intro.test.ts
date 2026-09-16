@@ -11,13 +11,13 @@ describe("shouldShowCoachingFeaturesIntro", () => {
     ).toBe(false);
   });
 
-  it("returns true when onboarding is complete and seen_at is null", () => {
+  it("does not auto-open while feature login intros are disabled", () => {
     expect(
       shouldShowCoachingFeaturesIntro({
         onboardingComplete: true,
         seenAt: null,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("returns false when seen_at is set", () => {
@@ -25,6 +25,16 @@ describe("shouldShowCoachingFeaturesIntro", () => {
       shouldShowCoachingFeaturesIntro({
         onboardingComplete: true,
         seenAt: "2026-07-21T00:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when a live campaign is deferring optional intros", () => {
+    expect(
+      shouldShowCoachingFeaturesIntro({
+        onboardingComplete: true,
+        seenAt: null,
+        deferOptionalIntros: true,
       }),
     ).toBe(false);
   });
