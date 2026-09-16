@@ -138,7 +138,7 @@ export function ImpactBoosterPanel({
   isGenerating = false,
   disabled = false,
   collapsible = true,
-  showIntroHighlight = true,
+  showIntroHighlight = false,
   includeInRun,
   onIncludeInRunChange,
   draftFields,

@@ -6,11 +6,15 @@ import { TourOverlay } from "./tour-overlay";
 import { WelcomeTourModal } from "./welcome-tour-modal";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import { useUserStore } from "@/stores/user-store";
+import { useCreditsStore } from "@/stores/credits-store";
+import { shouldDeferOptionalLoginIntros } from "@/lib/billing/purchase-campaign-promo";
+import { AUTO_FEATURE_LOGIN_INTROS_ENABLED } from "@/lib/login-intro-policy";
 
 export function TourProvider() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const { profile, subordinates, managedMembers, isLoading } = useUserStore();
+  const { isLoading: creditsLoading, purchaseCampaign } = useCreditsStore();
   const {
     hasSeenWelcome,
     activeTour,
@@ -53,13 +57,20 @@ export function TourProvider() {
 
   // Determine if we should show the welcome modal
   // Show if: user is logged in, on dashboard, hasn't seen welcome, and no active tour
+  const deferOptionalIntros = shouldDeferOptionalLoginIntros({
+    creditsLoading,
+    campaign: purchaseCampaign,
+  });
+
   const shouldShowWelcome = Boolean(
     !isLoading &&
     profile &&
     pathname === "/dashboard" &&
     !hasSeenWelcome &&
     !activeTour &&
-    !hasTeamMembers // Only show if they don't have team members yet
+    !hasTeamMembers &&
+    AUTO_FEATURE_LOGIN_INTROS_ENABLED &&
+    !deferOptionalIntros
   );
 
   return (
