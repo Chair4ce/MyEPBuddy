@@ -7,8 +7,8 @@ const campaign: PurchaseCampaignOffer = {
   title: "Air Force Birthday weekend",
   subtitle: "Bonus tokens",
   bonusCredits: 400,
-  startsAt: "2026-09-18T04:00:00.000Z",
-  endsAt: "2026-09-22T04:00:00.000Z",
+  startsAt: "2026-09-18T00:00:00.000Z",
+  endsAt: "2026-09-22T00:00:00.000Z",
   claimed: false,
 };
 

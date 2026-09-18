@@ -15,6 +15,7 @@ import { celebrateEntry } from "@/lib/confetti";
 import {
   featuredSaleTokens,
   formatCampaignEndsAt,
+  getViewerTimeZone,
   type PurchaseCampaignOffer,
 } from "@/lib/billing/purchase-campaign";
 import { PURCHASE_CREDITS, PURCHASE_PRICE_USD } from "@/lib/billing/constants";
@@ -71,7 +72,8 @@ export function PurchaseCampaignPromoModal({
               id="purchase-campaign-promo-desc"
               className="text-sm text-muted-foreground"
             >
-              {campaign.subtitle} Ends {formatCampaignEndsAt(campaign.endsAt)}.
+              {campaign.subtitle} Ends{" "}
+              {formatCampaignEndsAt(campaign.endsAt, getViewerTimeZone())}.
               One bonus per account.
             </DialogDescription>
           </DialogHeader>

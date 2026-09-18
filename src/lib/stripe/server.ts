@@ -5,7 +5,11 @@ import {
   MIN_PURCHASE_PACKS,
 } from "@/lib/billing/constants";
 import { creditsForPacks, parsePurchasePacks } from "@/lib/billing/purchase-quantity";
-import { PURCHASE_CAMPAIGN_METADATA_KEY } from "@/lib/billing/purchase-campaign";
+import {
+  parseViewerTimeZone,
+  PURCHASE_CAMPAIGN_METADATA_KEY,
+  PURCHASE_CAMPAIGN_TZ_METADATA_KEY,
+} from "@/lib/billing/purchase-campaign";
 import { resolveCheckoutCampaignSlug } from "@/lib/billing/purchase-campaign-server";
 import { getValidatedCreditsPriceId } from "@/lib/stripe/validate-price";
 
@@ -113,6 +117,7 @@ function checkoutCreditMetadata(
   userId: string,
   packs: number,
   campaignSlug?: string,
+  timeZone?: string | null,
 ) {
   const credits = creditsForPacks(packs);
   return {
@@ -122,18 +127,37 @@ function checkoutCreditMetadata(
     ...(campaignSlug
       ? { [PURCHASE_CAMPAIGN_METADATA_KEY]: campaignSlug }
       : {}),
+    ...(timeZone ? { [PURCHASE_CAMPAIGN_TZ_METADATA_KEY]: timeZone } : {}),
   };
+}
+
+async function resolveCheckoutCampaignMetadata(
+  userId: string,
+  timeZoneRaw: string | null | undefined,
+) {
+  const timeZone = parseViewerTimeZone(timeZoneRaw);
+  const campaignSlug = await resolveCheckoutCampaignSlug(userId, { timeZone });
+  return { campaignSlug, timeZone };
 }
 
 export async function createCreditsCheckoutSession(params: {
   userId: string;
   email: string;
   packs?: number;
+  timeZone?: string | null;
 }): Promise<string> {
   const stripe = getStripe();
   const { packs } = resolveCheckoutPacks(params.packs);
-  const campaignSlug = await resolveCheckoutCampaignSlug(params.userId);
-  const metadata = checkoutCreditMetadata(params.userId, packs, campaignSlug);
+  const { campaignSlug, timeZone } = await resolveCheckoutCampaignMetadata(
+    params.userId,
+    params.timeZone,
+  );
+  const metadata = checkoutCreditMetadata(
+    params.userId,
+    packs,
+    campaignSlug,
+    timeZone,
+  );
   const [customerId, priceId] = await Promise.all([
     getOrCreateStripeCustomer(params.userId, params.email),
     getValidatedCreditsPriceId(stripe),
@@ -173,11 +197,20 @@ export async function createEmbeddedCreditsCheckoutSession(params: {
   userId: string;
   email: string;
   packs?: number;
+  timeZone?: string | null;
 }): Promise<string> {
   const stripe = getStripe();
   const { packs } = resolveCheckoutPacks(params.packs);
-  const campaignSlug = await resolveCheckoutCampaignSlug(params.userId);
-  const metadata = checkoutCreditMetadata(params.userId, packs, campaignSlug);
+  const { campaignSlug, timeZone } = await resolveCheckoutCampaignMetadata(
+    params.userId,
+    params.timeZone,
+  );
+  const metadata = checkoutCreditMetadata(
+    params.userId,
+    packs,
+    campaignSlug,
+    timeZone,
+  );
   const [customerId, priceId] = await Promise.all([
     getOrCreateStripeCustomer(params.userId, params.email),
     getValidatedCreditsPriceId(stripe),

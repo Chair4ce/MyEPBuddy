@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getUsageStats } from "@/lib/usage-tracker";
 import { getKeyStatus } from "@/app/actions/api-keys";
 import {
@@ -8,9 +8,13 @@ import {
   PURCHASE_CREDITS,
   PURCHASE_PRICE_USD,
 } from "@/lib/billing/constants";
+import {
+  parseViewerTimeZone,
+  VIEWER_TIMEZONE_HEADER,
+} from "@/lib/billing/purchase-campaign";
 import { getVisiblePurchaseCampaign } from "@/lib/billing/purchase-campaign-server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -46,7 +50,11 @@ export async function GET() {
       )
       .eq("id", user.id)
       .single(),
-    getVisiblePurchaseCampaign(user.id),
+    getVisiblePurchaseCampaign(user.id, {
+      timeZone: parseViewerTimeZone(
+        request.headers.get(VIEWER_TIMEZONE_HEADER),
+      ),
+    }),
   ]);
 
   const hasOwnKey =

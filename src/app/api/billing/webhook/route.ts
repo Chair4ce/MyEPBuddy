@@ -7,7 +7,10 @@ import {
   recordStripeEvent,
 } from "@/lib/stripe/server";
 import { creditsFromPaidAmount } from "@/lib/billing/purchase-quantity";
-import { PURCHASE_CAMPAIGN_METADATA_KEY } from "@/lib/billing/purchase-campaign";
+import {
+  PURCHASE_CAMPAIGN_METADATA_KEY,
+  PURCHASE_CAMPAIGN_TZ_METADATA_KEY,
+} from "@/lib/billing/purchase-campaign";
 import {
   grantPurchaseCampaignBonus,
   resolveCampaignBonusGrant,
@@ -137,6 +140,7 @@ export async function POST(request: NextRequest) {
         const bonus = await resolveCampaignBonusGrant({
           userId,
           stampedSlug: session.metadata?.[PURCHASE_CAMPAIGN_METADATA_KEY],
+          timeZone: session.metadata?.[PURCHASE_CAMPAIGN_TZ_METADATA_KEY],
         });
         if (bonus) {
           await grantPurchaseCampaignBonus({
