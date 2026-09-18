@@ -32,19 +32,22 @@ Bring your own API keys for OpenAI, Anthropic, Google AI, or xAI. Keys are encry
 - **Three Writing Styles** - Personal (your refined examples), Community (crowdsourced), or Hybrid.
 - **Smart Context** - AI considers rank, AFSC, and accomplishment history for tailored statements.
 - **Character Optimization** - Automatically fits statements within the 350-character myEval limit.
+- **Advanced Editing Tools** - Adapt existing sentences, combine multiple statements into one, and revise specific text selections using AI.
 - **Synonym Finder** - Integrated tool to find high-impact military action verbs and alternatives.
 
 ### Performance & Decoration Workspaces
 - **EPB/OPB Workspace** - Section-by-section editing for all Major Performance Areas (MPAs).
-- **Decoration Generator** - Create citations for medals (AFCM, AFAM, MSM) with specific narrative constraints.
+- **Decoration Generator** - Create citations for medals (AFCM, AFAM, MSM) with specific narrative constraints and research-backed formatting.
+- **Award Packages (AF Form 1206)** - Full support for quarterly and annual awards across Amn, NCO, SNCO, CGO, FGO, and Civilian categories.
 - **Weekly Activity Reports (WAR)** - Generate consolidated weekly reports from daily accomplishment entries.
 - **Split View Mode** - Compare and edit statements side-by-side.
 - **Real-Time Collaboration** - Multiple users can work on the same document with live cursor tracking and section locking.
 
 ### External Review System
 - **Token-Based Sharing** - Generate secure, time-limited review links for leadership or peers.
+- **Email Notifications** - Send review links directly to supervisors or mentors from within the app.
 - **Account-less Review** - Reviewers can provide feedback and edits without needing a MyEPBuddy account.
-- **Feedback Integration** - View and apply reviewer suggestions directly within your workspace.
+- **Feedback Integration** - View, manage, and apply reviewer suggestions directly within your workspace.
 
 ### Team & Project Management
 - **Supervision Tree Visualization** - Interactive org chart with support for 700+ members.
@@ -52,11 +55,6 @@ Bring your own API keys for OpenAI, Anthropic, Google AI, or xAI. Keys are encry
 - **Managed Members** - Track team members who don't have accounts yet.
 - **Team Activity Feed** - Real-time accomplishment updates from your entire chain.
 - **Rank-Based Filtering** - Toggle visibility by rank tier (Officer, SNCO, NCO, Enlisted).
-
-### Award Packages (AF Form 1206)
-- **Full 1206 Support** - Create and manage award nominations for quarterly and annual awards.
-- **Award Categories** - Amn, NCO, SNCO, CGO, FGO, and Civilian categories.
-- **Period Configuration** - Annual, Quarterly, or Custom date ranges with fiscal/calendar year options.
 
 ### Statement Library
 - **Personal & Shared Libraries** - Save refined statements and share them with your supervision chain.
@@ -68,8 +66,9 @@ Bring your own API keys for OpenAI, Anthropic, Google AI, or xAI. Keys are encry
 ## Technical Features
 
 - **Real-Time Collaboration** - Supabase Realtime powers live cursor tracking and section locking.
-- **AI Assessment** - Automated scoring and feedback for accomplishment entries to improve quality before generation.
+- **AI Assessment & Batch Scanning** - Automated scoring and feedback for accomplishment entries. Scan entire batches of entries to identify the strongest bullets for an award cycle.
 - **Secure API Key Management** - AES-256 encryption for user-provided LLM keys.
+- **Admin Configuration** - Dedicated administrative interface for system-wide settings and configuration.
 - **Authentication Options** - Support for Email/Password, Google OAuth, and Phone-based login.
 - **Responsive Design** - Optimized for desktop, tablet, and mobile devices.
 - **Dark/Light Mode** - System-aware theme switching.
@@ -151,23 +150,23 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 #### Accomplishment Entries
 - Navigate to **Entries** to log daily/weekly wins.
 - Use the **AI Assess** feature to get immediate feedback on the strength of your action, impact, and metrics.
-- Tag entries to specific **Projects** for easier organization during award cycles.
+- Use **Batch Scan** to evaluate multiple entries at once for performance trends.
 
 #### Generating Narratives
-1. Go to **Generate** (EPB/OPB) or **Decoration**.
+1. Go to **Generate** (EPB/OPB), **Award**, or **Decoration**.
 2. Select the ratee and the specific period/award type.
 3. Use **AI Generate** to turn raw entries into polished narrative statements.
-4. Use the **Synonym** tool to swap out overused verbs.
+4. Use the **Revise Selection** or **Adapt Sentence** tools to fine-tune specific parts of the narrative.
 
 #### External Review
 1. Click **Share for Review** in any workspace.
-2. Copy the generated token link.
-3. Send the link to your supervisor or mentor; they can edit and leave feedback directly.
+2. Copy the generated token link or use the **Email** feature to send it directly.
+3. Reviewers can edit and leave feedback; you will see their updates in real-time.
 
 ### For Supervisors
 
 #### Team Management
-- Use the **My Team** tab to build your org chart.
+- Use the **My Team** tab to build your org chart and view the **Supervision Tree**.
 - View the **Activity Feed** to see what your subordinates are logging in real-time.
 - Create **Projects** and assign members to track group achievements for unit awards.
 
@@ -178,13 +177,13 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```
 src/
 ├── app/
-│   ├── (app)/              # Protected app routes (Dashboard, Entries, Team, etc.)
+│   ├── (app)/              # Protected app routes (Dashboard, Entries, Team, Admin, etc.)
 │   ├── (auth)/             # Authentication (Login, Signup, Phone, Reset)
 │   ├── (legal)/            # Privacy and Terms
-│   ├── api/                # AI Generation, Analytics, and Review endpoints
+│   ├── api/                # AI Generation, Analytics, Feedback, and Review endpoints
 │   ├── review/             # Token-based external review pages
 │   └── actions/            # Server actions for database mutations
-├── features/               # Feature-specific logic (Decorations, WAR)
+├── features/               # Feature-specific logic (Decorations, WAR, Awards)
 ├── components/             # UI components organized by feature
 ├── hooks/                  # Real-time collaboration and workspace hooks
 ├── lib/                    # Supabase clients, encryption, and military constants
