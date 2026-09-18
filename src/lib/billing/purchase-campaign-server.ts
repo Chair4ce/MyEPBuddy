@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import {
   isCampaignWindowOpen,
+  parseViewerTimeZone,
   shouldGrantCampaignBonus,
   shouldStampCampaignOnCheckout,
   type PurchaseCampaignOffer,
@@ -16,6 +17,14 @@ type CampaignRow = {
   ends_at: string;
   enabled: boolean;
 };
+
+type CampaignClock = {
+  now?: Date;
+  timeZone?: string | null;
+};
+
+/** Wide enough for any IANA offset around civil-date anchors. */
+const CANDIDATE_ENVELOPE_MS = 48 * 60 * 60 * 1000;
 
 function toOffer(
   row: CampaignRow,
@@ -56,7 +65,7 @@ function previewCampaignSlug(): string | null {
   return slug || null;
 }
 
-async function loadActiveCampaign(now: Date): Promise<CampaignRow | null> {
+async function loadCandidateCampaign(now: Date): Promise<CampaignRow | null> {
   const previewSlug = previewCampaignSlug();
   if (previewSlug) {
     const preview = await loadCampaignBySlug(previewSlug);
@@ -70,8 +79,8 @@ async function loadActiveCampaign(now: Date): Promise<CampaignRow | null> {
       "id, slug, title, subtitle, bonus_credits, starts_at, ends_at, enabled",
     )
     .eq("enabled", true)
-    .lte("starts_at", now.toISOString())
-    .gt("ends_at", now.toISOString())
+    .lte("starts_at", new Date(now.getTime() + CANDIDATE_ENVELOPE_MS).toISOString())
+    .gt("ends_at", new Date(now.getTime() - CANDIDATE_ENVELOPE_MS).toISOString())
     .order("starts_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -82,6 +91,19 @@ async function loadActiveCampaign(now: Date): Promise<CampaignRow | null> {
   }
 
   return (data as CampaignRow | null) ?? null;
+}
+
+function campaignWindowOpen(
+  campaign: CampaignRow,
+  now: Date,
+  timeZone: string | null | undefined,
+): boolean {
+  return isCampaignWindowOpen(
+    now,
+    new Date(campaign.starts_at),
+    new Date(campaign.ends_at),
+    timeZone,
+  );
 }
 
 async function hasCampaignClaim(
@@ -106,19 +128,27 @@ async function hasCampaignClaim(
 
 export async function getVisiblePurchaseCampaign(
   userId: string,
-  now: Date = new Date(),
+  params: CampaignClock = {},
 ): Promise<PurchaseCampaignOffer | null> {
-  const campaign = await loadActiveCampaign(now);
+  const now = params.now ?? new Date();
+  const campaign = await loadCandidateCampaign(now);
   if (!campaign) return null;
+
+  const previewSlug = previewCampaignSlug();
+  const isPreview = Boolean(previewSlug && campaign.slug === previewSlug);
+  if (!isPreview && !campaignWindowOpen(campaign, now, params.timeZone)) {
+    return null;
+  }
+
   const claimed = await hasCampaignClaim(campaign.id, userId);
   return toOffer(campaign, claimed);
 }
 
 export async function resolveCheckoutCampaignSlug(
   userId: string,
-  now: Date = new Date(),
+  params: CampaignClock = {},
 ): Promise<string | undefined> {
-  const offer = await getVisiblePurchaseCampaign(userId, now);
+  const offer = await getVisiblePurchaseCampaign(userId, params);
   if (!offer) return undefined;
   if (
     !shouldStampCampaignOnCheckout({
@@ -134,22 +164,20 @@ export async function resolveCheckoutCampaignSlug(
 export async function resolveCampaignBonusGrant(params: {
   userId: string;
   stampedSlug: string | null | undefined;
+  timeZone?: string | null;
   now?: Date;
 }): Promise<{ slug: string } | null> {
   const now = params.now ?? new Date();
   const stamped = params.stampedSlug?.trim() || null;
+  const timeZone = parseViewerTimeZone(params.timeZone);
 
   const campaign = stamped
     ? await loadCampaignBySlug(stamped)
-    : await loadActiveCampaign(now);
+    : await loadCandidateCampaign(now);
 
   if (!campaign) return null;
 
-  const windowOpen = isCampaignWindowOpen(
-    now,
-    new Date(campaign.starts_at),
-    new Date(campaign.ends_at),
-  );
+  const windowOpen = campaignWindowOpen(campaign, now, timeZone);
   const claimed = await hasCampaignClaim(campaign.id, params.userId);
 
   if (

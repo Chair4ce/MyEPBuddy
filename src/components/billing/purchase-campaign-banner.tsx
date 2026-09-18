@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import {
   featuredSaleTokens,
   formatCampaignEndsAt,
+  getViewerTimeZone,
   type PurchaseCampaignOffer,
 } from "@/lib/billing/purchase-campaign";
 import { PURCHASE_CREDITS, PURCHASE_PRICE_USD } from "@/lib/billing/constants";
@@ -24,7 +25,7 @@ export function PurchaseCampaignBanner({
   campaign,
   className,
 }: PurchaseCampaignBannerProps) {
-  const endsLabel = formatCampaignEndsAt(campaign.endsAt);
+  const endsLabel = formatCampaignEndsAt(campaign.endsAt, getViewerTimeZone());
   const saleTokens = featuredSaleTokens(campaign.bonusCredits);
 
   return (

@@ -5,7 +5,11 @@ import {
   MIN_PURCHASE_PACKS,
 } from "@/lib/billing/constants";
 import type { EarnRewardsSummary } from "@/lib/billing/reward-constants";
-import type { PurchaseCampaignOffer } from "@/lib/billing/purchase-campaign";
+import {
+  getViewerTimeZone,
+  viewerTimeZoneHeaders,
+  type PurchaseCampaignOffer,
+} from "@/lib/billing/purchase-campaign";
 import { useAvailableModelsStore } from "@/stores/available-models-store";
 
 export interface CreditTransaction {
@@ -222,7 +226,10 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
       const res = await fetch("/api/billing/checkout/embedded", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packs: resolvedPacks }),
+        body: JSON.stringify({
+          packs: resolvedPacks,
+          timeZone: getViewerTimeZone(),
+        }),
       });
 
       if (!res.ok) {
@@ -299,7 +306,9 @@ export const useCreditsStore = create<CreditsState>((set, get) => ({
   fetchCredits: async () => {
     set({ isLoading: true });
     try {
-      const res = await fetch("/api/billing/credits");
+      const res = await fetch("/api/billing/credits", {
+        headers: viewerTimeZoneHeaders(),
+      });
       if (!res.ok) {
         set({ isLoading: false });
         void get().fetchEarnRewards();

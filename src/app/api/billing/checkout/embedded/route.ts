@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createEmbeddedCreditsCheckoutSession } from "@/lib/stripe/server";
 import { parsePurchasePacks } from "@/lib/billing/purchase-quantity";
 import { MIN_PURCHASE_PACKS } from "@/lib/billing/constants";
+import { parseViewerTimeZone } from "@/lib/billing/purchase-campaign";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const MAX_CHECKOUT_ATTEMPTS = 5;
@@ -48,8 +49,13 @@ export async function POST(request: NextRequest) {
   }
 
   let packs = MIN_PURCHASE_PACKS;
+  let timeZone: string | null = null;
   try {
-    const body = (await request.json()) as { packs?: unknown };
+    const body = (await request.json()) as {
+      packs?: unknown;
+      timeZone?: unknown;
+    };
+    timeZone = parseViewerTimeZone(body.timeZone);
     const parsed = parsePurchasePacks(body.packs ?? MIN_PURCHASE_PACKS);
     if (!parsed.ok) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -92,6 +98,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       email: user.email,
       packs,
+      timeZone,
     });
 
     return NextResponse.json({ clientSecret, packs });
