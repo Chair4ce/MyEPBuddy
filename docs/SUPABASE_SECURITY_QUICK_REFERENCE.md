@@ -34,7 +34,7 @@ These settings **cannot be configured via SQL or code** - you must set them in t
 | Enable email confirmations | ON | Prevent email enumeration |
 | Secure email change | ON | Require confirmation on both emails |
 | Rate limit per second | 1 | Prevent spam/enumeration |
-| Mailer OTP expiry | 300 (5 min) | Limit OTP validity window |
+| Mailer OTP expiry | 3600 (1 hour) | Email magic-link / confirm TTL. Not Phone OTP. 5 minutes is too short for delayed .mil mail. |
 
 ### Authentication > Security Settings
 

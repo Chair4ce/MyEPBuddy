@@ -23,13 +23,18 @@ import {
   promptsAreEquivalent,
 } from "@/lib/default-llm-prompts";
 import { useEpbPromptRevisionCheck } from "@/hooks/use-epb-prompt-revision-check";
+import { AUTO_FEATURE_LOGIN_INTROS_ENABLED } from "@/lib/login-intro-policy";
 
 type LlmPromptRow = {
   base_system_prompt: string;
   epb_system_prompt_revision_acknowledged: number;
 };
 
-export function EpbPromptUpdateModal() {
+export function EpbPromptUpdateModal({
+  allowOpen = AUTO_FEATURE_LOGIN_INTROS_ENABLED,
+}: {
+  allowOpen?: boolean;
+}) {
   const { profile } = useUserStore();
   const supabase = createClient();
   const [isOpen, setIsOpen] = useState(false);
@@ -121,6 +126,7 @@ export function EpbPromptUpdateModal() {
     setHasChecked,
     setIsLoading,
     setIsOpen,
+    allowOpen,
   });
 
   async function handleCopy() {

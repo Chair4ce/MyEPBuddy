@@ -8,7 +8,7 @@ import {
 } from "@/lib/billing/purchase-campaign";
 
 const STARTS = new Date("2026-09-18T04:00:00.000Z");
-const ENDS = new Date("2026-09-21T04:00:00.000Z");
+const ENDS = new Date("2026-09-22T04:00:00.000Z");
 
 describe("purchase campaign eligibility", () => {
   it("opens at start and closes at exclusive end", () => {
@@ -17,6 +17,9 @@ describe("purchase campaign eligibility", () => {
     );
     expect(isCampaignWindowOpen(STARTS, STARTS, ENDS)).toBe(true);
     expect(isCampaignWindowOpen(new Date("2026-09-20T12:00:00.000Z"), STARTS, ENDS)).toBe(
+      true,
+    );
+    expect(isCampaignWindowOpen(new Date("2026-09-21T16:00:00.000Z"), STARTS, ENDS)).toBe(
       true,
     );
     expect(isCampaignWindowOpen(ENDS, STARTS, ENDS)).toBe(false);
@@ -80,8 +83,8 @@ describe("purchase campaign eligibility", () => {
   });
 
   it("labels the last included Eastern day", () => {
-    expect(formatCampaignEndsAt("2026-09-21T04:00:00.000Z")).toMatch(
-      /Sunday, September 20, 2026/,
+    expect(formatCampaignEndsAt("2026-09-22T04:00:00.000Z")).toMatch(
+      /Monday, September 21, 2026/,
     );
   });
 });

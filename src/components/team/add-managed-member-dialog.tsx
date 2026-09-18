@@ -31,7 +31,10 @@ import {
 } from "@/lib/billing/refresh-earn-rewards";
 import { requestManagedMemberInvite } from "@/lib/managed-member-invite-client";
 import { searchProfileByEmail } from "@/lib/profile-directory";
-import { ensurePendingTeamRequest } from "@/lib/team-requests";
+import {
+  canRequestTeamSupervision,
+  ensurePendingTeamRequest,
+} from "@/lib/team-requests";
 import { useCreditsStore } from "@/stores/credits-store";
 import { Loader2, UserPlus, Link2, AlertCircle } from "lucide-react";
 import type { Rank, ManagedMember, Profile } from "@/types/database";
@@ -366,8 +369,12 @@ export function AddManagedMemberDialog({
         isOfficer(profile.rank) || isEnlisted(profile.rank);
       const skipAutoSupervise =
         existingMatch && subordinateIsCivilian && supervisorIsMilitary;
+      const canSuperviseExisting = canRequestTeamSupervision(
+        profile.id,
+        existingMatch?.id
+      );
 
-      if (existingMatch) {
+      if (existingMatch && canSuperviseExisting) {
         const { error: linkError } = await (
           supabase.rpc as unknown as (
             fn: string,
@@ -383,9 +390,10 @@ export function AddManagedMemberDialog({
         }
       }
 
-      if (existingMatch && !skipAutoSupervise) {
+      if (existingMatch && !skipAutoSupervise && canSuperviseExisting) {
         const ensureResult = await ensurePendingTeamRequest(supabase, {
           targetId: existingMatch.id,
+          actorId: profile.id,
           requestType: "supervise",
           message: `I've added you as a team member. Please accept this request to link your account and sync any entries I've created for you.`,
         });

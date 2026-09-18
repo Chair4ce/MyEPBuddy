@@ -5,13 +5,14 @@ import { AnalyticsProvider } from "@/components/providers/analytics-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next"
+import { canonicalSiteUrl } from "@/lib/site-url";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://myepbuddy.com";
+const siteUrl = canonicalSiteUrl();
 
 export const metadata: Metadata = {
   // Basic metadata
@@ -74,6 +75,7 @@ export const metadata: Metadata = {
     description:
       "AI-powered EPB statement generator for Air Force enlisted. Track accomplishments and generate myEval-ready narratives.",
     creator: "@myepbuddy",
+    site: "@myepbuddy",
     // The twitter-image.tsx file will automatically be used
   },
   

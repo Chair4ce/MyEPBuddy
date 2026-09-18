@@ -11,8 +11,10 @@ import { useClientReady } from "@/lib/client-ready";
 import { CoachingFeaturesIntroModal } from "@/components/modals/coaching-features-intro-modal";
 import { PurchaseCampaignPromoModal } from "@/components/modals/purchase-campaign-promo-modal";
 import { EpbPromptUpdateModal } from "@/components/modals/epb-prompt-update-modal";
-import { shouldShowCoachingFeaturesIntro } from "@/lib/coaching-features-intro";
-import { shouldShowPurchaseCampaignPromo } from "@/lib/billing/purchase-campaign-promo";
+import { resolveLoginIntroGates } from "@/lib/login-intro-gates";
+import {
+  shouldDeferOptionalLoginIntros,
+} from "@/lib/billing/purchase-campaign-promo";
 import { toast } from "@/components/ui/sonner";
 import { InsufficientCreditsDialog } from "@/components/modals/insufficient-credits-dialog";
 import { EmbeddedCheckoutDialog } from "@/components/modals/embedded-checkout-dialog";
@@ -113,9 +115,15 @@ export function AppInitializer({
   }, [profile?.id, fetchCredits, initRealtime]);
 
   const clientReady = useClientReady();
+  const promptRulesModeEnabled = usePromptRulesMode();
   const gateProfile = getGateProfile(profile, storeProfile);
   const showOnboarding =
     clientReady && !isSigningOut && gateProfile !== null;
+
+  const deferOptionalIntros = shouldDeferOptionalLoginIntros({
+    creditsLoading,
+    campaign: purchaseCampaign,
+  });
 
   const onboardingStep = useOnboardingStep({
     profile: gateProfile,
@@ -123,31 +131,27 @@ export function AppInitializer({
     hasOwnKey,
     trialIntroSeen,
     earnTokensIntroSeen,
+    deferOptionalIntros,
   });
-  const onboardingComplete =
-    gateProfile !== null && onboardingStep === null;
+  const termsAccepted = Boolean(gateProfile?.terms_accepted_at);
 
-  const showCoachingIntro =
-    clientReady &&
-    !isSigningOut &&
-    shouldShowCoachingFeaturesIntro({
-      onboardingComplete,
-      seenAt: gateProfile?.coaching_features_intro_seen_at,
-      optimisticSeen: coachingIntroSeenOptimistic,
-    });
+  const loginIntros = resolveLoginIntroGates({
+    clientReady,
+    isSigningOut,
+    termsAccepted,
+    creditsLoading,
+    hasOwnKey,
+    campaign: purchaseCampaign,
+    campaignSeenSlug: purchaseCampaignPromoSeenSlug,
+    campaignOptimisticSeen: campaignPromoSeenOptimistic,
+    onboardingStep,
+    coachingSeenAt: gateProfile?.coaching_features_intro_seen_at,
+    coachingOptimisticSeen: coachingIntroSeenOptimistic,
+    promptRulesModeEnabled,
+  });
 
-  const showCampaignPromo =
-    clientReady &&
-    !isSigningOut &&
-    shouldShowPurchaseCampaignPromo({
-      onboardingComplete,
-      blockingIntroOpen: showCoachingIntro,
-      creditsLoading,
-      hasOwnKey,
-      campaign: purchaseCampaign,
-      seenSlug: purchaseCampaignPromoSeenSlug,
-      optimisticSeen: campaignPromoSeenOptimistic,
-    });
+  const showCoachingIntro = loginIntros.showCoachingIntro;
+  const showCampaignPromo = loginIntros.showCampaignPromo;
 
   async function dismissCoachingIntro() {
     setCoachingIntroSeenOptimistic(true);
@@ -217,8 +221,6 @@ export function AppInitializer({
     setPromoDrawerOpen(true);
   }
 
-  const usePromptRulesModeEnabled = usePromptRulesMode();
-
   return (
     <>
       {showOnboarding && gateProfile && (
@@ -246,8 +248,8 @@ export function AppInitializer({
           onOpenDrawer={openCampaignFromPromo}
         />
       )}
-      {onboardingComplete && !usePromptRulesModeEnabled && (
-        <EpbPromptUpdateModal />
+      {loginIntros.runEpbPromptRevisionCheck && (
+        <EpbPromptUpdateModal allowOpen={loginIntros.showEpbPromptUpdate} />
       )}
       <InsufficientCreditsDialog />
       <EmbeddedCheckoutDialog />

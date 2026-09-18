@@ -23,6 +23,7 @@ export function useEpbPromptRevisionCheck({
   setHasChecked,
   setIsLoading,
   setIsOpen,
+  allowOpen = true,
 }: {
   profileId: string | undefined;
   termsAccepted: boolean;
@@ -32,6 +33,7 @@ export function useEpbPromptRevisionCheck({
   setHasChecked: (value: boolean) => void;
   setIsLoading: (value: boolean) => void;
   setIsOpen: (value: boolean) => void;
+  allowOpen?: boolean;
 }) {
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +67,7 @@ export function useEpbPromptRevisionCheck({
           return;
         }
 
-        if (shouldShowEpbPromptUpdateModal(ack, row.base_system_prompt)) {
+        if (allowOpen && shouldShowEpbPromptUpdateModal(ack, row.base_system_prompt)) {
           openModalTimeoutRef.current = setTimeout(() => {
             if (!cancelled) setIsOpen(true);
           }, 800);
@@ -91,5 +93,5 @@ export function useEpbPromptRevisionCheck({
         openModalTimeoutRef.current = null;
       }
     };
-  }, [profileId, hasChecked, termsAccepted, supabase, runAutoMigrate, setHasChecked, setIsLoading, setIsOpen]);
+  }, [profileId, hasChecked, termsAccepted, supabase, runAutoMigrate, setHasChecked, setIsLoading, setIsOpen, allowOpen]);
 }

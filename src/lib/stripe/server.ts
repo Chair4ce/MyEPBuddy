@@ -5,10 +5,8 @@ import {
   MIN_PURCHASE_PACKS,
 } from "@/lib/billing/constants";
 import { creditsForPacks, parsePurchasePacks } from "@/lib/billing/purchase-quantity";
-import {
-  PURCHASE_CAMPAIGN_METADATA_KEY,
-  resolveCheckoutCampaignSlug,
-} from "@/lib/billing/purchase-campaign";
+import { PURCHASE_CAMPAIGN_METADATA_KEY } from "@/lib/billing/purchase-campaign";
+import { resolveCheckoutCampaignSlug } from "@/lib/billing/purchase-campaign-server";
 import { getValidatedCreditsPriceId } from "@/lib/stripe/validate-price";
 
 let stripeClient: Stripe | null = null;

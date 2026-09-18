@@ -416,7 +416,11 @@ export function MPASectionCard({
   const mpaCardBodyShellRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastSavedRef = useRef<string>(section.statement_text);
-  const thesaurus = useWordThesaurus({ model, documentContext: "epb" });
+  const thesaurus = useWordThesaurus({
+    model,
+    documentContext: "epb",
+    maxCharacters: maxChars,
+  });
   
   // Revise panel state — always request 3 alternatives (1 credit)
   const [showRevisePanel, setShowRevisePanel] = useState(false);

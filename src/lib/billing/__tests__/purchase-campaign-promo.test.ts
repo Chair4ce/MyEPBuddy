@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowPurchaseCampaignPromo } from "@/lib/billing/purchase-campaign-promo";
+import {
+  shouldDeferOptionalLoginIntros,
+  shouldShowPurchaseCampaignPromo,
+} from "@/lib/billing/purchase-campaign-promo";
 import type { PurchaseCampaignOffer } from "@/lib/billing/purchase-campaign";
 
 const campaign: PurchaseCampaignOffer = {
@@ -8,13 +11,12 @@ const campaign: PurchaseCampaignOffer = {
   subtitle: "Bonus tokens",
   bonusCredits: 400,
   startsAt: "2026-09-18T04:00:00.000Z",
-  endsAt: "2026-09-21T04:00:00.000Z",
+  endsAt: "2026-09-22T04:00:00.000Z",
   claimed: false,
 };
 
 const visible = {
-  onboardingComplete: true,
-  blockingIntroOpen: false,
+  termsAccepted: true,
   creditsLoading: false,
   hasOwnKey: false,
   campaign,
@@ -26,12 +28,15 @@ describe("shouldShowPurchaseCampaignPromo", () => {
     expect(shouldShowPurchaseCampaignPromo(visible)).toBe(true);
   });
 
-  it("waits for onboarding, credits, and other intros", () => {
+  it("waits for terms, required onboarding, and credits", () => {
     expect(
-      shouldShowPurchaseCampaignPromo({ ...visible, onboardingComplete: false }),
+      shouldShowPurchaseCampaignPromo({ ...visible, termsAccepted: false }),
     ).toBe(false);
     expect(
-      shouldShowPurchaseCampaignPromo({ ...visible, blockingIntroOpen: true }),
+      shouldShowPurchaseCampaignPromo({
+        ...visible,
+        requiredOnboardingComplete: false,
+      }),
     ).toBe(false);
     expect(
       shouldShowPurchaseCampaignPromo({ ...visible, creditsLoading: true }),
@@ -65,6 +70,29 @@ describe("shouldShowPurchaseCampaignPromo", () => {
         ...visible,
         seenSlug: "veterans-day-2026",
       }),
+    ).toBe(true);
+  });
+});
+
+describe("shouldDeferOptionalLoginIntros", () => {
+  it("defers while credits are loading so other intros cannot flash first", () => {
+    expect(
+      shouldDeferOptionalLoginIntros({ creditsLoading: true, campaign: null }),
+    ).toBe(true);
+  });
+
+  it("defers for the whole campaign window, even after the promo is claimed", () => {
+    expect(
+      shouldDeferOptionalLoginIntros({
+        creditsLoading: false,
+        campaign: { ...campaign, claimed: true },
+      }),
+    ).toBe(true);
+  });
+
+  it("always defers optional feature intros while AUTO_FEATURE_LOGIN_INTROS_ENABLED is off", () => {
+    expect(
+      shouldDeferOptionalLoginIntros({ creditsLoading: false, campaign: null }),
     ).toBe(true);
   });
 });

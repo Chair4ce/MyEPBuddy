@@ -1,4 +1,5 @@
 import { useRankModalDismissed } from "@/lib/rank-modal-storage";
+import { AUTO_FEATURE_LOGIN_INTROS_ENABLED } from "@/lib/login-intro-policy";
 import type { Profile } from "@/types/database";
 
 export type OnboardingStep = "terms" | "trial-intro" | "rank" | "earn-tokens";
@@ -10,6 +11,7 @@ export function resolveOnboardingStep({
   trialIntroSeen,
   earnTokensIntroSeen,
   rankDismissed,
+  deferOptionalIntros = false,
 }: {
   profile: Profile | null;
   creditsLoading: boolean;
@@ -17,6 +19,7 @@ export function resolveOnboardingStep({
   trialIntroSeen: boolean;
   earnTokensIntroSeen: boolean;
   rankDismissed: boolean;
+  deferOptionalIntros?: boolean;
 }): OnboardingStep | null {
   if (!profile) return null;
 
@@ -26,6 +29,10 @@ export function resolveOnboardingStep({
 
   if (!profile.rank && !rankDismissed) {
     return "rank";
+  }
+
+  if (!AUTO_FEATURE_LOGIN_INTROS_ENABLED || deferOptionalIntros) {
+    return null;
   }
 
   const trialIntroDismissed =
@@ -51,12 +58,14 @@ export function useOnboardingStep({
   hasOwnKey,
   trialIntroSeen,
   earnTokensIntroSeen,
+  deferOptionalIntros = false,
 }: {
   profile: Profile | null;
   creditsLoading: boolean;
   hasOwnKey: boolean;
   trialIntroSeen: boolean;
   earnTokensIntroSeen: boolean;
+  deferOptionalIntros?: boolean;
 }): OnboardingStep | null {
   const rankDismissed = useRankModalDismissed(profile?.id);
   return resolveOnboardingStep({
@@ -66,5 +75,6 @@ export function useOnboardingStep({
     trialIntroSeen,
     earnTokensIntroSeen,
     rankDismissed,
+    deferOptionalIntros,
   });
 }

@@ -7,6 +7,7 @@ import {
   sentenceContainingRange,
   shouldAutoFetchSuggestions,
   splitSuggestedAndRest,
+  resolveThesaurusDocumentContext,
 } from "@/lib/word-thesaurus";
 
 describe("isSingleSelectableWord", () => {
@@ -98,6 +99,36 @@ describe("splitSuggestedAndRest", () => {
     );
     expect(suggested).toEqual(["Drove", "Directed", "Managed"]);
     expect(rest).toEqual(["Led", "Ran", "Oversaw", "Guided"]);
+  });
+});
+
+describe("resolveThesaurusDocumentContext", () => {
+  it("uses the field text when no extra context is passed", () => {
+    expect(
+      resolveThesaurusDocumentContext({
+        fieldText: "Led 12 Amn optimizing comm assets",
+        fieldStart: 11,
+        fieldEnd: 33,
+      }),
+    ).toEqual({
+      fullStatement: "Led 12 Amn optimizing comm assets",
+      selectionStart: 11,
+      selectionEnd: 33,
+    });
+  });
+
+  it("maps a split-view sentence-2 highlight onto the combined package", () => {
+    const s1 = "Led 12 Amn through a $2M C4I upgrade";
+    const s2 = "optimizing comm asset deployment & management for a named operation";
+    const combined = `${s1}. ${s2}.`;
+    const mapped = resolveThesaurusDocumentContext({
+      fieldText: s2,
+      fieldStart: 0,
+      fieldEnd: s2.length,
+      contextText: combined,
+    });
+    expect(mapped.fullStatement).toBe(combined);
+    expect(mapped.fullStatement.slice(mapped.selectionStart, mapped.selectionEnd)).toBe(s2);
   });
 });
 

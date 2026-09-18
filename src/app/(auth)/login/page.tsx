@@ -39,6 +39,8 @@ import {
   safePostAuthPath,
 } from "@/lib/managed-member-invite-params";
 import { getAuthEmailRedirectBase } from "@/lib/auth/email-redirect";
+import { EmailOtpCodeForm } from "@/components/auth/email-otp-code-form";
+import { EMAIL_OTP_EXPIRY_LABEL } from "@/lib/auth/email-otp";
 
 function getLastMagicLinkRequest(email: string): number | null {
   if (typeof window === "undefined") return null;
@@ -80,6 +82,8 @@ function LoginPageContent() {
           ? window.location.origin
           : "https://www.myepbuddy.com"
       );
+  const signupVerifyPending =
+    searchParams.get("email_verified") === "pending";
   const signupHref = invite.isInvite
     ? buildManagedInviteSignupPath({
         email: invite.email,
@@ -176,7 +180,7 @@ function LoginPageContent() {
 
       setLastMagicLinkRequest(trimmedEmail);
       setMagicLinkSent(true);
-      toast.success("Sign-in link sent! Check your inbox.");
+      toast.success("Sign-in email sent! Use the link or the code in the message.");
     } catch {
       toast.error("An unexpected error occurred");
     } finally {
@@ -370,7 +374,7 @@ function LoginPageContent() {
             </div>
           </div>
 
-          <Tabs defaultValue="password" className="w-full">
+          <Tabs defaultValue={signupVerifyPending ? "magic-link" : "password"} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="password" className="gap-1.5">
                 <KeyRound className="size-3.5" />
@@ -439,6 +443,23 @@ function LoginPageContent() {
             </TabsContent>
 
             <TabsContent value="magic-link" className="mt-4 space-y-4 focus-visible:outline-none">
+              {signupVerifyPending && (
+                <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    Check your inbox for a confirmation email. On a government
+                    network, enter the code from that email here instead of
+                    clicking the link.
+                  </p>
+                  <EmailOtpCodeForm
+                    key={`signup-${email}`}
+                    email={email}
+                    type="signup"
+                    nextPath={postAuthPath}
+                    submitLabel="Confirm email"
+                    idPrefix="signup-otp"
+                  />
+                </div>
+              )}
               {showSignupPrompt && !magicLinkSent && (
                 <div
                   className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-center"
@@ -463,9 +484,19 @@ function LoginPageContent() {
                     </p>
                     <p className="font-medium">{email}</p>
                     <p className="text-sm text-muted-foreground mt-4">
-                      Click the link in your email to sign in. The link expires in 1 hour.
+                      The email includes a sign-in button and a code. Both expire
+                      in {EMAIL_OTP_EXPIRY_LABEL}. If a security proxy (Menlo)
+                      opened the link, type the code below.
                     </p>
                   </div>
+                  <EmailOtpCodeForm
+                    key={`magic-sent-${email}`}
+                    email={email}
+                    type="magiclink"
+                    nextPath={postAuthPath}
+                    submitLabel="Sign in with code"
+                    idPrefix="magic-otp"
+                  />
                   <Button
                     variant="outline"
                     className="w-full"
@@ -479,7 +510,8 @@ function LoginPageContent() {
                   </Button>
                 </div>
               ) : (
-                <form onSubmit={handleMagicLink} className="space-y-4" key="magic-link-form">
+                <div className="space-y-4" key="magic-link-form">
+                <form onSubmit={handleMagicLink} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="magic-email">Email</Label>
                     <Input
@@ -494,8 +526,9 @@ function LoginPageContent() {
                       autoComplete="email"
                     />
                     <p className="text-xs text-muted-foreground">
-                      We&apos;ll email a one-time sign-in link — handy if you
-                      forgot your password.
+                      We&apos;ll email a one-time sign-in link and a code —
+                      handy if you forgot your password, or if a government
+                      proxy blocks the link.
                     </p>
                   </div>
                   <Button
@@ -510,6 +543,25 @@ function LoginPageContent() {
                     )}
                   </Button>
                 </form>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">
+                      Already have a code?
+                    </span>
+                  </div>
+                </div>
+                <EmailOtpCodeForm
+                  key={`magic-existing-${email}`}
+                  email={email}
+                  type="magiclink"
+                  nextPath={postAuthPath}
+                  submitLabel="Sign in with code"
+                  idPrefix="magic-otp-existing"
+                />
+                </div>
               )}
             </TabsContent>
           </Tabs>

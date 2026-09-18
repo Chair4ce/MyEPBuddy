@@ -130,6 +130,7 @@ import {
   filterSuperviseRequestsCoveredByManagedLinks,
 } from "@/lib/team-request-dedupe";
 import {
+  canRequestTeamSupervision,
   ensurePendingTeamRequest,
   pendingRequestToastMessage,
   retractPendingTeamRequest,
@@ -1223,11 +1224,17 @@ export default function TeamPage() {
       }
     }
 
+    if (!canRequestTeamSupervision(profile.id, searchedProfile.id)) {
+      toast.error(pendingRequestToastMessage("invalid_target"));
+      return;
+    }
+
     setIsInviting(true);
 
     try {
       const result = await ensurePendingTeamRequest(supabase, {
         targetId: searchedProfile.id,
+        actorId: profile.id,
         requestType: inviteType,
         message: inviteMessage || null,
       });

@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 import { safePostAuthPath } from "@/lib/managed-member-invite-params";
+import { isSocialPreviewPath } from "@/lib/site-url";
 
 type CookieToSet = {
   name: string;
@@ -59,14 +60,16 @@ export async function updateSession(request: NextRequest) {
     "/account-deleted",
     "/email-preview/managed-invite",
   ];
-  const isPublicPath = publicPaths.some(
-    (path) =>
-      request.nextUrl.pathname === path ||
-      request.nextUrl.pathname.startsWith("/auth/") ||
-      request.nextUrl.pathname.startsWith("/review/") ||
-      request.nextUrl.pathname.startsWith("/email-preview/") ||
-      request.nextUrl.pathname.startsWith("/email-previews/")
-  );
+  const isPublicPath =
+    isSocialPreviewPath(request.nextUrl.pathname) ||
+    publicPaths.some(
+      (path) =>
+        request.nextUrl.pathname === path ||
+        request.nextUrl.pathname.startsWith("/auth/") ||
+        request.nextUrl.pathname.startsWith("/review/") ||
+        request.nextUrl.pathname.startsWith("/email-preview/") ||
+        request.nextUrl.pathname.startsWith("/email-previews/")
+    );
 
   // API routes enforce their own auth (webhooks, cron, etc.)
   if (request.nextUrl.pathname.startsWith("/api/")) {
