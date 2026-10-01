@@ -25,58 +25,45 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  // Fetch user profile
-  const { data: profileData } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  // Profile, singleton config, and team links do not depend on each other.
+  const [profileResult, configResult, teamResult] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
+    supabase.from("epb_config").select("*").eq("id", 1).single(),
+    supabase
+      .from("teams")
+      .select("subordinate_id")
+      .eq("supervisor_id", user.id),
+  ]);
 
-  const profile = profileData as unknown as Profile | null;
-
-  // Fetch EPB config
-  const { data: configData } = await supabase
-    .from("epb_config")
-    .select("*")
-    .eq("id", 1)
-    .single();
-
-  const epbConfig = configData as unknown as EPBConfig | null;
+  const profile = profileResult.data as unknown as Profile | null;
+  const epbConfig = configResult.data as unknown as EPBConfig | null;
 
   // Fetch subordinates for any member (anyone can have subordinates)
   let subordinates: Profile[] = [];
   let managedMembers: ManagedMember[] = [];
-  
-  if (profile) {
-    // Fetch real subordinates from teams table
-    const { data: teamData } = await supabase
-      .from("teams")
-      .select("subordinate_id")
-      .eq("supervisor_id", user.id);
 
-    if (teamData && teamData.length > 0) {
-      const typedTeamData = teamData as unknown as { subordinate_id: string }[];
-      const subordinateIds = typedTeamData.map((t) => t.subordinate_id);
-      const { data: subProfiles } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("id", subordinateIds);
-      subordinates = (subProfiles as unknown as Profile[]) || [];
-    }
-    
-    // Fetch managed members visible to this user (includes chain visibility)
-    // Uses get_visible_managed_members function which returns:
-    // - Members user created
-    // - Members reporting to user
-    // - Members created by user's subordinates (rolling up)
-    // - Members reporting to user's subordinates
-    const { data: managedData } = await (supabase.rpc as Function)(
-      "get_visible_managed_members",
-      { viewer_uuid: user.id }
-    ) as { data: ManagedMember[] | null };
-    
-    // Filter out archived members and sort by name
-    managedMembers = (managedData || [])
+  if (profile) {
+    const typedTeamData = (teamResult.data || []) as unknown as {
+      subordinate_id: string;
+    }[];
+    const subordinateIds = typedTeamData.map((t) => t.subordinate_id);
+
+    // Subordinate profiles need the id list; the managed-member RPC does not.
+    const [subProfilesResult, managedResult] = await Promise.all([
+      subordinateIds.length > 0
+        ? supabase.from("profiles").select("*").in("id", subordinateIds)
+        : Promise.resolve({ data: [] as Profile[] }),
+      (supabase.rpc as Function)("get_visible_managed_members", {
+        viewer_uuid: user.id,
+      }) as Promise<{ data: ManagedMember[] | null }>,
+    ]);
+
+    subordinates = (subProfilesResult.data as unknown as Profile[]) || [];
+
+    // Filter out archived members and sort by name.
+    // get_visible_managed_members returns members this user created, members
+    // reporting to them, and the same sets rolled up through subordinates.
+    managedMembers = (managedResult.data || [])
       .filter((m) => m.member_status !== "archived")
       .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
   }
