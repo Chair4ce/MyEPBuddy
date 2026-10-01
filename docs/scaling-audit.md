@@ -60,11 +60,17 @@ The bucket row is a single lock for all default-key traffic. `epb_config.default
 
 **Fact.** `admin_default_key_token_usage` (`161_admin_default_key_usage.sql`) aggregates `llm_token_usage` several times for a window and once with **no time bound** (`all_time`, `used_default_key = true` only). The admin usage page calls this RPC in parallel with `admin_user_credit_analytics` (`src/app/(app)/admin/usage/page.tsx`). Days are clamped to 7, 30, 90, or 365.
 
-**Fact.** `prune_api_usage` (90 days) and `prune_billable_request_cache` (48 hours) are scheduled with `pg_cron` only when that extension loads (`179_credit_housekeeping_jobs.sql`). The migration swallows failure. There is no Vercel cron for those prunes. The only Vercel cron is `GET /api/cron/sync-model-catalog` daily at 06:00 UTC (`vercel.json`). Whether hosted `pg_cron` is actually enabled was not checked in the dashboard.
+**Fact.** `prune_api_usage` (90 days) and `prune_billable_request_cache` (48 hours) are scheduled with `pg_cron` only when that extension loads (`179_credit_housekeeping_jobs.sql`). The migration swallows failure. There is no Vercel cron for those prunes. The only Vercel cron is `GET /api/cron/sync-model-catalog` daily at 06:00 UTC (`vercel.json`). Whether hosted `pg_cron` is actually enabled was not checked in the dashboard. The same migration says `credit_transactions` is never pruned.
+
+**Fact.** Local PostgREST `max_rows` is 1000 (`supabase/config.toml`). A query with no `.limit()` can still stop at that cap on the local API. The hosted project's max rows setting was not read.
+
+**Fact.** Newer policies still call bare `auth.uid()` (not `(select auth.uid())`), including `api_usage` (`150_api_usage_tracking.sql`), `llm_token_usage` (`160_token_usage_tracking.sql`), `credit_rewards` (`181_token_earn_rewards.sql`), and `epb_assessments` (`209_epb_assessments.sql`). `consume_credit` is `SECURITY DEFINER` and does not rely on the `api_usage` SELECT policy.
+
+**Hypothesis.** Bare `auth.uid()` is re-evaluated per row on those policies. Not confirmed with `EXPLAIN`. The hot accomplishment policies are already wrapped.
 
 ## AI generation (code-verified only)
 
-**Fact.** Every generation route uses `generateText` from the AI SDK (buffered). None use `streamText`. `maxDuration` is 60s on most routes, 90s on `POST /api/generate`, 120s on batch scan and catalog sync, 300s on `POST /api/plan-epb`.
+**Fact.** Every generation route uses `generateText` from the AI SDK (buffered). None use `streamText`. `maxDuration` is 60s on most routes, 90s on `POST /api/generate`, 120s on batch scan and catalog sync, 300s on `POST /api/plan-epb`. `POST /api/revise-selection` does not export `maxDuration` (platform default). Its client still uses `fetchWithRetry` at 55s.
 
 **Fact.** `POST /api/generate` (`src/app/api/generate/route.ts`) does this before the model call, each `await` after the previous one: user settings, decrypt API keys, resolve model, idempotency context, replay cache, `checkAndTrackUsage`, example statements, optional style signature, feature flags, prompt rules, existing MPA statements. The MPA loop then `await`s `generateText` one MPA at a time (and, when `generatePerAccomplishment` is set, one accomplishment at a time inside that). Example fetches are internally sequential (`refined_statements` limits 15 and 10, then community). Comment at the MPA fetch says cross-MPA verb variety is why statements are loaded once and filtered in memory. Parallelizing the MPA loop would change that ordering.
 
@@ -104,7 +110,7 @@ Server work below is in addition to middleware `getUser()` and, for `(app)` rout
 | `/epb` | Re-exports `/generate`. | Same as generate. | High |
 | `/generate` | Client EPB workspace. | `teams` limit 1; `community_statements` `select afsc` for all approved rows, **no limit**; `accomplishments` `select *` for the ratee's cycle, **no limit**; then shell + sections (`generate/page.tsx` ~264–392). | **High** |
 | `/library` | Client tabs: mine, shared, community. | Sequential: all `refined_statements` for the user `select *` **no limit**; shares `.in(statement_id)` (can exceed URL/filter limits once a user has a large library — not measured); `shared_statements_view` **no limit**; `community_statements` `select *` limit 200; all of the user's `statement_votes` **no limit**; `archived_epbs_view` **no limit** (`library/page.tsx` ~134–248). | **High** for library size |
-| `/team` | Client team tree (~4k lines). | One metrics query loads every visible accomplishment for the distinct cycle years on the tree, columns only, **no user filter and no limit** (`team/page.tsx` `loadMemberMetrics` ~866–869). RLS is the only bound. Other reads (teams, requests, awards, history) are per action and were not each timed. | **Medium** (one wide read, not an N+1) |
+| `/team` | Client team tree (~4k lines). | One metrics query loads every visible accomplishment for the distinct cycle years on the tree, columns only, **no user filter and no limit** (`team/page.tsx` `loadMemberMetrics` ~866–869). RLS is the only bound. `loadAwards` batches managed-member awards with `.in("recipient_team_member_id", teamMemberIds)` (~1719–1725). A second loader, `loadAwardsForEffect` (~1792–1803), queries `awards` once per managed member. | **High** for the awards effect (N queries). **Medium** for the wide metrics read |
 | `/award` | Client award shells. | `award_shells` `select *` plus sections, **no limit**, then **one** `.in()` for missing profiles and members (`award/page.tsx` ~276–336). | Medium (unbounded list; enrichment is batched) |
 | `/decoration` | Client decoration shells. | `decoration_shells` `select *` **no limit**, then `Promise.all` over shells. Each shell may `select` `team_members` or `profiles` by id, and again for `created_by` (`decoration/page.tsx` ~246–319). | **High** relative to award, because it is per shell |
 | `/settings` | Client profile editor. | Single-row `profiles` reads/writes; avatar storage. | Low |
@@ -131,7 +137,7 @@ Auth column means an explicit `getUser()` or equivalent inside the handler. Midd
 | `/api/generate-slot-statement` | POST | yes | One `generateText`. | 60s |
 | `/api/generate-feedback-session-guide` | POST | yes | One `generateText`. | 60s |
 | `/api/revise-feedback-session-guide` | POST | yes | One `generateText`. | 60s |
-| `/api/revise-selection` | POST | yes | One `generateText`. Client timeout 55s via `fetchWithRetry`. | 60s server, 55s client |
+| `/api/revise-selection` | POST | yes | One `generateText`. Client timeout 55s via `fetchWithRetry`. | No route `maxDuration`. Client 55s |
 | `/api/synonyms` | POST | yes | One `generateText`. Not in `BILLABLE_API_PATHS`. | 60s |
 | `/api/dictionary-synonyms` | GET | not re-read line-by-line | Word lookup. | Not measured |
 | `/api/assess-epb` | POST | yes | One `generateText`. | 60s |
@@ -166,13 +172,13 @@ Auth column means an explicit `getUser()` or equivalent inside the handler. Midd
 | `/api/onboarding/accept-terms` | POST | yes | Terms acceptance. | — |
 | `/api/account/delete` | POST | yes | Account deletion. | Not load-tested |
 | `/api/account/exit-survey` | POST | yes | One insert. | — |
-| `/api/projects` and nested member routes | GET/POST/PUT/DELETE | yes | Project CRUD. | Not an unbounded global list in the handlers reviewed at the top of each file |
+| `/api/projects` and nested member routes | GET/POST/PUT/DELETE | yes | Project CRUD. `GET` selects projects plus nested members and profiles with **no** `.limit()` or `.range()` (`projects/route.ts` ~18–35). | Unbounded list; local PostgREST `max_rows` may cap it (below) |
 | `/api/review-tokens` | POST, GET, DELETE | yes | Token issue/list/revoke. | — |
 | `/api/review/[token]` | GET | token, not session | One shared shell. | — |
 | `/api/send-review-email` | POST | yes | Resend send. In-memory 10/hour per user. | One recipient path |
 | `/api/team/invite-managed-member` | POST | yes | Invite + optional email. In-memory rate limit. | — |
 | `/api/settings/marketing-email-opt-in` | POST | yes | Opt-in flag. Audience rules were not changed by this audit. | — |
-| `/api/webhooks/resend` | GET, POST | Svix signature. Matcher skips middleware. | Contact sync. `contactSync: "failed"` is a Resend sync status, not `generate_failed`. | — |
+| `/api/webhooks/resend` | GET, POST | Svix signature. Matcher skips middleware. | Contact sync. Looks up `profiles` with `ilike("email", …)` (`src/lib/email/resend-webhook.ts` ~155–159). Migrations index `supervisor_id`, `role`, and a partial marketing opt-in flag. No btree on `profiles.email`. `contactSync: "failed"` is a Resend sync status, not `generate_failed`. | One profile lookup per event |
 | `/api/user-feedback` | POST | yes | Support note. In-memory rate limit. | — |
 | `/api/admin/user-feedback` (+ reply, archive) | GET, POST | admin | Admin inbox. | Not a user-facing hot path |
 | `/api/cron/sync-model-catalog` | GET | `Bearer CRON_SECRET` | Lock + provider catalog sync. | 120s, daily |
@@ -244,7 +250,11 @@ Same PR, same pattern: `src/app/(app)/decoration/page.tsx` should batch profile 
 
 In `src/app/(app)/layout.tsx`, after `getUser()`, `Promise.all` the profile, `epb_config`, and `teams` reads. Then `Promise.all` subordinate profiles (if any) and `get_visible_managed_members`. Do not remove middleware `getUser()` in this change: it is what refreshes the session cookie before Server Components run.
 
-### Explicitly later (do not fold into the three changes)
+### 4. Batch the team awards effect (low risk)
+
+In `src/app/(app)/team/page.tsx`, `loadAwardsForEffect` loops `teamMemberIds` and queries `awards` once per managed member (~1792–1803). `loadAwards` in the same file already uses `.in("recipient_team_member_id", teamMemberIds)`. Make the effect use that one `.in()` query. Do not add a `useEffect`.
+
+### Explicitly later (do not fold into the changes above)
 
 - Pagination on entries, library, award shells, decoration shells, and team metrics. Changes what users see; needs a product page size and a Playwright spec. Indexes first so the unbounded queries at least hit a fitting index.
 - Caching `epb_config` with `unstable_cache` / `revalidateTag` from the admin config save. Needs a tag wired through `src/app/actions/admin-config.ts`. Easy to serve stale RPM if the tag is missed.
@@ -254,6 +264,10 @@ In `src/app/(app)/layout.tsx`, after `getUser()`, `Promise.all` the profile, `ep
 - Reworking the `default_key_bandwidth` row lock. Correctness-sensitive.
 - Scoping `POST /api/scan-entries-batch` with `user_id = auth.uid()` (and deciding managed-member rows). No in-repo caller. Service-role updates of RLS-visible rows are a safety issue, not the first scale win.
 - Skipping middleware `getUser()` on `/api/*`. Saves a round trip and can stop session refresh for handlers that never call `getUser()` themselves (`/api/analytics` is one).
+- `CREATE INDEX` on `profiles (lower(email))` and an equality lookup in the Resend webhook. Low risk, lower traffic than `consume_credit`.
+- Wrapping the remaining bare `auth.uid()` policies. Mechanical, but the hot tables are already wrapped, and the CPU share is unverified.
+- `POST /api/generate` inserts `statement_history` one row at a time after the model calls. Batching is a small follow-up once MPA latency is the measured bottleneck.
+- `GET /api/projects` and `GET /api/review-tokens` have no page size. Add a limit when those lists are a product problem.
 
 ## What this survey did not verify
 
@@ -264,4 +278,6 @@ In `src/app/(app)/layout.tsx`, after `getUser()`, `Promise.all` the profile, `ep
 - Stripe checkout, webhooks, and LLM provider behavior at runtime (keys empty locally).
 - Core Web Vitals. First Load JS from `next build` is recorded above; runtime field data is not.
 - `dictionary-synonyms` internals beyond the route existing.
-- Every click handler inside `team/page.tsx` (the metrics query and the file's `.from()` sites were read; the 4k-line file was not executed).
+- Every click handler inside `team/page.tsx` (the metrics query, the awards loaders, and the file's `.from()` sites were read; the page was not executed).
+- Hosted PostgREST `max_rows`. Local config is 1000.
+- `EXPLAIN` of bare `auth.uid()` policies and of `can_view_profile` on profile lists.
