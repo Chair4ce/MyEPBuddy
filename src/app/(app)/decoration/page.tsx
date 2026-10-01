@@ -251,81 +251,77 @@ export default function DecorationPage() {
 
       if (logUnlessAborted(error, "Error loading decoration shells:", signal)) return;
 
-      // Enrich with owner profile/member info
-      const enrichedDecorations: DecorationShellWithDetails[] = await Promise.all(
-        ((shellsData || []) as unknown as DecorationShellWithDetails[]).map(async (shell) => {
-          let ownerProfile: Profile | null = null;
-          let ownerTeamMember: ManagedMember | null = null;
-          let creatorProfile: Profile | null = null;
+      const shells = (shellsData || []) as unknown as DecorationShellWithDetails[];
+      const knownProfiles = new Map<string, Profile>();
+      knownProfiles.set(profile.id, profile);
+      for (const sub of subordinates) knownProfiles.set(sub.id, sub);
+      const knownMembers = new Map<string, ManagedMember>();
+      for (const member of managedMembers) knownMembers.set(member.id, member);
 
-          // Get owner info
-          if (shell.team_member_id) {
-            const member = managedMembers.find((m) => m.id === shell.team_member_id);
-            if (member) {
-              ownerTeamMember = member;
-            } else {
-              const { data: memberData } = await supabase
-                .from("team_members")
-                .select("*")
-                .eq("id", shell.team_member_id)
-                .abortSignal(signal)
-                .single();
-              if (memberData) {
-                ownerTeamMember = memberData as unknown as ManagedMember;
-              }
-            }
-          } else {
-            if (shell.recipient_name) {
-              // Manual non-account recipient — name stored on shell
-              ownerProfile = null;
-            } else if (shell.user_id === profile.id) {
-              ownerProfile = profile;
-            } else {
-              const sub = subordinates.find((s) => s.id === shell.user_id);
-              if (sub) {
-                ownerProfile = sub;
-              } else {
-                const { data: profileData } = await supabase
-                  .from("profiles")
-                  .select("*")
-                  .eq("id", shell.user_id)
-                  .abortSignal(signal)
-                  .single();
-                if (profileData) {
-                  ownerProfile = profileData as unknown as Profile;
-                }
-              }
-            }
-          }
+      const missingProfileIds = new Set<string>();
+      const missingMemberIds = new Set<string>();
+      for (const shell of shells) {
+        if (shell.team_member_id && !knownMembers.has(shell.team_member_id)) {
+          missingMemberIds.add(shell.team_member_id);
+        }
+        if (
+          !shell.team_member_id &&
+          !shell.recipient_name &&
+          shell.user_id !== profile.id &&
+          !knownProfiles.has(shell.user_id)
+        ) {
+          missingProfileIds.add(shell.user_id);
+        }
+        if (shell.created_by && !knownProfiles.has(shell.created_by)) {
+          missingProfileIds.add(shell.created_by);
+        }
+      }
 
-          // Get creator info
-          if (shell.created_by === profile.id) {
-            creatorProfile = profile;
-          } else {
-            const creator = subordinates.find((s) => s.id === shell.created_by);
-            if (creator) {
-              creatorProfile = creator;
-            } else {
-              const { data: creatorData } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", shell.created_by)
-                .abortSignal(signal)
-                .single();
-              if (creatorData) {
-                creatorProfile = creatorData as unknown as Profile;
-              }
-            }
-          }
+      if (missingProfileIds.size > 0) {
+        const { data: fetched } = await supabase
+          .from("profiles")
+          .select("*")
+          .in("id", [...missingProfileIds])
+          .abortSignal(signal);
+        for (const row of (fetched || []) as unknown as Profile[]) {
+          knownProfiles.set(row.id, row);
+        }
+      }
+      if (signal.aborted) return;
 
-          return {
-            ...shell,
-            owner_profile: ownerProfile,
-            owner_team_member: ownerTeamMember,
-            creator_profile: creatorProfile,
-          } as DecorationShellWithDetails;
-        })
-      );
+      if (missingMemberIds.size > 0) {
+        const { data: fetched } = await supabase
+          .from("team_members")
+          .select("*")
+          .in("id", [...missingMemberIds])
+          .abortSignal(signal);
+        for (const row of (fetched || []) as unknown as ManagedMember[]) {
+          knownMembers.set(row.id, row);
+        }
+      }
+      if (signal.aborted) return;
+
+      const enrichedDecorations: DecorationShellWithDetails[] = shells.map((shell) => {
+        let ownerProfile: Profile | null = null;
+        let ownerTeamMember: ManagedMember | null = null;
+
+        if (shell.team_member_id) {
+          ownerTeamMember = knownMembers.get(shell.team_member_id) ?? null;
+        } else if (!shell.recipient_name) {
+          ownerProfile = knownProfiles.get(shell.user_id) ?? null;
+        }
+
+        const creatorProfile = shell.created_by
+          ? knownProfiles.get(shell.created_by) ?? null
+          : null;
+
+        return {
+          ...shell,
+          owner_profile: ownerProfile,
+          owner_team_member: ownerTeamMember,
+          creator_profile: creatorProfile,
+        };
+      });
 
       setDecorations(enrichedDecorations);
     } catch (error) {
