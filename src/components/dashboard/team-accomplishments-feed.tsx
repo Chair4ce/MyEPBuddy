@@ -264,6 +264,28 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
           depthMap[c.subordinate_id] = c.depth;
         });
 
+        // One supervisor-chain RPC per person, not per accomplishment.
+        // The feed can return up to 500 real-profile rows that share a handful of authors.
+        const profileUserIds = [
+          ...new Set(
+            allAccomplishments
+              .filter((acc) => !acc.team_member_id)
+              .map((acc) => acc.user_id)
+          ),
+        ];
+        const chainByUserId = new Map<string, ChainMember[]>();
+        await Promise.all(
+          profileUserIds.map(async (userId) => {
+            const chain = await buildProfileChain(
+              userId,
+              profilesMap,
+              profile,
+              supabase
+            );
+            chainByUserId.set(userId, chain);
+          })
+        );
+
         // Transform accomplishments to feed format with author info and chain
         const feedItems: FeedAccomplishment[] = await Promise.all(
           allAccomplishments.map(async (acc) => {
@@ -303,14 +325,7 @@ export function TeamAccomplishmentsFeed({ cycleYear }: TeamAccomplishmentsFeedPr
                 authorUnit = authorProfile.unit;
               }
               chainDepth = depthMap[acc.user_id] || 0;
-
-              // Build supervisor chain for this user
-              supervisorChain = await buildProfileChain(
-                acc.user_id,
-                profilesMap,
-                profile,
-                supabase
-              );
+              supervisorChain = [...(chainByUserId.get(acc.user_id) ?? [])];
             }
 
             return {
