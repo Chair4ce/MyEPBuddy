@@ -200,7 +200,23 @@ Two users with the same supervisor chain still cause two RPCs per accomplishment
 
 **Fact.** `community_statements` on `/generate` selects every approved `afsc` with no limit to build a dropdown (`generate/page.tsx` ~305–309). Community statement bodies on `/library` are capped at 200.
 
-No bundle analyzer was run. `recharts` is a dependency (`package.json`) and is a likely admin-chart cost. That is a dependency fact, not a measured KB figure.
+`npm run build` at this commit printed First Load JS (production client bundles, not a separate analyzer):
+
+| Route | First Load JS |
+| --- | --- |
+| `/epb`, `/generate` | 391 kB |
+| `/entries` | 379 kB |
+| `/team` | 378 kB |
+| `/settings` | 381 kB |
+| `/award` | 340 kB |
+| `/phone-login` | 335 kB |
+| `/decoration` | 313 kB |
+| `/dashboard` | 305 kB |
+| `/library` | 300 kB |
+| `/admin/usage` | 231 kB (page chunk 118 kB; `recharts` is the chart dependency) |
+| `/` | 115 kB |
+
+Shared JS for every route is 102 kB. These figures are the build table, not Lighthouse.
 
 ## Prioritized remediation
 
@@ -246,6 +262,6 @@ In `src/app/(app)/layout.tsx`, after `getUser()`, `Promise.all` the profile, `ep
 - Whether hosted `pg_cron` jobs `prune-api-usage` and `prune-billable-request-cache` are scheduled.
 - Any live `generate_failed` row. The writer and the sanitizer are verified; the cause of last week's events is not.
 - Stripe checkout, webhooks, and LLM provider behavior at runtime (keys empty locally).
-- Bundle byte sizes and Core Web Vitals.
+- Core Web Vitals. First Load JS from `next build` is recorded above; runtime field data is not.
 - `dictionary-synonyms` internals beyond the route existing.
 - Every click handler inside `team/page.tsx` (the metrics query and the file's `.from()` sites were read; the 4k-line file was not executed).
