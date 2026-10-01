@@ -1789,11 +1789,11 @@ export default function TeamPage() {
           }
         }
 
-        for (const memberId of teamMemberIds) {
+        if (teamMemberIds.length > 0) {
           const { data: memberAwards } = await supabase
             .from("awards")
             .select("*")
-            .eq("recipient_team_member_id", memberId)
+            .in("recipient_team_member_id", teamMemberIds)
             .order("created_at", { ascending: false })
             .abortSignal(controller.signal);
 
