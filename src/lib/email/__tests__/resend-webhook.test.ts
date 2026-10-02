@@ -275,6 +275,109 @@ describe("applyResendListAction", () => {
     expect(result).toEqual({ status: "unchanged", contactSync: "ok" });
     expect(syncContact).toHaveBeenCalledOnce();
   });
+  it("falls back to the exact ilike lookup when the email_lower query errors", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const filter = vi.fn().mockReturnValue({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: null,
+        error: { code: "42703", message: "column profiles.email_lower does not exist" },
+      }),
+    });
+    const ilike = vi.fn().mockReturnValue({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "user-1", marketing_email_opt_in: true },
+        error: null,
+      }),
+    });
+    const admin = {
+      from: () => ({
+        select: () => ({ filter, ilike }),
+        update,
+      }),
+    };
+
+    const result = await applyResendListAction(
+      {
+        kind: "preference",
+        email: "A_B%x@Gmail.com",
+        optedIn: false,
+        syncContact: false,
+      },
+      { admin: admin as never }
+    );
+
+    expect(filter).toHaveBeenCalledWith("email_lower", "eq", "a_b%x@gmail.com");
+    expect(ilike).toHaveBeenCalledWith("email", "a\\_b\\%x@gmail.com");
+    expect(result).toEqual({ status: "updated", contactSync: "skipped" });
+    expect(eq).toHaveBeenCalledWith("id", "user-1");
+  });
+
+  it("throws when both the email_lower and ilike lookups error", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fallbackError = { code: "PGRST000", message: "db down" };
+    const update = vi.fn();
+    const admin = {
+      from: () => ({
+        select: () => ({
+          filter: () => ({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: null,
+              error: { code: "42703", message: "missing" },
+            }),
+          }),
+          ilike: () => ({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: fallbackError }),
+          }),
+        }),
+        update,
+      }),
+    };
+
+    await expect(
+      applyResendListAction(
+        {
+          kind: "preference",
+          email: "a@gmail.com",
+          optedIn: false,
+          syncContact: false,
+        },
+        { admin: admin as never }
+      )
+    ).rejects.toBe(fallbackError);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("ignores the event when no profile matches", async () => {
+    const update = vi.fn();
+    const ilike = vi.fn();
+    const admin = {
+      from: () => ({
+        select: () => ({
+          filter: () => ({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+          ilike,
+        }),
+        update,
+      }),
+    };
+
+    const result = await applyResendListAction(
+      {
+        kind: "preference",
+        email: "nobody@gmail.com",
+        optedIn: false,
+        syncContact: false,
+      },
+      { admin: admin as never }
+    );
+
+    expect(result).toEqual({ status: "ignored", contactSync: "skipped" });
+    expect(ilike).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
 });
 
 describe("parseResendWebhookEvent", () => {

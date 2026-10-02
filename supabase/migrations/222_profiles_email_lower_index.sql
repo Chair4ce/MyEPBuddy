@@ -8,6 +8,9 @@
 -- lower(email) and use idx_profiles_email_lower. Adding search_path would
 -- block that inlining and leave the index unused.
 -- Unnamed argument: PostgREST treats this as a computed field, not an RPC.
+-- lower is schema-qualified so the body does not depend on the caller's
+-- search_path (the advisor still reports function_search_path_mutable because
+-- there is no SET clause; that is intentional, see above).
 
 CREATE INDEX IF NOT EXISTS idx_profiles_email_lower
   ON public.profiles (lower(email));
@@ -18,11 +21,16 @@ LANGUAGE sql
 IMMUTABLE
 PARALLEL SAFE
 AS $$
-  SELECT lower($1.email);
+  SELECT pg_catalog.lower($1.email);
 $$;
 
 COMMENT ON FUNCTION public.email_lower(public.profiles) IS
   'Computed field for case-insensitive profile email equality. Inlines to lower(email) so idx_profiles_email_lower applies. Used by the Resend webhook.';
 
+-- Supabase default privileges grant EXECUTE on new public functions to anon
+-- and authenticated explicitly, so REVOKE FROM PUBLIC alone is not enough
+-- (see migration 174). Only the service-role webhook needs this field.
 REVOKE ALL ON FUNCTION public.email_lower(public.profiles) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.email_lower(public.profiles) FROM anon;
+REVOKE ALL ON FUNCTION public.email_lower(public.profiles) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.email_lower(public.profiles) TO service_role;

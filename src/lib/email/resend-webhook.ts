@@ -131,6 +131,52 @@ function firstEmail(value: unknown): string | null {
   return null;
 }
 
+function escapeIlikeExact(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+type ProfileOptInRow = { id: string; marketing_email_opt_in: boolean | null };
+
+/**
+ * Case-insensitive single-profile lookup by email.
+ * Primary path: equality on the email_lower computed field (migration 222),
+ * which uses idx_profiles_email_lower. If that query errors (for example the
+ * app deployed before migration 222 reached the database, or the PostgREST
+ * schema cache has not reloaded yet), fall back to the previous exact ilike
+ * lookup so unsubscribe/bounce/complaint sync keeps working.
+ */
+async function findProfileByEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string
+): Promise<ProfileOptInRow | null> {
+  const normalizedEmail = email.toLowerCase();
+  const indexed = await admin
+    .from("profiles")
+    .select("id, marketing_email_opt_in")
+    .filter("email_lower", "eq", normalizedEmail)
+    .maybeSingle();
+
+  if (!indexed.error) {
+    return (indexed.data as ProfileOptInRow | null) ?? null;
+  }
+
+  console.warn(
+    "[webhooks/resend] email_lower lookup failed; falling back to ilike:",
+    indexed.error.code ?? indexed.error.message
+  );
+
+  const fallback = await admin
+    .from("profiles")
+    .select("id, marketing_email_opt_in")
+    .ilike("email", escapeIlikeExact(normalizedEmail))
+    .maybeSingle();
+
+  if (fallback.error) {
+    throw fallback.error;
+  }
+  return (fallback.data as ProfileOptInRow | null) ?? null;
+}
+
 export type ResendListApplyResult = {
   status: "ignored" | "updated" | "unchanged";
   contactSync: "ok" | "skipped" | "failed";
@@ -148,21 +194,11 @@ export async function applyResendListAction(
   }
 
   const admin = deps.admin ?? createAdminClient();
-  // email_lower is lower(profiles.email) (migration 222). Equality on that
-  // computed field uses idx_profiles_email_lower. ilike cannot, and comparing
-  // the raw email column misses mixed-case stored addresses.
-  // Incoming webhook addresses are already trimmed and lowercased; fold case
-  // again so a direct caller still matches the same rows ilike matched.
-  const normalizedEmail = action.email.toLowerCase();
-  const { data: profile, error } = await admin
-    .from("profiles")
-    .select("id, marketing_email_opt_in")
-    .filter("email_lower", "eq", normalizedEmail)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
+  // Equality on lower(email) via the email_lower computed field (migration
+  // 222) uses idx_profiles_email_lower; ilike cannot. Incoming webhook
+  // addresses are already trimmed and lowercased; findProfileByEmail folds
+  // case again so a direct caller still matches the same rows ilike matched.
+  const profile = await findProfileByEmail(admin, action.email);
 
   let status: ResendListApplyResult["status"] = "ignored";
   if (!profile) {
