@@ -62,6 +62,10 @@ import {
   type RevisionTense,
 } from "@/lib/revise-rephrase";
 
+// Client fetchWithRetry aborts this route at 55s. Match the other single
+// generateText handlers so the platform does not cut the request earlier.
+export const maxDuration = 60;
+
 function finalizeRevisions(
   mode: "expand" | "compress" | "general",
   revisions: string[],
