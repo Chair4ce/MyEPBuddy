@@ -131,10 +131,6 @@ function firstEmail(value: unknown): string | null {
   return null;
 }
 
-function escapeIlikeExact(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
-
 export type ResendListApplyResult = {
   status: "ignored" | "updated" | "unchanged";
   contactSync: "ok" | "skipped" | "failed";
@@ -152,10 +148,16 @@ export async function applyResendListAction(
   }
 
   const admin = deps.admin ?? createAdminClient();
+  // email_lower is lower(profiles.email) (migration 222). Equality on that
+  // computed field uses idx_profiles_email_lower. ilike cannot, and comparing
+  // the raw email column misses mixed-case stored addresses.
+  // Incoming webhook addresses are already trimmed and lowercased; fold case
+  // again so a direct caller still matches the same rows ilike matched.
+  const normalizedEmail = action.email.toLowerCase();
   const { data: profile, error } = await admin
     .from("profiles")
     .select("id, marketing_email_opt_in")
-    .ilike("email", escapeIlikeExact(action.email))
+    .filter("email_lower", "eq", normalizedEmail)
     .maybeSingle();
 
   if (error) {

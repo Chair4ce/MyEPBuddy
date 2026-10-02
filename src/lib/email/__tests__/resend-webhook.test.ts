@@ -147,10 +147,11 @@ describe("applyResendListAction", () => {
       data: { id: "user-1", marketing_email_opt_in: false },
       error: null,
     });
+    const filter = vi.fn().mockReturnValue({ maybeSingle });
     const admin = {
       from: () => ({
         select: () => ({
-          ilike: () => ({ maybeSingle }),
+          filter,
         }),
         update: () => ({ eq: vi.fn() }),
       }),
@@ -159,13 +160,14 @@ describe("applyResendListAction", () => {
     const result = await applyResendListAction(
       {
         kind: "preference",
-        email: "a@gmail.com",
+        email: "A@Gmail.com",
         optedIn: false,
         syncContact: false,
       },
       { admin: admin as never }
     );
 
+    expect(filter).toHaveBeenCalledWith("email_lower", "eq", "a@gmail.com");
     expect(result).toEqual({ status: "unchanged", contactSync: "skipped" });
   });
 
@@ -176,10 +178,11 @@ describe("applyResendListAction", () => {
       data: { id: "user-1", marketing_email_opt_in: true },
       error: null,
     });
+    const filter = vi.fn().mockReturnValue({ maybeSingle });
     const admin = {
       from: () => ({
         select: () => ({
-          ilike: () => ({ maybeSingle }),
+          filter,
         }),
         update,
       }),
@@ -195,6 +198,7 @@ describe("applyResendListAction", () => {
       { admin: admin as never }
     );
 
+    expect(filter).toHaveBeenCalledWith("email_lower", "eq", "a@gmail.com");
     expect(result).toEqual({ status: "updated", contactSync: "skipped" });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -211,10 +215,11 @@ describe("applyResendListAction", () => {
       data: { id: "user-1", marketing_email_opt_in: true },
       error: null,
     });
+    const filter = vi.fn().mockReturnValue({ maybeSingle });
     const admin = {
       from: () => ({
         select: () => ({
-          ilike: () => ({ maybeSingle }),
+          filter,
         }),
         update,
       }),
@@ -231,6 +236,7 @@ describe("applyResendListAction", () => {
       { admin: admin as never, syncContact }
     );
 
+    expect(filter).toHaveBeenCalledWith("email_lower", "eq", "gone@gmail.com");
     expect(result).toEqual({ status: "updated", contactSync: "failed" });
     expect(update).toHaveBeenCalled();
     expect(syncContact).toHaveBeenCalledWith({
@@ -244,10 +250,11 @@ describe("applyResendListAction", () => {
       data: { id: "user-1", marketing_email_opt_in: false },
       error: null,
     });
+    const filter = vi.fn().mockReturnValue({ maybeSingle });
     const admin = {
       from: () => ({
         select: () => ({
-          ilike: () => ({ maybeSingle }),
+          filter,
         }),
         update: () => ({ eq: vi.fn() }),
       }),
@@ -264,6 +271,7 @@ describe("applyResendListAction", () => {
       { admin: admin as never, syncContact }
     );
 
+    expect(filter).toHaveBeenCalledWith("email_lower", "eq", "gone@gmail.com");
     expect(result).toEqual({ status: "unchanged", contactSync: "ok" });
     expect(syncContact).toHaveBeenCalledOnce();
   });
