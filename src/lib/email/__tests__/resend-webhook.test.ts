@@ -98,6 +98,7 @@ describe("interpretResendWebhookEvent", () => {
       email: "gone@gmail.com",
       optedIn: false,
       syncContact: true,
+      suppress: "bounce",
     });
   });
 
@@ -124,7 +125,20 @@ describe("interpretResendWebhookEvent", () => {
       email: "spam@gmail.com",
       optedIn: false,
       syncContact: true,
+      suppress: "complaint",
     });
+  });
+
+  it("records a hard bounce on a .mil address without a marketing opt-out", () => {
+    expect(
+      interpretResendWebhookEvent({
+        type: "email.bounced",
+        data: {
+          to: ["a@us.af.mil"],
+          bounce: { type: "Permanent" },
+        },
+      })
+    ).toEqual({ kind: "suppressed", email: "a@us.af.mil", reason: "bounce" });
   });
 
   it("skips .mil recipients", () => {

@@ -19,6 +19,18 @@ export type ResendListAction =
       optedIn: boolean;
       /** Bounce/complaint: also mark the Resend contact unsubscribed. */
       syncContact: boolean;
+      /**
+       * Permanent bounce or spam complaint. Recorded separately from
+       * marketing opt-out so transactional mail can still ignore opt-out
+       * and still skip an address Resend will not deliver to.
+       */
+      suppress?: "bounce" | "complaint";
+    }
+  | {
+      /** .mil addresses are not marketing contacts, but a hard failure still blocks transactional mail. */
+      kind: "suppressed";
+      email: string;
+      reason: "bounce" | "complaint";
     };
 
 export function verifyResendWebhookSignature(params: {
@@ -98,8 +110,14 @@ export function interpretResendWebhookEvent(
   if (event.type === "email.complained") {
     const email = firstEmail(event.data?.to);
     if (!email) return { kind: "ignore", reason: "no_email" };
-    if (isMilEmail(email)) return { kind: "ignore", reason: "mil" };
-    return { kind: "preference", email, optedIn: false, syncContact: true };
+    if (isMilEmail(email)) return { kind: "suppressed", email, reason: "complaint" };
+    return {
+      kind: "preference",
+      email,
+      optedIn: false,
+      syncContact: true,
+      suppress: "complaint",
+    };
   }
 
   if (event.type === "email.bounced") {
@@ -113,8 +131,14 @@ export function interpretResendWebhookEvent(
     }
     const email = firstEmail(event.data?.to);
     if (!email) return { kind: "ignore", reason: "no_email" };
-    if (isMilEmail(email)) return { kind: "ignore", reason: "mil" };
-    return { kind: "preference", email, optedIn: false, syncContact: true };
+    if (isMilEmail(email)) return { kind: "suppressed", email, reason: "bounce" };
+    return {
+      kind: "preference",
+      email,
+      optedIn: false,
+      syncContact: true,
+      suppress: "bounce",
+    };
   }
 
   return { kind: "ignore", reason: "unhandled_type" };
@@ -182,6 +206,13 @@ export type ResendListApplyResult = {
   contactSync: "ok" | "skipped" | "failed";
 };
 
+function suppressionPatch(reason: "bounce" | "complaint") {
+  return {
+    email_suppressed_at: new Date().toISOString(),
+    email_suppressed_reason: reason,
+  };
+}
+
 export async function applyResendListAction(
   action: ResendListAction,
   deps: {
@@ -194,6 +225,18 @@ export async function applyResendListAction(
   }
 
   const admin = deps.admin ?? createAdminClient();
+
+  if (action.kind === "suppressed") {
+    const profile = await findProfileByEmail(admin, action.email);
+    if (!profile) return { status: "ignored", contactSync: "skipped" };
+    const { error: updateError } = await admin
+      .from("profiles")
+      .update(suppressionPatch(action.reason) as never)
+      .eq("id", profile.id);
+    if (updateError) throw updateError;
+    return { status: "updated", contactSync: "skipped" };
+  }
+
   // Equality on lower(email) via the email_lower computed field (migration
   // 222) uses idx_profiles_email_lower; ilike cannot. Incoming webhook
   // addresses are already trimmed and lowercased; findProfileByEmail folds
@@ -201,19 +244,25 @@ export async function applyResendListAction(
   const profile = await findProfileByEmail(admin, action.email);
 
   let status: ResendListApplyResult["status"] = "ignored";
+  const optInUnchanged =
+    profile != null && profile.marketing_email_opt_in === action.optedIn;
   if (!profile) {
     status = "ignored";
-  } else if (profile.marketing_email_opt_in === action.optedIn) {
+  } else if (optInUnchanged && !action.suppress) {
     status = "unchanged";
   } else {
     const source: MarketingEmailOptInSource = "resend";
+    const patch: Record<string, unknown> = action.suppress
+      ? suppressionPatch(action.suppress)
+      : {};
+    if (!optInUnchanged) {
+      patch.marketing_email_opt_in = action.optedIn;
+      patch.marketing_email_opt_in_at = new Date().toISOString();
+      patch.marketing_email_opt_in_source = source;
+    }
     const { error: updateError } = await admin
       .from("profiles")
-      .update({
-        marketing_email_opt_in: action.optedIn,
-        marketing_email_opt_in_at: new Date().toISOString(),
-        marketing_email_opt_in_source: source,
-      } as never)
+      .update(patch as never)
       .eq("id", profile.id);
 
     if (updateError) {

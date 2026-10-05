@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 import { safePostAuthPath } from "@/lib/managed-member-invite-params";
+import { isInactivitySuspended, restoreSuspendedAccount } from "@/lib/inactivity/restore";
 import { isSocialPreviewPath } from "@/lib/site-url";
 
 type CookieToSet = {
@@ -45,6 +46,24 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (user && isInactivitySuspended(user)) {
+    const restored = await restoreSuspendedAccount(user);
+    const alreadyMarked = request.nextUrl.searchParams.get("accountRestored") === "1";
+    if (
+      restored &&
+      !alreadyMarked &&
+      !request.nextUrl.pathname.startsWith("/api/")
+    ) {
+      const url = request.nextUrl.clone();
+      url.searchParams.set("accountRestored", "1");
+      const redirectResponse = NextResponse.redirect(url);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie);
+      });
+      return redirectResponse;
+    }
+  }
 
   const publicPaths = [
     "/",
