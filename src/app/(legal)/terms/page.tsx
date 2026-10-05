@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 // Static date for legal compliance
-const LAST_UPDATED = "January 9, 2026";
+const LAST_UPDATED = "October 5, 2026";
 
 export default function TermsOfServicePage() {
   return (
@@ -157,6 +157,23 @@ export default function TermsOfServicePage() {
         <p>
           We reserve the right to suspend or terminate accounts that violate these Terms of Service. 
           You may also delete your account at any time through the Service settings or by contacting us.
+        </p>
+        <p>
+          If you do not sign in or otherwise use your account for 305 days, we email the confirmed
+          address on the account. If you are still inactive 30 days after that notice, we email you
+          again. If you are still inactive 365 days after your last activity, we suspend the account.
+          Suspension keeps your accomplishments, EPBs, and AI credits. Signing in lifts the suspension
+          and restores access. If the account stays inactive for 30 days after suspension, 395 days
+          after your last activity, we may permanently delete the account and its data, including
+          unused AI credits.
+        </p>
+        <p>
+          These are account messages, not marketing. A late notice does not shorten the warning:
+          the second notice waits at least 30 days after the first, and suspension waits at least
+          60 days after the first notice and 30 days after the second. Each notice states the
+          suspension date that applies to your account. We do not send these messages to an
+          unconfirmed email address. Administrator accounts and accounts we mark exempt are not
+          suspended or deleted under this section. We may change these periods by updating these Terms.
         </p>
       </section>
 
