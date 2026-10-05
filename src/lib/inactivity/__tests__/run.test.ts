@@ -40,7 +40,7 @@ function createHarness(rows: Partial<Record<InactivityDueRow["due_stage"], Inact
       calls.push("cancel");
       return 2;
     }),
-    due: vi.fn(async (stage) => {
+    due: vi.fn(async (stage: InactivityDueRow["due_stage"]) => {
       calls.push(`due:${stage}`);
       return rows[stage] ?? [];
     }),

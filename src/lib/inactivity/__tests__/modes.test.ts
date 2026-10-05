@@ -3,6 +3,7 @@ import {
   allInactivityModesOff,
   parseInactivityMode,
   readInactivityCap,
+  resolveInactivityCaps,
   resolveInactivityModes,
 } from "../modes";
 
@@ -11,6 +12,23 @@ describe("inactivity modes", () => {
     const modes = resolveInactivityModes({});
     expect(modes).toEqual({ notices: "dry_run", suspend: "off", delete: "off" });
     expect(allInactivityModesOff(modes)).toBe(false);
+  });
+
+  it("accepts a process.env-shaped object (the cron route passes process.env)", () => {
+    // Typed as NodeJS.ProcessEnv on purpose: the route calls these with
+    // process.env, and a parameter type without an index signature fails
+    // `next build` type checking (TS2559).
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", CRON_SECRET: "x" };
+    expect(resolveInactivityModes(env)).toEqual({
+      notices: "dry_run",
+      suspend: "off",
+      delete: "off",
+    });
+    expect(resolveInactivityCaps(env)).toEqual({
+      noticeDaily: 25,
+      suspendPerRun: 25,
+      deleteWeekly: 25,
+    });
   });
 
   it("fails closed on unknown values", () => {

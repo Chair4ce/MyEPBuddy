@@ -31,6 +31,8 @@ export function resolveInactivityModes(
     INACTIVITY_NOTICES_MODE?: string;
     INACTIVITY_SUSPEND_MODE?: string;
     INACTIVITY_DELETE_MODE?: string;
+    // Accept process.env (an index-signature type) without a cast.
+    [key: string]: string | undefined;
   },
   requestUrl?: URL
 ): InactivityModes {
@@ -71,6 +73,7 @@ export function resolveInactivityCaps(env: {
   INACTIVITY_NOTICE_DAILY_CAP?: string;
   INACTIVITY_SUSPEND_RUN_CAP?: string;
   INACTIVITY_DELETE_WEEKLY_CAP?: string;
+  [key: string]: string | undefined;
 }): InactivityCaps {
   return {
     noticeDaily: readInactivityCap(env.INACTIVITY_NOTICE_DAILY_CAP, 25),
