@@ -1,5 +1,10 @@
 /** Shared Resend HTTP client for transactional emails. */
 
+export type ResendEmailTag = {
+  name: string;
+  value: string;
+};
+
 export type SendResendEmailParams = {
   resendApiKey: string;
   from: string;
@@ -8,6 +13,13 @@ export type SendResendEmailParams = {
   html: string;
   text: string;
   replyTo?: string | null;
+  /** Resend Idempotency-Key. Same key within 24h returns the original send. */
+  idempotencyKey?: string | null;
+  tags?: ResendEmailTag[];
+};
+
+export type SendResendEmailResult = {
+  id: string | null;
 };
 
 export class ResendSendError extends Error {
@@ -37,7 +49,7 @@ export function normalizeEnvSecret(value: string | undefined | null): string | n
 
 export async function sendResendEmail(
   params: SendResendEmailParams
-): Promise<void> {
+): Promise<SendResendEmailResult> {
   const payload: Record<string, unknown> = {
     from: params.from,
     to: Array.isArray(params.to) ? params.to : [params.to],
@@ -50,12 +62,26 @@ export async function sendResendEmail(
     payload.reply_to = params.replyTo;
   }
 
+  if (params.tags && params.tags.length > 0) {
+    payload.tags = params.tags;
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${params.resendApiKey}`,
+    "Content-Type": "application/json",
+  };
+
+  if (params.idempotencyKey) {
+    const key = params.idempotencyKey.trim();
+    if (key.length === 0 || key.length > 256 || /\s/.test(key)) {
+      throw new Error("Invalid Resend idempotency key");
+    }
+    headers["Idempotency-Key"] = key;
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.resendApiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -63,6 +89,10 @@ export async function sendResendEmail(
     const detail = await response.text();
     throw new ResendSendError(response.status, detail);
   }
+
+  const body = (await response.json().catch(() => null)) as { id?: unknown } | null;
+  const id = body && typeof body.id === "string" ? body.id : null;
+  return { id };
 }
 
 /**

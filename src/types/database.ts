@@ -53,6 +53,15 @@ export interface Profile {
     | "settings"
     | "resend"
     | null;
+  /** Soft-lock timestamp. Null means the account is not suspended for inactivity. */
+  inactivity_suspended_at: string | null;
+  /** Excluded from inactivity notices, suspension, and deletion. */
+  inactivity_exempt: boolean;
+  /** Service-role stamp included in the inactivity activity anchor. */
+  inactivity_activity_at: string | null;
+  /** Permanent bounce or complaint. Transactional inactivity mail is skipped. */
+  email_suppressed_at: string | null;
+  email_suppressed_reason: "bounce" | "complaint" | null;
   trial_intro_seen_at: string | null;
   earn_tokens_intro_seen_at: string | null;
   coaching_features_intro_seen_at: string | null;

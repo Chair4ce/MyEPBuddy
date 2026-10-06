@@ -2222,6 +2222,11 @@ export type Database = {
           marketing_email_opt_in: boolean | null
           marketing_email_opt_in_at: string | null
           marketing_email_opt_in_source: string | null
+          inactivity_suspended_at: string | null
+          inactivity_exempt: boolean
+          inactivity_activity_at: string | null
+          email_suppressed_at: string | null
+          email_suppressed_reason: string | null
         }
         Insert: {
           afsc?: string | null
@@ -2240,6 +2245,11 @@ export type Database = {
           marketing_email_opt_in?: boolean | null
           marketing_email_opt_in_at?: string | null
           marketing_email_opt_in_source?: string | null
+          inactivity_suspended_at?: string | null
+          inactivity_exempt?: boolean
+          inactivity_activity_at?: string | null
+          email_suppressed_at?: string | null
+          email_suppressed_reason?: string | null
         }
         Update: {
           afsc?: string | null
@@ -2258,6 +2268,11 @@ export type Database = {
           marketing_email_opt_in?: boolean | null
           marketing_email_opt_in_at?: string | null
           marketing_email_opt_in_source?: string | null
+          inactivity_suspended_at?: string | null
+          inactivity_exempt?: boolean
+          inactivity_activity_at?: string | null
+          email_suppressed_at?: string | null
+          email_suppressed_reason?: string | null
         }
         Relationships: [
           {
@@ -4035,6 +4050,41 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      inactivity_cancel_stale: {
+        Args: { p_now: string }
+        Returns: number
+      }
+      inactivity_cancel_user: {
+        Args: { p_reason: string; p_user_id: string }
+        Returns: number
+      }
+      inactivity_claim_notice: {
+        Args: {
+          p_activity_anchor: string
+          p_notice_type: string
+          p_scheduled_suspend_at: string
+          p_user_id: string
+        }
+        Returns: string
+      }
+      inactivity_due: {
+        Args: { p_limit: number; p_now: string; p_stage: string }
+        Returns: {
+          activity_at: string
+          already_suspended: boolean
+          due_stage: string
+          email: string
+          email_suppressed: boolean
+          notice_30_sent_at: string
+          notice_60_sent_at: string
+          scheduled_delete_at: string
+          scheduled_suspend_at: string
+          suspended_at: string
+          user_id: string
+        }[]
+      }
+      inactivity_finish_lock: { Args: never; Returns: undefined }
+      inactivity_try_lock: { Args: never; Returns: boolean }
       insert_analytics_event: {
         Args: {
           p_event_name: string
