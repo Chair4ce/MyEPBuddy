@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-model-catalog",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/inactivity-notices",
+      "schedule": "0 16 * * *"
     }
   ]
 }

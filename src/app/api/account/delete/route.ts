@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { getStripe } from "@/lib/stripe/server";
+import { deleteAccountData } from "@/lib/account-deletion-server";
 import { isValidExitReason, sanitizeComments } from "@/lib/account-deletion";
 import type { Profile } from "@/types/database";
 
@@ -35,45 +35,6 @@ function checkRateLimit(userId: string): boolean {
 
   record.count += 1;
   return true;
-}
-
-async function deleteUserAvatars(admin: ReturnType<typeof createAdminClient>, userId: string) {
-  const { data: files, error } = await admin.storage.from("avatars").list(userId);
-  if (error || !files?.length) return;
-
-  const paths = files.map((file) => `${userId}/${file.name}`);
-  await admin.storage.from("avatars").remove(paths);
-}
-
-async function deleteStripeCustomer(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
-) {
-  const { data: stripeRow } = await (admin as unknown as {
-    from: (table: string) => {
-      select: (cols: string) => {
-        eq: (col: string, val: string) => {
-          maybeSingle: () => Promise<{
-            data: { stripe_customer_id: string } | null;
-            error: unknown;
-          }>;
-        };
-      };
-    };
-  })
-    .from("stripe_customers")
-    .select("stripe_customer_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (!stripeRow?.stripe_customer_id) return;
-
-  try {
-    const stripe = getStripe();
-    await stripe.customers.del(stripeRow.stripe_customer_id);
-  } catch (error) {
-    console.error("Failed to delete Stripe customer during account deletion:", error);
-  }
 }
 
 function generateSurveyToken(): string {
@@ -185,13 +146,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await deleteUserAvatars(admin, user.id);
-    await deleteStripeCustomer(admin, user.id);
-
-    const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);
-
-    if (deleteError) {
-      console.error("Failed to delete auth user:", deleteError);
+    const deletion = await deleteAccountData(admin, user.id);
+    if (!deletion.ok) {
+      console.error("Failed to delete account");
+      if (deletion.error.includes("Administrator")) {
+        return NextResponse.json({ error: deletion.error }, { status: 403 });
+      }
       return NextResponse.json(
         { error: "Failed to delete account. Please contact support." },
         { status: 500 },

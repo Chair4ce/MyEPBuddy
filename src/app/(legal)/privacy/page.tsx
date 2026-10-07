@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 // Static date for legal compliance
-const LAST_UPDATED = "August 20, 2026";
+const LAST_UPDATED = "October 5, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
@@ -129,10 +129,12 @@ export default function PrivacyPolicyPage() {
             <strong>Vercel:</strong> Hosting and analytics
           </li>
           <li>
-            <strong>Resend:</strong> Email delivery for invites, feedback, and
-            EPB cycle reminders (we do not sell your address). You can stop
-            cycle reminders in Settings → Email preferences or via unsubscribe
-            in those emails.
+            <strong>Resend:</strong> Email delivery for invites, feedback,
+            EPB cycle reminders, and account inactivity notices (we do not sell
+            your address). You can stop cycle reminders in Settings → Email
+            preferences or via unsubscribe in those emails. Inactivity notices
+            are account messages about suspension or deletion, so they are not
+            marketing and do not include an unsubscribe link.
           </li>
         </ul>
         <p>
@@ -144,8 +146,15 @@ export default function PrivacyPolicyPage() {
       <section className="mt-8">
         <h2>Data Retention</h2>
         <p>
-          Your data is retained as long as your account is active. You may request deletion 
-          of your account and all associated data at any time by contacting us.
+          Your data is retained while your account is active and while it is suspended for
+          inactivity. If you do not use the account for about a year, we email the confirmed
+          address on the account before we suspend it. Suspension keeps your data and AI credits.
+          Signing in before deletion restores the account. If the account stays inactive for 30
+          days after suspension, we may permanently delete it and its data, including unused AI
+          credits. You can delete your account yourself at any time in Settings. The Terms of
+          Service state the inactivity periods, including that a late notice does not shorten them.
+          We do not send inactivity notices to an unconfirmed email address, and we do not delete
+          those accounts under this policy.
         </p>
       </section>
 
