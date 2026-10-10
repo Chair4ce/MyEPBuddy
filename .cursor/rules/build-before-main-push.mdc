@@ -1,0 +1,12 @@
+---
+description: Run a production build before pushing main
+alwaysApply: true
+---
+
+# Build before pushing main
+
+Before `git push` of `main`, run `npm run build` from the repo root on the commit that will be pushed.
+
+- Do not push `main` if the build fails.
+- A typecheck-only pass is not a substitute. Vercel runs `npm run build`.
+- Other branches do not require this gate unless the user asks.

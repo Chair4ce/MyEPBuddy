@@ -16,6 +16,12 @@ type AwardShareRow = AwardShellShare & { shared_with_profile?: Profile };
 type DecorationShareRow = DecorationShellShare & { shared_with_profile?: Profile };
 type EpbShareRow = EPBShellShare & { shared_with_profile?: Profile };
 
+function insertedShareId(data: unknown): string | null {
+  if (!data || typeof data !== "object" || !("id" in data)) return null;
+  const id = data.id;
+  return typeof id === "string" ? id : null;
+}
+
 async function requireAuthedClient() {
   const supabase = await createClient();
   const {
@@ -49,8 +55,9 @@ export async function shareAwardShellWithUser(
     .select("id")
     .single();
 
-  if (inserted.error) {
-    return { ok: false, error: inserted.error.message };
+  const shareId = insertedShareId(inserted.data);
+  if (inserted.error || !shareId) {
+    return { ok: false, error: inserted.error?.message ?? "Failed to share" };
   }
 
   // A second statement: can_view_profile is STABLE, so it cannot see the
@@ -63,7 +70,7 @@ export async function shareAwardShellWithUser(
         id, full_name, rank, afsc, email
       )
     `)
-    .eq("id", inserted.data.id)
+    .eq("id", shareId)
     .single();
 
   if (error) {
@@ -93,8 +100,9 @@ export async function shareDecorationShellWithUser(
     .select("id")
     .single();
 
-  if (inserted.error) {
-    return { ok: false, error: inserted.error.message };
+  const shareId = insertedShareId(inserted.data);
+  if (inserted.error || !shareId) {
+    return { ok: false, error: inserted.error?.message ?? "Failed to share" };
   }
 
   const { data, error } = await supabase
@@ -105,7 +113,7 @@ export async function shareDecorationShellWithUser(
         id, full_name, rank, afsc, email
       )
     `)
-    .eq("id", inserted.data.id)
+    .eq("id", shareId)
     .single();
 
   if (error) {
@@ -135,8 +143,9 @@ export async function shareEpbShellWithUser(
     .select("id")
     .single();
 
-  if (inserted.error) {
-    return { ok: false, error: inserted.error.message };
+  const shareId = insertedShareId(inserted.data);
+  if (inserted.error || !shareId) {
+    return { ok: false, error: inserted.error?.message ?? "Failed to share" };
   }
 
   const { data, error } = await supabase
@@ -147,7 +156,7 @@ export async function shareEpbShellWithUser(
         id, full_name, rank, afsc, email
       )
     `)
-    .eq("id", inserted.data.id)
+    .eq("id", shareId)
     .single();
 
   if (error) {
