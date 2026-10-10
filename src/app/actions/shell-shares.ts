@@ -38,7 +38,7 @@ export async function shareAwardShellWithUser(
     return { ok: false, error: "Unauthorized" };
   }
 
-  const { data, error } = await supabase
+  const inserted = await supabase
     .from("award_shell_shares")
     .insert({
       shell_id: shellId,
@@ -46,12 +46,24 @@ export async function shareAwardShellWithUser(
       share_type: "user",
       shared_with_id: sharedWithId,
     } as never)
+    .select("id")
+    .single();
+
+  if (inserted.error) {
+    return { ok: false, error: inserted.error.message };
+  }
+
+  // A second statement: can_view_profile is STABLE, so it cannot see the
+  // share row inside the INSERT that created it. The embed would come back null.
+  const { data, error } = await supabase
+    .from("award_shell_shares")
     .select(`
       *,
       shared_with_profile:profiles!award_shell_shares_shared_with_id_fkey(
         id, full_name, rank, afsc, email
       )
     `)
+    .eq("id", inserted.data.id)
     .single();
 
   if (error) {
@@ -70,7 +82,7 @@ export async function shareDecorationShellWithUser(
     return { ok: false, error: "Unauthorized" };
   }
 
-  const { data, error } = await supabase
+  const inserted = await supabase
     .from("decoration_shell_shares")
     .insert({
       shell_id: shellId,
@@ -78,12 +90,22 @@ export async function shareDecorationShellWithUser(
       share_type: "user",
       shared_with_id: sharedWithId,
     } as never)
+    .select("id")
+    .single();
+
+  if (inserted.error) {
+    return { ok: false, error: inserted.error.message };
+  }
+
+  const { data, error } = await supabase
+    .from("decoration_shell_shares")
     .select(`
       *,
       shared_with_profile:profiles!decoration_shell_shares_shared_with_id_fkey(
         id, full_name, rank, afsc, email
       )
     `)
+    .eq("id", inserted.data.id)
     .single();
 
   if (error) {
@@ -102,7 +124,7 @@ export async function shareEpbShellWithUser(
     return { ok: false, error: "Unauthorized" };
   }
 
-  const { data, error } = await supabase
+  const inserted = await supabase
     .from("epb_shell_shares")
     .insert({
       shell_id: shellId,
@@ -110,12 +132,22 @@ export async function shareEpbShellWithUser(
       share_type: "user",
       shared_with_id: sharedWithId,
     } as never)
+    .select("id")
+    .single();
+
+  if (inserted.error) {
+    return { ok: false, error: inserted.error.message };
+  }
+
+  const { data, error } = await supabase
+    .from("epb_shell_shares")
     .select(`
       *,
       shared_with_profile:profiles!epb_shell_shares_shared_with_id_fkey(
         id, full_name, rank, afsc, email
       )
     `)
+    .eq("id", inserted.data.id)
     .single();
 
   if (error) {
