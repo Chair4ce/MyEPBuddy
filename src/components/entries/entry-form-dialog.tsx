@@ -34,6 +34,7 @@ import { DEFAULT_ACTION_VERBS, ENTRY_MGAS, getActiveCycleYear, isEnlisted } from
 import type { Award, Rank } from "@/types/database";
 import { Loader2, Sparkles, Target, BarChart3, ClipboardCopy } from "lucide-react";
 import { celebrateEntry } from "@/lib/confetti";
+import { messageFromUnknownError } from "@/lib/llm-user-message";
 import { cn } from "@/lib/utils";
 import type { Accomplishment, AccomplishmentAssessmentScores } from "@/types/database";
 import {
@@ -280,7 +281,7 @@ export function EntryFormDialog({
       }
     } catch (error) {
       console.error("Preview assessment failed:", error);
-      toast.error("Failed to assess accomplishment");
+      toast.error(messageFromUnknownError(error, "Failed to assess accomplishment"));
     } finally {
       setIsAssessing(false);
     }

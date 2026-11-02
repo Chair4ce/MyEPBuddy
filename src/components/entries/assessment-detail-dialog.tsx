@@ -21,6 +21,7 @@ import {
 } from "@/lib/assessment-coaching";
 import { ENTRY_MGAS } from "@/lib/constants";
 import { billableFetch } from "@/lib/fetch-with-retry";
+import { messageFromUnknownError } from "@/lib/llm-user-message";
 import { cn } from "@/lib/utils";
 import { useAccomplishmentsStore } from "@/stores/accomplishments-store";
 import type { AccomplishmentAssessmentScores } from "@/types/database";
@@ -96,7 +97,7 @@ export function AssessmentDetailDialog({
       toast.success("Assessment updated");
     } catch (error) {
       console.error("Re-assess failed:", error);
-      toast.error("Failed to re-assess entry");
+      toast.error(messageFromUnknownError(error, "Failed to re-assess entry"));
     } finally {
       setIsAssessing(false);
     }
