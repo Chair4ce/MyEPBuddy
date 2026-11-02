@@ -19,6 +19,7 @@ import {
 // Popover removed - caused ref loop issues with asChild pattern
 import { toast } from "@/components/ui/sonner";
 import { Analytics } from "@/lib/analytics";
+import { messageFromUnknownError } from "@/lib/llm-user-message";
 import { cn, getCharacterCountColor } from "@/lib/utils";
 import {
   STANDARD_MGAS,
@@ -1099,7 +1100,7 @@ export function MPASectionCard({
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to generate statement");
+      toast.error(messageFromUnknownError(error, "Failed to generate statement"));
     } finally {
       updateSectionState(section.mpa, { isGenerating: false });
     }
@@ -1233,7 +1234,7 @@ export function MPASectionCard({
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to generate revisions");
+      toast.error(messageFromUnknownError(error, "Failed to generate revisions"));
     } finally {
       setIsRevising(false);
     }

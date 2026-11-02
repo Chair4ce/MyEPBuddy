@@ -93,7 +93,9 @@ export async function fetchWithRetry(
             if (
               body?.errorCode === "usage_limit_exceeded" ||
               body?.errorCode === "burst_rate_limited" ||
-              body?.errorCode === "insufficient_credits"
+              body?.errorCode === "insufficient_credits" ||
+              body?.errorCode === "insufficient_funds" ||
+              body?.errorCode === "quota_exceeded"
             ) {
               return response;
             }

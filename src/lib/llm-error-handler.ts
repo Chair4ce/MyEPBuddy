@@ -10,7 +10,20 @@
 
 import { APICallError } from "ai";
 import { NextResponse } from "next/server";
+import { AI_MODELS } from "@/lib/constants";
 import { MissingApiKeyError, detectProvider, getProviderDisplayName, type LLMProvider } from "@/lib/llm-provider";
+
+/** Whose credential was used for the failed call. Never a key value. */
+export type LlmKeySource = "user" | "app";
+
+/**
+ * What the route actually called. `usingDefaultKey` follows usage tracking:
+ * true means the app environment key, false means the user's saved key.
+ */
+export interface LlmCallContext {
+  modelId?: string;
+  usingDefaultKey?: boolean;
+}
 
 /**
  * Structured error response returned to the client.
@@ -23,6 +36,12 @@ export interface LLMErrorResponse {
   errorCode: LLMErrorCode;
   /** The LLM provider that produced the error */
   provider?: string;
+  /** Display name of the model that was called (for example "Claude Sonnet 4.6") */
+  model?: string;
+  /** Model id that was called */
+  modelId?: string;
+  /** "user" = saved key, "app" = the app default key */
+  keySource?: LlmKeySource;
 }
 
 /**
@@ -60,42 +79,52 @@ export function handleLLMError(
   error: unknown,
   routeContext: string,
   modelId?: string,
+  callContext?: Pick<LlmCallContext, "usingDefaultKey">,
 ): NextResponse<LLMErrorResponse> {
-  // Log full error server-side for debugging
+  const ctx: LlmCallContext = {
+    modelId,
+    usingDefaultKey: callContext?.usingDefaultKey,
+  };
+
+  // Log full error server-side for debugging. The response never includes key material.
   console.error(`[LLM Error] ${routeContext}:`, error);
 
   // Handle missing API key (pre-call validation)
   if (error instanceof MissingApiKeyError) {
-    return NextResponse.json(
+    return toErrorResponse(
       {
-        error: error.message,
-        errorCode: "missing_api_key" as LLMErrorCode,
-        provider: error.providerDisplayName,
+        status: 400,
+        body: {
+          error: error.message,
+          errorCode: "missing_api_key",
+          provider: error.providerDisplayName,
+        },
       },
-      { status: 400 },
+      ctx,
     );
   }
 
   // Handle AI SDK API call errors (responses from the provider)
-  if (error instanceof APICallError) {
+  if (APICallError.isInstance(error)) {
     const provider = modelId ? detectProvider(modelId) : undefined;
-    const parsed = parseAPICallError(error, provider);
-    return NextResponse.json(parsed.body, { status: parsed.status });
+    return toErrorResponse(parseAPICallError(error, provider), ctx);
   }
 
   // Handle generic Error objects (may contain provider info in message)
   if (error instanceof Error) {
-    const parsed = parseGenericError(error, modelId);
-    return NextResponse.json(parsed.body, { status: parsed.status });
+    return toErrorResponse(parseGenericError(error, modelId), ctx);
   }
 
   // Fallback for unknown error types
-  return NextResponse.json(
+  return toErrorResponse(
     {
-      error: "An unexpected error occurred while generating. Please try again.",
-      errorCode: "generation_failed" as LLMErrorCode,
+      status: 500,
+      body: {
+        error: "An unexpected error occurred while generating. Please try again.",
+        errorCode: "generation_failed",
+      },
     },
-    { status: 500 },
+    ctx,
   );
 }
 
@@ -103,6 +132,110 @@ export function handleLLMError(
 interface ParsedError {
   status: number;
   body: LLMErrorResponse;
+}
+
+const BILLING_HOST: Record<LLMProvider, string> = {
+  anthropic: "console.anthropic.com",
+  openai: "platform.openai.com",
+  google: "aistudio.google.com",
+  xai: "console.x.ai",
+};
+
+function toErrorResponse(
+  parsed: ParsedError,
+  ctx: LlmCallContext,
+): NextResponse<LLMErrorResponse> {
+  return NextResponse.json(withCallContext(parsed.body, ctx), { status: parsed.status });
+}
+
+/**
+ * Attaches the model and key source, and rewrites billing copy so a user's
+ * empty Anthropic balance is not described as an app outage.
+ */
+function withCallContext(body: LLMErrorResponse, ctx: LlmCallContext): LLMErrorResponse {
+  const provider = ctx.modelId ? detectProvider(ctx.modelId) : providerFromDisplay(body.provider);
+  const providerName = provider ? getProviderDisplayName(provider) : body.provider;
+  const modelLabel = ctx.modelId ? safeModelLabel(ctx.modelId) : undefined;
+  const keySource: LlmKeySource | undefined =
+    ctx.usingDefaultKey === true ? "app" : ctx.usingDefaultKey === false ? "user" : undefined;
+
+  let error = body.error;
+  if (body.errorCode === "insufficient_funds" && providerName) {
+    error = creditMessage(providerName, provider, keySource);
+  } else if (body.errorCode === "quota_exceeded" && providerName && keySource === "app") {
+    error = `The app default ${providerName} key has reached its usage quota. Try again later or add your own key in Settings → API Keys.`;
+  }
+
+  const detail = formatCallDetail(modelLabel, keySource);
+  if (detail && !error.includes(detail)) {
+    const firstPeriod = error.indexOf(".");
+    error = firstPeriod > 0
+      ? `${error.slice(0, firstPeriod)} ${detail}${error.slice(firstPeriod)}`
+      : `${error} ${detail}`;
+  }
+
+  return {
+    error,
+    errorCode: body.errorCode,
+    ...(providerName ? { provider: providerName } : {}),
+    ...(modelLabel ? { model: modelLabel } : {}),
+    ...(ctx.modelId ? { modelId: ctx.modelId } : {}),
+    ...(keySource ? { keySource } : {}),
+  };
+}
+
+function creditMessage(
+  providerName: string,
+  provider: LLMProvider | undefined,
+  keySource: LlmKeySource | undefined,
+): string {
+  if (keySource === "app") {
+    return `The app default ${providerName} key is out of credit. Try again later or add your own key in Settings → API Keys.`;
+  }
+  const host = provider ? BILLING_HOST[provider] : undefined;
+  const action = host
+    ? ` Add credit at ${host} or switch to another model.`
+    : " Check that provider's billing or switch to another model.";
+  return `Your ${providerName} API key is out of credit.${action}`;
+}
+
+function formatCallDetail(
+  modelLabel: string | undefined,
+  keySource: LlmKeySource | undefined,
+): string | undefined {
+  const keyPhrase =
+    keySource === "user" ? "your own key" : keySource === "app" ? "the app default key" : undefined;
+  const parts = [modelLabel, keyPhrase].filter((part): part is string => Boolean(part));
+  if (parts.length === 0) return undefined;
+  return `(${parts.join(", ")})`;
+}
+
+function safeModelLabel(modelId: string): string {
+  const known = AI_MODELS.find((model) => model.id === modelId);
+  const sanitized = sanitizeForUser(known?.name ?? modelId);
+  return sanitized || "selected model";
+}
+
+function providerFromDisplay(name: string | undefined): LLMProvider | undefined {
+  if (!name) return undefined;
+  const lower = name.toLowerCase();
+  if (lower.includes("anthropic")) return "anthropic";
+  if (lower.includes("openai")) return "openai";
+  if (lower.includes("google")) return "google";
+  if (lower.includes("xai") || lower.includes("grok")) return "xai";
+  return undefined;
+}
+
+function isOutOfCreditMessage(text: string): boolean {
+  return containsAny(text, [
+    "credit balance",
+    "insufficient credit",
+    "insufficient funds",
+    "out of credit",
+    "purchase credits",
+    "plans & billing",
+    "too low to access",
+  ]);
 }
 
 /**
@@ -164,7 +297,17 @@ function parseAPICallError(
       };
 
     case 429:
-      // Differentiate between rate limit and quota exhaustion
+      // Differentiate between rate limit, empty credit, and quota exhaustion
+      if (isOutOfCreditMessage(providerMessage)) {
+        return {
+          status: 429,
+          body: {
+            error: `Your ${providerName} API key is out of credit.`,
+            errorCode: "insufficient_funds",
+            provider: providerName,
+          },
+        };
+      }
       if (containsAny(providerMessage, ["quota", "exceeded", "billing", "insufficient", "funds", "credits", "budget"])) {
         return {
           status: 429,
@@ -222,6 +365,16 @@ function parseAPICallError(
           body: {
             error: `Your ${providerName} API key appears to be invalid. Please check and update it in Settings → API Keys.`,
             errorCode: "invalid_api_key",
+            provider: providerName,
+          },
+        };
+      }
+      if (isOutOfCreditMessage(providerMessage)) {
+        return {
+          status: 400,
+          body: {
+            error: `Your ${providerName} API key is out of credit.`,
+            errorCode: "insufficient_funds",
             provider: providerName,
           },
         };
@@ -331,6 +484,17 @@ function parseGenericError(
       body: {
         error: `Your ${providerName} API key is invalid or missing. Please update it in Settings → API Keys.`,
         errorCode: "invalid_api_key",
+        provider: providerName,
+      },
+    };
+  }
+
+  if (isOutOfCreditMessage(msg)) {
+    return {
+      status: 402,
+      body: {
+        error: `Your ${providerName} API key is out of credit.`,
+        errorCode: "insufficient_funds",
         provider: providerName,
       },
     };

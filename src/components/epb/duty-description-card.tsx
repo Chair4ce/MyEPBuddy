@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
+import { messageFromUnknownError } from "@/lib/llm-user-message";
 import { cn, getCharacterCountColor } from "@/lib/utils";
 import {
   motionChip,
@@ -508,7 +509,7 @@ export function DutyDescriptionCard({
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to generate revisions");
+      toast.error(messageFromUnknownError(error, "Failed to generate revisions"));
     } finally {
       setIsRevising(false);
     }

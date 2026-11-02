@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/sonner";
+import { messageFromUnknownError } from "@/lib/llm-user-message";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -396,7 +397,7 @@ export function SessionGuidePhaseEditor({
     } catch (error) {
       if (requestId !== reviseRequestIdRef.current) return;
       console.error("Format session guide failed:", error);
-      toast.error("Failed to format session settings");
+      toast.error(messageFromUnknownError(error, "Failed to format session settings"));
     } finally {
       if (requestId === reviseRequestIdRef.current) {
         setIsRevising(false);
@@ -474,7 +475,7 @@ export function SessionGuidePhaseEditor({
     } catch (error) {
       if (requestId !== generateRequestIdRef.current) return;
       console.error("Generate feedback guide failed:", error);
-      toast.error("Failed to generate feedback guide");
+      toast.error(messageFromUnknownError(error, "Failed to generate feedback guide"));
     } finally {
       if (requestId === generateRequestIdRef.current) {
         setIsGenerating(false);

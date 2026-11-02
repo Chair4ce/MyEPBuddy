@@ -98,7 +98,10 @@ export async function handleBillableLLMError(
     ctx.idempotencyKey,
     ctx.usageCheck,
   );
-  const response = handleLLMError(error, routeContext, modelId);
+  const modelUsed = ctx.usageCheck?.effectiveModel ?? modelId;
+  const response = handleLLMError(error, routeContext, modelUsed, {
+    usingDefaultKey: ctx.usageCheck?.usingDefaultKey,
+  });
   if (refundedBalance !== null) {
     response.headers.set("X-Credits-Remaining", String(refundedBalance));
   }
