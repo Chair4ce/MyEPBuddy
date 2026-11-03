@@ -67,6 +67,52 @@ export type LLMErrorCode =
   | "insufficient_credits"
   | "burst_rate_limited";
 
+function parseUnknownError(error: unknown, modelId?: string): ParsedError {
+  if (error instanceof MissingApiKeyError) {
+    return {
+      status: 400,
+      body: {
+        error: error.message,
+        errorCode: "missing_api_key",
+        provider: error.providerDisplayName,
+      },
+    };
+  }
+
+  if (APICallError.isInstance(error)) {
+    const provider = modelId ? detectProvider(modelId) : undefined;
+    return parseAPICallError(error, provider);
+  }
+
+  if (error instanceof Error) {
+    return parseGenericError(error, modelId);
+  }
+
+  return {
+    status: 500,
+    body: {
+      error: "An unexpected error occurred while generating. Please try again.",
+      errorCode: "generation_failed",
+    },
+  };
+}
+
+/**
+ * Classifies a provider failure without logging the raw error.
+ * Callers that log must keep key material out of the log line.
+ */
+export function classifyLLMError(
+  error: unknown,
+  modelId?: string,
+  callContext?: Pick<LlmCallContext, "usingDefaultKey">,
+): LLMErrorResponse {
+  const ctx: LlmCallContext = {
+    modelId,
+    usingDefaultKey: callContext?.usingDefaultKey,
+  };
+  return withCallContext(parseUnknownError(error, modelId).body, ctx);
+}
+
 /**
  * Maps an error from an LLM API call to a user-friendly error response.
  *
@@ -89,43 +135,7 @@ export function handleLLMError(
   // Log full error server-side for debugging. The response never includes key material.
   console.error(`[LLM Error] ${routeContext}:`, error);
 
-  // Handle missing API key (pre-call validation)
-  if (error instanceof MissingApiKeyError) {
-    return toErrorResponse(
-      {
-        status: 400,
-        body: {
-          error: error.message,
-          errorCode: "missing_api_key",
-          provider: error.providerDisplayName,
-        },
-      },
-      ctx,
-    );
-  }
-
-  // Handle AI SDK API call errors (responses from the provider)
-  if (APICallError.isInstance(error)) {
-    const provider = modelId ? detectProvider(modelId) : undefined;
-    return toErrorResponse(parseAPICallError(error, provider), ctx);
-  }
-
-  // Handle generic Error objects (may contain provider info in message)
-  if (error instanceof Error) {
-    return toErrorResponse(parseGenericError(error, modelId), ctx);
-  }
-
-  // Fallback for unknown error types
-  return toErrorResponse(
-    {
-      status: 500,
-      body: {
-        error: "An unexpected error occurred while generating. Please try again.",
-        errorCode: "generation_failed",
-      },
-    },
-    ctx,
-  );
+  return toErrorResponse(parseUnknownError(error, modelId), ctx);
 }
 
 /** Internal parsed error result */
@@ -232,10 +242,12 @@ function isOutOfCreditMessage(text: string): boolean {
     "insufficient credit",
     "insufficient funds",
     "out of credit",
-    "purchase credits",
-    "plans & billing",
-    "too low to access",
-  ]);
+  "purchase credits",
+  "plans & billing",
+  "too low to access",
+  "no credits remaining",
+  "insufficient_quota",
+]);
 }
 
 /**

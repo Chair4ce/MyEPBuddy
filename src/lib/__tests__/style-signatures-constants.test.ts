@@ -9,7 +9,7 @@ describe("style signature constants", () => {
     expect(STYLE_SIGNATURE_MODEL).toBe("gpt-4o-mini");
   });
 
-  it("caps non-billable app-key refreshes per UTC day", () => {
+  it("keeps the legacy app-key daily cap that style signatures no longer call", () => {
     expect(STYLE_SIGNATURE_DAILY_APP_LIMIT).toBeGreaterThan(0);
     expect(STYLE_SIGNATURE_DAILY_APP_LIMIT).toBeLessThanOrEqual(24);
   });

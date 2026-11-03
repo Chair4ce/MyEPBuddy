@@ -2,8 +2,8 @@
 export const STYLE_SIGNATURE_MODEL = "gpt-4o-mini";
 
 /**
- * Max app-key LLM calls per user per UTC day for style signatures.
- * Style refresh is non-billable (auto-triggered on EPB finalize); this cap
- * prevents abuse without charging AI call credits.
+ * Daily cap still hard-coded inside `try_record_style_signature_app_call`.
+ * Style signatures no longer call that RPC: the app has no OpenAI key, so
+ * this path runs only with the user's own OpenAI key and does not apply the cap.
  */
 export const STYLE_SIGNATURE_DAILY_APP_LIMIT = 12;

@@ -75,12 +75,14 @@ const ENV_KEY_MAP: Record<LLMProvider, string> = {
 function resolveApiKey(
   provider: LLMProvider,
   userKeys: Partial<DecryptedApiKeys> | null,
+  allowEnvFallback: boolean,
 ): string | null {
   const keyName = getProviderKeyName(provider);
   const userKey = userKeys?.[keyName];
 
-  // Prefer user key, fall back to environment variable
+  // Prefer the user's saved key. Env fallback is the app default key.
   if (userKey && userKey.trim().length > 0) return userKey;
+  if (!allowEnvFallback) return null;
   const envKey = process.env[ENV_KEY_MAP[provider]];
   if (envKey && envKey.trim().length > 0) return envKey;
 
@@ -129,6 +131,8 @@ export class MissingApiKeyError extends Error {
  * @param tracking - Optional token-usage tracking context. When provided, the
  *   returned model captures input/output token usage for every call and records
  *   it asynchronously (used for BYOK cost projection).
+ * @param options.allowEnvFallback - When false, ignore process.env provider keys.
+ *   Style signatures set this so an app OpenAI key can never run that path.
  * @returns A LanguageModel instance ready for use with generateText()
  * @throws MissingApiKeyError if no API key is available for the detected provider
  */
@@ -136,10 +140,12 @@ export function getModelProvider(
   modelId: string,
   userKeys: Partial<DecryptedApiKeys> | null,
   tracking?: TokenTrackingContext | null,
+  options?: { allowEnvFallback?: boolean },
 ): LanguageModel {
   modelId = remapRetiredModelId(modelId);
   const provider = detectProvider(modelId);
-  const apiKey = resolveApiKey(provider, userKeys);
+  const allowEnvFallback = options?.allowEnvFallback !== false;
+  const apiKey = resolveApiKey(provider, userKeys, allowEnvFallback);
 
   if (!apiKey) {
     throw new MissingApiKeyError(provider);

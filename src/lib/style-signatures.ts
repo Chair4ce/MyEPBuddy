@@ -13,9 +13,10 @@
  */
 
 import { getDecryptedApiKeys, type DecryptedApiKeys } from "@/app/actions/api-keys";
-import { createClient } from "@/lib/supabase/server";
+import { classifyLLMError, type LLMErrorCode } from "@/lib/llm-error-handler";
+import { getModelProvider, MissingApiKeyError } from "@/lib/llm-provider";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { STYLE_SIGNATURE_MODEL } from "@/lib/style-signatures/constants";
-import { getModelProvider, isUsingDefaultKey, MissingApiKeyError } from "@/lib/llm-provider";
 import { generateText } from "ai";
 import { createHash } from "crypto";
 import type { Rank } from "@/types/database";
@@ -142,36 +143,93 @@ interface ChainStyleResult {
 }
 
 /**
- * Generate or refresh a style signature for a user's writing
- * for a specific target rank + AFSC + MPA combination.
- *
- * Fetches the user's finalized/approved statements matching those dimensions,
- * sends them to an LLM for style analysis, and upserts the signature.
- *
- * @returns true if signature was generated/updated, false if skipped (no statements or hash unchanged)
+ * Saved OpenAI key only. Blank and missing keys are absent.
+ * Does not read OPENAI_API_KEY — the app default key is Gemini, not OpenAI.
  */
-async function reserveStyleSignatureAppKeyCall(subjectId: string): Promise<boolean> {
-  const supabase = await createClient();
-  const { data, error } = await (supabase.rpc as Function)(
-    "try_record_style_signature_app_call",
-    {
-      p_user_id: subjectId,
-    },
-  ) as { data: boolean | null; error: { message: string } | null };
+export function loadedUserOpenAiKey(
+  userKeys: Partial<DecryptedApiKeys> | null | undefined,
+): string | null {
+  const key = userKeys?.openai_key;
+  if (typeof key !== "string") return null;
+  const trimmed = key.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
-  if (error) {
-    console.error("[style-signatures] quota RPC error:", error.message);
+/**
+ * Records one user-key style-signature call.
+ *
+ * `try_record_style_signature_app_call` always inserts used_default_key=true
+ * with a hard-coded OpenAI model, so this path must not call it. `api_usage`
+ * inserts are service-role only. No migration: the app-key RPC is left in place
+ * and is unused here.
+ *
+ * Follow-up that does need a migration: `check_and_record_usage` counts every
+ * `api_usage` row in the last 60 seconds, including `style_signature_llm`.
+ * `consume_credit` already ignores that action. Until the BYOK burst query
+ * does too, a multi-area refresh can trip the user's 5/minute limit.
+ */
+async function recordStyleSignatureUserKeyCall(subjectId: string): Promise<boolean> {
+  try {
+    const admin = createAdminClient() as unknown as {
+      from: (table: "api_usage") => {
+        insert: (row: {
+          user_id: string;
+          action_type: string;
+          used_default_key: boolean;
+          model_id: string;
+          provider: string;
+        }) => Promise<{ error: { message: string } | null }>;
+      };
+    };
+    const { error } = await admin.from("api_usage").insert({
+      user_id: subjectId,
+      action_type: "style_signature_llm",
+      used_default_key: false,
+      model_id: STYLE_SIGNATURE_MODEL,
+      provider: "openai",
+    });
+    if (error) {
+      console.error("[style-signatures] usage record failed:", error.message);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "usage record failed";
+    console.error("[style-signatures] usage record failed:", message);
     return false;
   }
+}
 
-  return data === true;
+function logStyleSignatureProviderFailure(error: unknown): LLMErrorCode {
+  const classified = classifyLLMError(error, STYLE_SIGNATURE_MODEL, {
+    usingDefaultKey: false,
+  });
+  console.error("[style-signatures] provider call failed", {
+    provider: classified.provider ?? "OpenAI",
+    model: STYLE_SIGNATURE_MODEL,
+    keySource: classified.keySource ?? "user",
+    errorCode: classified.errorCode,
+  });
+  return classified.errorCode;
+}
+
+function isProviderCreditFailure(errorCode: LLMErrorCode): boolean {
+  return errorCode === "insufficient_funds" || errorCode === "quota_exceeded";
 }
 
 export type StyleSignatureGenerateResult =
   | "generated"
   | "skipped"
-  | "quota_exhausted";
+  | "provider_credit";
 
+/**
+ * Generate or refresh a style signature for a user's writing
+ * for a specific target rank + AFSC + MPA combination.
+ *
+ * Runs only when the user's own OpenAI key loaded. Never uses the app
+ * OpenAI environment key. Returns "skipped" when there is no key, fewer
+ * than three source statements, or the provider call fails.
+ */
 export async function generateStyleSignature(
   subjectId: string,
   targetRank: string,
@@ -179,6 +237,12 @@ export async function generateStyleSignature(
   mpa: StyleMPA,
   userKeys: Partial<DecryptedApiKeys> | null,
 ): Promise<StyleSignatureGenerateResult> {
+  const openAiKey = loadedUserOpenAiKey(userKeys);
+  if (!openAiKey) {
+    console.info("[style-signatures] Skipping signature: no user OpenAI key loaded");
+    return "skipped";
+  }
+
   const supabase = await createClient();
 
   // Only use QUALITY sources for signature generation:
@@ -292,19 +356,23 @@ export async function generateStyleSignature(
 
   const userPrompt = `Analyze the writing style of these ${allStatements.length} Air Force performance statements written for a ${targetRank} in AFSC ${targetAfsc}${mpa !== "general" ? ` under the "${mpa.replace(/_/g, " ")}" performance area` : ""}:\n\n${statementsBlock}`;
 
-  const usingAppKey = isUsingDefaultKey(STYLE_SIGNATURE_MODEL, userKeys);
-
-  // Style signatures are non-billable; cap app-key usage to prevent abuse.
-  if (usingAppKey) {
-    const reserved = await reserveStyleSignatureAppKeyCall(subjectId);
-    if (!reserved) {
-      return "quota_exhausted";
-    }
+  const recorded = await recordStyleSignatureUserKeyCall(subjectId);
+  if (!recorded) {
+    return "skipped";
   }
 
   let rawResponse: string;
   try {
-    const model = getModelProvider(STYLE_SIGNATURE_MODEL, userKeys);
+    const model = getModelProvider(
+      STYLE_SIGNATURE_MODEL,
+      { openai_key: openAiKey },
+      {
+        subjectId,
+        action: "style_signature_llm",
+        usingDefaultKey: false,
+      },
+      { allowEnvFallback: false },
+    );
     const result = await generateText({
       model,
       system: FINGERPRINT_META_PROMPT,
@@ -317,7 +385,8 @@ export async function generateStyleSignature(
     if (error instanceof MissingApiKeyError) {
       return "skipped";
     }
-    throw error;
+    const errorCode = logStyleSignatureProviderFailure(error);
+    return isProviderCreditFailure(errorCode) ? "provider_credit" : "skipped";
   }
 
   // Parse the response: extract signature text and structured factors
@@ -377,9 +446,13 @@ export async function refreshUserSignatures(subjectId: string): Promise<{
   generated: number;
   quotaExhausted: boolean;
 }> {
-  const supabase = await createClient();
   const userKeys = await getDecryptedApiKeys();
-  let quotaExhausted = false;
+  if (!loadedUserOpenAiKey(userKeys)) {
+    console.info("[style-signatures] Skipping refresh: no user OpenAI key loaded");
+    return { generated: 0, quotaExhausted: false };
+  }
+
+  const supabase = await createClient();
 
   // Get all unique rank + AFSC combinations from the user's EPB shells.
   // Rank/AFSC live on profiles (self) or team_members (managed) — not on epb_shells.
@@ -451,6 +524,7 @@ export async function refreshUserSignatures(subjectId: string): Promise<{
   }
 
   let generated = 0;
+  let providerCredit = false;
 
   for (const pair of afscRankPairs) {
     const [rank, afsc] = pair.split("|");
@@ -465,23 +539,38 @@ export async function refreshUserSignatures(subjectId: string): Promise<{
           mpa,
           userKeys,
         );
-        if (result === "generated") {
-          generated++;
-        } else if (result === "quota_exhausted") {
-          quotaExhausted = true;
+        switch (result) {
+          case "generated":
+            generated++;
+            break;
+          case "skipped":
+            break;
+          case "provider_credit":
+            providerCredit = true;
+            break;
+          default: {
+            const unhandled: never = result;
+            throw new Error(`Unhandled style signature result: ${unhandled}`);
+          }
+        }
+        if (providerCredit) {
           break;
         }
       } catch (err) {
-        console.error(`[style-signatures] Error generating for ${rank}/${afsc}/${mpa}:`, err);
+        const errorCode = logStyleSignatureProviderFailure(err);
+        if (isProviderCreditFailure(errorCode)) {
+          providerCredit = true;
+          break;
+        }
       }
     }
 
-    if (quotaExhausted) {
+    if (providerCredit) {
       break;
     }
   }
 
-  return { generated, quotaExhausted };
+  return { generated, quotaExhausted: false };
 }
 
 /**
