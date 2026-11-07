@@ -11,6 +11,10 @@ import {
   PURCHASE_CAMPAIGN_TZ_METADATA_KEY,
 } from "@/lib/billing/purchase-campaign";
 import { resolveCheckoutCampaignSlug } from "@/lib/billing/purchase-campaign-server";
+import {
+  MYEPBUDDY_STRIPE_APP,
+  STRIPE_APP_METADATA_KEY,
+} from "@/lib/stripe/app-marker";
 import { getValidatedCreditsPriceId } from "@/lib/stripe/validate-price";
 
 let stripeClient: Stripe | null = null;
@@ -68,6 +72,8 @@ export async function getOrCreateStripeCustomer(
   }
 
   const stripe = getStripe();
+  // Do not set metadata.app here. One Customer may buy from MyEPBuddy and
+  // PeriDocs; ownership belongs on the Checkout Session, PaymentIntent, and Invoice.
   const customer = await stripe.customers.create({
     email,
     metadata: { user_id: accountSubjectId },
@@ -100,6 +106,15 @@ function resolveCheckoutPacks(rawPacks: number | undefined): {
   return { packs: parsed.packs, credits: parsed.credits };
 }
 
+function creditsCheckoutInvoiceCreation(
+  metadata: ReturnType<typeof checkoutCreditMetadata>,
+) {
+  return {
+    enabled: true as const,
+    invoice_data: { metadata },
+  };
+}
+
 function checkoutLineItem(priceId: string, packs: number) {
   return {
     price: priceId,
@@ -121,6 +136,7 @@ function checkoutCreditMetadata(
 ) {
   const credits = creditsForPacks(packs);
   return {
+    [STRIPE_APP_METADATA_KEY]: MYEPBUDDY_STRIPE_APP,
     user_id: userId,
     packs: String(packs),
     credits: String(credits),
@@ -171,7 +187,8 @@ export async function createCreditsCheckoutSession(params: {
     cancel_url: `${getAppUrl()}/settings/billing?checkout=cancelled`,
     // Generate an itemized invoice/receipt for this one-time purchase so it
     // appears in the Stripe billing portal's invoice history and is emailed.
-    invoice_creation: { enabled: true },
+    // Invoice metadata is set explicitly; Stripe does not copy session metadata.
+    invoice_creation: creditsCheckoutInvoiceCreation(metadata),
     metadata,
     payment_intent_data: {
       metadata,
@@ -224,7 +241,8 @@ export async function createEmbeddedCreditsCheckoutSession(params: {
     redirect_on_completion: "never",
     // Generate an itemized invoice/receipt for this one-time purchase so it
     // appears in the Stripe billing portal's invoice history and is emailed.
-    invoice_creation: { enabled: true },
+    // Invoice metadata is set explicitly; Stripe does not copy session metadata.
+    invoice_creation: creditsCheckoutInvoiceCreation(metadata),
     metadata,
     payment_intent_data: {
       metadata,
