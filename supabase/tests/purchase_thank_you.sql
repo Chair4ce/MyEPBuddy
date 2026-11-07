@@ -113,6 +113,9 @@ BEGIN
   IF v_result->>'action' IS DISTINCT FROM 'send' THEN
     RAISE EXCEPTION 'first exact 100 should send: %', v_result;
   END IF;
+  -- Same session, same transaction. This sees the uncommitted row.
+  -- It does not prove a second connection. That case is
+  -- purchase-thank-you.integration.test.ts.
   v_result := public.purchase_thank_you_prepare_send(
     c_repeat, 'cs_first', 'evt_retry', v_after, v_after
   );
@@ -188,6 +191,170 @@ BEGIN
   IF v_activated IS DISTINCT FROM v_after + interval '1 day' THEN
     RAISE EXCEPTION 'a later cutoff must narrow the stored cutoff, got %', v_activated;
   END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname LIKE 'purchase_thank_you%'
+      AND (
+        has_function_privilege('anon', p.oid, 'EXECUTE')
+        OR has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        OR has_function_privilege('public', p.oid, 'EXECUTE')
+      )
+  ) THEN
+    RAISE EXCEPTION 'anon, authenticated, or public can execute a thank-you function';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname LIKE 'purchase_thank_you%'
+      AND p.proname <> 'purchase_thank_you_assert_service'
+      AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) THEN
+    RAISE EXCEPTION 'service_role cannot execute a thank-you function';
+  END IF;
+
+  IF has_function_privilege(
+    'service_role',
+    'public.purchase_thank_you_assert_service()',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'service_role can call assert_service directly';
+  END IF;
+
+  IF has_table_privilege('anon', 'public.purchase_thank_you_claims', 'SELECT,INSERT,UPDATE,DELETE')
+     OR has_table_privilege('authenticated', 'public.purchase_thank_you_claims', 'SELECT,INSERT,UPDATE,DELETE')
+     OR has_table_privilege('anon', 'public.purchase_thank_you_settings', 'SELECT,INSERT,UPDATE,DELETE')
+     OR has_table_privilege('authenticated', 'public.purchase_thank_you_settings', 'SELECT,INSERT,UPDATE,DELETE')
+  THEN
+    RAISE EXCEPTION 'anon or authenticated has a thank-you table privilege';
+  END IF;
+
+  IF NOT (
+       has_table_privilege('service_role', 'public.purchase_thank_you_claims', 'SELECT')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_claims', 'INSERT')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_claims', 'UPDATE')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_claims', 'DELETE')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_settings', 'SELECT')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_settings', 'INSERT')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_settings', 'UPDATE')
+       AND has_table_privilege('service_role', 'public.purchase_thank_you_settings', 'DELETE')
+     )
+  THEN
+    RAISE EXCEPTION 'service_role is missing a thank-you table privilege';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname LIKE 'purchase_thank_you%'
+      AND (
+        p.proconfig IS NULL
+        OR NOT (p.proconfig @> ARRAY['search_path=""'])
+      )
+  ) THEN
+    RAISE EXCEPTION 'a thank-you function has a mutable search_path';
+  END IF;
+
+  BEGIN
+    SET LOCAL ROLE anon;
+    PERFORM public.purchase_thank_you_activate(v_cutoff);
+    RAISE EXCEPTION 'anon executed purchase_thank_you_activate';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  BEGIN
+    SET LOCAL ROLE authenticated;
+    PERFORM public.purchase_thank_you_prepare_send(
+      c_repeat, 'cs_first', 'evt_client', v_after, v_after
+    );
+    RAISE EXCEPTION 'authenticated executed purchase_thank_you_prepare_send';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  BEGIN
+    SET LOCAL ROLE anon;
+    PERFORM public.purchase_thank_you_note_dispatch(v_claim, v_after);
+    RAISE EXCEPTION 'anon executed purchase_thank_you_note_dispatch';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  BEGIN
+    SET LOCAL ROLE authenticated;
+    PERFORM public.purchase_thank_you_mark(v_claim, 'sent', 'email_x', NULL, v_after);
+    RAISE EXCEPTION 'authenticated executed purchase_thank_you_mark';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  BEGIN
+    SET LOCAL ROLE anon;
+    PERFORM 1 FROM public.purchase_thank_you_claims;
+    RAISE EXCEPTION 'anon read claims';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  BEGIN
+    SET LOCAL ROLE authenticated;
+    PERFORM 1 FROM public.purchase_thank_you_settings;
+    RAISE EXCEPTION 'authenticated read settings';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  BEGIN
+    SET LOCAL ROLE authenticated;
+    INSERT INTO public.purchase_thank_you_claims (
+      user_id, stripe_checkout_session_id, stripe_event_id, event_created_at, status
+    ) VALUES (
+      c_repeat, 'cs_hack', 'evt_hack', v_after, 'pending'
+    );
+    RAISE EXCEPTION 'authenticated inserted a claim';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  -- API calls run as authenticator. An authenticated JWT must be rejected
+  -- inside the function. A service_role JWT must be allowed.
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+  BEGIN
+    SET LOCAL SESSION AUTHORIZATION authenticator;
+    SET LOCAL ROLE service_role;
+    BEGIN
+      PERFORM public.purchase_thank_you_expire(v_after);
+      RAISE EXCEPTION 'authenticated jwt called purchase_thank_you_expire';
+    EXCEPTION
+      WHEN insufficient_privilege THEN
+        IF SQLERRM NOT ILIKE '%Access denied%' THEN
+          RAISE;
+        END IF;
+    END;
+    PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+    PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+    PERFORM public.purchase_thank_you_expire(v_after);
+  END;
+  RESET SESSION AUTHORIZATION;
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
 END;
 $$;
 
