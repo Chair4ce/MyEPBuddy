@@ -58,11 +58,13 @@ Checkout create already uses `invoice_creation.invoice_data.metadata` on Stripe 
 
 ## Rollout
 
-1. Review and merge this PR. Do not deploy, backfill, resend events, rotate secrets, or change the live webhook endpoint from the merge.
-2. Deploy MyEPBuddy so new Checkout Sessions, PaymentIntents, and Invoices carry `app=myepbuddy`, and so this webhook ignores `app=peridocs` and unmarked unknown prices.
-3. Deploy PeriDocs after that. New MyEPBuddy invoices then have invoice metadata PeriDocs can ack. PeriDocs checkout events gain `app=peridocs`, which this webhook already ignores.
+Release order is deliberate: PeriDocs reader first, then this MyEPBuddy writer. Do not deploy MyEPBuddy first.
 
-Historical invoice `in_1UYu7lRmU7HJ5YzipaCa85xC` and its companion invoice events stay unmarked. This change does not rewrite them and does not resend `evt_1UYu7nRmU7HJ5Yzi8KDqbLnU`. PeriDocs can keep retrying those invoice events until that app accepts them or Stripe stops retrying. MyEPBuddy does not subscribe to those invoice events.
+1. Hold merge and deploy of this PR until PeriDocs production is confirmed ready. That release is the reader and Basil invoice-line fix, so PeriDocs can tell `metadata.app=myepbuddy` from its own invoices before new MyEPBuddy invoices exist.
+2. After that confirmation, merge and deploy this PR. New Checkout Sessions, PaymentIntents, and Invoices then carry `app=myepbuddy`. This webhook ignores `app=peridocs` and still fulfills unmarked checkouts only when the price is the MyEPBuddy pack price.
+3. Do not backfill, resend events, rotate secrets, or change the live webhook endpoint.
+
+Historical invoice `in_1UYu7lRmU7HJ5YzipaCa85xC` and its companion invoice events stay unmarked. This change does not rewrite them and does not resend `evt_1UYu7nRmU7HJ5Yzi8KDqbLnU`. MyEPBuddy does not subscribe to those invoice events.
 
 ## Residual risk
 
