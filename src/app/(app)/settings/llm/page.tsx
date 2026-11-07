@@ -1312,7 +1312,7 @@ export default function LLMSettingsPage() {
               <div className="space-y-2">
                 <Label className="text-xs sm:text-sm">Writing Style Signatures</Label>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Style signatures capture your unique writing patterns (sentence structure, verb choices, formality) for each rank, AFSC, and MPA combination. They refresh automatically when you finalize EPBs or update library examples and do not count against your tokens. If you add an OpenAI API key, signature analysis uses your key; otherwise the app refreshes a limited number per day in the background.
+                  Style signatures capture your unique writing patterns (sentence structure, verb choices, formality) for each rank, AFSC, and MPA combination. They refresh in the background when you finalize EPBs or update library examples, and they do not count against your AI call credits. Analysis runs only with your own OpenAI API key. Without that key, refresh is skipped.
                 </p>
                 <Button
                   variant="outline"
