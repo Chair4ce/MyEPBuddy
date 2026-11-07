@@ -15,6 +15,11 @@ import {
   grantPurchaseCampaignBonus,
   resolveCampaignBonusGrant,
 } from "@/lib/billing/purchase-campaign-server";
+import {
+  classifyStripeAppMetadata,
+  isMyEpBuddyCreditsPrice,
+  readConfiguredCreditsPriceId,
+} from "@/lib/stripe/app-marker";
 
 export const runtime = "nodejs";
 // Stripe needs the raw, unparsed body for signature verification.
@@ -22,7 +27,15 @@ export const dynamic = "force-dynamic";
 
 type ResolvedCredits =
   | { ok: true; credits: number }
-  | { ok: false; reason: "retry" | "invalid" };
+  | { ok: false; reason: "retry" | "invalid" | "invalid_price" };
+
+function lineItemProductId(
+  product: Stripe.Price["product"] | null | undefined,
+): string | null {
+  if (!product) return null;
+  if (typeof product === "string") return product;
+  return product.id;
+}
 
 /**
  * Resolve pack credits from the paid Checkout Session.
@@ -39,7 +52,19 @@ async function resolvePurchasedCredits(
       session.id,
       { limit: 1 },
     );
-    lineItemQuantity = lineItems.data[0]?.quantity ?? null;
+    const lineItem = lineItems.data[0];
+    lineItemQuantity = lineItem?.quantity ?? null;
+    const priceId = lineItem?.price?.id ?? null;
+    const productId = lineItemProductId(lineItem?.price?.product);
+    if (
+      !isMyEpBuddyCreditsPrice({
+        priceId,
+        productId,
+        configuredPriceId: readConfiguredCreditsPriceId(),
+      })
+    ) {
+      return { ok: false, reason: "invalid_price" };
+    }
   } catch (error) {
     console.error(
       "[billing/webhook] Failed to list line items; will retry",
@@ -92,6 +117,26 @@ export async function POST(request: NextRequest) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
+        const classification = classifyStripeAppMetadata(session.metadata);
+        switch (classification.kind) {
+          case "foreign":
+            // Definite other-app event. Ack so Stripe stops retrying, and do
+            // not grant credits or write processed/fulfillment state.
+            console.info("[billing/webhook] Ignoring other-app checkout", {
+              eventId: event.id,
+              app: classification.app,
+            });
+            return NextResponse.json({ received: true, skipped: "foreign_app" });
+          case "own":
+          case "unmarked":
+          case "unknown_marker":
+            break;
+          default: {
+            const _unhandled: never = classification;
+            return _unhandled;
+          }
+        }
+
         const userId = session.metadata?.user_id;
 
         if (!userId) {
@@ -122,11 +167,15 @@ export async function POST(request: NextRequest) {
             {
               eventId: event.id,
               amountSubtotal: session.amount_subtotal,
-              metadata: session.metadata,
+              reason: resolved.reason,
             },
           );
           await recordStripeEvent(event);
-          return NextResponse.json({ received: true, skipped: "invalid_quantity" });
+          const skipped =
+            resolved.reason === "invalid_price"
+              ? "invalid_price"
+              : "invalid_quantity";
+          return NextResponse.json({ received: true, skipped });
         }
 
         // grant_credits is idempotent on stripe_event_id, so retries are safe.
