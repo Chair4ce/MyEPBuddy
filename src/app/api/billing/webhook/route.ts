@@ -15,6 +15,12 @@ import {
   grantPurchaseCampaignBonus,
   resolveCampaignBonusGrant,
 } from "@/lib/billing/purchase-campaign-server";
+import { handleCheckoutPaid } from "@/lib/billing/purchase-thank-you-fulfill";
+import {
+  createPurchaseThankYouMailer,
+  createPurchaseThankYouStore,
+} from "@/lib/billing/purchase-thank-you-store";
+import { runPurchaseThankYou } from "@/lib/billing/purchase-thank-you-run";
 
 export const runtime = "nodejs";
 // Stripe needs the raw, unparsed body for signature verification.
@@ -129,27 +135,57 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ received: true, skipped: "invalid_quantity" });
         }
 
-        // grant_credits is idempotent on stripe_event_id, so retries are safe.
-        await grantCreditsFromStripe({
-          userId,
-          credits: resolved.credits,
-          stripeEventId: event.id,
-          stripeCheckoutSessionId: session.id,
-        });
-
-        const bonus = await resolveCampaignBonusGrant({
-          userId,
-          stampedSlug: session.metadata?.[PURCHASE_CAMPAIGN_METADATA_KEY],
-          timeZone: session.metadata?.[PURCHASE_CAMPAIGN_TZ_METADATA_KEY],
-        });
-        if (bonus) {
-          await grantPurchaseCampaignBonus({
+        await handleCheckoutPaid(
+          {
             userId,
-            campaignSlug: bonus.slug,
+            baseCredits: resolved.credits,
+            paymentStatus: session.payment_status ?? "unpaid",
             stripeEventId: event.id,
             stripeCheckoutSessionId: session.id,
-          });
-        }
+            eventCreatedAt: new Date(event.created * 1000).toISOString(),
+          },
+          {
+            grant: async () => {
+              // grant_credits is idempotent on stripe_event_id, so retries are safe.
+              await grantCreditsFromStripe({
+                userId,
+                credits: resolved.credits,
+                stripeEventId: event.id,
+                stripeCheckoutSessionId: session.id,
+              });
+              const bonus = await resolveCampaignBonusGrant({
+                userId,
+                stampedSlug: session.metadata?.[PURCHASE_CAMPAIGN_METADATA_KEY],
+                timeZone: session.metadata?.[PURCHASE_CAMPAIGN_TZ_METADATA_KEY],
+              });
+              if (bonus) {
+                await grantPurchaseCampaignBonus({
+                  userId,
+                  campaignSlug: bonus.slug,
+                  stripeEventId: event.id,
+                  stripeCheckoutSessionId: session.id,
+                });
+              }
+            },
+            thankYou: async (paid) => {
+              const store = createPurchaseThankYouStore();
+              await runPurchaseThankYou(
+                {
+                  ...paid,
+                  grantCommitted: true,
+                },
+                {
+                  env: process.env,
+                  now: new Date(),
+                  activate: (cutoff) => store.activate(cutoff),
+                  prepare: (input) => store.prepare(input),
+                  mark: (input) => store.mark(input),
+                  mailer: createPurchaseThankYouMailer(),
+                }
+              );
+            },
+          }
+        );
         break;
       }
       default:
