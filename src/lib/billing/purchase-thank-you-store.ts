@@ -3,8 +3,14 @@ import {
   getResendApiKey,
   sendResendEmail,
 } from "@/lib/email/resend";
+import {
+  PURCHASE_THANK_YOU_SEND_TIMEOUT_MS,
+  ThankYouDispatchClosedError,
+  ThankYouNotSubmittedError,
+} from "@/lib/billing/purchase-thank-you";
 import type {
   ThankYouCandidate,
+  ThankYouMail,
   ThankYouPrepareResult,
 } from "@/lib/billing/purchase-thank-you-run";
 
@@ -63,7 +69,7 @@ export function createPurchaseThankYouStore(admin: Admin = createAdminClient()) 
     },
     async mark(input: {
       claimId: string;
-      status: "sent" | "sending" | "suppressed";
+      status: "sent" | "sending" | "suppressed" | "failed";
       resendEmailId: string | null;
       error: string | null;
     }): Promise<void> {
@@ -108,30 +114,48 @@ export function createPurchaseThankYouStore(admin: Admin = createAdminClient()) 
   };
 }
 
-export function createPurchaseThankYouMailer() {
+export async function deliverPurchaseThankYou(input: {
+  apiKey: string | null;
+  noteDispatch: () => Promise<boolean>;
+  send: () => Promise<{ id: string | null }>;
+}): Promise<{ id: string | null }> {
+  if (!input.apiKey) {
+    throw new ThankYouNotSubmittedError();
+  }
+  const opened = await input.noteDispatch();
+  if (!opened) {
+    throw new ThankYouDispatchClosedError();
+  }
+  return input.send();
+}
+
+export function createPurchaseThankYouMailer(admin: Admin = createAdminClient()) {
+  const db = asRpc(admin);
   return {
-    async send(input: {
-      from: string;
-      replyTo: string;
-      to: string;
-      subject: string;
-      html: string;
-      text: string;
-      idempotencyKey: string;
-    }) {
-      const resendApiKey = getResendApiKey();
-      if (!resendApiKey) {
-        throw new Error("Transactional email is not configured");
-      }
-      return sendResendEmail({
-        resendApiKey,
-        from: input.from,
-        replyTo: input.replyTo,
-        to: input.to,
-        subject: input.subject,
-        html: input.html,
-        text: input.text,
-        idempotencyKey: input.idempotencyKey,
+    async send(input: ThankYouMail) {
+      const apiKey = getResendApiKey();
+      return deliverPurchaseThankYou({
+        apiKey,
+        noteDispatch: async () => {
+          const { data, error } = await db.rpc("purchase_thank_you_note_dispatch", {
+            p_claim_id: input.claimId,
+            p_now: new Date().toISOString(),
+          });
+          if (error) throw new Error("purchase thank-you dispatch failed");
+          return data === true;
+        },
+        send: () =>
+          sendResendEmail({
+            resendApiKey: apiKey ?? "",
+            from: input.from,
+            replyTo: input.replyTo,
+            to: input.to,
+            subject: input.subject,
+            html: input.html,
+            text: input.text,
+            idempotencyKey: input.idempotencyKey,
+            timeoutMs: PURCHASE_THANK_YOU_SEND_TIMEOUT_MS,
+          }),
       });
     },
   };

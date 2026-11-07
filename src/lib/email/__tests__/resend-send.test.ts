@@ -41,6 +41,29 @@ describe("sendResendEmail", () => {
     });
   });
 
+  it("aborts a hung send within the caller timeout", async () => {
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted", "TimeoutError"));
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendResendEmail({
+        resendApiKey: "re_test",
+        from: "MyEPBuddy <updates@updates.myepbuddy.com>",
+        to: "person@example.com",
+        subject: "Subject",
+        html: "<p>Hi</p>",
+        text: "Hi",
+        timeoutMs: 20,
+      })
+    ).rejects.toThrow(/aborted/);
+  });
+
   it("rejects an idempotency key that could not be stored safely", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

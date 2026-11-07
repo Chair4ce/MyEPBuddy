@@ -15,6 +15,8 @@ export type SendResendEmailParams = {
   replyTo?: string | null;
   /** Resend Idempotency-Key. Same key within 24h returns the original send. */
   idempotencyKey?: string | null;
+  /** Aborts the HTTP call. Callers that retry must keep this under their lease. */
+  timeoutMs?: number;
   tags?: ResendEmailTag[];
 };
 
@@ -83,6 +85,10 @@ export async function sendResendEmail(
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    signal:
+      params.timeoutMs != null && params.timeoutMs > 0
+        ? AbortSignal.timeout(params.timeoutMs)
+        : undefined,
   });
 
   if (!response.ok) {

@@ -26,7 +26,7 @@ CREATE TABLE public.purchase_thank_you_claims (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT purchase_thank_you_claims_status_check
-    CHECK (status IN ('pending', 'sending', 'sent', 'suppressed', 'failed', 'ambiguous')),
+    CHECK (status IN ('pending', 'sending', 'sent', 'suppressed', 'failed', 'ambiguous', 'ineligible')),
   CONSTRAINT purchase_thank_you_claims_attempts_check
     CHECK (attempts >= 0 AND attempts <= 5)
 );
@@ -88,17 +88,14 @@ BEGIN
   END IF;
 
   UPDATE public.purchase_thank_you_settings
-  SET activated_at = COALESCE(activated_at, p_enabled_at)
+  SET activated_at = CASE
+        WHEN activated_at IS NULL OR p_enabled_at > activated_at THEN p_enabled_at
+        ELSE activated_at
+      END
   WHERE id = 1
   RETURNING activated_at INTO v_stored;
 
-  IF v_stored IS NULL THEN
-    RETURN p_enabled_at;
-  END IF;
-  IF v_stored >= p_enabled_at THEN
-    RETURN v_stored;
-  END IF;
-  RETURN p_enabled_at;
+  RETURN v_stored;
 END;
 $$;
 
@@ -129,7 +126,7 @@ BEGIN
   FROM public.purchase_thank_you_settings
   WHERE id = 1;
 
-  IF v_cutoff IS NULL OR p_event_created IS NULL OR p_event_created < v_cutoff THEN
+  IF v_cutoff IS NULL OR p_event_created IS NULL THEN
     RETURN jsonb_build_object('action', 'skip', 'reason', 'cutoff');
   END IF;
 
@@ -138,12 +135,31 @@ BEGIN
   WHERE ct.user_id = p_user_id
     AND ct.type = 'purchase'
     AND ct.amount = 100
-    AND ct.stripe_checkout_session_id IS NOT NULL
   ORDER BY ct.created_at ASC, ct.id ASC
   LIMIT 1;
 
   IF v_first IS NULL OR v_first IS DISTINCT FROM p_stripe_checkout_session_id THEN
     RETURN jsonb_build_object('action', 'skip', 'reason', 'not_first');
+  END IF;
+
+  IF p_event_created < v_cutoff THEN
+    INSERT INTO public.purchase_thank_you_claims (
+      user_id,
+      stripe_checkout_session_id,
+      stripe_event_id,
+      event_created_at,
+      status,
+      last_error
+    ) VALUES (
+      p_user_id,
+      p_stripe_checkout_session_id,
+      p_stripe_event_id,
+      p_event_created,
+      'ineligible',
+      'before_cutoff'
+    )
+    ON CONFLICT (user_id) DO NOTHING;
+    RETURN jsonb_build_object('action', 'skip', 'reason', 'cutoff');
   END IF;
 
   SELECT p.email, (p.email_suppressed_at IS NOT NULL)
@@ -189,10 +205,24 @@ BEGIN
     RETURN jsonb_build_object('action', 'skip', 'reason', 'already');
   END IF;
 
-  IF v_claim.status IN ('sent', 'suppressed', 'ambiguous')
+  IF v_claim.status IN ('sent', 'suppressed', 'ambiguous', 'ineligible')
      OR v_claim.resend_email_id IS NOT NULL
      OR v_claim.last_error = 'no_email' THEN
     RETURN jsonb_build_object('action', 'skip', 'reason', v_claim.status);
+  END IF;
+
+  SELECT (p.email_suppressed_at IS NOT NULL) INTO v_suppressed
+  FROM public.profiles p
+  WHERE p.id = p_user_id;
+
+  IF v_suppressed THEN
+    UPDATE public.purchase_thank_you_claims
+    SET status = 'suppressed',
+        last_error = 'email_suppressed',
+        updated_at = p_now
+    WHERE id = v_claim.id
+      AND status NOT IN ('sent', 'ambiguous', 'ineligible');
+    RETURN jsonb_build_object('action', 'skip', 'reason', 'suppressed');
   END IF;
 
   IF v_claim.first_attempt_at IS NOT NULL
@@ -203,7 +233,9 @@ BEGIN
     RETURN jsonb_build_object('action', 'skip', 'reason', 'ambiguous');
   END IF;
 
-  IF v_claim.status <> 'pending' AND v_claim.attempts >= 5 THEN
+  IF v_claim.first_attempt_at IS NOT NULL
+     AND v_claim.status <> 'pending'
+     AND v_claim.attempts >= 5 THEN
     UPDATE public.purchase_thank_you_claims
     SET status = 'ambiguous', updated_at = p_now
     WHERE id = v_claim.id;
@@ -219,8 +251,6 @@ BEGIN
   v_action := 'send';
   UPDATE public.purchase_thank_you_claims
   SET status = 'sending',
-      attempts = attempts + 1,
-      first_attempt_at = COALESCE(first_attempt_at, p_now),
       sending_at = p_now,
       updated_at = p_now
   WHERE id = v_claim.id
@@ -231,6 +261,50 @@ BEGIN
     'claim_id', v_claim.id,
     'to', v_email
   );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.purchase_thank_you_note_dispatch(
+  p_claim_id uuid,
+  p_now timestamptz
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_claim public.purchase_thank_you_claims%ROWTYPE;
+BEGIN
+  PERFORM public.purchase_thank_you_assert_service();
+
+  SELECT * INTO v_claim
+  FROM public.purchase_thank_you_claims
+  WHERE id = p_claim_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_claim.status IN ('sent', 'suppressed', 'ambiguous', 'ineligible') THEN
+    RETURN false;
+  END IF;
+
+  IF v_claim.first_attempt_at IS NOT NULL
+     AND (
+       p_now > v_claim.first_attempt_at + interval '23 hours'
+       OR v_claim.attempts >= 5
+     ) THEN
+    UPDATE public.purchase_thank_you_claims
+    SET status = 'ambiguous', updated_at = p_now
+    WHERE id = v_claim.id;
+    RETURN false;
+  END IF;
+
+  UPDATE public.purchase_thank_you_claims
+  SET attempts = attempts + 1,
+      first_attempt_at = COALESCE(first_attempt_at, p_now),
+      updated_at = p_now
+  WHERE id = v_claim.id;
+
+  RETURN true;
 END;
 $$;
 
@@ -248,13 +322,17 @@ SET search_path = ''
 AS $$
 BEGIN
   PERFORM public.purchase_thank_you_assert_service();
-  IF p_status IS NULL OR p_status NOT IN ('sent', 'sending', 'suppressed') THEN
+  IF p_status IS NULL OR p_status NOT IN ('sent', 'sending', 'suppressed', 'failed') THEN
     RAISE EXCEPTION 'invalid thank-you status' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_status = 'sent' AND (p_resend_email_id IS NULL OR btrim(p_resend_email_id) = '') THEN
+    RAISE EXCEPTION 'sent thank-you requires a provider id' USING ERRCODE = '22023';
   END IF;
 
   UPDATE public.purchase_thank_you_claims
   SET status = CASE
-        WHEN status IN ('sent', 'suppressed', 'ambiguous') THEN status
+        WHEN status IN ('sent', 'suppressed', 'ambiguous', 'ineligible') THEN status
         ELSE p_status
       END,
       resend_email_id = CASE
@@ -268,7 +346,7 @@ BEGIN
       last_error = COALESCE(p_error, last_error),
       updated_at = p_now
   WHERE id = p_claim_id
-    AND status NOT IN ('sent', 'suppressed', 'ambiguous');
+    AND status NOT IN ('sent', 'suppressed', 'ambiguous', 'ineligible');
 END;
 $$;
 
@@ -324,6 +402,8 @@ REVOKE ALL ON FUNCTION public.purchase_thank_you_activate(timestamptz) FROM PUBL
 GRANT EXECUTE ON FUNCTION public.purchase_thank_you_activate(timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.purchase_thank_you_prepare_send(uuid, text, text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.purchase_thank_you_prepare_send(uuid, text, text, timestamptz, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.purchase_thank_you_note_dispatch(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purchase_thank_you_note_dispatch(uuid, timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.purchase_thank_you_mark(uuid, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.purchase_thank_you_mark(uuid, text, text, text, timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.purchase_thank_you_expire(timestamptz) FROM PUBLIC, anon, authenticated;
@@ -332,4 +412,4 @@ REVOKE ALL ON FUNCTION public.purchase_thank_you_retry_candidates(timestamptz) F
 GRANT EXECUTE ON FUNCTION public.purchase_thank_you_retry_candidates(timestamptz) TO service_role;
 
 COMMENT ON TABLE public.purchase_thank_you_claims IS
-  'One lifetime thank-you per buyer. Rows are created only for a first paid 100-token purchase at or after activation. No historical backfill.';
+  'One lifetime thank-you per buyer. The first paid 100-token purchase before the cutoff is sealed ineligible so a later event cannot send it. No historical backfill.';

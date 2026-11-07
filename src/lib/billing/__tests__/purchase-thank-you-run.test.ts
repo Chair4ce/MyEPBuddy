@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ResendSendError } from "@/lib/email/resend";
+import { ThankYouNotSubmittedError } from "../purchase-thank-you";
 import {
   PURCHASE_THANK_YOU_FROM,
   PURCHASE_THANK_YOU_REPLY_TO,
@@ -33,17 +34,19 @@ describe("handleCheckoutPaid", () => {
       order.push("thank-you");
       throw new Error("mail down");
     });
-    await handleCheckoutPaid(
-      {
-        userId: USER,
-        baseCredits: 100,
-        paymentStatus: "paid",
-        stripeEventId: "evt_new",
-        stripeCheckoutSessionId: "cs_new",
-        eventCreatedAt: EVENT_AT,
-      },
-      { grant, thankYou }
-    );
+    await expect(
+      handleCheckoutPaid(
+        {
+          userId: USER,
+          baseCredits: 100,
+          paymentStatus: "paid",
+          stripeEventId: "evt_new",
+          stripeCheckoutSessionId: "cs_new",
+          eventCreatedAt: EVENT_AT,
+        },
+        { grant, thankYou }
+      )
+    ).rejects.toThrow("mail down");
     expect(order).toEqual(["grant", "thank-you"]);
   });
 
@@ -97,9 +100,10 @@ describe("runPurchaseThankYou", () => {
   ) {
     const sends: Record<string, unknown>[] = [];
     const marks: Record<string, unknown>[] = [];
+    const prepareFn = vi.fn(prepare);
     const activate = vi.fn(async () => new Date(CUTOFF));
     const mailer = {
-      send: vi.fn(async (payload: Record<string, unknown>) => {
+      send: vi.fn(async (payload: Record<string, unknown>): Promise<{ id: string | null }> => {
         sends.push(payload);
         return { id: "email_1" };
       }),
@@ -113,7 +117,7 @@ describe("runPurchaseThankYou", () => {
         env: liveEnv(),
         now: new Date("2026-11-07T05:13:00.000Z"),
         activate,
-        prepare,
+        prepare: prepareFn,
         mark: async (row: Record<string, unknown>) => {
           marks.push(row);
         },
@@ -165,7 +169,26 @@ describe("runPurchaseThankYou", () => {
       old.deps
     );
     expect(result).toMatchObject({ action: "skip", reason: "cutoff" });
+    expect(old.deps.prepare).toHaveBeenCalled();
     expect(old.mailer.send).not.toHaveBeenCalled();
+  });
+
+  it("does not mark a missing provider id as sent", async () => {
+    const { deps, marks, mailer } = harness();
+    mailer.send = vi.fn(async () => ({ id: null }));
+    const result = await runPurchaseThankYou(input, deps);
+    expect(result.action).toBe("uncertain");
+    expect(marks[0]).toMatchObject({ status: "sending", resendEmailId: null });
+  });
+
+  it("records a pre-provider failure without treating it as an uncertain provider response", async () => {
+    const { deps, marks } = harness();
+    deps.mailer.send = vi.fn(async () => {
+      throw new ThankYouNotSubmittedError();
+    });
+    const result = await runPurchaseThankYou(input, deps);
+    expect(result).toMatchObject({ action: "skip", reason: "not_submitted" });
+    expect(marks[0]).toMatchObject({ status: "failed", error: "not_submitted" });
   });
 
   it("keeps an uncertain send on the same claim without throwing", async () => {

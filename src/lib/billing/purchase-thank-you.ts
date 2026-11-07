@@ -1,6 +1,8 @@
 export const PURCHASE_THANK_YOU_WINDOW_MS = 23 * 60 * 60 * 1000;
 export const PURCHASE_THANK_YOU_LEASE_MS = 5 * 60 * 1000;
 export const PURCHASE_THANK_YOU_MAX_ATTEMPTS = 5;
+/** Must stay below the send lease so a hung provider call cannot overlap a retry. */
+export const PURCHASE_THANK_YOU_SEND_TIMEOUT_MS = 20_000;
 
 export type PurchaseThankYouMode = "off" | "live";
 
@@ -15,7 +17,22 @@ export type ClaimStatus =
   | "sent"
   | "suppressed"
   | "failed"
-  | "ambiguous";
+  | "ambiguous"
+  | "ineligible";
+
+export class ThankYouNotSubmittedError extends Error {
+  constructor() {
+    super("not_submitted");
+    this.name = "ThankYouNotSubmittedError";
+  }
+}
+
+export class ThankYouDispatchClosedError extends Error {
+  constructor() {
+    super("dispatch_closed");
+    this.name = "ThankYouDispatchClosedError";
+  }
+}
 
 export type ClaimSnapshot = {
   status: ClaimStatus;
@@ -76,7 +93,8 @@ export function nextClaimAction(claim: ClaimSnapshot, now: Date): ClaimAction {
   if (
     claim.status === "sent" ||
     claim.status === "suppressed" ||
-    claim.status === "ambiguous"
+    claim.status === "ambiguous" ||
+    claim.status === "ineligible"
   ) {
     return "stop";
   }
@@ -87,7 +105,11 @@ export function nextClaimAction(claim: ClaimSnapshot, now: Date): ClaimAction {
   if (firstAt != null && now.getTime() - firstAt > PURCHASE_THANK_YOU_WINDOW_MS) {
     return "ambiguous";
   }
-  if (claim.attempts >= PURCHASE_THANK_YOU_MAX_ATTEMPTS && claim.status !== "pending") {
+  if (
+    claim.firstAttemptAt != null &&
+    claim.attempts >= PURCHASE_THANK_YOU_MAX_ATTEMPTS &&
+    claim.status !== "pending"
+  ) {
     return "ambiguous";
   }
   if (claim.status === "pending" || claim.status === "failed") return "send";

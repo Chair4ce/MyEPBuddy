@@ -9,6 +9,8 @@ import {
   purchaseThankYouIdempotencyKey,
   qualifiesForPurchaseThankYou,
   readPurchaseThankYouConfig,
+  ThankYouDispatchClosedError,
+  ThankYouNotSubmittedError,
 } from "@/lib/billing/purchase-thank-you";
 
 export type ThankYouPrepareResult =
@@ -23,6 +25,7 @@ export type ThankYouMail = {
   html: string;
   text: string;
   idempotencyKey: string;
+  claimId: string;
 };
 
 export type ThankYouRunDeps = {
@@ -38,7 +41,7 @@ export type ThankYouRunDeps = {
   }) => Promise<ThankYouPrepareResult>;
   mark: (input: {
     claimId: string;
-    status: "sent" | "sending" | "suppressed";
+    status: "sent" | "sending" | "suppressed" | "failed";
     resendEmailId: string | null;
     error: string | null;
   }) => Promise<void>;
@@ -85,7 +88,20 @@ export async function runPurchaseThankYou(
     })
   ) {
     const eventAt = Date.parse(input.eventCreatedAt);
-    if (Number.isFinite(eventAt) && eventAt < cutoff.getTime()) {
+    if (
+      input.grantCommitted &&
+      input.paymentStatus === "paid" &&
+      input.baseCredits === 100 &&
+      Number.isFinite(eventAt) &&
+      eventAt < cutoff.getTime()
+    ) {
+      await deps.prepare({
+        userId: input.userId,
+        stripeEventId: input.stripeEventId,
+        stripeCheckoutSessionId: input.stripeCheckoutSessionId,
+        eventCreatedAt: input.eventCreatedAt,
+        now: deps.now,
+      });
       return { action: "skip", reason: "cutoff" };
     }
     return { action: "skip", reason: "not_qualifying" };
@@ -112,7 +128,17 @@ export async function runPurchaseThankYou(
       html: email.html,
       text: email.text,
       idempotencyKey: purchaseThankYouIdempotencyKey(input.userId),
+      claimId: prepared.claimId,
     });
+    if (!sent.id) {
+      await deps.mark({
+        claimId: prepared.claimId,
+        status: "sending",
+        resendEmailId: null,
+        error: "missing_provider_id",
+      });
+      return { action: "uncertain", claimId: prepared.claimId };
+    }
     await deps.mark({
       claimId: prepared.claimId,
       status: "sent",
@@ -121,6 +147,18 @@ export async function runPurchaseThankYou(
     });
     return { action: "sent", claimId: prepared.claimId };
   } catch (error) {
+    if (error instanceof ThankYouDispatchClosedError) {
+      return { action: "skip", reason: "ambiguous" };
+    }
+    if (error instanceof ThankYouNotSubmittedError) {
+      await deps.mark({
+        claimId: prepared.claimId,
+        status: "failed",
+        resendEmailId: null,
+        error: "not_submitted",
+      });
+      return { action: "skip", reason: "not_submitted" };
+    }
     const status = error instanceof ResendSendError ? error.status : null;
     const detail =
       error instanceof ResendSendError

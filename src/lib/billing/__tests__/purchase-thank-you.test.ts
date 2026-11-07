@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PURCHASE_THANK_YOU_LEASE_MS,
   PURCHASE_THANK_YOU_MAX_ATTEMPTS,
+  PURCHASE_THANK_YOU_SEND_TIMEOUT_MS,
   PURCHASE_THANK_YOU_WINDOW_MS,
   effectiveCutoff,
   nextClaimAction,
@@ -13,6 +14,13 @@ import {
 const ACTIVATED = "2026-11-07T05:11:00.000Z";
 const AFTER = "2026-11-07T05:12:00.000Z";
 const BEFORE = "2026-11-07T05:10:00.000Z";
+
+describe("purchase thank-you send timeout", () => {
+  it("ends the provider call before the send lease can expire", () => {
+    expect(PURCHASE_THANK_YOU_SEND_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(PURCHASE_THANK_YOU_SEND_TIMEOUT_MS).toBeLessThan(PURCHASE_THANK_YOU_LEASE_MS);
+  });
+});
 
 describe("readPurchaseThankYouConfig", () => {
   it("stays off unless mode is live and the cutoff parses", () => {
@@ -186,6 +194,19 @@ describe("nextClaimAction", () => {
         now
       )
     ).toBe("ambiguous");
+    expect(
+      nextClaimAction(
+        {
+          status: "sending",
+          attempts: PURCHASE_THANK_YOU_MAX_ATTEMPTS,
+          firstAttemptAt: null,
+          sendingAt: new Date(now.getTime() - PURCHASE_THANK_YOU_LEASE_MS - 1000).toISOString(),
+          resendEmailId: null,
+          lastError: "not_submitted",
+        },
+        now
+      )
+    ).toBe("send");
   });
 });
 

@@ -45,6 +45,7 @@ DECLARE
   v_activated timestamptz;
   v_result jsonb;
   v_count integer;
+  v_claim uuid;
 BEGIN
   PERFORM pg_temp.seed_user(c_first, 'first.thankyou@example.com');
   PERFORM pg_temp.seed_user(c_repeat, 'repeat.thankyou@example.com');
@@ -90,11 +91,19 @@ BEGIN
     c_first, 'cs_old', 'evt_old', v_before, v_after
   );
   IF v_result->>'reason' IS DISTINCT FROM 'cutoff' THEN
-    RAISE EXCEPTION 'pre-cutoff event must not claim: %', v_result;
+    RAISE EXCEPTION 'pre-cutoff event must not send: %', v_result;
   END IF;
-  SELECT count(*) INTO v_count FROM public.purchase_thank_you_claims WHERE user_id = c_first;
-  IF v_count <> 0 THEN
-    RAISE EXCEPTION 'cutoff skip must not insert a claim';
+  SELECT count(*) INTO v_count
+  FROM public.purchase_thank_you_claims
+  WHERE user_id = c_first AND status = 'ineligible';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'pre-cutoff purchase must be sealed';
+  END IF;
+  v_result := public.purchase_thank_you_prepare_send(
+    c_first, 'cs_old', 'evt_old_later', v_after, v_after
+  );
+  IF v_result->>'action' IS DISTINCT FROM 'skip' THEN
+    RAISE EXCEPTION 'later event for a pre-cutoff purchase must not send: %', v_result;
   END IF;
 
   PERFORM grant_credits(c_repeat, 100, 'purchase', 'evt_first', 'first 100', 'cs_first');
@@ -109,6 +118,18 @@ BEGIN
   );
   IF v_result->>'reason' IS DISTINCT FROM 'in_flight' THEN
     RAISE EXCEPTION 'duplicate webhook should not send again: %', v_result;
+  END IF;
+  SELECT id INTO v_claim
+  FROM public.purchase_thank_you_claims
+  WHERE user_id = c_repeat;
+  IF NOT public.purchase_thank_you_note_dispatch(v_claim, v_after) THEN
+    RAISE EXCEPTION 'first provider dispatch should open';
+  END IF;
+  UPDATE public.purchase_thank_you_claims
+  SET first_attempt_at = v_after - interval '24 hours'
+  WHERE id = v_claim;
+  IF public.purchase_thank_you_note_dispatch(v_claim, v_after) THEN
+    RAISE EXCEPTION 'dispatch after the idempotency window must not open';
   END IF;
   PERFORM grant_credits(c_repeat, 100, 'purchase', 'evt_second', 'second 100', 'cs_second');
   v_result := public.purchase_thank_you_prepare_send(
@@ -139,24 +160,33 @@ BEGIN
   END IF;
 
   UPDATE public.purchase_thank_you_claims
-  SET first_attempt_at = v_after - interval '24 hours',
-      sending_at = v_after - interval '24 hours',
-      status = 'sending',
-      attempts = 1
+  SET sending_at = v_after - interval '6 minutes'
   WHERE user_id = c_optout;
+  UPDATE public.profiles
+  SET email_suppressed_at = v_after, email_suppressed_reason = 'complaint'
+  WHERE id = c_optout;
   v_result := public.purchase_thank_you_prepare_send(
     c_optout, 'cs_opt', 'evt_opt', v_after, v_after
   );
-  IF v_result->>'reason' IS DISTINCT FROM 'ambiguous' THEN
-    RAISE EXCEPTION 'expired uncertain send must not resend: %', v_result;
+  IF v_result->>'reason' IS DISTINCT FROM 'suppressed' THEN
+    RAISE EXCEPTION 'a later bounce must stop a reserved send: %', v_result;
   END IF;
 
-  PERFORM public.purchase_thank_you_activate(v_after + interval '1 day');
-  SELECT activated_at INTO v_activated
-  FROM public.purchase_thank_you_settings
-  WHERE id = 1;
-  IF v_activated IS DISTINCT FROM v_cutoff THEN
-    RAISE EXCEPTION 'stored cutoff moved, got %', v_activated;
+  PERFORM grant_credits(c_other, 100, 'purchase', NULL, 'sessionless 100', NULL);
+  PERFORM grant_credits(c_other, 100, 'purchase', 'evt_after_null', 'later 100', 'cs_after_null');
+  v_result := public.purchase_thank_you_prepare_send(
+    c_other, 'cs_after_null', 'evt_after_null', v_after, v_after
+  );
+  IF v_result->>'reason' IS DISTINCT FROM 'not_first' THEN
+    RAISE EXCEPTION 'a sessionless 100 still counts as the first purchase: %', v_result;
+  END IF;
+
+  IF public.purchase_thank_you_activate(v_before) IS DISTINCT FROM v_cutoff THEN
+    RAISE EXCEPTION 'earlier cutoff must not replace the stored cutoff';
+  END IF;
+  v_activated := public.purchase_thank_you_activate(v_after + interval '1 day');
+  IF v_activated IS DISTINCT FROM v_after + interval '1 day' THEN
+    RAISE EXCEPTION 'a later cutoff must narrow the stored cutoff, got %', v_activated;
   END IF;
 END;
 $$;

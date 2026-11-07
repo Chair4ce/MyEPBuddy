@@ -16,9 +16,7 @@ export async function handleCheckoutPaid(
 ): Promise<void> {
   await deps.grant(input);
   if (input.paymentStatus !== "paid" || input.baseCredits !== 100) return;
-  try {
-    await deps.thankYou(input);
-  } catch (error) {
-    console.error("[billing/webhook] purchase thank-you failed", error);
-  }
+  // Claim setup failures must reach the webhook so the Stripe event stays
+  // unrecorded and can be retried. Provider outcomes are returned, not thrown.
+  await deps.thankYou(input);
 }
